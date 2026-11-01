@@ -308,6 +308,8 @@
     if (letter(event, 'r')) return run(reverse);
     if (letter(event, 'e')) return run(() => stretch(event.shiftKey ? .5 : 2));
     if (letter(event, 'd')) return run(() => resizePattern(event.shiftKey ? .5 : 2));
+    if (letter(event, 'f') && event.shiftKey) return run(() => app.perform('songScroll'));
+    if (letter(event, 'a') && event.shiftKey) return run(() => app.perform('automationPanel'));
     if (letter(event, 'f')) return run(() => app.perform('follow'));
     if (letter(event, 'p')) return run(() => automatePicker());
     if (letter(event, 'x')) return run(clearEffects);

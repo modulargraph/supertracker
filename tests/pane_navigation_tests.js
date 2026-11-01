@@ -191,7 +191,7 @@ test('Pattern, instrument, both browsers, mixer and automation resolve useful sc
     }],
     ['automation', h => {
       const targets = h.node('div', 'targets', undefined, { className: 'studio-target-panel' }); h.node('select', 'automation-track', targets); h.node('input', 'automation-search', targets, { type: 'search' });
-      const lanes = h.node('div', 'lanes', undefined, { className: 'studio-lane-tabs' }); h.node('button', 'lane-other', lanes, { attrs: { 'data-select-lane': '0', 'aria-selected': 'false' } }); h.node('button', 'lane-selected', lanes, { attrs: { 'data-select-lane': '1', 'aria-selected': 'true' } });
+      const lanes = h.node('div', 'lanes', undefined, { className: 'studio-lane-stack' }); h.node('button', 'lane-other', lanes, { attrs: { 'data-select-lane': '0', 'aria-selected': 'false' } }); h.node('button', 'lane-selected', lanes, { attrs: { 'data-select-lane': '1', 'aria-selected': 'true' } });
       h.node('svg', 'automation-envelope', undefined, { tabIndex: 0 });
       const tools = h.node('div', 'point-tools', undefined, { className: 'studio-point-toolbar' }); h.node('button', 'automation-add-point', tools);
       const table = h.node('div', 'points', undefined, { className: 'studio-points-table' }); const row = h.node('div', 'selected-point', table, { className: 'studio-point-row is-selected' }); h.node('input', 'point-row-1', row, { type: 'number', attrs: { 'data-point-row': '1' } });

@@ -1493,16 +1493,36 @@
               ? `<div class="studio-list-caption">Available parameters <span>${unused.length}</span></div>${unused.map(targetButton).join('')}`
               : ''}${!targets.length ? '<p class="muted studio-hint">No parameters match your search.</p>' : ''}</div>`
           + `<p class="studio-hint muted">From any parameter: Option A.<br>Or use its context menu.</p></aside>
-      <div class="studio-lane-workspace">${existing.length ? `<div class="studio-lane-tabs" data-scroll="automation-lanes" role="tablist" aria-label="Automation lanes. Left and right choose a lane. `
-          + `Down enters its envelope; Up returns to parameters.">${existing.map((item, i) => `<button class="studio-lane-tab ${item === lane ? 'is-selected' : ''}" id="automation-lane-${i}" role="tab" aria-selected="${item === lane}"`
-          + ` data-select-lane="${i}"><span>${channelFor(ownerForLane(item))?.type === 'track'
-              ? String(channelFor(ownerForLane(item)).track + 1).padStart(2, '0')
-              : esc(channelFor(ownerForLane(item))?.type || '?')}</span>${esc(item.name || item.target)}</button>`).join('')}</div>` : ''}${songScope ? (ref ? window.STAutomationSong.render(songContext(ref)) : '<section class="panel studio-automation-empty"><h3>Choose a parameter</h3><p>Select a parameter to see its automation along the song.</p>'
+      <div class="studio-lane-workspace">${laneStack(existing, lane, songScope)}${songScope ? (ref ? window.STAutomationSong.render(songContext(ref)) : '<section class="panel studio-automation-empty"><h3>Choose a parameter</h3><p>Select a parameter to see its automation along the song.</p>'
           + '</section>') : lane ? renderLane(lane) : ghost ? ghostPanel(ghost) : `<section class="panel studio-automation-empty"><h3>No automation lanes</h3><p>Select a parameter to add its first point.<br>Existing lanes `
           + `appear above available parameters.</p><div class="studio-empty-tips"><span><kbd>Tab</kbd> Move between controls</span>`
           + `<span><kbd>⌥ A</kbd> Automate focused parameter</span><span><kbd>Enter</kbd> Select a parameter</span></div>`
           + `</section>`}</div></div></div>`;
   }
+
+  /* One box per automated parameter of this pattern, stacked and scrollable, every box the same height (stable
+     locations). A box shows the lane read-only; the selected lane is edited in the docked editor below the stack.
+     In the song scope a box shows the parameter along the whole song. Up and down choose a lane, Enter enters its
+     envelope. */
+  function laneStack(existing, lane, songScope) {
+    if (!existing.length) return '';
+    const A = window.STApp;
+    const box = (item, i) => {
+      const owner = ownerForLane(item), channel = channelFor(owner), info = targetInfo(item), selected = item === lane;
+      const ref = { owner, target: item.target, name: item.name || item.target };
+      const list = A?.automationLaneSlots?.(ref, info, songScope ? 'song' : 'pattern');
+      const plot = list?.length ? A.automationLaneMarkup(list, info, 1, { height: 36, top: 3, bottom: 33, dots: false, stretch: true }) : '';
+      return `<div class="studio-lane-box ${selected ? 'is-selected' : ''}" id="automation-lane-${i}" role="option" aria-selected="${selected}"`
+          + ` tabindex="${selected ? 0 : -1}" data-select-lane="${i}"><div class="studio-lane-box-head"><span>${channel?.type === 'track'
+              ? String(channel.track + 1).padStart(2, '0')
+              : esc(channel?.type || '?')}</span><strong>${esc(item.name || item.target)}</strong><small>${esc(channelTitle(owner))}</small>`
+          + `<em>${item.points?.length || 0} pt${item.points?.length === 1 ? '' : 's'}</em></div><div class="studio-lane-box-plot">${plot}</div></div>`;
+    };
+    return `<div class="studio-lane-stack" id="automation-lane-stack" data-scroll="automation-lanes" role="listbox" aria-label="Automation lanes`
+        + ` in this pattern. Up and down choose a lane; Enter enters its envelope.">${existing.map(box).join('')}</div>`;
+  }
+  /** Scroll the selected lane's box into view (the parameter list chooses lanes without leaving the list). */
+  const revealLane = () => document.getElementById(`automation-lane-${state().selectedLane}`)?.scrollIntoView?.({ block: 'nearest' });
 
   function renderLane(lane) {
     const info = targetInfo(lane), points = ordered(lane.points);
@@ -1609,15 +1629,18 @@
         document.querySelector('[data-choose-target]')?.focus();
       }
     });
-    document.querySelectorAll('[data-choose-target]').forEach(button => button.addEventListener('click', () => {
+    const chooseTarget = button => {
       const track = selectedOwner(), target = button.dataset.chooseTarget;
       const found = lanes().findIndex(lane => ownerForLane(lane) === track && lane.target === target);
       // The song timeline can show a parameter without creating a lane in this pattern.
       if (ui.scope === 'song'
-          && window.STAutomationSong) { if (found >= 0) state().selectedLane = found; ui.ref = { owner: track, target, name: button.dataset.targetName || target, pattern: pattern().id, seen: refKey(laneRef(lanes().length ? selectedLane() : null)) }; S().refresh(); return; }
-      if (found >= 0) { ui.ref = null; state().selectedLane = found; ui.point = 0; S().refresh(); }
-      else S().automate(track, target, button.dataset.targetName);
-    }));
+          && window.STAutomationSong) { if (found >= 0) state().selectedLane = found; ui.ref = { owner: track, target, name: button.dataset.targetName || target, pattern: pattern().id, seen: refKey(laneRef(lanes().length ? selectedLane() : null)) }; S().refresh(); revealLane(); return; }
+      if (found >= 0) {
+        ui.ref = null; state().selectedLane = found; ui.point = 0; S().refresh();
+        focusId(button.id); revealLane();
+      } else { S().automate(track, target, button.dataset.targetName); revealLane(); }
+    };
+    document.querySelectorAll('[data-choose-target]').forEach(button => button.addEventListener('click', () => chooseTarget(button)));
     document.querySelectorAll('[data-select-lane]').forEach(button => button.addEventListener('click', () => {
       ui.ref = null;
       state().selectedLane = Number(button.dataset.selectLane);
@@ -1626,6 +1649,13 @@
       S().refresh();
     }));
     document.querySelectorAll('[data-choose-target]').forEach(button => button.addEventListener('keydown', event => {
+      // Enter chooses the parameter (as a click) and enters its lane's envelope; a click stays in the list.
+      if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault(); event.stopPropagation();
+        chooseTarget(button);
+        if (ui.scope !== 'song') focusId('automation-envelope');
+        return;
+      }
       if (event.metaKey || event.ctrlKey || event.altKey || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault(); event.stopPropagation();
       const items = [...document.querySelectorAll('[data-choose-target]')], index = items.indexOf(button);
@@ -1636,19 +1666,29 @@
           : clamp(index + (event.key === 'ArrowDown' ? 1 : -1), 0, items.length - 1)]?.focus();
     }));
     document.querySelectorAll('[data-select-lane]').forEach(button => button.addEventListener('keydown', event => {
-      if (event.metaKey || event.ctrlKey || event.altKey || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key === 'Enter') {
+        event.preventDefault(); event.stopPropagation();
+        focusId(ui.scope === 'song' ? 'automation-song-envelope' : 'automation-envelope');
+        return;
+      }
+      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      const current = Number(button.dataset.selectLane), back = event.key === 'ArrowUp' || event.key === 'ArrowLeft';
+      // Up from the first lane returns to the parameter list.
+      if (event.key === 'ArrowUp' && current === 0) return;
       event.preventDefault(); event.stopPropagation();
       const index = event.key === 'Home'
           ? 0
           : event.key === 'End'
           ? lanes().length - 1
-          : clamp(Number(button.dataset.selectLane) + (event.key === 'ArrowRight' ? 1 : -1), 0, lanes().length - 1);
+          : clamp(current + (back ? -1 : 1), 0, lanes().length - 1);
       ui.ref = null;
       state().selectedLane = index;
       selectOwner(ownerForLane(lanes()[index]));
       ui.point = 0;
       S().refresh();
       focusId(`automation-lane-${index}`);
+      revealLane();
     }));
     document.getElementById('automation-name')?.addEventListener('change', event => {
       if (!settleAutomationEdit()) return;
@@ -1922,11 +1962,6 @@
       if (event.key === '\\' && window.STAutomationSong) { event.preventDefault(); setScope(ui.scope === 'song' ? 'pattern' : 'song'); return true; }
       const laneEntry = ui.scope === 'song' ? 'automation-song-envelope' : 'automation-envelope';
       if (target?.dataset?.selectLane !== undefined
-          && event.key === 'ArrowDown'
-          && ui.scope === 'song') { event.preventDefault(); document.getElementById(laneEntry)?.focus(); return true; }
-      if (target?.dataset?.selectLane !== undefined
-          && event.key === 'ArrowDown') { event.preventDefault(); document.getElementById('automation-envelope')?.focus(); return true; }
-      if (target?.dataset?.selectLane !== undefined
           && event.key === 'ArrowUp') { event.preventDefault(); const lane = selectedLane(); (document.getElementById('automation-target-' + lane?.target) || document.getElementById('automation-search'))?.focus(); return true; }
       if (target?.dataset?.chooseTarget !== undefined
           && event.key === 'ArrowRight'
@@ -2021,7 +2056,9 @@
       return ui.scope;
     },
     event: nativeEvent,
-    target: (track, target) => allTargets(track).find(item => item.target === target)
+    target: (track, target) => allTargets(track).find(item => item.target === target),
+    laneInfo: lane => targetInfo(lane),
+    channelTitle
   };
   /* Public insert slot API by owner ('track:<id>', 'bus:<id>', 'master') and slot number.
      Each edit is one Undo step and resolves after the audio host and the project agree. */

@@ -113,6 +113,8 @@
     const envelope = document.getElementById('automation-envelope');
     envelope?.focus({ preventScroll: true });
     envelope?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    // The lane's box in the Automation view's lane stack.
+    document.getElementById(`automation-lane-${state.selectedLane}`)?.scrollIntoView?.({ block: 'nearest' });
   }
 
   function contextMenu(e) {

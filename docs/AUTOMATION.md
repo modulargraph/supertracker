@@ -38,6 +38,9 @@ what you draw into the pattern lanes of the slots it touches. Consequences:
 
 ## Automation view
 
+- **Lane stack**: every lane of the pattern is a box in a scrolling stack. Each box is the same height and read-only, and the Song timeline scope shows each parameter along the song. The selected lane is edited in the docked editor below. Up/Down choose a lane and Return enters its envelope. The parameter list scrolls to and selects a chosen lane and keeps focus.
+- **Automation panel under the pattern grid** (`app-automation-panel.js`, `Option+Shift+A`): the same pattern lanes on a horizontal row axis, for the current pattern or the whole song. Its strokes are split per slot and written with the same model functions (`ensureLane`, `cleanPoints`), so nothing new is stored. `project.viewState.automationPanel` only remembers whether the panel is open and in which scope.
+
 - **Pattern selector** (above the lanes): `‹` / `›`, a menu showing which patterns already automate
   the selected parameter (`∿ n pts`, `×n in song`), and chips `P01 P03 …` for those patterns.
   `[` / `]` switch pattern from anywhere in the view (also from the menu); text fields keep typing.
@@ -48,7 +51,7 @@ what you draw into the pattern lanes of the slots it touches. Consequences:
   track plays in it, how often it is in the song) with quick picks *Patterns using <channel>* and
   *Patterns in the song*. Rows are time, so they are kept; a shorter destination ends on the source's
   value at its last row. Destination lanes are replaced. One undo step.
-  Right-click a lane tab or the envelope for the same actions, including *Copy lane to all patterns
+  Right-click a lane box or the envelope for the same actions, including *Copy lane to all patterns
   using <channel>* (patterns where the track has steps; for buses and Master, the song's patterns).
 - **Song timeline** (`\`, or the *Song timeline* toggle): the parameter along the whole sequence,
   one slot per sequence entry, with pattern labels and `n/m` repeat counters. Keys on the timeline:

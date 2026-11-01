@@ -15,6 +15,7 @@
       stepTrack = state.track,
       stepRow = state.row;
     bindSidebar();
+    app.bindPatternMatrix();
     window.STPatternDestination?.bind();
     if ($('#pattern-loop')) $('#pattern-loop').onclick = () => app.loopSelection();
     $('#pattern-rename').onclick = () => app.textPrompt('Rename pattern', pattern().name,
@@ -59,6 +60,9 @@
       window.STPatternTools?.toggleTrack(button.dataset.trackToggle, Number(button.dataset.toggleIndex));
     };
     $('#follow').onclick = () => app.perform('follow');
+    if ($('#auto-panel-toggle')) $('#auto-panel-toggle').onclick = () => app.perform(app.automationPanelShown() ? 'automationPanelHide' : 'automationPanel');
+    app.bindAutomationPanel();
+    app.bindSongScroll();
     $('#fill').onclick = app.fillSelection;
     if ($('#gate-column')) $('#gate-column').onclick = () => app.perform('toggleGateColumn');
     for (const el of $$('[data-cell]')) el.onclick = e => {

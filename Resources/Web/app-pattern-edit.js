@@ -261,7 +261,8 @@
         state.noteColumn = Math.min(state.noteColumn || 0, (app.noteColumnCount?.(state.track) || 1) - 1);
       }
     }
-    state.row = clamp(state.row + dr, 0, pattern().length - 1);
+    // Song scroll (app-song-scroll.js): moving past a pattern edge continues in the neighbouring song slot.
+    if (!(dr && !select && app.songScrollStep?.(state.row + dr))) state.row = clamp(state.row + dr, 0, pattern().length - 1);
     state.instrument = state.project.tracks[state.track].instrument || 0;
     refresh();
     const after = patternColumns(),

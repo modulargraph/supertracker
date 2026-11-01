@@ -1,32 +1,48 @@
-/* Sidebar: the pattern and instrument lists beside the Pattern and Instrument views. */
+/* Sidebar: the pattern and instrument lists beside the Song and Instrument views, and the Pattern view's left pane. */
 (function () {
   'use strict';
 
   const app = window.STApp;
   const { $, $$, esc, state, syncEngine, refresh } = app;
 
+  const patternItems = p => p.patterns.map((x, i) => `<button class="sidebar-item ${x.id === p.activePattern ? 'active' : ''}" id="sidebar-pattern-${x.id}"`
+      + ` data-pattern="${x.id}" draggable="true" title="Drag or ⌥↑↓ to reorder · right-click for more" tabindex="${x.id === p.activePattern ? 0 : -1}"><span class="sidebar-number">${String(i + 1).padStart(2, '0')}</span>`
+      + `<span class="grow">${esc(x.name)}<div class="sub">${x.length} steps · ${x.automation.length} automation</div>`
+      + `</span></button>`).join('');
+
+  const instrumentItems = p => p.instruments.map((x, i) => `<button class="sidebar-item ${i === state.instrument ? 'active' : ''}" id="sidebar-instrument-${i}"`
+      + ` data-instrument="${i}" title="Right-click for more" tabindex="${i === state.instrument ? 0 : -1}"><span class="sidebar-number">${String(i).padStart(2, '0')}</span>`
+      + `<span class="grow">${esc(x.name)}<div class="sub">${x.type === 'au'
+          ? x.plugin?.format || 'Plug-in'
+          : x.type === 'midi'
+          ? 'External MIDI'
+          : x.mode === 'wavetable'
+          ? 'wavetable' + (window.STWavetables?.displayName(x.samplePath) ? ' · ' + esc(window.STWavetables.displayName(x.samplePath)) : '')
+          : x.samplePath ? x.mode || 'sample' : 'empty sampler'}</div>`
+      + `</span>${i === state.project.tracks[state.track]?.instrument ? '<span class="color-dot"></span>' : ''}</button>`).join('');
+
+  const addButton = kind => `<button class="quiet" data-add="${kind}" title="Add ${kind === 'patterns' ? 'pattern' : 'instrument'}"`
+      + ` style="padding:2px 6px">+</button>`;
+
   function sidebar(kind) {
     const p = state.project;
     return `<aside class="sidebar"><div class="sidebar-heading"><span class="eyebrow">${kind === 'patterns' ? 'Patterns' : 'Instruments'}</span>`
-        + `<button class="quiet" data-add="${kind}" title="Add ${kind === 'patterns' ? 'pattern' : 'instrument'}"`
-        + ` style="padding:2px 6px">+</button></div>${kind === 'patterns' ? '' : '<button class="quiet sidebar-add-wavetable" data-add="wavetable"'
-        + ' id="add-wavetable-instrument" title="Add a wavetable synth: a sampler in Wavetable mode on the Saw table">+ Wavetable</button>'}${kind === 'patterns' ? p.patterns.map((x, i) => `<button class="sidebar-item ${x.id === p.activePattern ? 'active' : ''}" id="sidebar-pattern-${x.id}"`
-        + ` data-pattern="${x.id}" draggable="true" title="Drag or ⌥↑↓ to reorder · right-click for more" tabindex="${x.id === p.activePattern ? 0 : -1}"><span class="sidebar-number">${String(i + 1).padStart(2, '0')}</span>`
-        + `<span class="grow">${esc(x.name)}<div class="sub">${x.length} steps · ${x.automation.length} automation</div>`
-        + `</span></button>`).join('') : p.instruments.map((x, i) => `<button class="sidebar-item ${i === state.instrument ? 'active' : ''}" id="sidebar-instrument-${i}"`
-        + ` data-instrument="${i}" title="Right-click for more" tabindex="${i === state.instrument ? 0 : -1}"><span class="sidebar-number">${String(i).padStart(2, '0')}</span>`
-        + `<span class="grow">${esc(x.name)}<div class="sub">${x.type === 'au'
-            ? x.plugin?.format || 'Plug-in'
-            : x.type === 'midi'
-            ? 'External MIDI'
-            : x.mode === 'wavetable'
-            ? 'wavetable' + (window.STWavetables?.displayName(x.samplePath) ? ' · ' + esc(window.STWavetables.displayName(x.samplePath)) : '')
-            : x.samplePath ? x.mode || 'sample' : 'empty sampler'}</div>`
-        + `</span>${i === state.project.tracks[state.track]?.instrument ? '<span class="color-dot"></span>' : ''}</button>`).join('')}<div `
+        + `${addButton(kind)}</div>${kind === 'patterns' ? '' : '<button class="quiet sidebar-add-wavetable" data-add="wavetable"'
+        + ' id="add-wavetable-instrument" title="Add a wavetable synth: a sampler in Wavetable mode on the Saw table">+ Wavetable</button>'}${kind === 'patterns' ? patternItems(p) : instrumentItems(p)}<div `
         + `class="sidebar-section"><div class="sidebar-heading"><span class="eyebrow">Session</span>`
         + `</div><div class="small-note">${p.tracks.length} tracks<br>${p.instruments.length} instruments<br>${p.patterns.length}`
         + ` patterns<br><br><kbd>⌘K</kbd> Find any action</div></div>${!state.native ? '<div class="small-note" style="color:var(--amber)">Interface preview<br>Audio, plug-ins and disk browsing '
         + 'run in the macOS app.</div>' : ''}</aside>`;
+  }
+
+  /* The Pattern view's left pane (like Renoise's instrument box over its pattern matrix): the instrument list on
+     top, the pattern matrix (app-pattern-matrix.js) below. Each section scrolls on its own. */
+  function leftPane() {
+    const p = state.project;
+    return `<aside class="sidebar left-pane"><section class="left-pane-instruments" aria-label="Instruments">`
+        + `<div class="sidebar-heading"><span class="eyebrow">Instruments</span>${addButton('instruments')}</div>`
+        + `<div class="left-pane-scroll" data-scroll="left-instruments">${instrumentItems(p)}</div></section>`
+        + `<section class="left-pane-patterns" aria-label="Patterns">${app.patternMatrix()}</section></aside>`;
   }
 
   function selectPattern(id) {
@@ -160,5 +176,5 @@
         : add.dataset.add === 'wavetable' ? app.perform('addWavetable') : app.addInstrument();
   }
 
-  Object.assign(app, { sidebar, selectPattern, selectInstrument, bindSidebar, movePattern, patternMenu, instrumentMenu });
+  Object.assign(app, { sidebar, leftPane, selectPattern, selectInstrument, bindSidebar, movePattern, patternMenu, instrumentMenu });
 })();

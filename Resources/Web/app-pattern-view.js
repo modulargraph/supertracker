@@ -6,7 +6,7 @@
   const app = window.STApp;
   const {
     $, $$, clamp, TRACK_SANITY_LIMIT, esc, noteNames, noteText, FX, state, pattern, beatsPerBar,
-    currentInstrument, refresh, updateTransport, sidebar, trackSilenced, fxText, patternColumns,
+    currentInstrument, refresh, updateTransport, trackSilenced, fxText, patternColumns,
     patternGroupHeaders, patternColumnHeader, patternColumnCell, patternLayout, showsGroupRow
   } = app;
 
@@ -17,6 +17,18 @@
       // wide window. Without any track column a filler column takes the rest, so an overview never stretches.
       fill = !layout && columns.length > 0 && columns.every(column => column.collapsed || column.slim),
       filler = tag => fill ? `<${tag} class="tracker-fill" aria-hidden="true"></${tag}>` : '';
+    // One grid row of the active pattern; `attrs` and `live: false` serve the song scroll's context rows (app-song-scroll.js).
+    const row = (r, attrs = '', live = true) => `<tr data-row="${r}"${attrs} class="${r % (p.linesPerBeat * 4 / (p.timeSignature?.denominator || 4)) === 0 ? 'beat' : ''}`
+        + ` ${r % (p.linesPerBeat * beatsPerBar(p)) === 0 ? 'bar' : ''}${live && loopRange && r >= loopRange.start && r <= loopRange.end
+            ? ' loop-row' + (r === loopRange.start ? ' loop-start' : '') + (r === loopRange.end ? ' loop-end' : '')
+            : ''}">`
+        + `<td class="row-number">${String(r).padStart(2, '0')}</td>${layout
+            ? segments.map(x => x.spacer
+                ? '<td class="tracker-spacer" aria-hidden="true"></td>'
+                : patternColumnCell(columns[x.index], r, live ? sel : null, silenced)).join('')
+            : columns.map(column => patternColumnCell(column, r, live ? sel : null, silenced)).join('') + filler('td')}</tr>`;
+    const width = 1 + (layout ? segments.length : columns.length + (fill ? 1 : 0)),
+      body = app.songScrollRows?.(row, width) ?? Array.from({ length: pat.length }, (_, r) => row(r)).join('');
     return `<table class="tracker${layout ? ' is-virtual' : ''}" id="tracker" tabindex="0" data-gate-column="${app.gateColumnShown() ? 'shown' : 'hidden'}"${layout ? ` data-virtual-columns="${columns.length}" style="width:${40 + layout.total}px"` : ''}`
         + ` aria-label="Pattern grid. Arrows move, computer keys enter notes when recording is armed, Delete clears.">${layout
             ? `<colgroup><col style="width:40px">${segments.map(x => `<col style="width:${x.width}px">`).join('')}</colgroup>`
@@ -32,17 +44,7 @@
                 ? '<th class="tracker-spacer" aria-hidden="true"></th>'
                 : patternColumnHeader(columns[x.index])).join('')
             : columns.map(patternColumnHeader).join('') + filler('th')}</tr>`
-        + `</thead><tbody>${Array.from({
-      length: pat.length
-    }, (_, r) => `<tr data-row="${r}" class="${r % (p.linesPerBeat * 4 / (p.timeSignature?.denominator || 4)) === 0 ? 'beat' : ''}`
-        + ` ${r % (p.linesPerBeat * beatsPerBar(p)) === 0 ? 'bar' : ''}${loopRange && r >= loopRange.start && r <= loopRange.end
-            ? ' loop-row' + (r === loopRange.start ? ' loop-start' : '') + (r === loopRange.end ? ' loop-end' : '')
-            : ''}">`
-        + `<td class="row-number">${String(r).padStart(2, '0')}</td>${layout
-            ? segments.map(x => x.spacer
-                ? '<td class="tracker-spacer" aria-hidden="true"></td>'
-                : patternColumnCell(columns[x.index], r, sel, silenced)).join('')
-            : columns.map(column => patternColumnCell(column, r, sel, silenced)).join('') + filler('td')}</tr>`).join('')}</tbody></table>`;
+        + `</thead><tbody>${body}</tbody></table>`;
   }
 
   function renderPattern() {
@@ -53,7 +55,7 @@
       silenced = p.tracks.map((_, i) => trackSilenced(p, i)),
       columns = patternColumns();
     app.rememberRendered?.();
-    return `<div class="workspace">${sidebar('patterns')}<section class="workspace-main">`
+    return `<div class="workspace has-left-pane">${app.leftPane()}<section class="workspace-main">`
         + `<div class="view-title"><div><div class="eyebrow">Pattern editor</div><h1 style="margin-top:7px">${esc(pat.name)}</h1>`
         + `</div><div class="row">${app.patternLoopButton()}<button class="quiet" id="pattern-rename"`
         + ` title="Rename pattern">Rename</button><button id="pattern-duplicate">Duplicate</button>`
@@ -69,7 +71,8 @@
         + ` title="Pattern length · ⌥D double · ⌥⇧D halve"><label for="edit-step" title="Cursor advance after entering `
         + `a note · { and } change it">Step</label><select id="edit-step" title="Edit step · { / }">${[0, 1, 2, 3, 4, 8, 16].map(x => `<option value="${x}" ${x === state.editStep ? 'selected' : ''}>${x}</option>`).join('')}</select>`
         + `<button id="follow" class="${state.follow ? 'active' : ''}" aria-pressed="${state.follow}"`
-        + ` title="Follow playback · ⌥F">Follow</button><button id="fill" title="Repeat selection · ⌘D">Fill ↓</button>`
+        + ` title="Follow playback · ⌥F">Follow</button>${app.songScrollButton()}<button id="auto-panel-toggle" class="${app.automationPanelShown() ? 'active' : ''}"`
+        + ` aria-pressed="${app.automationPanelShown()}" title="Automation panel under the grid · ⌥⇧A">Automation</button><button id="fill" title="Repeat selection · ⌘D">Fill ↓</button>`
         + `<button id="gate-column" class="${app.gateColumnShown() ? 'active' : ''}" aria-pressed="${app.gateColumnShown()}"`
         + ` title="Show the Gate column: an optional note length in rows. Without a gate a note plays until the next note,`
         + ` OFF or CUT on its track · ⌘K “Gate column”">Gate</button>`
@@ -98,12 +101,13 @@
         + `<label class="midi-apply" title="Apply key, scale, chord and chord set to notes from the MIDI keyboard">`
         + `<input type="checkbox" id="midi-apply" ${state.midiApply !== false ? 'checked' : ''}>MIDI</label>${window.STNoteRepeat ? window.STNoteRepeat.renderControls() : ''}<label `
         + `for="key-velocity">Vel</label><select id="key-velocity" title="Computer-keyboard velocity · ⌥V">${app.keyVelocities.map(v => `<option ${v === state.keyVelocity ? 'selected' : ''}>${v}</option>`).join('')}</select>`
-        + `</div></div></div><div class="tracker-wrap" data-scroll="tracker">${renderPatternTable(p, pat, sel, loopRange, silenced, columns)}</div>${app.chordSetStrip()}<div `
-        + `class="pattern-foot"><span><strong>${String(state.row).padStart(2, '0')}</strong> / ${String(pat.length - 1).padStart(2, '0')}`
+        + `</div></div></div><div class="tracker-wrap" data-scroll="tracker">${renderPatternTable(p, pat, sel, loopRange, silenced, columns)}</div>${app.chordSetStrip()}`
+        // The automation panel takes the hint line's place (the help sheet lists the same keys).
+        + `${app.automationPanel() || `<div class="pattern-foot"><span><strong>${String(state.row).padStart(2, '0')}</strong> / ${String(pat.length - 1).padStart(2, '0')}`
         + ` steps</span><span>${esc(currentInstrument().name)}</span><span class="grow">`
         + `</span><span>Enter edit FX / hear note</span><span title="Note column: 1 inserts a note-off (release), ⇧1 a note cut">1 OFF · ⇧1 CUT</span>`
         + `<span>⌃Tab exit grid</span><span>⇧ Arrows select</span>`
-        + `<span>⌘C / ⌘V</span><span>⌥ ↑↓ transpose</span></div>${renderStepEditor()}</section></div>`;
+        + `<span>⌘C / ⌘V</span><span>⌥ ↑↓ transpose</span></div>`}${renderStepEditor()}</section></div>`;
   }
 
   // Repaint recorded cells without replacing the grid, focus, or an active pointer target.
@@ -221,6 +225,8 @@
   }
 
   function updatePlayhead(s) {
+    // Song scroll follows the playing slot, also through repeats of one pattern (app-song-scroll.js).
+    if (app.songScrollFollow?.(s)) return;
     if (s.playing
         && state.follow
         && !(state.recording && state.recordPlacement !== 'live')
@@ -236,11 +242,12 @@
       return;
     }
     for (const tr of $$('tr.playhead')) tr.classList.remove('playhead');
-    if (s.playing && s.pattern === pattern().id) {
-      const tr = $(`tr[data-row="${s.row}"]`);
+    if (s.playing && (s.pattern === pattern().id || app.songScrollOn?.() && s.songMode)) {
+      const tr = $(app.songScrollOn?.() && s.songMode ? `#tracker tr[data-slot="${s.sequence}"][data-row="${s.row}"]` : `#tracker tr[data-row="${s.row}"]:not([data-context])`);
       tr?.classList.add('playhead');
       if (state.follow && tr) tr.scrollIntoView({ block: 'nearest' });
     }
+    app.paintAutomationPanelPlayhead(s);
     updateTransport();
   }
 

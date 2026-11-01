@@ -129,6 +129,7 @@
   function stepPattern(command) {
     const delta = command === 'nextPattern' ? 1 : -1;
     if (state.view === 'automation') return app.perform(delta > 0 ? 'automationPatternNext' : 'automationPatternPrev');
+    if (state.view === 'pattern' && app.songScrollOn?.()) return app.songScrollSlot(delta);
     const list = state.project.patterns;
     if (list.length < 2) {
       toast('This session has one pattern.');

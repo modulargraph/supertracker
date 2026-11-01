@@ -74,7 +74,7 @@
                 ['Repeat phrase to pattern end', '⌘D'], ['Transpose & hear · semitone / octave', '⌥↑↓ / ⌥⇧↑↓'],
                 ['Insert / remove row', 'Insert or ⇧Return / ⇧Delete'], ['Clear selection', 'Delete'],
                 ['Choose step effect (FX column)', 'Enter'], ['Edit step down / up', '{ / }'],
-                ['Follow playback', '⌥F'], ['Loop selected rows / stop looping', '⌥⇧L'],
+                ['Follow playback', '⌥F'], ['Song scroll: grid runs through the song', '⌥⇧F'], ['Automation panel under the grid: open / focus', '⌥⇧A'], ['Loop selected rows / stop looping', '⌥⇧L'],
                 ['Mute / solo track', '⌥M / ⌥S'], ['Unmute all, clear solo', '⌥⇧M'],
                 ['Automate parameter…', '⌥P / right-click'], ['Select all steps', '⌘A'],
                 ['Rename track / pattern · set length', '⌘K “Rename” · ⌘K “Pattern length”']]],

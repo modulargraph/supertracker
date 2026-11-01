@@ -176,11 +176,13 @@ test('effect picker and disclosure arrows navigate their own pane without select
   h.key('summary-0', 'ArrowDown'); assert.equal(h.document.activeElement.id, 'summary-1'); assert.equal(h.state.track, 0); assert.equal(h.changes.length, 0);
 });
 
-test('automation lanes use horizontal arrows, parameter lists use vertical arrows, panes connect without edits', () => {
+test('the automation lane stack uses vertical arrows and Enter, parameter lists use vertical arrows, panes connect without edits', () => {
   const h = harness(); h.state.view = 'automation'; h.studio.bindAutomation();
-  h.key('automation-lane-0', 'ArrowRight'); assert.equal(h.state.selectedLane, 1); assert.equal(h.state.track, 1); assert.equal(h.document.activeElement.id, 'automation-lane-1');
-  h.key('automation-lane-1', 'ArrowDown'); assert.equal(h.document.activeElement.id, 'automation-envelope');
-  h.key('automation-lane-1', 'ArrowUp'); assert.equal(h.document.activeElement.id, 'automation-target-pan');
+  h.key('automation-lane-0', 'ArrowDown'); assert.equal(h.state.selectedLane, 1); assert.equal(h.state.track, 1); assert.equal(h.document.activeElement.id, 'automation-lane-1');
+  h.key('automation-lane-1', 'ArrowUp'); assert.equal(h.state.selectedLane, 0); assert.equal(h.document.activeElement.id, 'automation-lane-0');
+  h.key('automation-lane-0', 'ArrowRight'); assert.equal(h.state.selectedLane, 1, 'left and right still step lanes');
+  h.key('automation-lane-1', 'Enter'); assert.equal(h.document.activeElement.id, 'automation-envelope');
+  h.key('automation-lane-0', 'ArrowUp'); assert.equal(h.document.activeElement.id, 'automation-target-pan', 'up from the first lane returns to the parameters');
   h.key('automation-target-volume', 'ArrowDown'); assert.equal(h.document.activeElement.id, 'automation-target-pan');
   h.key('automation-target-pan', 'ArrowRight'); assert.equal(h.document.activeElement.id, 'automation-envelope');
   assert.equal(h.changes.length, 0); assert.equal(h.state.project.patterns[0].automation.length, 2);

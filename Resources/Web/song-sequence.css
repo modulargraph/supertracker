@@ -40,3 +40,15 @@
 @media (max-width:1100px){.song-block{grid-template-columns:22px 6px 34px minmax(70px,1fr) 32px 30px 54px}.song-mini,.song-at{display:none}}
 .song-block.in-loop .song-pos{color:var(--amber)}
 .song-block.current.in-loop{box-shadow:inset 2px 0 var(--teal),inset 0 0 0 1px rgba(207,173,103,.35)}
+/* Pattern matrix (Pattern view left pane): the same blocks, compact, under underline tabs (.fx-pages). */
+.fx-pages.matrix-tabs{flex:none;flex-wrap:nowrap;gap:0;margin:0 0 4px}
+.matrix-tabs button{padding:3px 5px;font-size:11px;white-space:nowrap}
+.matrix-tools{display:flex;flex-wrap:wrap;gap:1px;padding:0 0 4px}
+.matrix-tools button{padding:2px 5px;font-size:11px}
+.matrix-list{flex:1;min-height:0;overflow:auto}
+.matrix-list:focus-visible{outline:none}
+.matrix-list:focus-visible .matrix-block.current{outline:1px solid var(--teal);outline-offset:-1px}
+.song-block.matrix-block{grid-template-columns:16px 4px 26px minmax(0,1fr) 22px;gap:5px;padding:4px 5px}
+.matrix-block .song-pos{font-size:10px}
+.matrix-block .song-swatch{width:4px;height:16px}
+.matrix-block .song-name{font-size:11px}

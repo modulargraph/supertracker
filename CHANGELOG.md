@@ -17,6 +17,7 @@ This is the first public source release. Expect rough edges, and keep backups of
 ### Highlights
 
 - **Tracker patterns from the keyboard:** note, instrument, velocity, two step-effect columns and an optional gate per row; up to 256 patterns of 256 rows; step entry and live recording.
+- **Pattern navigation:** an instrument list over a pattern matrix (all patterns, or the song's blocks with basic song editing), *Song scroll* to run the grid through the song in order, and an automation panel under the grid whose rows link to the grid and whose song timeline lets you draw across pattern boundaries.
 - **Step effects:** probability, ratchet, microtiming, glide, reverse, sample offset, arpeggio, slice selection, mixer locks and plug-in parameter locks. Pattern tools (interpolate, humanize, reverse, nudge, stretch) are single Undo steps.
 - **Playing:** 15 scales, chord modes, 31 chord sets (16 harmony and 15 style sets), note repeat and an arpeggiator, also from a MIDI keyboard.
 - **Sound design:** built-in synth and sampler (1-shot, loops, slice, wavetable, granular), six DrumSynth models, 34 built-in effects, a keyboard sample editor with slicing, multisample zones and time stretch.

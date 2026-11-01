@@ -105,6 +105,14 @@ body.native .statusbar #cpu { flex:0 0 11ch; width:11ch; min-width:0; }
 .color-dot { width:5px; height:5px; border-radius:1px; background:var(--teal); flex:none; }
 .sidebar-section { margin-top:22px; }
 .small-note { padding:8px 7px; color:var(--dim); font-size:11px; line-height:1.6; }
+.workspace.has-left-pane { grid-template-columns:176px minmax(0,1fr); }
+/* Pattern view left pane: instruments over the pattern matrix (app-pattern-matrix.js), each scrolling on its own. */
+.left-pane { display:grid; grid-template-rows:minmax(92px,2fr) minmax(150px,3fr); padding:0; overflow:hidden; }
+.left-pane > section { display:flex; flex-direction:column; min-height:0; padding:10px 7px 6px; }
+.left-pane-patterns { border-top:1px solid #4b4538; }
+.left-pane-scroll { flex:1; min-height:0; overflow:auto; }
+.left-pane .sidebar-item { padding:4px 7px; }
+.left-pane .sidebar-item .sub { display:none; }
 .workspace-main { display:flex; flex-direction:column; overflow:hidden; min-height:0; background:var(--bg); }
 .view-title { min-height:42px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 16px; background:#25241f; border-bottom:1px solid #37352b; }
 .view-title .eyebrow { display:none; }
@@ -231,6 +239,7 @@ body.native .brand { min-width:240px; }
   .top-actions .native-badge { display:none; }
   .nav-button { padding:0 11px; gap:8px; }
   .workspace { grid-template-columns:140px minmax(0,1fr); }
+  .workspace.has-left-pane { grid-template-columns:168px minmax(0,1fr); }
   .step-editor { gap:5px; }
   .step-editor select { max-width:100px; }
   .instrument-layout { grid-template-columns:minmax(0,1.1fr) minmax(260px,1fr); }
@@ -427,3 +436,47 @@ img,a,svg,canvas { -webkit-user-drag:none; }
 .tracker .kit-overview-hit { grid-template-columns:minmax(100px,1fr) 36px 32px 68px 48px 48px; }
 .tracker .kit-hit-overview { min-width:360px; }
 .sidebar-item.drop-target{box-shadow:inset 0 2px 0 var(--amber,#e8823a)}
+/* Linked row (app-automation-panel.js): hover in the grid or the automation panel, as a background-image tint, so
+   focus (outline), selection (background !important), the playhead (border) and loop brackets (box-shadow) stay
+   visible above it. Light yellow, not amber: amber means loop. */
+.tracker tr.row-link td { background-image:linear-gradient(rgba(240,222,150,.07),rgba(240,222,150,.07)); }
+.tracker tr.row-link td.row-number { color:#f3e2a6; background-image:linear-gradient(rgba(240,222,150,.18),rgba(240,222,150,.18)); }
+/* Song scroll (app-song-scroll.js): slot headers and the other slots' read-only rows. */
+.tracker tr.song-scroll-head td { height:20px; padding:0; background:#201f1a; border-top:1px solid #4b4735; box-shadow:inset 3px 0 var(--pattern-color, var(--amber)); }
+.song-scroll-label { position:sticky; left:0; display:inline-block; padding:0 10px; font:11px var(--mono); color:var(--text); white-space:nowrap; }
+.song-scroll-label b { font-weight:500; color:var(--pattern-color, var(--amber)); }
+.song-scroll-label span { color:var(--dim); }
+.tracker tr.song-scroll-head.is-live td { background:#2a261c; }
+.tracker tr.song-scroll-note td { height:22px; padding:0 10px; color:var(--dim); font-size:11px; background:#1d1d19; }
+.tracker tr[data-context] td { color:var(--muted); }
+.tracker tr[data-context] td.row-number { color:var(--dim); }
+.tracker tr[data-context] .tracker-cell span { color:var(--muted); }
+/* Automation panel under the grid. */
+.auto-panel { --studio-accent:var(--teal); flex:none; border-top:1px solid #4e4533; background:#1e1e1b; }
+.auto-panel-head { display:flex; align-items:center; gap:8px; height:26px; padding:0 8px 0 12px; font-size:11px; }
+.auto-panel-head select { max-width:240px; padding:2px 4px; font-size:11px; }
+.auto-panel-head button.quiet { padding:2px 6px; font-size:11px; }
+.auto-panel-readout { min-width:22ch; color:var(--muted); font:11px var(--mono); text-align:right; }
+.auto-panel-empty { margin:0; padding:6px 12px 10px; font-size:11px; }
+.auto-panel-body { display:flex; }
+.auto-panel-gutter { flex:0 0 56px; display:flex; flex-direction:column; justify-content:space-between; padding:3px 4px 3px 0; text-align:right; font:10px var(--mono); color:var(--dim); background:#24241c; overflow:hidden; }
+.auto-panel-gutter span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.auto-panel-scroll { flex:1; min-width:0; overflow-x:auto; overflow-y:hidden; }
+.auto-panel-track { position:relative; }
+.auto-panel-slots { position:relative; height:18px; }
+.auto-panel-slot { position:absolute; top:0; height:18px; padding:2px 5px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font:10px/14px var(--mono); color:var(--muted); background:#23231f; box-shadow:inset 2px 0 var(--pattern-color); border-bottom:1px solid #343225; }
+.auto-panel-slot b { font-weight:500; color:var(--pattern-color); }
+.auto-panel-slot.is-current { background:#413221; color:var(--text); }
+.auto-panel-lane { display:block; cursor:crosshair; }
+.auto-panel-lane:focus-visible { outline:2px solid var(--teal); outline-offset:-2px; }
+.auto-lane-svg { display:block; }
+.auto-lane-svg line { pointer-events:none; }
+.auto-row { stroke:rgba(232,227,216,.05); }
+.auto-row-beat { stroke:rgba(232,227,216,.10); }
+.auto-row-bar { stroke:rgba(232,227,216,.20); }
+.auto-row-slot { stroke:rgba(232,227,216,.45); }
+.auto-row-link { fill:rgba(240,222,150,.10); pointer-events:none; }
+.auto-row-cursor { fill:var(--teal); fill-opacity:.18; pointer-events:none; }
+.auto-stroke-preview { fill:none; stroke:#f3e2a6; stroke-width:1.5; pointer-events:none; }
+.auto-playhead { stroke:#a4bc92; stroke-width:1.5; }
+.auto-lane-svg .studio-envelope-point { cursor:grab; }

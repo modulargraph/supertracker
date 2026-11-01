@@ -247,7 +247,7 @@ test('Recording and Automation pages resolve their blocks and move spatially', (
   const a = harness('automation'); chrome(a, 'automation');
   const scope = a.el('div', { className: 'studio-automation-scope', rect: a.box(18, 100, 1460, 40) }); a.el('select', { id: 'automation-pattern', rect: a.box(100, 105, 120, 28) }, scope);
   const targets = a.el('div', { className: 'studio-target-panel', rect: a.box(18, 183, 230, 700) }); a.el('input', { id: 'automation-search', type: 'search', rect: a.box(25, 190, 210, 26) }, targets);
-  const lanes = a.el('div', { className: 'studio-lane-tabs', rect: a.box(260, 183, 1200, 36) }); a.el('button', { id: 'lane-1', attrs: { 'data-select-lane': '0', 'aria-selected': 'true' }, rect: a.box(265, 186, 120, 30) }, lanes);
+  const lanes = a.el('div', { className: 'studio-lane-stack', rect: a.box(260, 183, 1200, 36) }); a.el('button', { id: 'lane-1', attrs: { 'data-select-lane': '0', 'aria-selected': 'true' }, rect: a.box(265, 186, 120, 30) }, lanes);
   a.el('svg', { id: 'automation-envelope', attrs: { tabindex: '0' }, rect: a.box(260, 230, 1200, 300) });
   const table = a.el('div', { className: 'studio-points-table', rect: a.box(260, 540, 1200, 300) }); a.el('input', { id: 'point-0', type: 'number', attrs: { 'data-point-row': '0' }, rect: a.box(270, 550, 80, 24) }, table);
   deep(a.nav.blocks().map(b => b.id).slice(2), ['automation-scope', 'automation-targets', 'automation-lanes', 'automation-envelope', 'automation-points']);

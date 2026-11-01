@@ -362,5 +362,5 @@
     if (type === 'project.loaded') { local.anchor = null; local.playing = -1; }
   }
 
-  window.STSong = { renderPanel, mount, key, event, contextItems, command, actions, get follow() { return local.follow; } };
+  window.STSong = { renderPanel, mount, key, event, contextItems, command, actions, selectBlock, get follow() { return local.follow; } };
 })();

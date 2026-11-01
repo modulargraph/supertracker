@@ -17,7 +17,7 @@
     { id: 'transport', label: 'Transport', selector: '.topbar', prefer: ['#play'], keys: 'Space: play / stop' },
     { id: 'views', label: 'Views', selector: '.nav', prefer: ['.nav-button[tabindex="0"]', '.nav-button.active'], keys: '← →: choose view · ↓: open' },
     { id: 'sidebar', label: S().state.view === 'instrument' ? 'Instruments' : S().state.view === 'recording' ? 'Recording' : 'Patterns',
-      selector: '.sidebar', prefer: ['[data-pattern][tabindex="0"],[data-instrument][tabindex="0"]'], keys: '↑ ↓: choose · →: open' }
+      selector: '.sidebar:not(.left-pane)', prefer: ['[data-pattern][tabindex="0"],[data-instrument][tabindex="0"]'], keys: '↑ ↓: choose · →: open' }
   ]);
 
   nav.register('song', [
@@ -67,7 +67,7 @@
   nav.register('automation', [
     { id: 'automation-scope', label: 'Pattern / song scope', selector: '.studio-automation-scope', prefer: ['#automation-pattern'], keys: '[ ]: pattern · \\: song timeline' },
     { id: 'automation-targets', label: 'Automation parameters', selector: '.studio-target-panel', prefer: ['#automation-search'], keys: '↑ ↓: choose · Enter: add lane' },
-    { id: 'automation-lanes', label: 'Automation lanes', selector: '.studio-lane-tabs', prefer: ['[data-select-lane][aria-selected="true"]'], keys: '← →: lane' },
+    { id: 'automation-lanes', label: 'Automation lanes', selector: '.studio-lane-stack', prefer: ['[data-select-lane][aria-selected="true"]'], keys: '↑ ↓: lane · Enter: envelope' },
     { id: 'automation-lane-settings', label: 'Lane settings', selector: '.studio-lane-header', prefer: ['#automation-write-mode'] },
     { id: 'automation-envelope', label: 'Automation envelope', selector: '#automation-envelope,#automation-song-envelope',
       keys: '← →: move point · ⌥← →: previous / next point · Enter: add' },
@@ -114,6 +114,10 @@
     return !!target.closest?.('#tracker') && !target.closest('thead');
   }
   nav.register('pattern', [
+    // The left pane: instruments over the pattern matrix (app-pattern-matrix.js).
+    { id: 'instruments', label: 'Instruments', selector: '.left-pane-instruments', prefer: ['[data-instrument][tabindex="0"]'], keys: '↑ ↓: choose · →: grid' },
+    { id: 'pattern-matrix', label: 'Patterns', selector: '.left-pane-patterns', prefer: ['#pattern-matrix'],
+      keys: '← → on tabs: All patterns / Current song · ↑ ↓: choose · ⌥↑↓: move · N new · ⌘D duplicate · ⌫ remove · Enter: grid', esc: 'Esc: tabs' },
     { id: 'view-actions', label: 'Pattern actions', selector: '.workspace-main > .view-title', keys: 'arrows: next button · Enter / Space: press' },
     { id: 'pattern-destination', label: 'Selected track', selector: '.pattern-destination', prefer: ['#pattern-destination-lane'],
       keys: 'menus: ↑ ↓ choose · arrows on buttons: next button', esc: 'Esc in a menu: grid' },
@@ -126,6 +130,8 @@
       keys: '← → ↑ ↓: header buttons (M S ◂ × instrument, group ▾ M S) · Enter / Space: press · Home / End: first / last' },
     { id: 'pattern-grid', label: 'Pattern grid', selector: '#tracker', rect: gridRect, anchor: cursorCell, reveal: cursorCell, ownKeys: true,
       keys: 'arrows: cursor · Tab: track · ⌥↑↓: transpose · Enter: hear / FX · ⌃Tab: step editor', esc: 'Esc: cancel / stop' },
+    { id: 'automation-panel', label: 'Automation panel', selector: '#auto-panel', prefer: ['#auto-panel-envelope'],
+      keys: '← →: row · ↑ ↓: value · Enter: add point · ⌫: remove · ⌥⇧A / Esc: grid' },
     { id: 'step-inspector', label: 'Step editor', selector: '.step-editor', prefer: ['#step-note'], keys: 'Enter: commit and back to the grid', esc: 'Esc in a field: grid' }
   ], { altArrows: true, escape: true, owns: gridOwns });
   /** ⌘0: the pattern grid at its cursor cell, from any page (switches to Pattern) or block. */
