@@ -1,0 +1,1141 @@
+{
+  "source": {
+    "application": "Maschine 3.7.1",
+    "architecture": "arm64",
+    "binarySHA256": "9013ba0958decfc02dd37e0f8777ef243c792c8d507798b582af2622706730d1",
+    "method": "Read-only ARM64 serializers, constructor labels, display arithmetic and processor dispatch. No NI application or DSP execution."
+  },
+  "purpose": "Saved-parameter interoperability with independent SuperTracker drum synthesis, not NI sound equivalence",
+  "manual": "https://docs.native-instruments.com/ni-tech-manuals/maschine-software-manual/en/working-with-plug-ins",
+  "families": {
+    "Kick": {
+      "version": 2,
+      "fieldCount": 31,
+      "fields": [
+        {
+          "index": 0,
+          "offset": "0xa8",
+          "name": "Engine",
+          "kind": "e"
+        },
+        {
+          "index": 1,
+          "offset": "0xb0",
+          "name": "Tune",
+          "kind": "f"
+        },
+        {
+          "index": 2,
+          "offset": "0xc0",
+          "name": "Decay",
+          "kind": "f"
+        },
+        {
+          "index": 3,
+          "offset": "0xc8",
+          "name": "Punch",
+          "kind": "f"
+        },
+        {
+          "index": 4,
+          "offset": "0xd8",
+          "name": "Impact",
+          "kind": "f"
+        },
+        {
+          "index": 5,
+          "offset": "0xe0",
+          "name": "Velocity",
+          "kind": "f"
+        },
+        {
+          "index": 6,
+          "offset": "0xe8",
+          "name": "Time",
+          "kind": "f"
+        },
+        {
+          "index": 7,
+          "offset": "0xf0",
+          "name": "Mode",
+          "kind": "e"
+        },
+        {
+          "index": 8,
+          "offset": "0xf8",
+          "name": "Amount",
+          "kind": "f"
+        },
+        {
+          "index": 9,
+          "offset": "0x100",
+          "name": "Color",
+          "kind": "f"
+        },
+        {
+          "index": 10,
+          "offset": "0x108",
+          "name": "Gain",
+          "kind": "f"
+        },
+        {
+          "index": 11,
+          "offset": "0x110",
+          "name": "Tone",
+          "kind": "f"
+        },
+        {
+          "index": 12,
+          "offset": "0x118",
+          "name": "Bias",
+          "kind": "f"
+        },
+        {
+          "index": 13,
+          "offset": "0x120",
+          "name": "Mix",
+          "kind": "f"
+        },
+        {
+          "index": 14,
+          "offset": "0x128",
+          "name": "Filter",
+          "kind": "f"
+        },
+        {
+          "index": 15,
+          "offset": "0x130",
+          "name": "Noise",
+          "kind": "f"
+        },
+        {
+          "index": 16,
+          "offset": "0x150",
+          "name": "Skin Tune",
+          "kind": "f"
+        },
+        {
+          "index": 17,
+          "offset": "0x158",
+          "name": "Size",
+          "kind": "f"
+        },
+        {
+          "index": 18,
+          "offset": "0x160",
+          "name": "Amount",
+          "kind": "f"
+        },
+        {
+          "index": 19,
+          "offset": "0x168",
+          "name": "Mode",
+          "kind": "e"
+        },
+        {
+          "index": 20,
+          "offset": "0xd0",
+          "name": "Bend",
+          "kind": "f"
+        },
+        {
+          "index": 21,
+          "offset": "0x170",
+          "name": "Snap",
+          "kind": "f"
+        },
+        {
+          "index": 22,
+          "offset": "0x178",
+          "name": "Mode",
+          "kind": "e"
+        },
+        {
+          "index": 23,
+          "offset": "0x180",
+          "name": "Decay",
+          "kind": "f"
+        },
+        {
+          "index": 24,
+          "offset": "0x188",
+          "name": "Amount",
+          "kind": "f"
+        },
+        {
+          "index": 25,
+          "offset": "0x190",
+          "name": "Mode",
+          "kind": "e"
+        },
+        {
+          "index": 26,
+          "offset": "0x198",
+          "name": "Decay",
+          "kind": "f"
+        },
+        {
+          "index": 27,
+          "offset": "0x1a0",
+          "name": "Amount",
+          "kind": "f"
+        },
+        {
+          "index": 28,
+          "offset": "0x138",
+          "name": "Gate",
+          "kind": "b"
+        },
+        {
+          "index": 29,
+          "offset": "0x140",
+          "name": "Grind",
+          "kind": "f"
+        },
+        {
+          "index": 30,
+          "offset": "0x148",
+          "name": "Amount",
+          "kind": "f"
+        }
+      ],
+      "evidence": {
+        "serializer": {
+          "start": "0x1019c76d8",
+          "end": "0x1019c79bc",
+          "bytesSHA256": "f7344a300506731b3ba76dcc74f38479921c3e141483a2f4515d193a540e64ac"
+        },
+        "constructor": {
+          "start": "0x1019c7cd4",
+          "end": "0x1019c8cac",
+          "bytesSHA256": "12504ff6ecca723826d0544c9445970afc13fd22d3da16cbe46378ca6b9ab539"
+        },
+        "tuneDisplay": {
+          "start": "0x1019c8cac",
+          "end": "0x1019c8e30",
+          "bytesSHA256": "7debd9ac116367602e0a4a006d3914080a5c3fd4bfab406d63eff1950e38f359"
+        },
+        "impactDispatch": {
+          "start": "0x1019f52f4",
+          "end": "0x1019f5464",
+          "bytesSHA256": "f349377b4304f22acd0f9a73a27d2319c79d6f99331bc72f746fc43937e543cd"
+        }
+      },
+      "relativeTune": {
+        "archiveIndex": 1,
+        "sourceDomain": [
+          0,
+          1
+        ],
+        "semitoneSpanByEngine": {
+          "0": 24,
+          "1": 24,
+          "3": 24,
+          "4": 24,
+          "5": 24,
+          "7": 12
+        },
+        "formula": "(raw - 0.5) * semitoneSpan",
+        "targetParameter": 0,
+        "targetUnit": "st"
+      },
+      "impact": {
+        "archiveIndex": 4,
+        "activeEngines": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "sourceDomain": [
+          0,
+          1
+        ],
+        "formula": "raw * 100",
+        "targetParameter": 3,
+        "targetUnit": "%"
+      }
+    },
+    "Snare": {
+      "version": 1,
+      "fieldCount": 22,
+      "fields": [
+        {
+          "index": 0,
+          "offset": "0xa8",
+          "name": "Engine",
+          "kind": "e"
+        },
+        {
+          "index": 1,
+          "offset": "0xb0",
+          "name": "Tune",
+          "kind": "f"
+        },
+        {
+          "index": 2,
+          "offset": "0xc0",
+          "name": "Decay",
+          "kind": "f"
+        },
+        {
+          "index": 3,
+          "offset": "0xc8",
+          "name": "Skin Tune",
+          "kind": "f"
+        },
+        {
+          "index": 4,
+          "offset": "0xd0",
+          "name": "Impact",
+          "kind": "f"
+        },
+        {
+          "index": 5,
+          "offset": "0xd8",
+          "name": "Body",
+          "kind": "f"
+        },
+        {
+          "index": 6,
+          "offset": "0xe0",
+          "name": "Mode",
+          "kind": "e"
+        },
+        {
+          "index": 7,
+          "offset": "0xe8",
+          "name": "Tune",
+          "kind": "f"
+        },
+        {
+          "index": 8,
+          "offset": "0xf0",
+          "name": "Amount",
+          "kind": "f"
+        },
+        {
+          "index": 9,
+          "offset": "0xf8",
+          "name": "Decay",
+          "kind": "f"
+        },
+        {
+          "index": 10,
+          "offset": "0x100",
+          "name": "Velocity",
+          "kind": "f"
+        },
+        {
+          "index": 11,
+          "offset": "0x108",
+          "name": "Osc Mode",
+          "kind": "e"
+        },
+        {
+          "index": 12,
+          "offset": "0x110",
+          "name": "Color",
+          "kind": "f"
+        },
+        {
+          "index": 13,
+          "offset": "0x118",
+          "name": "Amount",
+          "kind": "f"
+        },
+        {
+          "index": 14,
+          "offset": "0x120",
+          "name": "Punch",
+          "kind": "f"
+        },
+        {
+          "index": 15,
+          "offset": "0x128",
+          "name": "Osc Mix",
+          "kind": "f"
+        },
+        {
+          "index": 16,
+          "offset": "0x130",
+          "name": "Grit",
+          "kind": "f"
+        },
+        {
+          "index": 17,
+          "offset": "0x138",
+          "name": "Gate",
+          "kind": "b"
+        },
+        {
+          "index": 18,
+          "offset": "0x140",
+          "name": "Bend",
+          "kind": "f"
+        },
+        {
+          "index": 19,
+          "offset": "0x148",
+          "name": "Room",
+          "kind": "f"
+        },
+        {
+          "index": 20,
+          "offset": "0x150",
+          "name": "Focus",
+          "kind": "f"
+        },
+        {
+          "index": 21,
+          "offset": "0x158",
+          "name": "Noise",
+          "kind": "f"
+        }
+      ],
+      "evidence": {
+        "serializer": {
+          "start": "0x1019cf18c",
+          "end": "0x1019cf360",
+          "bytesSHA256": "773d3134a65ea87aad7343ffde27126add099f7622ee30e018d89e35bd12fee6"
+        },
+        "constructor": {
+          "start": "0x1019cf53c",
+          "end": "0x1019d0178",
+          "bytesSHA256": "07b62f37e60e0d6c24018d3986636ae321d033068f20f11808b08ac8e9ab6410"
+        },
+        "tuneDisplay": {
+          "start": "0x1019d0178",
+          "end": "0x1019d02e4",
+          "bytesSHA256": "769a2336e1e139363f642ec38654b72a5dc8ef7d54b66c09286b4afe41f6226d"
+        },
+        "impactDispatch": {
+          "start": "0x1019f84a0",
+          "end": "0x1019f85cc",
+          "bytesSHA256": "e11f936846355debbf1b847b5bfcb7ffb5859c02b9d080055f87fbe7788eac99"
+        }
+      },
+      "relativeTune": {
+        "archiveIndex": 1,
+        "sourceDomain": [
+          0,
+          1
+        ],
+        "semitoneSpanByEngine": {
+          "0": 24,
+          "4": 24,
+          "5": 18,
+          "6": 24,
+          "7": 24,
+          "9": 24
+        },
+        "formula": "(raw - 0.5) * semitoneSpan",
+        "targetParameter": 0,
+        "targetUnit": "st"
+      },
+      "impact": {
+        "archiveIndex": 4,
+        "activeEngines": [
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "sourceDomain": [
+          0,
+          1
+        ],
+        "formula": "raw * 100",
+        "targetParameter": 3,
+        "targetUnit": "%"
+      }
+    },
+    "Hihat": {
+      "version": 2,
+      "fieldCount": 18,
+      "fields": [
+        {
+          "index": 0,
+          "offset": "0xa8",
+          "name": "Engine",
+          "kind": "e"
+        },
+        {
+          "index": 1,
+          "offset": "0xb0",
+          "name": "Tune",
+          "kind": "f"
+        },
+        {
+          "index": 2,
+          "offset": "0xb8",
+          "name": "Decay",
+          "kind": "f"
+        },
+        {
+          "index": 3,
+          "offset": "0xc0",
+          "name": "Color",
+          "kind": "f"
+        },
+        {
+          "index": 4,
+          "offset": "0xd0",
+          "name": "Gate",
+          "kind": "b"
+        },
+        {
+          "index": 5,
+          "offset": "0xd8",
+          "name": "Velocity",
+          "kind": "f"
+        },
+        {
+          "index": 6,
+          "offset": "0xe0",
+          "name": "Saturate",
+          "kind": "f"
+        },
+        {
+          "index": 7,
+          "offset": "0xe8",
+          "name": "Noise",
+          "kind": "f"
+        },
+        {
+          "index": 8,
+          "offset": "0xf0",
+          "name": "Seed",
+          "kind": "f"
+        },
+        {
+          "index": 9,
+          "offset": "0xf8",
+          "name": "Dissonance",
+          "kind": "f"
+        },
+        {
+          "index": 10,
+          "offset": "0x100",
+          "name": "Strike",
+          "kind": "f"
+        },
+        {
+          "index": 11,
+          "offset": "0x108",
+          "name": "Source",
+          "kind": "e"
+        },
+        {
+          "index": 12,
+          "offset": "0x110",
+          "name": "Distress",
+          "kind": "f"
+        },
+        {
+          "index": 13,
+          "offset": "0xc8",
+          "name": "Strike",
+          "kind": "f"
+        },
+        {
+          "index": 14,
+          "offset": "0x118",
+          "name": "Metallic",
+          "kind": "f"
+        },
+        {
+          "index": 15,
+          "offset": "0x130",
+          "name": "Character",
+          "kind": "f"
+        },
+        {
+          "index": 16,
+          "offset": "0x120",
+          "name": "Bend",
+          "kind": "f"
+        },
+        {
+          "index": 17,
+          "offset": "0x128",
+          "name": "Rattle",
+          "kind": "f"
+        }
+      ],
+      "evidence": {
+        "serializer": {
+          "start": "0x1019c4c50",
+          "end": "0x1019c4e04",
+          "bytesSHA256": "699c9089202b6423e5feed9cb32088861cc80c48bc74a99950e36c683960156c"
+        },
+        "constructor": {
+          "start": "0x1019c4fd4",
+          "end": "0x1019c591c",
+          "bytesSHA256": "49fa602f9bdca6880b060def70744ba9ca6e0049a6d80d2dcc8136fc6086c905"
+        },
+        "impactDispatch": {
+          "start": "0x1019f3ee0",
+          "end": "0x1019f3f98",
+          "bytesSHA256": "a6dc5a402035d2fe9c0a2bdca1fd1c30f63c02cede989575c3541bc3d8bbbf0c"
+        }
+      }
+    },
+    "Tom": {
+      "version": 1,
+      "fieldCount": 23,
+      "fields": [
+        {
+          "index": 0,
+          "offset": "0xa8",
+          "name": "Engine",
+          "kind": "e"
+        },
+        {
+          "index": 1,
+          "offset": "0xb0",
+          "name": "Tune",
+          "kind": "f"
+        },
+        {
+          "index": 2,
+          "offset": "0xc0",
+          "name": "Decay",
+          "kind": "f"
+        },
+        {
+          "index": 3,
+          "offset": "0xc8",
+          "name": "Bend",
+          "kind": "f"
+        },
+        {
+          "index": 4,
+          "offset": "0xd0",
+          "name": "Impact",
+          "kind": "f"
+        },
+        {
+          "index": 5,
+          "offset": "0xd8",
+          "name": "Velocity",
+          "kind": "f"
+        },
+        {
+          "index": 6,
+          "offset": "0xe0",
+          "name": "Interval",
+          "kind": "f"
+        },
+        {
+          "index": 7,
+          "offset": "0xe8",
+          "name": "FM Freq",
+          "kind": "f"
+        },
+        {
+          "index": 8,
+          "offset": "0xf0",
+          "name": "FM Amount",
+          "kind": "f"
+        },
+        {
+          "index": 9,
+          "offset": "0xf8",
+          "name": "FM Decay",
+          "kind": "f"
+        },
+        {
+          "index": 10,
+          "offset": "0x100",
+          "name": "KTr. Mode",
+          "kind": "e"
+        },
+        {
+          "index": 11,
+          "offset": "0x108",
+          "name": "Mix",
+          "kind": "f"
+        },
+        {
+          "index": 12,
+          "offset": "0x110",
+          "name": "Glide",
+          "kind": "f"
+        },
+        {
+          "index": 13,
+          "offset": "0x118",
+          "name": "Transpose",
+          "kind": "f"
+        },
+        {
+          "index": 14,
+          "offset": "0x120",
+          "name": "Freq A",
+          "kind": "f"
+        },
+        {
+          "index": 15,
+          "offset": "0x128",
+          "name": "Freq B",
+          "kind": "f"
+        },
+        {
+          "index": 16,
+          "offset": "0x130",
+          "name": "FM",
+          "kind": "f"
+        },
+        {
+          "index": 17,
+          "offset": "0x138",
+          "name": "AM",
+          "kind": "f"
+        },
+        {
+          "index": 18,
+          "offset": "0x140",
+          "name": "Color",
+          "kind": "f"
+        },
+        {
+          "index": 19,
+          "offset": "0x148",
+          "name": "Tension",
+          "kind": "f"
+        },
+        {
+          "index": 20,
+          "offset": "0x150",
+          "name": "Flex",
+          "kind": "f"
+        },
+        {
+          "index": 21,
+          "offset": "0x160",
+          "name": "Skin",
+          "kind": "f"
+        },
+        {
+          "index": 22,
+          "offset": "0x158",
+          "name": "Air",
+          "kind": "f"
+        }
+      ],
+      "evidence": {
+        "serializer": {
+          "start": "0x1019d24a8",
+          "end": "0x1019d2680",
+          "bytesSHA256": "6ac63e387544ffb1c40c61a661fe3e01d85ee1e22b3346633c8e2fe670154478"
+        },
+        "constructor": {
+          "start": "0x1019d2868",
+          "end": "0x1019d3710",
+          "bytesSHA256": "0c02973da90946099ec27c99c3298da53b6eee5a12024a9c61b9da84a4481522"
+        },
+        "tuneDisplay": {
+          "start": "0x1019d3710",
+          "end": "0x1019d381c",
+          "bytesSHA256": "81038db640220e3eab94864cfc95574a1244b03abf8d70ed2589069776a846a2"
+        },
+        "impactDispatch": {
+          "start": "0x1019fa17c",
+          "end": "0x1019fa270",
+          "bytesSHA256": "6097ce7bb02f78d5cdfeaf999dd95d7d6b31ba2d001e2770e6040bd88b4df0f4"
+        }
+      },
+      "relativeTune": {
+        "archiveIndex": 1,
+        "sourceDomain": [
+          0,
+          1
+        ],
+        "semitoneSpanByEngine": {
+          "0": 24,
+          "1": 24,
+          "2": 14,
+          "3": 14
+        },
+        "formula": "(raw - 0.5) * semitoneSpan",
+        "targetParameter": 0,
+        "targetUnit": "st"
+      },
+      "impact": {
+        "archiveIndex": 4,
+        "activeEngines": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "sourceDomain": [
+          0,
+          1
+        ],
+        "formula": "raw * 100",
+        "targetParameter": 3,
+        "targetUnit": "%"
+      }
+    },
+    "Perc": {
+      "version": 1,
+      "fieldCount": 29,
+      "fields": [
+        {
+          "index": 0,
+          "offset": "0xa8",
+          "name": "Engine",
+          "kind": "e"
+        },
+        {
+          "index": 1,
+          "offset": "0xb0",
+          "name": "Tune",
+          "kind": "f"
+        },
+        {
+          "index": 2,
+          "offset": "0xd0",
+          "name": "Velocity",
+          "kind": "f"
+        },
+        {
+          "index": 3,
+          "offset": "0xd8",
+          "name": "Grain",
+          "kind": "f"
+        },
+        {
+          "index": 4,
+          "offset": "0xe0",
+          "name": "Filter",
+          "kind": "f"
+        },
+        {
+          "index": 5,
+          "offset": "0xe8",
+          "name": "Mode",
+          "kind": "e"
+        },
+        {
+          "index": 6,
+          "offset": "0xf0",
+          "name": "Attack",
+          "kind": "f"
+        },
+        {
+          "index": 7,
+          "offset": "0xf8",
+          "name": "Hold",
+          "kind": "f"
+        },
+        {
+          "index": 8,
+          "offset": "0x100",
+          "name": "Release",
+          "kind": "f"
+        },
+        {
+          "index": 9,
+          "offset": "0x148",
+          "name": "Freq A",
+          "kind": "f"
+        },
+        {
+          "index": 10,
+          "offset": "0x150",
+          "name": "Freq B",
+          "kind": "f"
+        },
+        {
+          "index": 11,
+          "offset": "0x158",
+          "name": "Freq C",
+          "kind": "f"
+        },
+        {
+          "index": 12,
+          "offset": "0x160",
+          "name": "FM",
+          "kind": "f"
+        },
+        {
+          "index": 13,
+          "offset": "0x168",
+          "name": "AM",
+          "kind": "f"
+        },
+        {
+          "index": 14,
+          "offset": "0x170",
+          "name": "Tune Hold",
+          "kind": "b"
+        },
+        {
+          "index": 15,
+          "offset": "0x178",
+          "name": "KTr. Mode",
+          "kind": "e"
+        },
+        {
+          "index": 16,
+          "offset": "0x180",
+          "name": "Glide",
+          "kind": "f"
+        },
+        {
+          "index": 17,
+          "offset": "0x108",
+          "name": "Accent",
+          "kind": "f"
+        },
+        {
+          "index": 18,
+          "offset": "0x110",
+          "name": "Fill",
+          "kind": "e"
+        },
+        {
+          "index": 19,
+          "offset": "0x118",
+          "name": "Rate",
+          "kind": "e"
+        },
+        {
+          "index": 20,
+          "offset": "0x120",
+          "name": "Swing",
+          "kind": "f"
+        },
+        {
+          "index": 21,
+          "offset": "0x128",
+          "name": "Twist",
+          "kind": "f"
+        },
+        {
+          "index": 22,
+          "offset": "0x130",
+          "name": "Length",
+          "kind": "e"
+        },
+        {
+          "index": 23,
+          "offset": "0x138",
+          "name": "Offset",
+          "kind": "f"
+        },
+        {
+          "index": 24,
+          "offset": "0x140",
+          "name": "Sync",
+          "kind": "e"
+        },
+        {
+          "index": 25,
+          "offset": "0xc0",
+          "name": "Decay",
+          "kind": "f"
+        },
+        {
+          "index": 26,
+          "offset": "0xc8",
+          "name": "Impact",
+          "kind": "f"
+        },
+        {
+          "index": 27,
+          "offset": "0x188",
+          "name": "Puff",
+          "kind": "f"
+        },
+        {
+          "index": 28,
+          "offset": "0x190",
+          "name": "Damp",
+          "kind": "f"
+        }
+      ],
+      "evidence": {
+        "serializer": {
+          "start": "0x1019cb508",
+          "end": "0x1019cb6dc",
+          "bytesSHA256": "ee2195d1009059da2988b8ec1409285112ced56e96fa64eb0304913810a17b43"
+        },
+        "constructor": {
+          "start": "0x1019cb91c",
+          "end": "0x1019cc834",
+          "bytesSHA256": "f5cab632be87c3156d11edaad7b148736f3038e7f77a5bcefc8a396289f8903e"
+        },
+        "tuneDisplay": {
+          "start": "0x1019cc93c",
+          "end": "0x1019cca48",
+          "bytesSHA256": "44260b283c2a608d363ceb098b98cc02aacb39a01b0d0c6ccbc93e8112bdb8e0"
+        },
+        "impactDispatch": {
+          "start": "0x1019f6900",
+          "end": "0x1019f69bc",
+          "bytesSHA256": "72cf527226456d188651149558c47d69e6d38148d7eaf4d339b2229c37170f2d"
+        }
+      },
+      "relativeTune": {
+        "archiveIndex": 1,
+        "sourceDomain": [
+          0,
+          1
+        ],
+        "semitoneSpanByEngine": {
+          "0": 48,
+          "1": 24
+        },
+        "formula": "(raw - 0.5) * semitoneSpan",
+        "targetParameter": 0,
+        "targetUnit": "st"
+      },
+      "impact": {
+        "archiveIndex": 26,
+        "activeEngines": [
+          0,
+          1
+        ],
+        "sourceDomain": [
+          0,
+          1
+        ],
+        "formula": "raw * 100",
+        "targetParameter": 3,
+        "targetUnit": "%"
+      }
+    },
+    "Cymbal": {
+      "version": 0,
+      "fieldCount": 13,
+      "fields": [
+        {
+          "index": 0,
+          "offset": "0xa8",
+          "name": "Engine",
+          "kind": "e"
+        },
+        {
+          "index": 1,
+          "offset": "0xb0",
+          "name": "Tune",
+          "kind": "f"
+        },
+        {
+          "index": 2,
+          "offset": "0xc0",
+          "name": "Decay",
+          "kind": "f"
+        },
+        {
+          "index": 3,
+          "offset": "0xc8",
+          "name": "Impact",
+          "kind": "f"
+        },
+        {
+          "index": 4,
+          "offset": "0xd0",
+          "name": "Width",
+          "kind": "f"
+        },
+        {
+          "index": 5,
+          "offset": "0xd8",
+          "name": "Velocity",
+          "kind": "f"
+        },
+        {
+          "index": 6,
+          "offset": "0xe0",
+          "name": "Density",
+          "kind": "f"
+        },
+        {
+          "index": 7,
+          "offset": "0xe8",
+          "name": "Tone",
+          "kind": "f"
+        },
+        {
+          "index": 8,
+          "offset": "0xf0",
+          "name": "Mode",
+          "kind": "e"
+        },
+        {
+          "index": 9,
+          "offset": "0xf8",
+          "name": "Edge",
+          "kind": "f"
+        },
+        {
+          "index": 10,
+          "offset": "0x100",
+          "name": "Bell",
+          "kind": "f"
+        },
+        {
+          "index": 11,
+          "offset": "0x108",
+          "name": "Character",
+          "kind": "f"
+        },
+        {
+          "index": 12,
+          "offset": "0x110",
+          "name": "Tail",
+          "kind": "f"
+        }
+      ],
+      "evidence": {
+        "serializer": {
+          "start": "0x1019d5b40",
+          "end": "0x1019d5c44",
+          "bytesSHA256": "426a305588a174b3ca424b523f91e110b3bb64b150020247fd36ff49c3001f95"
+        },
+        "constructor": {
+          "start": "0x1019d5dac",
+          "end": "0x1019d6538",
+          "bytesSHA256": "ddd67c4155ceb46eadfa081e73278e3e9c494ddcbbf4b61f60f7a07e191fff77"
+        },
+        "impactDispatch": {
+          "start": "0x1019fb028",
+          "end": "0x1019fb0dc",
+          "bytesSHA256": "edfd864bcff39e4f1cef4cbb8ee2e51b6786bbd322b65eb40692e1e3c6d5c187"
+        }
+      },
+      "impact": {
+        "archiveIndex": 3,
+        "activeEngines": [
+          0,
+          1
+        ],
+        "sourceDomain": [
+          0,
+          1
+        ],
+        "formula": "raw * 100",
+        "targetParameter": 3,
+        "targetUnit": "%"
+      }
+    }
+  },
+  "limits": [
+    "Relative Tune preserves offset from source control midpoint only, not NI absolute pitch.",
+    "Decay percentage has no verified millisecond conversion; target defaults remain.",
+    "Named inactive Impact values are not imported. Hihat Strike controls remain unmapped.",
+    "Original archive data must remain in import metadata. No hidden selection of a different NI subengine is claimed."
+  ]
+}

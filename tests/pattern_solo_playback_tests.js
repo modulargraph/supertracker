@@ -1,0 +1,23 @@
+'use strict';
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const web = require('./helpers/web');
+const source=fs.readFileSync(__dirname+'/instrument_edits_ui_tests.js','utf8');
+const setup=source.slice(0,source.indexOf('async function run(){')).replace('return {S,window,calls,handlers,element,plugin,','return {context,document,S,window,calls,handlers,element,plugin,');
+const {harness}=new Function('require','__dirname',setup+'\nreturn {harness};')(require,__dirname);
+(async()=>{
+ const h=harness(),S=h.S;
+ web.load(h.context,'pattern-tools.js');
+ S.state.view='pattern';S.state.playing=true;S.state.track=0;S.state.row=12;
+ const button=h.element('solo-second-track');button.dataset={trackToggle:'solo',toggleIndex:'1'};
+ h.document.querySelectorAll=selector=>selector==='[data-track-toggle]'?[button]:[];
+ S.refresh();
+ const before=JSON.parse(JSON.stringify(S.state.project.patterns));let stopped=0;
+ button.onclick({stopPropagation(){stopped++;}});
+ assert.equal(S.state.project.tracks[1].solo,true);assert.equal(S.state.track,0);assert.equal(S.state.row,12);assert.equal(S.state.playing,true);assert.equal(stopped,1);
+ await S.syncEngine(true);
+ assert.equal(h.native.tracks[1].solo,true);assert.equal(h.calls.filter(c=>c.command==='transport.stop'||c.command==='engine.panic').length,0);
+ button.onclick({stopPropagation(){}});await S.syncEngine(true);
+ assert.equal(h.native.tracks[1].solo,false);assert.equal(S.state.playing,true);assert.deepEqual(JSON.parse(JSON.stringify(S.state.project.patterns)),before);
+ assert.equal(S.state.undo.length,2);
+ console.log('PASS actual pattern Solo button publishes on/off during playback without stopping transport, moving cursor or changing notes');
+})().catch(error=>{console.error(error);process.exitCode=1;});

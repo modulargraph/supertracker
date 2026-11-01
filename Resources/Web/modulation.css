@@ -1,0 +1,56 @@
+/* Isolated console module. No styles escape .modulation-console. */
+.modulation-console{--mod-secondary:#b0aa9d;--mod-accent:var(--teal,#ed7144);border-top:1px solid var(--line,#383831);color:var(--text,#e8e3d8);background:transparent;min-width:0}
+.modulation-console *{box-sizing:border-box}
+.modulation-console .mod-console-head{display:flex;align-items:baseline;justify-content:space-between;gap:18px;padding:15px 0 13px}
+.modulation-console h3{font-size:13px;line-height:20px;font-weight:600;letter-spacing:0;text-transform:none;margin:0}
+.modulation-console .mod-console-head>span{font-size:11px;line-height:17px;color:var(--mod-secondary)}
+.modulation-console .mod-filter-section{display:grid;grid-template-columns:minmax(300px,1.15fr) minmax(300px,1fr);gap:25px;padding:5px 0 19px;border-bottom:1px solid var(--line,#383831)}
+.modulation-console .mod-envelope-view{min-width:0}
+.modulation-console .mod-section-label{display:flex;justify-content:space-between;align-items:center;font-size:12px;line-height:18px;color:var(--text,#e8e3d8);font-weight:500}
+.modulation-console .mod-section-label>span{font:11px var(--mono,Menlo,monospace);color:var(--mod-secondary)}
+.modulation-console .mod-envelope{margin-top:8px;background:var(--surface,#1e1e1b)}
+.modulation-console .mod-envelope-plot{display:grid;grid-template-columns:60px minmax(0,1fr);padding-right:10px}
+.modulation-console .mod-env-yaxis{position:relative;height:190px}
+.modulation-console .mod-env-yaxis>span{position:absolute;right:10px;transform:translateY(-50%);font:11px var(--mono,Menlo,monospace);color:var(--mod-secondary);white-space:nowrap}
+.modulation-console .mod-env-drawing{position:relative;min-width:0}
+.modulation-console .mod-env-gate-label{position:absolute;top:1px;transform:translateX(-50%);font:11px var(--mono,Menlo,monospace);color:var(--mod-secondary);white-space:nowrap}
+.modulation-console .mod-env-stages{position:absolute;left:0;right:0;bottom:1px;height:14px}
+.modulation-console .mod-env-stages>span{position:absolute;transform:translateX(-50%);font:11px var(--mono,Menlo,monospace);color:var(--mod-secondary)}
+.modulation-console .mod-envelope svg{width:100%;height:190px;display:block}
+.modulation-console svg text{font:11px var(--mono,Menlo,monospace);fill:var(--mod-secondary)}
+.modulation-console .mod-axis{fill:none;stroke:var(--line,#383831);stroke-width:1;vector-effect:non-scaling-stroke}
+.modulation-console .mod-curve{fill:none;stroke:var(--mod-accent);stroke-width:1.5;vector-effect:non-scaling-stroke}
+.modulation-console .mod-fill{fill:var(--mod-accent);fill-opacity:.045;stroke:none}
+.modulation-console .mod-breakpoint{fill:var(--text,#e8e3d8)}
+.modulation-console .mod-gate{fill:none;stroke:var(--mod-secondary);stroke-width:1;stroke-dasharray:3 4;vector-effect:non-scaling-stroke}
+.modulation-console .mod-caption{font-size:11px;line-height:17px;color:var(--mod-secondary);margin:8px 0 0}
+.modulation-console .mod-envelope-controls{display:grid;grid-template-columns:1fr 1fr;gap:20px 24px;align-content:start;padding-top:26px;min-width:0}
+.modulation-console .mod-parameter{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px 10px;align-items:center;min-width:0}
+.modulation-console .mod-parameter>label{font-size:11px;line-height:17px;color:var(--mod-secondary);white-space:nowrap}
+.modulation-console .mod-value{display:flex;align-items:center;gap:5px;font:11px var(--mono,Menlo,monospace);color:var(--mod-secondary)}
+.modulation-console .mod-value input[type=number]{width:68px;height:25px;min-height:25px;padding:3px 5px;border:1px solid transparent;border-radius:2px;background:var(--surface,#1e1e1b);color:var(--text,#e8e3d8);text-align:right;font:11px var(--mono,Menlo,monospace)}
+.modulation-console .mod-value input[type=number]:hover{border-color:var(--line,#383831)}
+.modulation-console .mod-value>span{min-width:14px;font-size:11px}
+.modulation-console .mod-parameter input[type=range]{appearance:none;grid-column:1/-1;width:100%;height:14px;min-height:14px;background:transparent;padding:0;margin:0;border:0;border-radius:0;accent-color:var(--mod-accent);cursor:ew-resize}
+.modulation-console .mod-parameter input[type=range]::-webkit-slider-runnable-track{height:2px;border:0;border-radius:0;background:var(--line,#383831)}
+.modulation-console .mod-parameter input[type=range]::-webkit-slider-thumb{appearance:none;width:6px;height:12px;margin-top:-5px;border:0;border-radius:0;box-shadow:none;background:var(--text,#e8e3d8)}
+.modulation-console .mod-parameter input[type=range]:focus-visible::-webkit-slider-thumb{background:var(--mod-accent)}
+.modulation-console .mod-envelope-note{align-self:center;max-width:210px;font-size:11px;line-height:17px;color:var(--mod-secondary)}
+.modulation-console .mod-lfo-row{display:grid;grid-template-columns:44px minmax(100px,.8fr) minmax(110px,.9fr) minmax(275px,2.3fr) minmax(120px,1fr) 108px;gap:14px;align-items:center;padding:16px 0;border-bottom:1px solid var(--line,#383831)}
+.modulation-console .mod-lfo-name{align-self:center;font:11px var(--mono,Menlo,monospace);color:var(--text,#e8e3d8);white-space:nowrap}
+.modulation-console .mod-select{display:flex;flex-direction:column;gap:8px;color:var(--mod-secondary);font-size:11px;line-height:17px;min-width:0}
+.modulation-console .mod-select select{width:100%;min-width:0;height:29px;min-height:29px;padding:4px 7px;border:1px solid var(--line,#383831);border-radius:2px;background:var(--surface,#1e1e1b);color:var(--text,#e8e3d8);font-size:11px;line-height:17px}
+.modulation-console .mod-lfo-timing{display:grid;grid-template-columns:minmax(92px,.7fr) minmax(145px,1fr);gap:10px 14px;align-items:start;min-width:0}
+.modulation-console .mod-timing-value{display:flex;flex-direction:column;gap:10px;min-width:0}
+.modulation-console .mod-timing-value>.mod-parameter{width:100%;padding-top:2px}
+.modulation-console .mod-timing-note{grid-column:1/-1;font-size:11px;line-height:17px;color:var(--mod-secondary);overflow-wrap:anywhere}
+.modulation-console .mod-beat-parameter{gap:6px}
+.modulation-console .mod-beat-parameter .mod-value input{width:89px}
+.modulation-console .mod-lfo-preview{min-width:0;align-self:center;text-align:right}
+.modulation-console .mod-lfo-preview svg{display:block;width:108px;height:44px;margin-left:auto}
+.modulation-console .mod-wave-line{fill:none;stroke:var(--text,#e8e3d8);stroke-width:1.25;vector-effect:non-scaling-stroke}
+.modulation-console .mod-lfo-preview output{display:block;font:11px var(--mono,Menlo,monospace);color:var(--mod-secondary);white-space:nowrap}
+.modulation-console .mod-footer{margin:10px 0 2px}
+.modulation-console input:focus-visible,.modulation-console select:focus-visible{outline:2px solid var(--mod-accent);outline-offset:2px}
+@media(max-width:1150px){.modulation-console .mod-lfo-row{grid-template-columns:45px minmax(95px,.9fr) minmax(120px,1fr) minmax(125px,1.1fr) 108px;gap:16px 13px}.modulation-console .mod-lfo-timing{grid-row:2;grid-column:2/-1;grid-template-columns:125px minmax(0,1fr);max-width:630px}.modulation-console .mod-timing-value{display:grid;grid-template-columns:minmax(145px,1fr) minmax(165px,1fr);align-items:end;gap:18px}.modulation-console .mod-lfo-preview{grid-row:1;grid-column:5}.modulation-console .mod-lfo-row>.mod-parameter{grid-row:1;grid-column:4}.modulation-console .mod-lfo-preview svg{height:30px}.modulation-console .mod-filter-section{gap:18px}.modulation-console .mod-envelope-controls{gap:20px 13px}}
+@media(max-width:850px){.modulation-console .mod-console-head{display:block}.modulation-console .mod-console-head>span{display:block;margin-top:4px}.modulation-console .mod-filter-section{grid-template-columns:1fr}.modulation-console .mod-envelope-controls{grid-template-columns:repeat(3,minmax(0,1fr));padding-top:0}.modulation-console .mod-lfo-row{grid-template-columns:45px minmax(100px,1fr) minmax(120px,1fr)}.modulation-console .mod-lfo-row>.mod-parameter{grid-row:3;grid-column:2}.modulation-console .mod-lfo-preview{grid-row:3;grid-column:3}.modulation-console .mod-lfo-timing{grid-template-columns:minmax(95px,.7fr) minmax(145px,1fr)}.modulation-console .mod-timing-value{display:flex;gap:10px}.modulation-console .mod-envelope-note{grid-column:auto}}

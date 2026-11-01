@@ -1,0 +1,42 @@
+/* Song arranger: pattern blocks with repeats, colours, loop section and playhead. */
+.song-seq .panel-head{gap:8px}
+.song-seq-chips{gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.song-loop-chip{color:#191712;background:var(--amber)}
+.song-loop-chip.inactive{background:#343228;color:var(--dim);text-decoration:line-through}
+#song-follow{font-size:11px;padding:3px 7px}
+#song-follow.active{color:#191712;background:var(--teal);border-color:var(--teal)}
+.song-seq-tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 12px;border-bottom:1px solid var(--line);background:#24241f}
+.song-seq-tools button{font-size:11px;padding:4px 7px;border-radius:2px;white-space:nowrap}
+.song-seq-field{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);white-space:nowrap}
+.song-seq-field select{max-width:180px;padding:3px 5px;font-size:11px}
+.song-seq-field input{width:52px;padding:3px 5px;font:11px var(--mono)}
+.song-blocks{max-height:360px}
+.song-block{position:relative;display:grid;grid-template-columns:22px 6px 34px minmax(80px,1fr) 74px 32px 30px 58px 50px;align-items:center;gap:8px;padding:6px 12px 6px 10px;border-bottom:1px solid #343225;background:#23231f;cursor:default}
+.song-block:hover{background:#2a2924}
+.song-block.selected{background:#3a3020}
+.song-block.current{background:#413221;box-shadow:inset 2px 0 var(--teal)}
+.song-blocks:focus-visible{outline:none}
+.song-blocks:focus-visible .song-block.current{outline:1px solid var(--teal);outline-offset:-1px}
+.song-block.playing .song-pos{color:#191712;background:var(--teal);border-radius:2px}
+.song-block.playing::after{content:'';position:absolute;right:0;top:0;bottom:0;width:3px;background:var(--teal)}
+.song-block.in-loop{background-image:linear-gradient(90deg,rgba(207,173,103,.10),rgba(207,173,103,.03))}
+.song-block.in-loop::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--amber);opacity:.9}
+.song-block.loop-start{border-top:1px solid var(--amber)}
+.song-block.loop-end{border-bottom:1px solid var(--amber)}
+.song-block.missing .song-name{color:var(--rose)}
+.song-pos{color:var(--dim);font:11px var(--mono);text-align:center;padding:1px 0}
+.song-swatch{width:6px;height:22px;border-radius:1px;background:var(--pattern-color,#998561)}
+.song-pnum{font:11px var(--mono);color:var(--pattern-color,var(--muted))}
+.song-name{color:var(--text);font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.song-mini{display:flex;align-items:flex-end;gap:1px;height:14px}
+.song-mini i{display:block;width:2px;background:var(--pattern-color,#998561);opacity:.6}
+.song-repeat{font:11px var(--mono);color:var(--dim);text-align:right}
+.song-repeat.multi{color:var(--amber);font-weight:600}
+.song-progress{font:10px var(--mono);color:var(--teal)}
+.song-len,.song-at{font:11px var(--mono);color:var(--muted);white-space:nowrap}
+.song-at{color:var(--dim)}
+.song-seq-keys{display:flex;flex-wrap:wrap;gap:4px 12px;padding:7px 12px;border-top:1px solid var(--line);font-size:11px;color:var(--dim)}
+.song-seq-keys kbd{font-size:10px;padding:0 3px}
+@media (max-width:1100px){.song-block{grid-template-columns:22px 6px 34px minmax(70px,1fr) 32px 30px 54px}.song-mini,.song-at{display:none}}
+.song-block.in-loop .song-pos{color:var(--amber)}
+.song-block.current.in-loop{box-shadow:inset 2px 0 var(--teal),inset 0 0 0 1px rgba(207,173,103,.35)}

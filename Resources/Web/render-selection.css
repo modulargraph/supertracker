@@ -1,0 +1,12 @@
+/* Render selection to sample dialog. */
+.st-render-selection { min-width: min(520px, 86vw); }
+.st-render-selection .st-rs-facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0; }
+.st-render-selection .st-rs-facts dt { opacity: .7; }
+.st-render-selection .st-rs-facts dd { margin: 0; }
+.st-render-selection .st-rs-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+.st-render-selection .st-rs-grid[hidden] { display: none; }
+.st-render-selection .st-rs-grid .field > input, .st-render-selection .st-rs-grid .field > select { width: 100%; min-width: 0; }
+.st-render-selection .st-rs-check { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.st-render-selection .st-rs-note { margin: 0; font-size: 12px; line-height: 1.45; opacity: .75; max-width: 60ch; }
+.st-render-selection progress { width: 100%; }
+.st-render-selection .st-rs-status { min-height: 1.4em; font-size: 12px; opacity: .9; outline: none; }

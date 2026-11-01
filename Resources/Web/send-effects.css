@@ -1,0 +1,26 @@
+/* Send effects dialog: delay/reverb returns and the per-track send matrix. */
+.send-fx-modal{width:min(760px,calc(100vw - 32px))}
+.send-fx{display:flex;flex-direction:column;gap:12px}
+.send-help{margin:0;font-size:11px;color:var(--muted)}
+.send-returns{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.send-return h3,.send-matrix h3{margin:0 0 6px;font-size:12px;font-weight:600}
+.send-return h3 .muted{font-weight:400;font-size:11px;margin-left:6px}
+.send-group{display:flex;flex-direction:column;border:1px solid var(--line);background:#1e1e1b}
+.send-row{display:grid;grid-template-columns:96px 1fr 96px;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid #2f2e28;cursor:default}
+.send-row:last-child{border-bottom:0}
+.send-row:focus{outline:none;background:#413221;box-shadow:inset 2px 0 var(--teal)}
+.send-label{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.send-bar{position:relative;height:6px;background:#343228;border-radius:1px;overflow:hidden}
+.send-bar i{position:absolute;left:0;top:0;bottom:0;background:var(--amber)}
+.send-row:focus .send-bar i{background:var(--teal)}
+.send-value{font:11px var(--mono);color:var(--text);text-align:right;white-space:nowrap}
+.send-input{width:90px;padding:2px 4px;font:11px var(--mono);text-align:right}
+.send-matrix-grid{display:grid;grid-template-columns:140px 1fr 1fr;gap:0 10px;max-height:300px;overflow:auto}
+.send-matrix-head{font-size:11px;color:var(--muted);padding:0 0 4px}
+.send-track-names{display:flex;flex-direction:column;border:1px solid transparent}
+.send-track-name{height:29px;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid transparent}
+.send-track-name::before{content:'';width:4px;height:14px;background:var(--track-color)}
+.send-group.compact .send-row{grid-template-columns:1fr 46px;height:29px;box-sizing:border-box;padding:0 8px}
+.send-group.compact .send-label{display:none}
+.send-note{margin:0;font-size:11px;line-height:1.5;color:var(--dim)}
+@media (max-width:640px){.send-returns{grid-template-columns:1fr}.send-matrix-grid{grid-template-columns:90px 1fr 1fr}}

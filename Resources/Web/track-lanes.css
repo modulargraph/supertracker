@@ -1,0 +1,57 @@
+/* Track lanes (app-track-lanes.js, app-track-drag.js): header collapse / delete buttons, slim collapsed tracks,
+   hidden-track chips, the drag-and-drop indicator and mixer strip delete buttons. */
+.lane-actions { display:inline-flex; gap:1px; flex:none; opacity:0; transition:opacity 90ms; }
+.tracker th.track-head:hover .lane-actions, .tracker th.selected-track .lane-actions, .lane-actions:focus-within { opacity:1; }
+.lane-action { width:15px; height:15px; min-height:0; padding:0; border:1px solid transparent; border-radius:2px; background:transparent;
+  color:#8b8577; font:600 10px/13px var(--mono); text-align:center; }
+.lane-action:hover { color:var(--text); border-color:#5d574a; }
+.lane-delete:hover { color:#1b1712; background:var(--rose); border-color:var(--rose); }
+.group-head .group-delete { opacity:0; }
+.tracker th.group-head:hover .group-delete, .tracker th.group-head.is-selected .group-delete, .group-delete:focus-visible { opacity:1; }
+
+/* Collapsed (slim) track: number, expand button, vertical name; cells show note names only. */
+.tracker th.track-head.track-slim { min-width:0 !important; padding:5px 3px 4px; }
+.track-slim-top { display:flex; align-items:center; justify-content:space-between; gap:2px; height:16px; }
+.track-slim-name { display:block; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:500 10px var(--sans); color:var(--muted); }
+.tracker th.track-slim.selected-track .track-slim-name { color:var(--text); }
+.tracker td.track-slim-cell { padding:0 2px; text-align:center; font:10px var(--mono); color:#5f5a4e; overflow:hidden; white-space:nowrap; }
+.tracker td.track-slim-cell .slim-hit.has-note { color:var(--text); }
+.tracker td.track-slim-cell.track-silenced .slim-hit { color:var(--dim); }
+
+/* Hide empty tracks */
+.lane-hidden-count { display:inline-block; min-width:14px; margin-left:4px; padding:0 3px; border-radius:7px; background:#191712; color:var(--teal); font:600 10px/14px var(--mono); }
+#hide-empty-scope { max-width:110px; }
+.lane-hidden-chip { height:16px; min-height:0; padding:0 5px; border:1px dashed color-mix(in srgb, var(--group) 60%, #4b473b); border-radius:8px;
+  background:transparent; color:var(--group); font:600 10px/14px var(--mono); white-space:nowrap; }
+.lane-hidden-chip:hover { background:color-mix(in srgb, var(--group) 20%, transparent); }
+.lane-hidden-chip.is-revealed { border-style:solid; color:var(--dim); }
+
+/* Drag and drop */
+body.lane-dragging, body.lane-dragging * { cursor:grabbing !important; user-select:none; }
+.tracker th.track-head, .tracker th.group-head { cursor:grab; }
+.lane-drag-source { opacity:.45; }
+.lane-drop-indicator { position:fixed; z-index:60; width:3px; margin-left:-1px; background:var(--group, var(--teal)); border-radius:2px;
+  box-shadow:0 0 0 1px #000a, 0 0 10px color-mix(in srgb, var(--group, var(--teal)) 60%, transparent); pointer-events:none; }
+.lane-drop-indicator::before, .lane-drop-indicator::after { content:''; position:absolute; left:-4px; width:11px; height:3px; background:inherit; border-radius:1px; }
+.lane-drop-indicator::before { top:0; }
+.lane-drop-indicator::after { bottom:0; }
+.lane-drop-label { position:absolute; top:6px; left:7px; padding:1px 6px; border-radius:2px; background:#191712; color:var(--group, var(--teal));
+  font:600 10px/15px var(--sans); white-space:nowrap; }
+.lane-drop-label:empty { display:none; }
+.lane-drag-ghost { position:fixed; z-index:61; padding:3px 8px; border:1px solid #5d574a; border-radius:3px; background:#2b2b24ee; color:var(--text);
+  font:600 11px var(--sans); white-space:nowrap; pointer-events:none; box-shadow:0 4px 14px #0008; }
+
+/* Mixer strip delete */
+.studio-channel { position:relative; }
+.studio-channel > .strip-delete { position:absolute; top:6px; right:6px; z-index:2; opacity:0; }
+.studio-channel:hover > .strip-delete, .studio-channel.is-selected > .strip-delete, .studio-channel > .strip-delete:focus-visible { opacity:1; }
+#mixer-channels .studio-channel-title { cursor:grab; }
+/* The group row's spacer above a slim track must not widen it (the first row sets fixed-layout widths). */
+.tracker th.group-spacer.is-slim { min-width:0; padding:0; }
+
+/* Note columns (app-note-columns.js): + / − on the header, and each extra column's NOTE INS VEL after column 0's. */
+.note-column-actions { display:inline-flex; gap:1px; flex:none; opacity:0; transition:opacity 90ms; }
+.tracker th.track-head:hover .note-column-actions, .tracker th.selected-track .note-column-actions, .note-column-actions:focus-within { opacity:1; }
+.tracker .kit-lane { --note-w:48px; --ins-w:22px; }
+.track-columns .note-column-label { color:#8f9a8e; }
+.tracker-cell .note-column-cell:not(.active-column) { box-shadow:inset 1px 0 0 rgba(255,255,255,.04); }

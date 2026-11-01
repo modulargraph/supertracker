@@ -1,0 +1,106 @@
+/* Insert chain (insert-chain.js): module tiles in signal order, then the selected module's eight-knob pages. */
+.fx-chain { display:flex; flex-direction:column; gap:12px; min-width:0; }
+.fx-chain-head { display:flex; align-items:center; gap:12px; min-height:24px; }
+.fx-chain-title { display:flex; align-items:baseline; gap:8px; min-width:0; }
+.fx-chain-title h3 { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fx-count { font:11px var(--mono); color:var(--dim); }
+.fx-chain-hint { margin-left:auto; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.fx-chain-head .btn { font-size:11px; padding:4px 8px; flex:none; }
+
+.fx-tiles { display:flex; gap:14px; overflow-x:auto; padding:2px 2px 6px; scrollbar-width:thin; }
+.fx-tile { position:relative; flex:none; width:132px; min-height:66px; display:flex; flex-direction:column; gap:3px; padding:7px 9px 8px; text-align:left;
+  background:var(--panel); border:1px solid var(--line); border-top:3px solid #5b5648; border-radius:3px; cursor:pointer; user-select:none; -webkit-user-select:none; }
+.fx-tile:hover { background:var(--raised); border-color:#57544a; border-top-color:#7c7563; }
+/* Signal flow between modules. */
+.fx-tile:not(:first-child)::before { content:''; position:absolute; left:-12px; top:50%; width:10px; height:1px; background:#5b5648; }
+.fx-tile.is-selected { background:#332a22; border-color:#8a5a3f; border-top-color:var(--teal); }
+.fx-tile.is-selected .fx-tile-name { color:#fff3e6; }
+.fx-tile.is-bypassed { border-top-color:#3d3b34; }
+.fx-tile.is-bypassed .fx-tile-name { color:var(--dim); text-decoration:line-through; text-decoration-color:#6d6758; }
+.fx-tile.is-bypassed .fx-tile-category { color:var(--dim); }
+.fx-tile.is-dragging { opacity:.45; }
+.fx-tile.is-drop-before { box-shadow:-4px 0 0 -1px var(--teal); }
+.fx-tile.is-drop-after { box-shadow:4px 0 0 -1px var(--teal); }
+.fx-tile-top { display:flex; align-items:center; gap:6px; min-height:18px; }
+.fx-tile-index { font:10px var(--mono); color:var(--dim); }
+.fx-tile-category { font-size:10px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1; }
+.fx-tile-name { font-size:12.5px; font-weight:600; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fx-tile-state { font-size:10px; color:var(--dim); }
+.fx-source { border-top-color:var(--amber); background:#26251f; }
+.fx-source.is-selected { border-top-color:var(--amber); background:#302c22; border-color:#7a6844; }
+.fx-power { flex:none; width:20px; height:20px; padding:0; display:grid; place-items:center; border-radius:50%; border:1px solid #57544a; background:#1c1c19; }
+.fx-power svg { width:11px; height:11px; fill:none; stroke:var(--teal); stroke-width:1.8; stroke-linecap:round; }
+.fx-power[aria-pressed="false"] svg { stroke:#6d6758; }
+.fx-power:hover { border-color:var(--teal); }
+.fx-add { align-items:center; justify-content:center; width:96px; border-style:dashed; border-top:1px dashed #5b5648; color:var(--muted); background:transparent; }
+.fx-add:not(:disabled):hover { color:var(--text); border-color:var(--teal); }
+.fx-add[aria-expanded="true"] { border-color:var(--teal); color:var(--text); }
+.fx-add-plus { font-size:20px; line-height:1; font-weight:300; }
+
+.fx-add-panel { border:1px solid var(--line); border-radius:3px; background:var(--surface); }
+.fx-add-head { display:flex; align-items:center; gap:12px; padding:8px 10px; border-bottom:1px solid var(--line); font-size:11px; }
+.fx-add-head input { width:220px; }
+.fx-add-head button { margin-left:auto; }
+.fx-add-columns { display:grid; grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); gap:0; max-height:300px; overflow:auto; }
+.fx-add-column { display:flex; flex-direction:column; padding:8px 6px 10px; border-right:1px solid var(--line); min-width:0; }
+.fx-add-column h5 { margin:0 0 6px 6px; font-size:10.5px; font-weight:600; color:var(--amber); text-transform:uppercase; letter-spacing:.04em; }
+.fx-add-choice { display:flex; flex-direction:column; align-items:flex-start; gap:1px; padding:4px 6px; border:0; background:transparent; text-align:left; border-radius:2px; }
+.fx-add-choice span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.fx-add-choice small { color:var(--dim); font-size:10px; }
+.fx-add-choice:hover, .fx-add-choice:focus-visible { background:var(--raised); outline-offset:-2px; }
+.fx-add-note { padding:2px 6px; font-size:11px; }
+
+.fx-module { border:1px solid var(--line); border-radius:3px; background:var(--surface); }
+.fx-module.is-bypassed .fx-knobs { opacity:.55; }
+.fx-module-head { display:flex; align-items:center; gap:14px; padding:9px 12px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+.fx-module-title { display:flex; flex-direction:column; gap:1px; min-width:120px; }
+.fx-module-title small { color:var(--muted); font-size:10.5px; }
+.fx-module-title h4 { margin:0; font-size:14px; font-weight:600; }
+.fx-pages { display:flex; gap:2px; flex-wrap:wrap; flex:1; min-width:0; }
+.fx-pages button { border:0; background:transparent; color:var(--muted); padding:4px 9px; border-radius:2px; border-bottom:2px solid transparent; }
+.fx-pages button:hover { color:var(--text); background:var(--raised); }
+.fx-pages button.is-on { color:var(--text); border-bottom-color:var(--teal); background:#2b2620; }
+.fx-page-single { color:var(--muted); padding:4px 0; }
+.fx-module-actions { display:flex; gap:6px; }
+.fx-module-actions button { font-size:11px; padding:3px 8px; }
+.fx-module-actions button.is-active { color:#191712; background:var(--amber); border-color:var(--amber); }
+.fx-module-actions .danger { color:var(--rose); }
+
+.fx-knobs { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); padding:10px 8px 6px; column-gap:4px; }
+.fx-knob { display:flex; flex-direction:column; align-items:center; gap:3px; min-width:0; padding:0 2px 6px; border-radius:3px; }
+.fx-knob:focus-within { background:var(--raised); }
+.fx-section { align-self:stretch; height:16px; font-size:10px; color:var(--amber); white-space:nowrap; overflow:visible; border-bottom:1px solid #4a4538; padding:0 2px; margin:0 -4px 5px; }
+.fx-knob.is-empty .fx-section { border-bottom-color:transparent; }
+.fx-knob.has-section:not(:first-child) { margin-left:8px; }
+.fx-dial { width:52px; height:52px; cursor:ns-resize; border-radius:50%; touch-action:none; }
+.fx-dial:focus-visible { outline:2px solid var(--teal); outline-offset:1px; }
+.fx-dial[aria-disabled="true"] { cursor:default; opacity:.5; }
+.fx-dial svg { width:100%; height:100%; overflow:visible; }
+.fx-dial-track { fill:none; stroke:#3d3b34; stroke-width:4; stroke-linecap:round; }
+.fx-dial-value { fill:none; stroke:var(--teal); stroke-width:4; stroke-linecap:round; }
+.fx-dial.is-stepped .fx-dial-value { stroke:var(--amber); }
+.fx-dial-cap { fill:#2f2e28; stroke:#55524a; stroke-width:1; }
+.fx-dial:hover .fx-dial-cap, .fx-dial.is-turning .fx-dial-cap { fill:#393730; }
+.fx-dial-pointer { stroke:var(--text); stroke-width:2; stroke-linecap:round; }
+.fx-dial-blank { width:52px; height:52px; border-radius:50%; border:1px dashed #3d3b34; opacity:.5; }
+.fx-knob-name { font-size:11.5px; font-weight:600; text-align:center; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fx-knob output { font:11px var(--mono); color:var(--muted); text-align:center; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-height:14px; }
+.fx-knob.is-empty .fx-knob-name, .fx-knob.is-empty output { color:var(--dim); font-weight:400; }
+.fx-hint { padding:6px 12px 9px; font-size:11px; color:var(--dim); border-top:1px solid var(--line); }
+.fx-status { padding:18px 12px; }
+.fx-empty { padding:4px 0 2px; font-size:11.5px; }
+
+.studio-rack-details { margin-top:10px; border-top:1px solid var(--line); }
+.studio-rack-details > summary { display:flex; align-items:center; gap:10px; padding:9px 0; font-size:11px; cursor:pointer; list-style:none; }
+.studio-rack-details > summary::-webkit-details-marker { display:none; }
+.studio-rack-details > summary::before { content:'▸'; color:var(--dim); }
+.studio-rack-details[open] > summary::before { content:'▾'; }
+.studio-rack-details > summary .studio-reorder-hint { margin-left:auto; }
+.kit-fx-chain { margin:10px 0 14px; }
+@media (max-width:1180px) { .fx-knobs { grid-template-columns:repeat(4,minmax(0,1fr)); row-gap:8px; } .fx-knob.has-section:not(:first-child) { margin-left:0; } .fx-chain-hint { display:none; } }
+
+/* Instrument page: the instrument's own insert chain (instrument-effects.js). */
+.instrument-effects .panel-head { gap: 12px; }
+.instrument-effects-where { font-size: 11px; margin-left: auto; text-align: right; }
+.instrument-effects .fx-chain { margin: 0; }
+.instrument-effects-note { margin-top: 8px; }

@@ -1,0 +1,33 @@
+/* Track groups: the group header row above the track headers, collapsed overview columns,
+   member stripes and mixer group strips. */
+.tracker th.group-head { height:30px; padding:3px 6px; background:color-mix(in srgb, var(--group) 18%, #26251f);
+  box-shadow:inset 0 3px 0 var(--group); text-align:left; position:static; cursor:default; }
+.tracker th.group-head.is-selected { background:color-mix(in srgb, var(--group) 28%, #26251f); }
+.group-head-row { display:flex; align-items:center; gap:7px; min-width:0; }
+.group-collapse { width:20px; height:18px; padding:0; line-height:16px; font-size:11px; border-color:transparent; background:transparent; color:var(--group); }
+.group-name { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.group-count { color:var(--dim); font-size:10px; white-space:nowrap; }
+.group-meter { flex:1 1 40px; min-width:24px; max-width:120px; height:5px; background:#14140f; border-radius:2px; overflow:hidden; }
+.group-meter > span { display:block; height:100%; background:var(--group); transform-origin:left center; transform:scaleX(0); transition:transform 60ms linear; }
+.group-meter > span.is-clipping { background:var(--rose); }
+.group-head .track-ms { width:16px; height:15px; line-height:13px; padding:0; font-size:10px; }
+.tracker th.track-head.group-member { box-shadow:inset 0 2px 0 color-mix(in srgb, var(--lane) 55%, transparent), inset 2px 0 0 color-mix(in srgb, var(--group) 70%, transparent); }
+.tracker th.track-head.group-overview { min-width:0; box-shadow:inset 0 3px 0 var(--group); }
+/* Filler after an all-collapsed grid: takes the spare width so overview columns keep theirs. */
+.tracker .tracker-fill { min-width:0; padding:0; border-right:0; background:transparent; }
+.group-overview-sub { color:var(--dim); font-size:10px; margin-top:2px; }
+.tracker td.group-overview-cell { vertical-align:top; padding:1px 3px; }
+/* One line per row: with many hits the chips shrink (full name and note in the tooltip). contain:inline-size keeps
+   the chips' text out of the column's minimum width, so the overview keeps its <col> width (app-pattern-view.js). */
+.group-hits { display:flex; flex-wrap:nowrap; gap:2px; min-height:16px; min-width:0; overflow:hidden; contain:inline-size; }
+.group-hit { flex:0 1 auto; min-width:22px; padding:0 4px; border:0; border-radius:2px; font:10px/15px var(--mono); white-space:nowrap; max-width:120px; overflow:hidden; text-overflow:ellipsis;
+  background:color-mix(in srgb, var(--lane) 30%, #2b2a24); color:#ece5d2; }
+.group-hit.is-selected { outline:1px solid var(--teal); }
+#pad-keys[aria-pressed="true"] { color:#191712; background:var(--amber); border-color:var(--amber); }
+/* Mixer */
+.studio-channel.group-strip { box-shadow:inset 0 3px 0 var(--group, #92998f); }
+.studio-channel.group-member-strip { box-shadow:inset 0 3px 0 color-mix(in srgb, var(--group, #92998f) 55%, transparent); }
+.group-strip-expand { width:100%; margin-top:4px; font-size:10px; }
+.group-empty-step { color:var(--dim); font:10px var(--mono); }
+.tracker .pattern-groups th { position:static; }
+.tracker th.group-spacer { height:30px; }

@@ -1,0 +1,172 @@
+{
+  "generatedAt": "2026-10-10T06:41:27.412847+00:00",
+  "passed": true,
+  "candidateProductionBaseline": "Candidate083138",
+  "baselineSourceManifestSHA256": "6aef75b1be980a1d8c9524d66b085e5ac8d34758be81ce415b9d31975c2ba4de",
+  "sourceBoundary": "test-output/musical-demo-20261010h/source-boundary.json",
+  "releasedFilesUnchanged": true,
+  "originalReleaseManifestSHA256": "b22286e9d98f8ec99b2f80103e7c7676f64c8ed0625768c4498941a089bc3974",
+  "releasedProjectSHA256": "3b4d2e1a04e45f9ad3a3743d1da134c0e6fb7593b5aec2c84315efd8379085dc",
+  "releasedWAVSHA256": "ff789fa6145edac86d99edfecc9034c341c64384fe6b7d269259babd9aa05530",
+  "projectMatchesCurrentBaseline": true,
+  "plistTypedEqualInsteadOfSerializedOrder": [
+    "harbor-apple-piano"
+  ],
+  "runs": {
+    "apple": {
+      "run": "test-output/musical-demo-20261010h/root-run-apple.json",
+      "sha256": "3d6ada85c952da27bff33a2329af90b74cbe0f405b51f4da06e2f2ab44e8bb14",
+      "report": "test-output/musical-demo-20261010h/diagnostic-output-apple/musical-diagnostic-report.json",
+      "reportSHA256": "6f4f865575b82446418d13481c69a8fe57393e4d33372a90c43f8f3af96fc3b7",
+      "logSHA256": "93fa10196d3bc8684394fa29d364fdec8b12313ed7b54ad2a19e68d1982642a3",
+      "exitCode": 0,
+      "seconds": 13.821,
+      "comparisons": [
+        {
+          "name": "apple-first same-host repeat",
+          "bitExactPCM": true,
+          "firstDifferentFrame": -1,
+          "firstDifferentSeconds": -1,
+          "frames": 890482,
+          "maximumAbsolute": 0,
+          "referenceRMS": 0.0010158505076861453,
+          "rms": 0,
+          "unequalSamples": 0,
+          "withinOriginalTolerance": true
+        },
+        {
+          "name": "apple fresh-host pair",
+          "bitExactPCM": true,
+          "firstDifferentFrame": -1,
+          "firstDifferentSeconds": -1,
+          "frames": 890482,
+          "maximumAbsolute": 0,
+          "referenceRMS": 0.0010158505076861453,
+          "rms": 0,
+          "unequalSamples": 0,
+          "withinOriginalTolerance": true
+        }
+      ],
+      "signal": [
+        {
+          "name": "apple-first",
+          "nonzeroMusicVerified": true,
+          "signalPeak": 0.008564114570617676,
+          "signalRMS": 0.0010158505076861453
+        },
+        {
+          "name": "apple-fresh",
+          "nonzeroMusicVerified": true,
+          "signalPeak": 0.008564114570617676,
+          "signalRMS": 0.0010158505076861453
+        }
+      ],
+      "outputWAVSHA256": {
+        "apple-first.wav": "b51b838e00b323f355118640dee0f36530defd71bb1c642ad158436b37d6bbf4",
+        "apple-first-same-host-repeat.wav": "b51b838e00b323f355118640dee0f36530defd71bb1c642ad158436b37d6bbf4",
+        "apple-fresh.wav": "b51b838e00b323f355118640dee0f36530defd71bb1c642ad158436b37d6bbf4"
+      }
+    },
+    "full": {
+      "run": "test-output/musical-demo-20261010h/root-run-full.json",
+      "sha256": "7e28a2ee8bf2a2871973f3fb4b663d3f0a627943fbae3d1ef03ae7cc29ae17a2",
+      "report": "test-output/musical-demo-20261010h/diagnostic-output-full/musical-diagnostic-report.json",
+      "reportSHA256": "63aeb1bea6e8e98437f608000e7ad147d41949c54814d4917c0d3a7b236a5f25",
+      "logSHA256": "93fa10196d3bc8684394fa29d364fdec8b12313ed7b54ad2a19e68d1982642a3",
+      "exitCode": 0,
+      "seconds": 15.716,
+      "comparisons": [
+        {
+          "name": "full-first same-host repeat",
+          "bitExactPCM": false,
+          "firstDifferentFrame": 14,
+          "firstDifferentSeconds": 0.0002916666666666667,
+          "frames": 890482,
+          "maximumAbsolute": 8.344650268554688e-06,
+          "referenceRMS": 0.049998104937118856,
+          "rms": 3.8116512942266524e-07,
+          "unequalSamples": 352047,
+          "withinOriginalTolerance": true
+        },
+        {
+          "name": "full fresh-host pair",
+          "bitExactPCM": true,
+          "firstDifferentFrame": -1,
+          "firstDifferentSeconds": -1,
+          "frames": 890482,
+          "maximumAbsolute": 0,
+          "referenceRMS": 0.049998104937118856,
+          "rms": 0,
+          "unequalSamples": 0,
+          "withinOriginalTolerance": true
+        }
+      ],
+      "signal": [
+        {
+          "name": "full-first",
+          "nonzeroMusicVerified": true,
+          "signalPeak": 0.35150837898254395,
+          "signalRMS": 0.049998104937118856
+        },
+        {
+          "name": "full-fresh",
+          "nonzeroMusicVerified": true,
+          "signalPeak": 0.35150837898254395,
+          "signalRMS": 0.049998104937118856
+        }
+      ],
+      "outputWAVSHA256": {
+        "full-first.wav": "ff789fa6145edac86d99edfecc9034c341c64384fe6b7d269259babd9aa05530",
+        "full-first-same-host-repeat.wav": "5c1f3394a32ab94994a24b1210b417375565a1e1745b871f67453551d30832f0",
+        "full-fresh.wav": "ff789fa6145edac86d99edfecc9034c341c64384fe6b7d269259babd9aa05530"
+      }
+    }
+  },
+  "physicalPlayback": false,
+  "listening": false,
+  "scope": "Same authored project, samples and typed plug-in state through accepted Candidate083138 export delivery pipeline (private 48kHz float CAF to 48kHz 24-bit stereo WAV with atomic publication). Cold-first and fresh WAV files exactly match the release. Only a private CLI entry and unchanged fixture were added. This demo does not verify every rate/format and makes no generic Host fix or listening claim.",
+  "productionSourceStage": "test-output/full-native-delivery-20261010a/source",
+  "fixtureExecutableSHA256": "74017570c454bde37cba8f010e5a7ec9d892784e873c593ec7abf3284ec852ba",
+  "fixtureSourceManifestSHA256": "dcf5aab8083b99eb14a244a7035df935a9e63593c57196a65b78615bf3003f9a",
+  "unchangedFixtureSHA256": "017824cc37e8fcc5989b165a51f4805b338d86d6daef86375230706f07bcb0b9",
+  "sourceBoundarySHA256": "0ee23489a36f46d3be47222aa03ce53f8b96dd7fe04516bce07264fa163d9cc9",
+  "privateOverridesDiffSHA256": "cd5cde6285745fbb5f7dd0e8fd39d72e1e6fa1d9b16a0865e29fff37a3c1a582",
+  "previousBuildConfirmation": {
+    "candidate": "Candidate074556",
+    "preservedCopy": "test-output/musical-demo-20261010g/CURRENT_BUILD_VERIFICATION.json",
+    "sha256": "fc3eb43931c610fe311b97e7188b8cd8f91e3fcce9bd338853eb409ce418a305"
+  },
+  "originalNineReleasedFileSHA256": {
+    "Harbor Circuit.media/03e916386f0b3872-03e916386f0b3872-03 Round sub - C2.wav": "03e916386f0b38728a4ac922d3d906ef1245cb01da1d81132f6c4283bc315fe3",
+    "Harbor Circuit.media/5022eaeac57def73-5022eaeac57def73-04 Glass pluck - C4.wav": "5022eaeac57def73f8f0f367fd1956158e51006196c95f609549043100ed8183",
+    "Harbor Circuit.media/72d7629ba900f296-72d7629ba900f296-05 Stereo air.wav": "72d7629ba900f296b47ec86ea169c6503aa84294825d7c2c72f7868755637647",
+    "Harbor Circuit.media/bcb756d5986b6206-bcb756d5986b6206-02 Circuit kit - 16 equal slices.wav": "bcb756d5986b62060397c6f48909f4d5b87623931e8a78b4fb2539247047c812",
+    "Harbor Circuit.media/d8bd8b965119cefc-d8bd8b965119cefc-01 Harbor kick.wav": "d8bd8b965119cefc9369f8b230694990cde49b4d094dcb7ee326a2c9ef3f86a0",
+    "Harbor Circuit.supertracker": "3b4d2e1a04e45f9ad3a3743d1da134c0e6fb7593b5aec2c84315efd8379085dc",
+    "Harbor Circuit.wav": "ff789fa6145edac86d99edfecc9034c341c64384fe6b7d269259babd9aa05530",
+    "README.md": "116afa1dacb7baca4a3e3d04f68d785c958e4d8055f6e1ee1e0496f94c158928",
+    "VERIFICATION.json": "3e250cc16d64c04491bcceaeff3e81201a3c30d6b92b5612bb430a9af72554e3"
+  },
+  "currentSavedProjectSHA256": "c3add82aac1d3df70781e67efa919ee4f4570542433eed91024561b47e70fa23",
+  "nonStateProjectFieldsExact": true,
+  "plistRealStorageEvidence": {
+    "harbor-apple-piano": {
+      "cpu-load": {
+        "storageBytes": 8,
+        "exactBitsHex": "0000000000000000"
+      }
+    },
+    "harbor-piano-lowpass": {}
+  },
+  "export": {
+    "sampleRate": 48000,
+    "channels": 2,
+    "bitsPerSample": 24,
+    "frames": 890482
+  },
+  "tolerance": {
+    "maximumAbsolute": 2e-05,
+    "rms": 1e-06
+  },
+  "productionSourceChanges": []
+}

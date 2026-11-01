@@ -1,0 +1,23 @@
+.step-fx-field { display:flex; align-items:center; gap:4px; font-size:11px; color:var(--muted); }
+.step-fx-open { max-width:145px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:4px 6px; font-size:11px; }
+.step-fx-missing { color:#e8ae76; }
+.step-fx-modal { width:min(680px,calc(100vw - 36px)); }
+.step-fx-dialog { display:flex; flex-direction:column; gap:10px; }
+.step-fx-location { display:flex; align-items:center; justify-content:space-between; gap:16px; font-size:12px; color:var(--muted); }
+.step-fx-location label { display:flex; align-items:center; gap:6px; white-space:nowrap; }
+#step-fx-search { width:100%; }
+.step-fx-status { min-height:28px; font-size:11px; line-height:1.4; color:var(--muted); }
+.step-fx-results { height:clamp(120px,32vh,290px); overflow:auto; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+.step-fx-result { width:100%; min-height:44px; display:flex; align-items:center; justify-content:space-between; gap:12px; text-align:left; border:0; border-radius:0; background:transparent; padding:6px 8px; }
+.step-fx-result strong { display:block; font-size:12px; font-weight:500; }
+.step-fx-result small { display:block; margin-top:3px; font-size:11px; color:var(--muted); }
+.step-fx-result.selected { background:#353127; }
+.step-fx-result:focus-visible { outline:2px solid var(--accent,#ed7144); outline-offset:-2px; }
+.step-fx-result-hint { font-size:11px; color:var(--muted); white-space:nowrap; }
+.step-fx-empty { padding:22px 8px; font-size:12px; color:var(--muted); }
+.step-fx-value-row { display:flex; align-items:center; gap:16px; min-height:65px; }
+.step-fx-value-row label { flex:1; }
+.step-fx-value-row strong { display:block; font-size:12px; }
+.step-fx-value-row small { display:block; margin-top:5px; line-height:1.4; font-size:11px; color:var(--muted); }
+#step-fx-value { width:100px; font-family:var(--mono); }
+@media(max-height:720px) { .step-fx-modal .modal-body { padding:12px 18px; } .step-fx-dialog { gap:7px; } .step-fx-results { height:180px; } }

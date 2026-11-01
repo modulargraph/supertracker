@@ -1,0 +1,7 @@
+/* Live automation write status chip (status bar). */
+.automation-record-status{font:11px var(--mono);padding:1px 7px;min-height:0;line-height:1.5;border-radius:2px;border:1px solid #4b493f;background:transparent;color:var(--muted)}
+.automation-record-status[data-state="armed"]{color:#1b1712;background:var(--amber);border-color:var(--amber)}
+.automation-record-status[data-state="writing"]{color:#fff;background:#c4513e;border-color:#e0705a;animation:automation-record-pulse 1s ease-in-out infinite alternate}
+.automation-record-status[data-state="learn"]{color:#1b1712;background:var(--blue);border-color:var(--blue)}
+@keyframes automation-record-pulse{from{opacity:1}to{opacity:.72}}
+@media (prefers-reduced-motion:reduce){.automation-record-status[data-state="writing"]{animation:none}}

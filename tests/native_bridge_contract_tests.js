@@ -1,0 +1,43 @@
+// Exercise the actual Web UI export consumed by the native quit-time snapshot.
+const fs = require('node:fs');
+const web = require('./helpers/web');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const bridge = fs.readFileSync(path.join(__dirname, '../Sources/SuperTracker/Bridge.swift'), 'utf8');
+const literal = bridge.match(/projectSnapshotScript = """\n([\s\S]*?)\n\s*"""/);
+assert.ok(literal, 'Bridge declares its actual termination snapshot expression');
+const expression = literal[1];
+const window = {};
+const context = vm.createContext({ window, document: {}, console, Map, Set, Date, Math, JSON, Number, String, Object, Array, Promise });
+assert.equal(vm.runInContext(expression, context).project, null, 'A UI that has not loaded has no project snapshot');
+web.load(context, 'app.js');
+const state = window.ST.state;
+state.project = window.ST.demoProject();
+state.project.name = 'Edit pending native debounce';
+state.project.patterns[0].steps[0][0].note = 73;
+state.dirty = true;
+const returned = vm.runInContext(expression, context).project;
+assert.equal(returned.name, 'Edit pending native debounce');
+assert.equal(returned.patterns[0].steps[0][0].note, 73, 'Termination sees edits before engine.project is sent');
+returned.patterns[0].steps[0][0].note = 1;
+assert.equal(state.project.patterns[0].steps[0][0].note, 73, 'Snapshot is independent of live UI state');
+let reads = 0;
+const getter = window.__supertracker.getProject;
+window.__supertracker.getProject = () => { reads++; return getter(); };
+for (const [module, property, message] of [['STStudio', 'isMovingEffect', 'effect move'], ['STRouting', 'isApplying', 'routing change'], ['STTrackDuplicate', 'isApplying', 'track duplication'], ['STExport', 'isBusy', 'audio export'], ['STRecording', 'isBusy', 'audio recording'], ['STRecording', 'isRecording', 'audio recording']]) {
+  window[module] = { [property]: true };
+  const blocked = vm.runInContext(expression, context);
+  assert.equal(blocked.ok, false);
+  assert.ok(blocked.reason.includes(message), 'The preflight returns a useful reason without a JavaScript exception');
+  assert.equal(blocked.project, undefined);
+  assert.equal(reads, 0, 'Blocked termination must not read a half-complete project');
+  window[module][property] = false;
+  assert.equal(vm.runInContext(expression, context).ok, true, 'An idle operation does not block termination');
+  reads = 0;
+  delete window[module];
+}
+assert.equal(vm.runInContext(expression, context).project.name, state.project.name, 'Stable UI still yields its latest snapshot');
+assert.equal(reads, 1);
+assert.ok(bridge.includes('evaluateJavaScript(Self.projectSnapshotScript)'), 'Quit executes the tested snapshot expression');
+console.log('PASS native bridge snapshot: actual app export, pending edits, independent snapshot, pre-load behavior, and effect/routing/export/recording preflight');

@@ -1,0 +1,23 @@
+/* Sampler Granular panel: a big Position control, the grain controls and the grain map. */
+.granular-panel .granular-body { display:grid; grid-template-columns:minmax(0,1fr) 240px; grid-template-areas:"position preview" "controls preview" "help help"; gap:14px 18px; align-items:start; }
+.granular-position { grid-area:position; }
+.granular-position .parameter-label { font-size:13px; font-weight:600; color:var(--text); letter-spacing:.04em; text-transform:uppercase; }
+.granular-position .parameter-readout { font-size:26px; font-weight:600; color:var(--teal); }
+.granular-position .parameter-controls { grid-template-columns:minmax(0,1fr) 72px; }
+.granular-position .parameter input[type=range] { height:30px; }
+.granular-position .parameter input[type=range]::-webkit-slider-runnable-track { height:6px; background:linear-gradient(90deg,#2a3a3a,var(--teal)); border-radius:3px; }
+.granular-position .parameter input[type=range]::-webkit-slider-thumb { width:14px; height:26px; margin-top:-10px; border-radius:2px; }
+.granular-controls { grid-area:controls; display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px 14px; }
+.granular-controls .parameter-readout { font-size:15px; font-weight:600; color:var(--text); }
+.granular-preview { grid-area:preview; margin:0; border:1px solid var(--line); background:#161913; border-radius:2px; }
+.granular-preview svg { display:block; width:100%; height:96px; }
+.granular-preview .granular-region { fill:#2c2a1d; }
+.granular-preview .granular-spray { fill:#5fb6ad; opacity:.22; }
+.granular-preview .granular-grain { fill:#5fb6ad; opacity:.55; }
+.granular-preview .granular-position { stroke:var(--teal); stroke-width:2; vector-effect:non-scaling-stroke; }
+.granular-preview .granular-scan { fill:none; stroke:var(--amber); stroke-width:1.5; vector-effect:non-scaling-stroke; }
+.granular-preview figcaption { padding:4px 7px; border-top:1px solid var(--line); color:var(--muted); font:11px var(--mono); line-height:1.4; }
+.granular-help { grid-area:help; }
+@media (max-width:760px) {
+  .granular-panel .granular-body { grid-template-columns:1fr; grid-template-areas:"position" "preview" "controls" "help"; }
+}

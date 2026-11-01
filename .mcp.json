@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "supertracker": {
+      "type": "stdio",
+      "command": "./build/SuperTracker.app/Contents/MacOS/SuperTracker",
+      "args": ["--mcp"]
+    }
+  }
+}

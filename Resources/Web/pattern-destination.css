@@ -1,0 +1,14 @@
+/* A single destination strip keeps kit sequencing visible without changing lane types. */
+.pattern-destination{flex:none;padding:6px 14px 5px;background:#2c2922;border-bottom:1px solid #64503c;min-width:0}
+/* One row: label sits beside its field so the strip costs a single control height plus its help line. */
+.pattern-destination-controls{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.pattern-destination label{display:flex;flex-direction:row;align-items:center;gap:7px;flex:1 1 230px;max-width:380px;min-width:0;font-size:11px;color:#b9ae9b}.pattern-destination label>span{white-space:nowrap}
+.pattern-destination label[for=pattern-destination-mode]{flex:0 1 210px}
+.pattern-destination select{min-width:0;width:100%;height:26px;font-size:11px;background:#1c1c18;border:1px solid #756c59;color:#eee3d0;padding:3px 6px;border-radius:2px}
+.pattern-destination button{min-height:26px;font-size:11px;padding:4px 8px;white-space:nowrap}.pattern-destination button[aria-pressed=true]{border-color:#c79463;color:#f0d5b3}
+.pattern-destination p{font-size:11px;line-height:1.4;margin:4px 0 0;color:#c3b8a5;overflow-wrap:anywhere}
+.pattern-destination :focus-visible{outline:2px solid #ed7144;outline-offset:1px}
+@media(max-width:1180px){.pattern-destination{padding-inline:10px}.pattern-destination-controls{gap:6px 10px}.pattern-destination label{flex-basis:180px}.pattern-destination button{padding-inline:6px}}
+
+.pattern-destination label[for="pattern-record-placement"]{flex:0 0 auto;max-width:none}
+.pattern-destination #pattern-record-placement{width:128px;min-width:128px}

@@ -1,0 +1,36 @@
+/* Library kits, after Maschine's browser. Expansion art, banner, chips, rows and skeletons reuse the NKS browser's
+   .nksb-* styles in browser.css; this file adds the kit layout, status actions and the 4 × 4 pad map. */
+.kitb-layout{display:grid;grid-template-columns:232px minmax(360px,1fr) 288px;flex:1;min-height:0;gap:0}
+.kitb-main{display:flex;flex-direction:column;min-width:0}.kitb-detail{overflow:auto}
+.kitb-status-actions{display:flex;gap:2px;flex:none}.kitb-status-actions .browser-icon-btn{width:24px;height:24px;font-size:13px}
+.kitb-status .browser-root-copy{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kitb-empty-actions{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
+.kitb-help{position:relative}.kitb-help summary{list-style:none;cursor:pointer;font-size:11px;color:#a79f8e}.kitb-help summary::-webkit-details-marker{display:none}
+.kitb-help summary:hover,.kitb-help[open] summary{color:#e9a47f}
+.kitb-help p{position:absolute;right:0;top:20px;z-index:5;width:300px;margin:0;padding:10px 12px;border:1px solid #4a463b;border-radius:3px;background:#24231e;box-shadow:0 8px 24px #0009;color:#c9c0ad;font-size:11px;line-height:1.6}
+.kitb-help strong{font-weight:600;color:#e6dccb}
+.kitb-result-list{flex:1;min-height:100px;overflow:auto;outline:none}
+.kitb-row .nksb-row-type{color:#b39b7c}
+.kitb-detail-art .nksb-detail-banner>span{font-size:30px;color:#ffffff38}
+.kitb-detail .browser-detail-actions .btn{white-space:normal;text-align:left}.kitb-detail .browser-detail-actions kbd{float:right;margin-left:4px}
+.kitb-detail .browser-detail-actions .browser-small{line-height:1.6;margin:5px 0 0}
+.kitb-replace-target{display:flex;align-items:center;gap:8px;color:#b0aa9d}.kitb-replace-target select{flex:1;min-width:0;height:25px;padding:2px 6px;border:1px solid #4a473c;border-radius:2px;background:#1a1a17;color:#e2dacb;font:11px var(--sans,sans-serif)}
+/* Pads: Maschine's 4 × 4 with 13–16 on top; filled pads glow faintly in the kit's colour. */
+.kitb-sounds{padding:4px 14px 12px}
+.kitb-sounds h3{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:600;color:#c1b59f;margin:4px 0 8px}
+.kitb-sounds h3 span{color:#938b7d;font-weight:400;font-family:var(--mono,monospace)}
+.kitb-pad-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:0;margin:0;list-style:none}
+.kitb-pad-grid li{position:relative;min-height:50px;display:flex;flex-direction:column;justify-content:space-between;border:1px solid #3c382e;border-radius:3px;background:#211f1a;padding:4px 5px 5px;overflow:hidden}
+.kitb-pad-grid li>span{font:10px var(--mono,monospace);color:#6f6858}
+.kitb-pad-grid strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-size:10px;font-weight:500;line-height:1.25;color:#d9cfb9;overflow:hidden;word-break:break-word}
+.kitb-pad-grid li.filled{border-color:color-mix(in srgb,var(--nksb-tint,#b8794e) 55%,#3c382e);background:linear-gradient(180deg,color-mix(in srgb,var(--nksb-tint,#b8794e) 26%,#24221c),#211f1a 80%)}
+.kitb-pad-grid li.filled>span{color:#d4a47b}
+.kitb-pad-grid li.missing{border-color:#c17b55}.kitb-pad-grid small{position:absolute;right:4px;top:4px;font-size:9px;color:#e19a6d}
+.kitb-pad-grid.reading li{animation:nksb-shimmer 1.4s ease-in-out infinite}
+.kitb-compatibility{padding:8px 12px;margin:0 14px 12px;border-left:2px solid #ac8a55;background:#2b271f;font-size:11px;color:#cbbda4;line-height:1.6}.kitb-compatibility p{margin:0}.kitb-compatibility summary{cursor:pointer;color:#d6ab7c}.kitb-compatibility ul{margin:6px 0 0;padding-left:15px}
+.kitb-filter-empty{font-size:11px;color:#a49c8b;padding:6px 0 4px;line-height:1.5}
+.kitb-layout :focus-visible{outline:2px solid #ed7144;outline-offset:-2px}
+@media(max-width:1180px){.kitb-layout{grid-template-columns:200px minmax(300px,1fr) 250px}}
+@media(max-width:940px){.kitb-layout{grid-template-columns:180px minmax(260px,1fr) 220px}.kitb-sounds{padding-inline:9px}.kitb-pad-grid{gap:3px}.kitb-pad-grid li{padding:3px;min-height:42px}.kitb-help p{width:240px}}
+@media(prefers-reduced-motion:reduce){.kitb-pad-grid.reading li{animation:none}}
+.kitb-help summary,.kitb-main .nksb-toggles{font-family:var(--sans,sans-serif)}

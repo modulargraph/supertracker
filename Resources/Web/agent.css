@@ -1,0 +1,8 @@
+/* AI control (MCP) indicator in the status bar and its Settings toggle. */
+.agent-status { display:inline-flex; align-items:center; gap:6px; color:var(--teal, #8fb3a6); }
+.agent-status[hidden] { display:none; }
+.agent-led { display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--teal, #8fb3a6); }
+.agent-status.busy .agent-led { animation:agent-pulse .8s ease-in-out infinite alternate; }
+@keyframes agent-pulse { from { opacity:1; } to { opacity:.25; } }
+.agent-settings { display:flex; flex-direction:column; gap:6px; }
+.agent-settings code { font-family:var(--mono); font-size:11px; }

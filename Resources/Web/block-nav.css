@@ -1,0 +1,42 @@
+/* Block navigation frame and hint line (block-nav.js). Two rings, light inside a dark one, read on any background. */
+:root {
+  --nav-block:#e9c46a; --nav-block-ink:#1b1810; --nav-block-ring:rgba(10,10,8,.85);
+  --nav-block-glow:rgba(233,196,106,.32); --nav-block-tint:rgba(233,196,106,.05);
+  --nav-hint-bg:rgba(30,30,27,.96); --nav-hint-text:var(--text,#e8e3d8); --nav-hint-line:#5a5440;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) { --nav-block:#a8740f; --nav-block-ink:#fffaf0; --nav-block-ring:rgba(255,255,255,.9);
+    --nav-block-glow:rgba(168,116,15,.28); --nav-block-tint:rgba(168,116,15,.06); }
+}
+:root[data-theme="dark"] { --nav-block:#e9c46a; --nav-block-ink:#1b1810; --nav-block-ring:rgba(10,10,8,.85); }
+.block-nav-frame { position:fixed; z-index:10000; pointer-events:none; box-sizing:border-box; border:2px solid var(--nav-block);
+  border-radius:5px; background:var(--nav-block-tint);
+  box-shadow:0 0 0 1px var(--nav-block-ring), inset 0 0 0 1px var(--nav-block-ring), 0 0 16px 2px var(--nav-block-glow); }
+.block-nav-frame[hidden], .block-nav-hint[hidden] { display:none; }
+.block-nav-frame::before { content:attr(data-label); position:absolute; left:-2px; bottom:100%; margin-bottom:1px; padding:1px 6px;
+  font:600 10px/14px var(--sans,-apple-system,sans-serif); letter-spacing:.02em; color:var(--nav-block-ink); background:var(--nav-block);
+  border-radius:3px 3px 0 0; white-space:nowrap; max-width:calc(100% + 4px); overflow:hidden; text-overflow:ellipsis; }
+.block-nav-frame.label-inside::before { bottom:auto; top:0; margin:0; border-radius:0 0 3px 0; left:0; }
+/* At block level (Esc pressed inside it) the whole block is the selection. */
+.block-nav-frame.is-level { border-style:solid; border-width:3px; background:rgba(233,196,106,.09); }
+.block-nav-frame.is-edge { animation:block-nav-edge .22s ease-out; }
+@keyframes block-nav-edge { 0% { box-shadow:0 0 0 1px var(--nav-block-ring), 0 0 0 5px var(--nav-block-glow); } 100% { box-shadow:0 0 0 1px var(--nav-block-ring), inset 0 0 0 1px var(--nav-block-ring), 0 0 16px 2px var(--nav-block-glow); } }
+[data-nav-root]:focus, [data-nav-root]:focus-visible { outline:none; }
+.block-nav-hint { position:fixed; z-index:10001; left:50%; bottom:30px; transform:translateX(-50%); max-width:calc(100vw - 32px);
+  display:flex; align-items:center; gap:9px; padding:5px 11px; border:1px solid var(--nav-hint-line); border-radius:4px;
+  background:var(--nav-hint-bg); color:var(--nav-hint-text); font:11px/16px var(--sans,-apple-system,sans-serif);
+  box-shadow:0 4px 16px rgba(0,0,0,.45); pointer-events:none; white-space:nowrap; overflow:hidden; }
+.block-nav-hint strong { color:var(--nav-block); font-weight:600; flex:none; }
+.block-nav-hint span { overflow:hidden; text-overflow:ellipsis; color:var(--muted,#b0aa9d); }
+@media (prefers-reduced-motion: reduce) { .block-nav-frame.is-edge { animation:none; } }
+/* Every focusable control shows focus (the base sheet covers buttons, fields and [tabindex]). */
+summary:focus-visible, a[href]:focus-visible { outline:2px solid var(--teal,#ed7144); outline-offset:1px; }
+/* Keyboard navigation on: the focused control always shows (sliders, knobs, canvases and value fields included),
+   marked by block-nav.js so it also shows after a programmatic focus. The tracker draws its own cursor. */
+html.block-nav-on .block-nav-focus:not(.tracker) { outline:2px solid var(--nav-block); outline-offset:2px; }
+html.block-nav-on .parameter:has(.block-nav-focus) .parameter-label, html.block-nav-on .mod-parameter:has(.block-nav-focus) > label { color:var(--nav-block); }
+html.block-nav-on .block-nav-focus[type=range]::-webkit-slider-thumb { background:var(--nav-block); }
+/* Pattern grid: the table draws no ring; while the frame shows on it, its cursor cell is the focused control. */
+html.block-nav-on #tracker.block-nav-focus tbody td.selected { outline:2px solid var(--nav-block); outline-offset:-2px; }
+/* Track header buttons are tiny: a tighter ring that stays inside the sticky header. */
+html.block-nav-on #tracker thead .block-nav-focus { outline-offset:0; }

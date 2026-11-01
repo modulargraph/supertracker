@@ -1,0 +1,14 @@
+/* Track Freeze: compact text state on track headers and mixer strips. */
+.st-freeze-badge {
+  display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 3px;
+  font-size: 10px; line-height: 15px; font-weight: 600; letter-spacing: .02em; white-space: nowrap;
+  vertical-align: middle; color: #0b1a2a; background: #9ccaf2;
+}
+.st-freeze-badge[data-state="stale"] { background: #f2cf7c; }
+.st-freeze-badge[data-state="unavailable"] { background: #f29c9c; }
+.st-freeze-dialog .st-freeze-facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0; }
+.st-freeze-dialog .st-freeze-facts dt { opacity: .7; }
+.st-freeze-dialog .st-freeze-facts dd { margin: 0; }
+.st-freeze-copy { margin: 0; line-height: 1.45; max-width: 46ch; }
+.st-freeze-status { min-height: 1.4em; font-size: 12px; opacity: .85; outline: none; }
+.st-freeze-dialog .check { display: flex; align-items: center; gap: 8px; }

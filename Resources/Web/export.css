@@ -1,0 +1,20 @@
+/* Audio export is a compact, keyboard-first selection task. */
+.export-modal{width:650px;display:flex;flex-direction:column;overflow:hidden}
+.export-modal .modal-head,.export-modal .modal-foot{flex:0 0 auto}
+.export-modal .modal-body{min-height:0;overflow:auto;padding:15px 18px}
+.export-content{display:flex;flex-direction:column;gap:13px;font-size:12px;min-width:0}
+.export-description{margin:0;color:var(--muted,#b0aa9d);font-size:12px;line-height:1.55}
+.export-options{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:15px}
+.export-format{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:6px 15px;align-items:end}.export-format .export-description{grid-column:1/-1;font-size:11px;line-height:1.5;padding-bottom:0}
+.export-content .field>span{font-size:11px}.export-content input,.export-content select,.export-content button{font-size:12px;min-height:28px}
+.export-stems{border-top:1px solid var(--line,#49463b);padding-top:13px;min-width:0}.export-stems[hidden],.export-content [hidden]{display:none}
+.export-selection-tools{display:flex;gap:12px;align-items:center}.export-selection-tools>input{flex:1;min-width:0}.export-selection-tools>output{font:11px var(--mono,Menlo,monospace);color:var(--muted,#b0aa9d);white-space:nowrap}
+.export-selection-actions{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:7px 0;color:var(--muted,#b0aa9d);font-size:11px}.export-selection-actions>div{display:flex;gap:8px}.export-selection-actions button{font-size:11px;min-height:23px;padding:2px 4px;border:0;background:transparent;box-shadow:none}
+.export-targets{max-height:min(245px,28vh);overflow:auto;border-block:1px solid var(--line,#49463b);scroll-padding-block:5px;scrollbar-width:thin}
+.export-target{display:flex;align-items:center;gap:10px;min-height:35px;padding:6px 8px;border-bottom:1px solid var(--line,#39382f);color:var(--text,#e8e3d8);font-size:12px;cursor:pointer}.export-target:last-child{border-bottom:0}.export-target:focus-within{background:var(--raised,#302f27);outline:2px solid var(--teal,#ed7144);outline-offset:-2px}
+.export-target input[type=checkbox]{width:14px;height:14px;min-height:0;flex:0 0 auto;margin:0;accent-color:var(--teal,#ed7144)}.export-target-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.export-target-kind{font-size:11px;color:var(--muted,#b0aa9d);white-space:nowrap}.export-target.is-unavailable{cursor:default}.export-target.is-unavailable .export-target-name{color:var(--muted,#b0aa9d)}
+.export-boundary{font-size:11px;margin-top:10px}.export-empty{padding:15px 8px;font-size:12px;color:var(--muted,#b0aa9d);margin:0}
+.export-hardware-note{margin:0;font-size:11px;line-height:1.5;color:var(--muted,#b0aa9d)}
+.export-status{border-top:1px solid var(--line,#49463b);padding-top:11px}.export-status progress{width:100%;height:5px;accent-color:var(--teal,#ed7144);margin:0 0 7px}.export-status p{margin:0;font-size:12px;line-height:1.5;color:var(--text,#e8e3d8)}.export-status p.is-error{color:#f1b18d}
+.export-result input{font:11px var(--mono,Menlo,monospace);width:100%}.export-content :focus-visible{outline:2px solid var(--teal,#ed7144);outline-offset:2px}
+@media(max-height:750px){.export-content{gap:10px}.export-targets{max-height:170px}.export-modal .modal-body{padding-block:12px}.export-boundary{line-height:1.45}}

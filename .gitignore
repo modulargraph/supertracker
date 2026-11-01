@@ -1,0 +1,20 @@
+.build/
+build/
+.DS_Store
+*.supertracker
+*.media/
+test-output/
+.module-cache/
+# Prototype build output and run artefacts never belong in git (sources and READMEs only).
+prototypes/**/.build/
+prototypes/**/build/
+prototypes/**/*.log
+prototypes/**/report*.json
+prototypes/**/run*.json
+prototypes/**/probe
+prototypes/**/*-tests
+*.pcm
+*.swiftmodule
+__pycache__/
+.build-*/
+.build-mcp/

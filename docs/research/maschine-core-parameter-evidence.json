@@ -1,0 +1,198 @@
+{
+  "purpose": "Saved parameter interoperability; independent SuperTracker DSP, not NI sound equivalence",
+  "source": {
+    "application": "Maschine 3.7.1",
+    "architecture": "arm64",
+    "binarySHA256": "9013ba0958decfc02dd37e0f8777ef243c792c8d507798b582af2622706730d1",
+    "method": "read-only symbols, literal bytes and bounded disassembly; no application execution"
+  },
+  "EQ": {
+    "version": 0,
+    "fieldCount": 11,
+    "parameters": [
+      {
+        "archiveIndex": 0,
+        "memberOffset": "0xa8",
+        "targetID": "lowfreq",
+        "sourceDomain": [
+          0,
+          1
+        ],
+        "physicalFormula": "20 * pow(400, x)",
+        "unit": "Hz"
+      },
+      {
+        "archiveIndex": 1,
+        "memberOffset": "0xb0",
+        "targetID": "lowgain",
+        "sourceDomain": [
+          -1,
+          1
+        ],
+        "physicalFormula": "20 * x",
+        "unit": "dB"
+      },
+      {
+        "archiveIndex": 2,
+        "memberOffset": "0xb8",
+        "targetID": "lowmidfreq",
+        "sourceDomain": [
+          0,
+          1
+        ],
+        "physicalFormula": "40 * pow(400, x)",
+        "unit": "Hz"
+      },
+      {
+        "archiveIndex": 3,
+        "memberOffset": "0xc0",
+        "targetID": "lowmidgain",
+        "sourceDomain": [
+          -1,
+          1
+        ],
+        "physicalFormula": "20 * x",
+        "unit": "dB"
+      },
+      {
+        "archiveIndex": 4,
+        "memberOffset": "0xd0",
+        "targetID": "highmidfreq",
+        "sourceDomain": [
+          0,
+          1
+        ],
+        "physicalFormula": "40 * pow(400, x)",
+        "unit": "Hz"
+      },
+      {
+        "archiveIndex": 5,
+        "memberOffset": "0xd8",
+        "targetID": "highmidgain",
+        "sourceDomain": [
+          -1,
+          1
+        ],
+        "physicalFormula": "20 * x",
+        "unit": "dB"
+      },
+      {
+        "archiveIndex": 6,
+        "memberOffset": "0xe8",
+        "targetID": "highfreq",
+        "sourceDomain": [
+          0,
+          1
+        ],
+        "physicalFormula": "50 * pow(400, x)",
+        "unit": "Hz"
+      },
+      {
+        "archiveIndex": 7,
+        "memberOffset": "0xf0",
+        "targetID": "highgain",
+        "sourceDomain": [
+          -1,
+          1
+        ],
+        "physicalFormula": "20 * x",
+        "unit": "dB"
+      },
+      {
+        "archiveIndex": 8,
+        "memberOffset": "0xc8",
+        "targetID": "lowmidwidth",
+        "sourceDomain": [
+          0,
+          1
+        ],
+        "physicalFormula": "0.1 + 3.9 * x",
+        "unit": "octaves"
+      },
+      {
+        "archiveIndex": 9,
+        "memberOffset": "0xe0",
+        "targetID": "highmidwidth",
+        "sourceDomain": [
+          0,
+          1
+        ],
+        "physicalFormula": "0.1 + 3.9 * x",
+        "unit": "octaves"
+      },
+      {
+        "archiveIndex": 10,
+        "memberOffset": "0xf8",
+        "targetID": "gain",
+        "sourceDomain": [
+          -1,
+          1
+        ],
+        "physicalFormula": "20 * x",
+        "unit": "dB"
+      }
+    ],
+    "evidence": {
+      "deserialize": "0x101a09f2c..0x101a09fe4",
+      "serialize": "0x101a0a084..0x101a0a134",
+      "constructor": "0x101a0a134",
+      "RTDispatch": "0x101a0addc..0x101a0af50",
+      "RTDispatchTable": "0x104d28680",
+      "exponentialConstructor": "0x1024adb30",
+      "exponentialConvertTo": "0x1024adcdc",
+      "rangeInitializers": "0x101a0d0e0..0x101a0d6bc",
+      "lowMidWidth": "0x101a1c274",
+      "highMidWidth": "0x101a1c39c",
+      "widthFormat": "0x104d28754"
+    },
+    "notes": [
+      "Serialization follows RT field order, not constructor creation order.",
+      "Frequency converter is clamp(10^(log10(min)+x*(log10(max)-log10(min))),min,max).",
+      "Bandwidth unit literal is %.1f oc; target EQ accepts octave bandwidth.",
+      "UI slots are 0,1,2,3,4,5,6,7,10,13,15; do not treat them as archive indices."
+    ]
+  },
+  "Compressor": {
+    "report": "docs/research/maschine-compressor-parameter-mapping.md",
+    "versions": {
+      "0": [
+        "threshold",
+        "amount",
+        "knee",
+        "attack",
+        "release",
+        "gain"
+      ],
+      "1": [
+        "mode",
+        "threshold",
+        "amount",
+        "knee",
+        "attack",
+        "release",
+        "gain"
+      ]
+    },
+    "mode": {
+      "0": "Classic",
+      "1": "Feedback"
+    },
+    "numericDomain": [
+      0,
+      1
+    ],
+    "physicalFormula": {
+      "threshold": "-60*x dB",
+      "attack": "8*x^3 ms",
+      "release": "clamp(pow(float32_bits(0x3f8f9e4d),32+16*x),40,251) ms",
+      "gain": "-36+36*x dB"
+    },
+    "unmapped": [
+      "Amount-to-ratio and Knee-to-dB conversion not verified; retain target defaults and original data.",
+      "SideChainFilter is a separately serialized object, not part of the core raw array."
+    ],
+    "limits": [
+      "Source attack below 0.1 ms and gain below -24 dB are clamped to current target range with a warning."
+    ]
+  }
+}

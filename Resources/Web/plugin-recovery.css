@@ -1,0 +1,21 @@
+/* A small, explicit recovery choice using the workstation's shared modal. */
+.plugin-recovery-modal{width:570px;max-width:calc(100vw - 36px)}
+.plugin-recovery-modal .modal-body{padding:17px 20px 12px}
+.plugin-recovery-content p,.plugin-recovery-loading{font-size:12px;line-height:1.6;margin:0;color:var(--text,#e8e3d8)}
+.plugin-recovery-preserved{margin-top:7px!important;color:var(--muted,#b0aa9d)!important}
+.plugin-recovery-list{margin:17px 0 0;padding:0;border:0;border-top:1px solid var(--line,#49473c);max-height:min(300px,38vh);overflow:auto;min-width:0}
+.plugin-recovery-list legend{padding:0 0 9px;font-size:11px;color:var(--muted,#b0aa9d)}
+.plugin-recovery-row{padding:9px 1px;border-bottom:1px solid var(--line,#49473c)}
+.plugin-recovery-row>label{display:flex;align-items:center;gap:9px;cursor:pointer;min-height:25px}
+.plugin-recovery-row input{width:14px;height:14px;flex:none;margin:0;accent-color:var(--teal,#ed7144)}
+.plugin-recovery-name{font-size:12px;flex:1;min-width:0;overflow-wrap:anywhere}
+.plugin-recovery-format{font:11px var(--mono,Menlo,monospace);color:var(--muted,#b0aa9d);border:1px solid #746a56;border-radius:2px;padding:2px 5px;flex:none}
+.plugin-recovery-row details{margin:5px 0 0 23px}.plugin-recovery-row summary,.plugin-recovery-notes summary{font-size:11px;line-height:1.6;cursor:pointer;color:var(--muted,#b0aa9d)}
+.plugin-recovery-row details p,.plugin-recovery-notes p{margin-top:6px;font-size:11px;color:var(--muted,#b0aa9d);overflow-wrap:anywhere}
+.plugin-recovery-row .plugin-recovery-path{font:11px/1.6 var(--mono,Menlo,monospace)}
+.plugin-recovery-keys{margin-top:9px!important;font-size:11px!important;color:var(--muted,#b0aa9d)!important}
+.plugin-recovery-status{font-size:12px;line-height:1.6;color:var(--muted,#b0aa9d);margin-top:12px}
+.plugin-recovery-status:empty{display:none}.plugin-recovery-status.is-error{color:#f1b18d}
+.plugin-recovery-errors{margin-top:9px;padding-left:9px;border-left:2px solid #b27e53}.plugin-recovery-errors p{font-size:11px;overflow-wrap:anywhere;margin-top:6px}.plugin-recovery-errors strong{font-weight:600}
+.plugin-recovery-notes{margin-top:12px}.plugin-recovery-modal :focus-visible{outline:2px solid var(--teal,#ed7144);outline-offset:2px}
+.plugin-recovery-modal .modal-foot{gap:8px}.plugin-recovery-modal .modal-foot button{font-size:12px}
