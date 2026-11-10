@@ -145,6 +145,7 @@ final class PreviewVoiceMixer: @unchecked Sendable {
     /// Fades every sounding voice out and fades `pcm` (plus its optional tail stream) in.
     @discardableResult func start(_ pcm: PreviewPCM, stream: PreviewStream? = nil, volume: Float) -> UInt64 {
         var released: [(PreviewPCM?, PreviewStream?)] = []
+        released.reserveCapacity(Self.voiceCount + 1) // no allocation while holding the render lock
         os_unfair_lock_lock(lock)
         reclaimLocked(&released)
         fadeOutLocked()
@@ -172,6 +173,7 @@ final class PreviewVoiceMixer: @unchecked Sendable {
     /// Fades all voices out (or silences them at once when `fade` is false).
     func stop(fade: Bool = true) {
         var released: [(PreviewPCM?, PreviewStream?)] = []
+        released.reserveCapacity(Self.voiceCount + 1) // no allocation while holding the render lock
         os_unfair_lock_lock(lock)
         if fade { fadeOutLocked() }
         else { for index in 0..<Self.voiceCount where voices[index].active { voices[index].active = false } }
@@ -183,6 +185,7 @@ final class PreviewVoiceMixer: @unchecked Sendable {
     /// Releases voices the render thread finished (main thread).
     func reclaim() {
         var released: [(PreviewPCM?, PreviewStream?)] = []
+        released.reserveCapacity(Self.voiceCount + 1) // no allocation while holding the render lock
         os_unfair_lock_lock(lock); reclaimLocked(&released); os_unfair_lock_unlock(lock)
         released.removeAll()
     }
@@ -446,9 +449,7 @@ final class PreviewCache: @unchecked Sendable {
         }
     }
 
-    func removeAll() {
-        lock.lock(); entries.removeAll(); bytes = 0; failures.removeAll(); lock.unlock()
-    }
+
 
     /// Returns the cached head, joins a decode already running for it, or decodes it.
     func head(_ path: String, rate: Double, priority: TaskPriority, isStale: @escaping @Sendable () -> Bool = { false }) async throws -> (pcm: PreviewPCM, cached: Bool) {
@@ -487,7 +488,12 @@ final class PreviewCache: @unchecked Sendable {
             case .hit(let pcm): return (pcm, true)
             case .join(let running):
                 do { return (try await running.value, false) }
-                catch where Self.isCancellation(error) && !isStale() { continue }
+                catch where Self.isCancellation(error) && !isStale() {
+                    // The joined decode was cancelled with its owner (a superseded prefetch). Forget it here: the
+                    // owner may not have removed it yet, and joining it again would fail the same way.
+                    locked { if inflight[key] == running { inflight[key] = nil } }
+                    continue
+                }
             case .decode(let task):
                 do {
                     let pcm = try await task.value
@@ -563,11 +569,8 @@ enum PreviewPrefetchPlan {
         }
     }
 
-    /// Supersedes any pending preview start.
-    func invalidate() { generation &+= 1 }
-
     /// Decodes or fetches the preview head. Returns nil when superseded by a
-    /// newer preview, stop, or invalidate.
+    /// newer preview or a stop.
     func load(_ path: String) async throws -> (pcm: PreviewPCM, cached: Bool, started: UInt64)? {
         generation &+= 1
         let token = generation, began = mach_absolute_time()

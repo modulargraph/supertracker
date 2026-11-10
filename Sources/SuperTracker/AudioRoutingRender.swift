@@ -16,7 +16,7 @@ final class AudioRoutingRender {
         let clock: AudioPluginRack.RenderClockOffset?
         init(unit:AUAudioUnit,offset:Int,clock:AudioPluginRack.RenderClockOffset? = nil) {
             parameter = unit.scheduleParameterBlock; self.clock = clock
-            ranges = Dictionary(uniqueKeysWithValues:(unit.parameterTree?.allParameters ?? []).map { ($0.address,($0.minValue,$0.maxValue)) })
+            ranges = Dictionary((unit.parameterTree?.allParameters ?? []).map { ($0.address,($0.minValue,$0.maxValue)) },uniquingKeysWith:{ first,_ in first })
             self.offset = Int64(offset)
         }
     }

@@ -109,7 +109,15 @@ final class Bridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
 
     /// `delivered` runs once the page has handled the call, or at once when it cannot be sent.
     private func send(_ function: String, _ data: [String: Any], delivered: (@MainActor () -> Void)? = nil) {
-        guard let webView, JSONSerialization.isValidJSONObject(data), let encoded = try? JSONSerialization.data(withJSONObject: data, options: [.fragmentsAllowed]), let json = String(data: encoded, encoding: .utf8) else { delivered?(); return }
+        guard let webView else { delivered?(); return }
+        guard JSONSerialization.isValidJSONObject(data), let encoded = try? JSONSerialization.data(withJSONObject: data, options: [.fragmentsAllowed]), let json = String(data: encoded, encoding: .utf8) else {
+            // A result JSON cannot carry must still settle the page's request, as an error (which always encodes).
+            if function == "nativeReceive", data["ok"] as? Bool == true, let id = data["id"], JSONSerialization.isValidJSONObject(["id": id]) {
+                NSLog("Bridge delivery: a native reply could not be encoded as JSON")
+                send(function, ["id": id, "ok": false, "error": "The native reply could not be encoded for the interface."], delivered: delivered)
+            } else { delivered?() }
+            return
+        }
         webView.evaluateJavaScript("window.\(function) && window.\(function)(\(json));") { _, error in
             if let error { NSLog("Bridge delivery: %@", error.localizedDescription) }
             delivered?()
@@ -689,6 +697,15 @@ final class Bridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
         if url.isFileURL || url.scheme == "about" { decisionHandler(.allow) }
         else { decisionHandler(.cancel) }
+    }
+
+    /// WebKit's content process can end on its own (memory pressure, a crash). Without a reload the window stays
+    /// blank while audio keeps running. The reloaded page asks `ready` again and receives the session the store holds.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        NSLog("SuperTracker: the interface process ended; reloading it")
+        isReady = false
+        initialProject = store.project ?? initialProject
+        webView.reload()
     }
 
     func shutdown() { MaschineMK3Driver.shared.shutdownSynchronously(); autosaveTimer?.invalidate(); recoverySaveTask?.cancel(); mediaRelinking.cancel(); try? store.autosave(); audio.shutdown() }

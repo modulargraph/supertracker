@@ -71,6 +71,7 @@ final class BuiltinEffectsAudioUnit: STAURenderUnit {
     private static let render: STAURenderFunction = { context, flags, timestamp, frames, bus, output, events, pull in
         guard bus == 0 else { return kAudioUnitErr_InvalidElement }
         guard let context else { return kAudioUnitErr_Uninitialized }
+        guard timestamp.pointee.mSampleTime.isFinite, abs(timestamp.pointee.mSampleTime) < 1e15 else { return kAudio_ParamError }
         return Unmanaged<BuiltinEffectsRenderState>.fromOpaque(context)._withUnsafeGuaranteedRef {
             $0.render(flags: flags, timestamp: timestamp, frames: frames, output: output, events: events, pull: pull)
         }
@@ -664,6 +665,7 @@ private final class BuiltinEffectsChainUnit: STAURenderUnit {
     private static let render: STAURenderFunction = { context, flags, timestamp, frames, bus, output, _, pull in
         guard bus == 0 else { return kAudioUnitErr_InvalidElement }
         guard let context else { return kAudioUnitErr_Uninitialized }
+        guard timestamp.pointee.mSampleTime.isFinite, abs(timestamp.pointee.mSampleTime) < 1e15 else { return kAudio_ParamError }
         return Unmanaged<BuiltinChainRenderState>.fromOpaque(context)._withUnsafeGuaranteedRef {
             $0.render(flags: flags, timestamp: timestamp, frames: frames, output: output, pull: pull)
         }

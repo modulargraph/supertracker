@@ -102,6 +102,10 @@ extension AudioHost {
             }
             previewStates=states
         }
+        // A recording, another export or a live input may have started while this request waited above.
+        guard recording == nil, !exporting, lineInputs.isEmpty else {
+            throw AudioSampleError.invalid("Finish recording or the current export, and disable live line inputs, before exporting.")
+        }
         rack.notifyStateCaptureMutation()
         if project["routing"] == nil, payload["owners"] != nil {
             throw AudioSampleError.invalid("Selected channel stem export requires an enabled routing graph. Enable routing before selecting tracks, buses or master as export owners.")

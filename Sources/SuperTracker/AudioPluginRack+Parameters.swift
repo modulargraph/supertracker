@@ -250,6 +250,10 @@ extension AudioPluginRack {
             window.makeKeyAndOrderFront(nil)
             return ["shown": true, "name": item.component.name]
         }
+        // One editor per slot: a second request must not start while the first is still creating its view.
+        let opening = item.target
+        guard editorsOpening.insert(opening).inserted else { return ["shown": true, "name": item.component.name] }
+        defer { editorsOpening.remove(opening) }
         let controller: NSViewController? = await withCheckedContinuation { continuation in
             item.node.auAudioUnit.requestViewController { controller in continuation.resume(returning: controller) }
         }

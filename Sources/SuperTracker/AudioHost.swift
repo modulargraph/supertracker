@@ -364,6 +364,8 @@ final class AudioHost {
         cancelMIDICaptures(reason:"The audio host closed.")
         rack.beginRecoveryShutdown()
         timer?.invalidate(); stopPlayheads(); restoreTask?.cancel(); previewPlayer?.stop(fade: false); graph.stop(); panicExternal()
+        // The render thread no longer runs the clock: outputs with Start/Stop enabled get their Stop here.
+        midiClock.setTargets([])
         for task in directPluginLoads.values { task.cancel() }
         for task in sampleTasks.values { task.cancel() }
         for task in zoneTasks.values { task.cancel() }

@@ -146,9 +146,10 @@ final class AudioPluginRack {
             clockOffset = instance.clockOffset
             sequencedCable = unit is VST3AudioUnit ? VST3AudioUnit.sequencedCable : 0
             midi = unit.scheduleMIDIEventBlock; parameter = unit.scheduleParameterBlock
-            ranges = Dictionary(uniqueKeysWithValues: (unit.parameterTree?.allParameters ?? []).map {
+            // A third-party tree may list one address twice; the first entry wins instead of trapping.
+            ranges = Dictionary((unit.parameterTree?.allParameters ?? []).map {
                 ($0.address, ($0.minValue, $0.maxValue))
-            })
+            }, uniquingKeysWith: { first, _ in first })
         }
     }
 
@@ -310,6 +311,8 @@ final class AudioPluginRack {
     // capture still reads and serializes fresh AU state before comparison.
     let auStateReuse = AudioAUStateReuse()
     var editorWindows: [Target: NSWindow] = [:]
+    /// Targets whose editor view is being created (requestViewController may complete later).
+    var editorsOpening = Set<Target>()
     let endpointStore: AudioEndpointStore<RenderEndpoint>
     let routingRenderStore = AudioEndpointStore<AudioRoutingRender>(capacity:1)
     let flatStepRenderStore = AudioEndpointStore<AudioRoutingRender>(capacity:1)

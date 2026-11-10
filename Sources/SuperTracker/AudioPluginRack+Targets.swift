@@ -98,10 +98,15 @@ extension AudioPluginRack {
     func summary(_ item: Instance, includeParameters: Bool = true) -> [String: Any] {
         let unit = item.node.auAudioUnit
         synchronizeParameterValues(unit)
+        // Third-party units may report a non-finite latency or tail (an "infinite tail" is common). JSON cannot
+        // carry those: one such value made every snapshot, save and reply for the project fail.
+        let reportedLatency: Double = unit.latency, reportedTail: Double = unit.tailTime
+        let latency: Double = reportedLatency.isFinite ? max(0, reportedLatency) : 0
+        let tailTime: Double = reportedTail.isFinite ? max(0, reportedTail) : (reportedTail > 0 ? 60 : 0)
         var result: [String: Any] = ["track": item.target.track, "kind": item.target.kind, "slot": item.target.slot, "instanceID":item.instanceID,
             "component": item.component.id, "name": item.component.name,
             "manufacturer": item.component.manufacturer, "format": item.component.format, "bypass": unit.shouldBypassEffect,
-            "latency": unit.latency, "tailTime": unit.tailTime, "presets": presetInfo(unit)]
+            "latency": latency, "tailTime": tailTime, "presets": presetInfo(unit)]
         if let owner = item.ownerID { result["owner"] = owner; if item.target.track >= flatTrackCount { result.removeValue(forKey:"track") } }
         if let path = item.component.bundlePath { result["bundlePath"] = path }
         if let nks = item.nks { result["nks"] = nks }

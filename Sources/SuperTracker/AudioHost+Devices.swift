@@ -17,13 +17,13 @@ extension AudioHost {
             var property = AudioObjectPropertyAddress(mSelector:kAudioObjectPropertyName,mScope:kAudioObjectPropertyScopeGlobal,mElement:kAudioObjectPropertyElementMain)
             var value:Unmanaged<CFString>?; var bytes = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
             guard AudioObjectGetPropertyData(device,&property,0,nil,&bytes,&value) == noErr, let value else { return "Audio Device" }
-            return value.takeUnretainedValue() as String
+            return value.takeRetainedValue() as String // Core Audio hands the string over retained
         }
         func uid(_ device:AudioDeviceID)->String {
             var property = AudioObjectPropertyAddress(mSelector:kAudioDevicePropertyDeviceUID,mScope:kAudioObjectPropertyScopeGlobal,mElement:kAudioObjectPropertyElementMain)
             var value:Unmanaged<CFString>?; var bytes = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
             guard AudioObjectGetPropertyData(device,&property,0,nil,&bytes,&value) == noErr, let value else { return "" }
-            return value.takeUnretainedValue() as String
+            return value.takeRetainedValue() as String // Core Audio hands the string over retained
         }
         func channels(_ device:AudioDeviceID,_ scope:AudioObjectPropertyScope)->Int {
             var property = AudioObjectPropertyAddress(mSelector:kAudioDevicePropertyStreamConfiguration,mScope:scope,mElement:kAudioObjectPropertyElementMain)

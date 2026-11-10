@@ -43,7 +43,17 @@ extension AudioHost {
         let payload = AudioDevicePreferences.load(url).payload(present: devices)
         let output = (payload["outputDevice"] as? NSNumber)?.uint32Value, input = (payload["inputDevice"] as? NSNumber)?.uint32Value
         let current = currentIODevices()
-        guard (output != nil && output != current.output) || (input != nil && input != (current.input ?? selectedInputDevice)) else { return }
+        // A separate input and output run as one private aggregate on the shared HAL unit, which then reports
+        // the aggregate instead of either device: compare with the selection the aggregate was built from.
+        // (Comparing the IDs alone restarted audio on every device-list change for such a pair.)
+        func applied(_ saved: AudioDeviceID?, engine: AudioDeviceID?, selected: AudioDeviceID?) -> Bool {
+            guard let saved else { return true }
+            if saved == engine { return true }
+            guard saved == selected, let engine else { return false }
+            return AudioDeviceSelection.isAggregate(engine, containing: saved)
+        }
+        guard !applied(output, engine: current.output, selected: selectedOutputDevice)
+            || !applied(input, engine: current.input ?? selectedInputDevice, selected: selectedInputDevice) else { return }
         await restoreSavedAudioDevices()
     }
 

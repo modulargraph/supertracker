@@ -91,7 +91,9 @@ extension AudioPluginRack {
         // The Apple reverb offers room presets rather than a continuous decay control.
         // Match the custom return's decay range with increasing acoustic room sizes.
         let presets: [AVAudioUnitReverbPreset] = [.smallRoom, .mediumRoom, .largeRoom, .mediumHall, .largeHall, .cathedral]
-        let room = max(0, min(5, Int(reverbDecay * 5.999)))
+        // Clamp before converting: Int(Float) traps on a value outside Int's range (a damaged project file).
+        let decay: Float = reverbDecay.isFinite ? max(0, min(1, reverbDecay)) : 0
+        let room = max(0, min(5, Int(decay * 5.999)))
         if room != reverbRoom { reverbRoom = room; reverbReturn.loadFactoryPreset(presets[room]) }
     }
 

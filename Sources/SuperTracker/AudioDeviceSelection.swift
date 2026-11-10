@@ -37,7 +37,7 @@ final class AudioDeviceSelection {
         var property=AudioObjectPropertyAddress(mSelector:kAudioAggregateDevicePropertyFullSubDeviceList,mScope:kAudioObjectPropertyScopeGlobal,mElement:kAudioObjectPropertyElementMain)
         var value:Unmanaged<CFArray>?,size=UInt32(MemoryLayout<Unmanaged<CFArray>?>.size)
         guard AudioObjectGetPropertyData(device,&property,0,nil,&size,&value) == noErr,let value,
-              let members=value.takeUnretainedValue() as? [String] else { return false }
+              let members=value.takeRetainedValue() as? [String] else { return false } // returned retained
         return members.contains(uid(pair.input)) && members.contains(uid(pair.output))
     }
 
@@ -81,11 +81,20 @@ final class AudioDeviceSelection {
             + value(kAudioDevicePropertySafetyOffset,kAudioObjectPropertyScopeOutput)+value(kAudioDevicePropertyBufferFrameSize,kAudioObjectPropertyScopeGlobal)
         return min(0.25,Double(frames)/rate)
     }
+    /// Whether `aggregate` is an aggregate device with `device` among its sub-devices.
+    static func isAggregate(_ aggregate:AudioDeviceID,containing device:AudioDeviceID)->Bool {
+        var property=AudioObjectPropertyAddress(mSelector:kAudioAggregateDevicePropertyFullSubDeviceList,mScope:kAudioObjectPropertyScopeGlobal,mElement:kAudioObjectPropertyElementMain)
+        var value:Unmanaged<CFArray>?,size=UInt32(MemoryLayout<Unmanaged<CFArray>?>.size)
+        guard AudioObjectGetPropertyData(aggregate,&property,0,nil,&size,&value) == noErr,let value,
+              let members=value.takeRetainedValue() as? [String] else { return false }
+        let wanted=uid(device)
+        return !wanted.isEmpty && members.contains(wanted)
+    }
     static func uid(_ device:AudioDeviceID)->String {
         var property=AudioObjectPropertyAddress(mSelector:kAudioDevicePropertyDeviceUID,mScope:kAudioObjectPropertyScopeGlobal,mElement:kAudioObjectPropertyElementMain)
         var value:Unmanaged<CFString>?,size=UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
         guard AudioObjectGetPropertyData(device,&property,0,nil,&size,&value) == noErr,let value else { return "" }
-        return value.takeUnretainedValue() as String
+        return value.takeRetainedValue() as String // Core Audio hands the string over retained
     }
     static func channels(_ device:AudioDeviceID,input:Bool)->Int {
         var property=AudioObjectPropertyAddress(mSelector:kAudioDevicePropertyStreamConfiguration,mScope:input ? kAudioObjectPropertyScopeInput:kAudioObjectPropertyScopeOutput,mElement:kAudioObjectPropertyElementMain)

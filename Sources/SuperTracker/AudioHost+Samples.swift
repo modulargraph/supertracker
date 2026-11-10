@@ -7,12 +7,6 @@ import TrackerEngine
 
 /// Instrument samples, multisample zones and timeline clip assets in the native engine.
 extension AudioHost {
-    func loadSample(_ payload: [String:Any]) throws -> [String:Any] {
-        guard let path = payload["path"] as? String else { throw AudioSampleError.invalid("No sample path was provided.") }
-        let sample = try AudioSamples.decode(path)
-        try installSample(sample,instrument:PayloadValue.integer(payload,"instrument",0)); return sample.info()
-    }
-
     /// Decoded built-in samples (BuiltinSamples), kept for the session.
     func builtinSample(_ path:String) throws -> DecodedSample {
         if let cached = builtinSamples[path] { return cached }

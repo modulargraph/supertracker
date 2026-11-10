@@ -264,8 +264,7 @@ final class AudioRoutingGraph {
 
         /// Insert-chain node of each chained insert, by instance ID.
         var insertChains: [String: AudioInsertChain] { assembly.chains }
-        /// Output routes gated by their strip's own mix processor (diagnostics).
-        var foldedGateCount: Int { assembly.foldedGates.count }
+
         func resetAutomation() { for mix in processingMixes { mix.reset() } }
         /// Control thread after a graph epoch change. Delay reset currently calls
         /// the underlying AU reset and is deliberately not a render-thread API.
