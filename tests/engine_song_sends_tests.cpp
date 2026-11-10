@@ -90,6 +90,23 @@ static void testSyncedDelayAndTone(){
     std::puts("PASS delay syncs to tempo divisions, follows BPM, and tone darkens echoes (open tone unchanged)");
 }
 
+// A synced delay whose length is one ULP above a whole frame count (0.75 beats at 140 BPM and 44.1 kHz is
+// 14175.000000000002 frames): once per pass of the delay line the read position rounds up to exactly the
+// line's size. That is its first sample; reading one past the end lost (or corrupted) that echo frame.
+static void testSyncedDelayReadWrapsAtLineEnd(){
+    STEngine*e=st_engine_create(44100);assert(e);st_engine_begin_update(e);st_engine_set_track_count(e,1);st_engine_set_timing(e,140,4,0,1);
+    auto i=st_default_instrument();i.type=ST_INSTRUMENT_SAMPLE;i.attack=0;i.decay=0;i.sustain=1;i.release=0.001f;i.volume=1;st_engine_set_instrument(e,0,i);
+    std::vector<float> click(16,0);click[0]=.8f;st_engine_set_sample(e,0,click.data(),nullptr,click.size(),44100);
+    auto t=st_default_track();t.volume=1;t.delaySend=1;t.reverbSend=0;st_engine_set_track(e,0,t);
+    st_engine_set_effects(e,.1f,0,1,.7f,.4f,0);st_engine_set_send_effects(e,.75,1,0);st_engine_commit_update(e);
+    st_engine_note_on(e,0,0,60,127);Audio a(15000);render(e,a);st_engine_destroy(e);
+    // The click's first dry frame returns exactly one delay length later, followed by its second.
+    assert(std::abs(a.l[0])>.1f&&std::abs(a.l[1])>.1f);
+    assert(std::abs(a.l[14175]-a.l[0])<1e-6f&&std::abs(a.r[14175]-a.r[0])<1e-6f);
+    assert(std::abs(a.l[14176]-a.l[1])<1e-6f&&std::abs(a.r[14176]-a.r[1])<1e-6f);
+    std::puts("PASS synced delay read wraps inside the delay line when its position rounds up to the line size");
+}
+
 static void testReverbPredelay(){
     auto run=[](float predelay){Engine e;st_engine_begin_update(e);st_engine_set_track_count(e,1);st_engine_set_timing(e,120,4,0,1);
         auto i=st_default_instrument();i.type=ST_INSTRUMENT_SAMPLE;i.attack=0;i.decay=0;i.sustain=1;i.release=.001f;i.volume=1;st_engine_set_instrument(e,0,i);
@@ -102,4 +119,4 @@ static void testReverbPredelay(){
     std::puts("PASS reverb pre-delay shifts the wet onset by the chosen time");
 }
 
-int main(){testRenderedOrderMatchesSequence();testSectionLoop();testSectionLoopNeedsLoopSongAndJumpsInFromOutside();testSectionLoopWithTempoMap();testSyncedDelayAndTone();testReverbPredelay();std::puts("engine song/send tests passed");}
+int main(){testRenderedOrderMatchesSequence();testSectionLoop();testSectionLoopNeedsLoopSongAndJumpsInFromOutside();testSectionLoopWithTempoMap();testSyncedDelayAndTone();testSyncedDelayReadWrapsAtLineEnd();testReverbPredelay();std::puts("engine song/send tests passed");}

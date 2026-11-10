@@ -269,7 +269,7 @@ Effect *instantiate(const char *path, int32_t shellID, STVST2Instance *instance,
     constructing = instance; constructingShellID = shellID;
     Effect *effect = nullptr;
     @try { effect = entry(host_callback); }
-    @catch (NSException *exception) { message = std::string("The VST2 plug-in raised an exception: ") + exception.reason.UTF8String; effect = nullptr; }
+    @catch (NSException *exception) { message = std::string("The VST2 plug-in raised an exception: ") + (exception.reason.UTF8String ?: ""); effect = nullptr; }
     constructing = previous; constructingShellID = previousShell;
     if (!effect) { if (message.empty()) message = "The VST2 plug-in could not be instantiated."; return nullptr; }
     if (effect->magic != kMagic) { message = "The plug-in returned an invalid VST2 effect."; return nullptr; }
@@ -621,6 +621,7 @@ int st_vst2_process(STVST2Instance *instance, const float *input_left, const flo
         uint32_t count=0;
         for (uint32_t i=0;i<midi_count;++i) {
             if ((uint32_t)midi[i].sample_offset<cursor || (uint32_t)midi[i].sample_offset>=end) continue;
+            if (count>=instance->midiEvents.size()) break; // Panic note-offs of re-held notes can fill the buffer before the input ends.
             MidiEvent &event=instance->midiEvents[count];std::memset(&event,0,sizeof event);
             event.type=kMidiType;event.byteSize=sizeof(MidiEvent);
             event.deltaFrames=midi[i].sample_offset-(int32_t)cursor;event.flags=kMidiEventIsRealtime;

@@ -42,4 +42,26 @@ static void regionAutomationBounds(){
         assert(std::all_of(audio.l.begin(),audio.l.end(),[](float x){return x==0;}));assert(audio.l==audio.r);
     }
 }
-int main(){zeroDepthContinuity();std::puts("PASS zero-depth phase and random continuity: both LFOs, all five shapes");regionAutomationBounds();std::puts("PASS automated region boundaries isolate excluded PCM in all applicable modes");assert(allocations==0);std::puts("PASS zero render allocations");}
+// A sustained looping note survives automation that moves its region: the loop follows the moved start/end, as at
+// note start. Left at its original points outside the region, the next wrap ended the voice (silence).
+static void regionAutomationKeepsLoopingVoices(){
+    for(int mode:{ST_MODE_FORWARD,ST_MODE_REVERSE,ST_MODE_PINGPONG})for(int target:{ST_TARGET_START,ST_TARGET_END}){
+        Engine e;auto p=instrument();p.type=ST_INSTRUMENT_SAMPLE;p.mode=mode;std::vector<float>pcm(4800,.5f);
+        st_engine_begin_update(e);st_engine_set_track_count(e,1);st_engine_set_timing(e,120,4,0,1);st_engine_set_host_mixing(e,1,1);st_engine_set_instrument(e,0,p);assert(st_engine_set_sample(e,0,pcm.data(),nullptr,pcm.size(),48000));
+        // Stepped: the whole sample on row 0, a quarter trimmed from row 1 (frame 6000) on.
+        st_engine_add_automation_point(e,0,0,target,0,0,1,0,target==ST_TARGET_START?0:1);st_engine_add_automation_point(e,0,0,target,0,0,1,1,target==ST_TARGET_START?.25:.75);
+        st_engine_commit_update(e);st_engine_play(e,0);st_engine_note_on(e,0,0,60,127);auto audio=render(e,48000);
+        assert(std::all_of(audio.l.begin()+24000,audio.l.end(),[](float x){return std::abs(x)>.01f;}));
+    }
+}
+// A start automated past the (un-automated) end leaves a one-frame region at the start, never a negative one:
+// Wavetable mode converted that negative size to an unsigned frame count and read PCM outside the selection.
+static void regionAutomationStartPastEnd(){
+    Engine e;auto p=instrument();p.type=ST_INSTRUMENT_SAMPLE;p.mode=ST_MODE_WAVETABLE;p.start=.25f;p.end=.5f;p.wavetableFrameSize=64;p.wavetablePosition=.5f;
+    std::vector<float>pcm(4096,0);std::fill(pcm.begin(),pcm.begin()+1024,.8f);std::fill(pcm.end()-512,pcm.end(),.8f);
+    st_engine_begin_update(e);st_engine_set_track_count(e,1);st_engine_set_timing(e,120,4,0,1);st_engine_set_host_mixing(e,1,1);st_engine_set_instrument(e,0,p);assert(st_engine_set_sample(e,0,pcm.data(),nullptr,pcm.size(),48000));
+    st_engine_add_automation_point(e,0,0,ST_TARGET_START,0,0,1,0,.25);st_engine_add_automation_point(e,0,0,ST_TARGET_START,0,0,1,1,.7);
+    st_engine_commit_update(e);st_engine_play(e,0);st_engine_note_on(e,0,0,60,127);auto audio=render(e,12000);
+    assert(std::all_of(audio.l.begin(),audio.l.end(),[](float x){return x==0;}));assert(audio.l==audio.r);
+}
+int main(){zeroDepthContinuity();std::puts("PASS zero-depth phase and random continuity: both LFOs, all five shapes");regionAutomationBounds();std::puts("PASS automated region boundaries isolate excluded PCM in all applicable modes");regionAutomationKeepsLoopingVoices();regionAutomationStartPastEnd();std::puts("PASS region automation keeps looping voices sounding and a start past the end stays inside the selection");assert(allocations==0);std::puts("PASS zero render allocations");}

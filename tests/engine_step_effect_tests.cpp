@@ -87,4 +87,27 @@ static void gatelessLifetime(){
      assert(std::abs(l[24000+600])>std::abs(l[31000])*4);  // released by the next (near-silent) note: fading, not cut
      assert(std::abs(l[31000])<std::abs(l[20000])*.05f);for(float x:l)assert(std::isfinite(x));}
 }
-int main(){ratchetStopRules();gatelessLifetime();stickyRatchet(1);stickyRatchet(257);stickyRatchet(8192);stickyRatchet(257,true);sampleCommands();ratchetOff();acrossPatternsAndRefresh();probabilityDropKeepsRatchet();emptyEffectCellKeepsRatchet();ratchetKeepsPlaybackEffects();puts("step effect playback regressions passed");}
+// The roll's draw (u+1)/2 is a float that can round up to exactly 1.0 (191 of the generator's 2^32 outputs). A note
+// without a Probability effect (probability 1) must still play then. These chord sizes steer the engine's
+// deterministic generator (seed, one step per rolled row, one increment per started voice) so that row 9 draws 1.0.
+static void fullProbabilityNeverDrops(){
+    Fixture f(ST_INSTRUMENT_MIDI);const int chords[]={2,1,1,5,8,8,7,1,5};const int32_t offsets[8]={0,1,2,3,4,5,6,7};
+    for(int row=0;row<9;++row){auto s=st_default_step();s.note=40;s.gate=.5f;st_engine_set_step(f.e,0,0,row,s,offsets,chords[row]);}
+    f.step(9,100,0,0,0,0,.5f);f.play();
+    int started=0;for(auto&n:f.notes(60000,256))if(n.second==100){assert(n.first==54000);++started;}
+    assert(started==1);
+}
+// A live tempo change (no tempo map, Pattern mode) keeps the current row's pending ratchet repeats and its gates at
+// their musical positions: they are frame counts scheduled at the old tempo, like the row's own remaining length.
+static void tempoChangeRescalesPendingHits(){
+    {Fixture f(ST_INSTRUMENT_MIDI);f.step(0,60,ST_FX_RATCHET,4,0,0,.5f);f.step(1,-1);f.play();
+        assert(f.onsets(1000,256)==(std::vector<int>{0}));
+        st_engine_begin_update(f.e);st_engine_set_timing(f.e,240,4,0,.7f);st_engine_commit_update(f.e);
+        // 5000 frames of the row were left; they become 2500, and the repeats at 1500/3000/4500 follow.
+        assert(f.onsets(6000,256)==(std::vector<int>{250,1000,1750}));}
+    {Fixture f(ST_INSTRUMENT_MIDI);f.step(0,60,0,0,0,0,1);f.play();std::vector<float>l(8000),r(8000);st_engine_render(f.e,l.data(),r.data(),1000);
+        st_engine_begin_update(f.e);st_engine_set_timing(f.e,240,4,0,.7f);st_engine_commit_update(f.e);st_engine_render(f.e,l.data(),r.data(),8000);
+        // The one-row gate ends with its row, now 2500 frames after the change.
+        int off=-1;STEvent event;while(st_engine_pop_event(f.e,&event))if(event.type==ST_EVENT_NOTE_OFF)off=event.frameOffset;assert(off==2500);}
+}
+int main(){ratchetStopRules();gatelessLifetime();stickyRatchet(1);stickyRatchet(257);stickyRatchet(8192);stickyRatchet(257,true);sampleCommands();ratchetOff();acrossPatternsAndRefresh();probabilityDropKeepsRatchet();fullProbabilityNeverDrops();tempoChangeRescalesPendingHits();emptyEffectCellKeepsRatchet();ratchetKeepsPlaybackEffects();puts("step effect playback regressions passed");}

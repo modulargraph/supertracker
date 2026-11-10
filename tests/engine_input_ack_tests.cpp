@@ -86,6 +86,14 @@ int main(){
             st_engine_play(e,0);render(e,4000);if(early){assert(edge(e,1));}float before=peak(e,1990);(void)before;float row1=peak(e,3000);
             assert(early?row1==0:row1>.01f);}
         puts("PASS the placed row skips its own trigger of the early note once");}
+    {// Seek, restore and Panic end the live voice the early note stood for, so the placed row triggers normally.
+        for(int transport=0;transport<3;++transport){Engine e;fixture(e,false);st_engine_begin_update(e);auto step=st_default_step();step.note=60;step.instrument=0;st_engine_set_step(e,0,0,1,step,nullptr,0);st_engine_commit_update(e);
+            st_engine_play(e,0);render(e,4000);assert(edge(e,1,ST_INPUT_NOTE_ON,true));render(e,1);assert(ack(e).early);
+            if(transport==0)st_engine_seek(e,0,1,0);                                   // row 1 starts at once
+            else if(transport==1){auto saved=st_engine_capture_transport(e);st_engine_restore_transport(e,saved,1);render(e,1999);} // resumes mid-row 0
+            else{st_engine_panic(e);render(e,1999);}                                     // playback continues into row 1
+            assert(peak(e,3000)>.01f);}
+        puts("PASS Seek, restore and Panic forget a pending early note: its row triggers");}
     {Engine e;assert(!edge(e,0));assert(!st_engine_input_note(e,1,3,0,0,60,100,1));assert(!st_engine_input_note(e,1,1,st_channel_count(ST_MIN_RETURN_BUS),0,60,100,1));assert(!st_engine_input_note(e,1,1,0,st_instrument_capacity(64),60,100,1));assert(!st_engine_input_note(e,1,1,0,0,128,100,1));assert(!st_engine_input_note(e,1,1,0,0,60,0,1));assert(!st_engine_input_note(e,1,1,0,0,60,100,2));
         assert(edge(e,1));assert(!edge(e,1));render(e,1);assert(ack(e).requestID==1);
         for(uint64_t id=2;id<=4096;++id){assert(edge(e,id));if(id%1000==0)render(e,1);}render(e,1);assert(!edge(e,4097));assert(ack(e).requestID==2);assert(edge(e,4097));render(e,1);
@@ -97,5 +105,5 @@ int main(){
         uint64_t expected=1;while(!done.load(std::memory_order_acquire)||expected<=20000){render(e,1);STInputAck a{};while(st_engine_pop_input_ack(e,&a)){assert(a.requestID==expected++&&a.status==ST_INPUT_ACK_APPLIED);}}
         producer.join();assert(expected==20001);empty(e);
         puts("PASS concurrent single-producer/audio-consumer 20000-edge delivery without lost ACKs");}
-    assert(rtAllocations==0);puts("Input ACKs: 9 groups passed; zero measured render-thread C++ allocations.");
+    assert(rtAllocations==0);puts("Input ACKs: 10 groups passed; zero measured render-thread C++ allocations.");
 }
