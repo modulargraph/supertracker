@@ -480,7 +480,11 @@ fn latency_changes_follow_the_vst3_restart_protocol() {
     );
     // A state with another latency, loaded while active: the same protocol.
     let with_256 = instance.state().unwrap();
+    env.clear_events();
     instance.set_parameter(latency, 0.5).unwrap();
+    // The request arrives from the container's main thread in its own time: restart only after it,
+    // or it would arrive after the restart and stand for the next change.
+    env.wait_event("restart request for 512", LONG, |e| *e == HostEvent::RestartRequested { instance: id });
     run(&instance, &input, 2, 64, &[]);
     instance.deactivate().unwrap();
     instance.activate().unwrap();

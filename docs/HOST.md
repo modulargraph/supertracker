@@ -182,13 +182,13 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the hand
 | `st-host` | 16 | 16 | 0 | 0 |
 | `st-app` | 2 | 2 | 0 | 0 |
 | `st-project` | 10 | 10 | 0 | 0 |
-| `st-audio` | 54 | 46 | 3 | 5 |
+| `st-audio` | 53 | 46 | 3 | 4 |
 | `st-plugin-*` | 4 | 4 | 0 | 0 |
 | `st-library` | 21 | 20 | 1 | 0 |
 | `st-midi` | 4 | 4 | 0 | 0 |
 | `st-mk3` | 6 | 6 | 0 | 0 |
 | `st-agent` | 3 | 3 | 0 | 0 |
-| **all** | **120** | **111** | **4** | **5** |
+| **all** | **119** | **111** | **4** | **4** |
 
 ### `st-host`
 
@@ -246,7 +246,6 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the hand
 | `audio.inputs.configure` | `{inputs?: [...], input?, track?}` | line input configuration and status | not yet | Live line inputs routed into tracks. |
 | `audio.kitPreview` | `{groupID, path}` | {path, warning?} | not yet | Not sent by the page: kit.save calls it to render a kit's audio preview. |
 | `audio.record` | `{source?: "master" or "input" (default), path?, name?, instrument?, owner?, monitor?, monitorVolume?}` | {recording: true, path, channels}; also an audio.recording event | implemented | Starts a take into a new 24-bit WAV (path, or Recordings in the support folder): the master output (what the device gets), or the chosen channels of the input device with the input's and output's latency left out of the start. st_audio::recording: the audio thread copies into a ring, a writer thread writes the file. |
-| `audio.renderDiagnostics` | `{}` | {units, inputCapture, renderClock, heartbeat, sampleRates, …} | not yet | Not sent by the page: diagnostics for tests and the agent. |
 | `audio.stopRecord` | `{}` | {recording: false, path, duration, frames, channels, sampleRate, partial, source, sourceStartFrame, sourceEndFrame, latencyCompensation, instrument?, owner?} (also an audio.recording event); {recording: false} when no take runs | implemented | Ends the take on its source's clock: the file holds exactly the frames between Record and Stop. |
 | `builtin.drumModels` | `{}` | [{id, model, name, parameters: [{index, id, name, unit, min, max, defaultValue, defaultPhysical, logarithmic, stepCount}]}] | implemented | Not sent by the page today. Metadata of the built-in drum models (tracker-engine). |
 | `builtin.effects` | `{}` | [{id: "stfx:<effect>", name, category, sidechain, parameters: [{address, id, name, unit, min, max, defaultValue, logarithmic, integer, toggle, labels}]}] | implemented | Metadata of the built-in effects (tracker-engine); a parameter's index is its address. |

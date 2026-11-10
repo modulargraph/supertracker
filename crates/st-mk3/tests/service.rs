@@ -162,8 +162,9 @@ fn input_reports_become_events_and_an_unplug_releases_what_was_held() {
     assert!(input.contains(&json!({"type": "button", "name": "shift", "pressed": true})));
     assert!(input.contains(&json!({"type": "pedal", "down": true})));
     assert_eq!(input.last().unwrap(), &json!({"type": "pad", "pad": 1, "phase": "down", "pressure": 0.625, "velocity": 96}));
+    // A status from before the first report may still be on its way; what counts is one announcement.
     let seen = f.take("mk3.status");
-    assert!(seen.len() == 1 && seen[0]["inputSeen"] == true, "input being seen is announced once: {seen:?}");
+    assert_eq!(seen.iter().filter(|status| status["inputSeen"] == true).count(), 1, "input being seen is announced once: {seen:?}");
 
     // Unplugged with everything held: the releases are made up and marked as cancelled.
     f.hid.unplug();

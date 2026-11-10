@@ -11,8 +11,10 @@ export SUPERTRACKER_AUDIO_DEVICE="${SUPERTRACKER_AUDIO_DEVICE:-null}"
 TARGET="${CARGO_TARGET_DIR:-$PWD/target}"
 WHAT="${1:-all}"
 rust() {
-  cargo test --workspace
-  CARGO_TARGET_DIR="$TARGET" cargo test --manifest-path crates/plugin-host/Cargo.toml
+  local status=0
+  cargo test --workspace --no-fail-fast || status=1
+  CARGO_TARGET_DIR="$TARGET" cargo test --manifest-path crates/plugin-host/Cargo.toml --no-fail-fast || status=1
+  return $status
 }
 ui() {
   for script in ui/*.js; do node --check "$script"; done
@@ -28,13 +30,21 @@ ui() {
   echo "Interface tests passed ($(ls tests/*_tests.js | wc -l | tr -d ' ') files)."
 }
 e2e() {
-  cargo build -p st-app
+  cargo build -p st-app || return 1
+  # The host looks for the plug-in container next to its own executable.
+  CARGO_TARGET_DIR="$TARGET" cargo build --manifest-path crates/plugin-host/Cargo.toml -p stpc-container || return 1
   SUPERTRACKER_BIN="$TARGET/debug/supertracker" node tests/host_e2e/run.js
 }
 case "$WHAT" in
   rust) rust ;;
   ui) ui ;;
   e2e) e2e ;;
-  all) rust; ui; e2e ;;
+  all)
+    # Every part runs; the script fails if any of them did.
+    status=0
+    rust || { status=1; echo "Rust tests failed." >&2; }
+    ui || status=1
+    e2e || { status=1; echo "Browser test failed." >&2; }
+    exit $status ;;
   *) echo "Usage: scripts/test.sh [rust|ui|e2e]" >&2; exit 64 ;;
 esac

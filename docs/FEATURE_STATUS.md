@@ -29,7 +29,7 @@ feature is twice: does the interface do it, and does the new host carry it.
 
 ## What the host does not do yet
 
-[HOST.md](HOST.md) has the full command table (111 of 120 commands implemented, 4 more in part). Missing:
+[HOST.md](HOST.md) has the full command table (111 of 119 commands implemented, 4 more in part). Missing:
 
 | Feature | State |
 |---|---|

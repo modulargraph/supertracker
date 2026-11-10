@@ -242,7 +242,7 @@ async function main() {
 
     // ---- An unimplemented command fails with its name, and the page carries on ---------------
     // (Whichever of these the host does not implement yet.)
-    const unimplemented = ['audio.renderDiagnostics', 'plugin.captureBasePatch', 'audio.inputs'].find(command => !boot.commands.includes(command));
+    const unimplemented = ['plugin.captureBasePatch', 'audio.inputs'].find(command => !boot.commands.includes(command));
     if (unimplemented) {
       const refused = await request(page, unimplemented, { track: 0, kind: 'instrument' });
       assert.match(refused.error, new RegExp('^`' + unimplemented.replace('.', '\\.') + '` is not implemented yet \\(it belongs to st-[a-z*-]+\\)\\.$'));
