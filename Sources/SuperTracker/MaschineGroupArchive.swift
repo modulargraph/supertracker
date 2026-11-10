@@ -173,7 +173,10 @@ struct MaschineGroupArchive {
         // There is one further MixingLayer, owned by the Group, after Sound 16.
         // Its member shape, rather than its display name, determines the boundary.
         let last = decodedSounds[15]
-        let groupRange = (last.nameOffset + last.name.utf8.count + 32)..<stop
+        // A crafted archive can end inside Sound 16's name record; an inverted range would trap.
+        let groupStart = last.nameOffset + last.name.utf8.count + 32
+        guard groupStart <= stop else { throw Invalid(message: "the Group/Sound effect boundary is not unambiguous.") }
+        let groupRange = groupStart..<stop
         var groupNames = view.names(objectID: nil, within: groupRange, modern: av >= 13)
             .filter { $0.objectID > last.nameObjectID }
         if groupNames.isEmpty {

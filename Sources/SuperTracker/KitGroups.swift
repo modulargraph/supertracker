@@ -35,7 +35,10 @@ enum KitGroups {
     }
     private static func int(_ value: Any?, _ fallback: Int) -> Int {
         guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(), number.doubleValue.isFinite else { return fallback }
-        return Int(clamping: Int64(number.doubleValue.rounded(.towardZero)))
+        // Int64(Double) traps outside the Int64 range, and a file can hold any finite number.
+        let whole = number.doubleValue.rounded(.towardZero)
+        guard abs(whole) < 9.0e18 else { return fallback }
+        return Int(whole)
     }
     private static func number(_ value: Any?) -> Double? {
         guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(), number.doubleValue.isFinite else { return nil }
@@ -184,11 +187,18 @@ enum KitGroups {
         }
         for (index, _) in newTracks.enumerated() { newTracks[index]["id"] = index }
         guard !newTracks.isEmpty else { return Migration(project: input, notes: ["The kit project has no tracks to convert."]) }
+        // A kit lane was a routing owner of its own. Its output, sends and lane automation go with it; left
+        // behind they name a track that no longer exists, and the host refuses the whole project.
+        let removedLaneOwners = Set(tracks.enumerated().compactMap { index, track -> String? in
+            guard trackMap[index] == nil, let id = track["routingID"] as? String else { return nil }
+            return "track:" + id
+        })
 
         // Patterns: ordinary columns move with their tracks; hits move to their member.
         var merged = 0
         for (patternIndex, var pattern) in patterns.enumerated() {
-            let length = max(1, int(pattern["length"], 64))
+            // Bounded so a damaged length cannot size the rebuilt step tables; validation rejects it afterwards.
+            let length = max(1, min(65_536, int(pattern["length"], 64)))
             let old = pattern["steps"] as? [Any] ?? []
             var steps: [[Any]] = Array(repeating: Array(repeating: NSNull(), count: length), count: newTracks.count)
             for (oldIndex, newIndex) in trackMap where oldIndex < old.count { steps[newIndex] = old[oldIndex] as? [Any] ?? steps[newIndex] }
@@ -226,6 +236,7 @@ enum KitGroups {
             // Automation: Sound owners become member owners; index lanes follow their track.
             var lanes: [[String: Any]] = []
             for var lane in pattern["automation"] as? [[String: Any]] ?? [] {
+                if let owner = lane["owner"] as? String, removedLaneOwners.contains(owner) { continue }
                 if let owner = lane["owner"] as? String, owner.hasPrefix("sound:") {
                     guard let routingID = memberOwners[owner], let index = memberIndex[owner] else { continue }
                     lane["owner"] = "track:" + routingID; lane["track"] = index
@@ -264,16 +275,19 @@ enum KitGroups {
         }
         // Routing: Sound outputs and sends become member routes.
         var mappedOutputs: [String: Any] = [:]
-        for (source, destination) in outputs {
+        for (source, destination) in outputs where !removedLaneOwners.contains(source) {
             let key = source.hasPrefix("sound:") ? memberOwners[source].map { "track:" + $0 } : source
             guard let key else { continue }
             if let target = destination as? String, target.hasPrefix("sound:") {
                 mappedOutputs[key] = memberOwners[target].map { "track:" + $0 } ?? "master"
+            } else if let target = destination as? String, removedLaneOwners.contains(target) {
+                mappedOutputs[key] = "master"
             } else { mappedOutputs[key] = destination }
         }
         sends = sends.compactMap { send -> [String: Any]? in
             var item = send
             for key in ["source", "destination"] {
+                if let owner = item[key] as? String, removedLaneOwners.contains(owner) { return nil }
                 if let owner = item[key] as? String, owner.hasPrefix("sound:") {
                     guard let routingID = memberOwners[owner] else { return nil }
                     item[key] = "track:" + routingID
@@ -348,7 +362,7 @@ enum KitGroups {
             "volume": number(channel["volume"]) ?? 0.8, "pan": number(channel["pan"]) ?? 0,
             "mute": channel["mute"] as? Bool ?? false, "solo": channel["solo"] as? Bool ?? false,
             "delaySend": number(channel["delaySend"]) ?? 0, "reverbSend": number(channel["reverbSend"]) ?? 0, "plugins": []]
-        if choke > 0 { track["chokeGroup"] = Int(choke) }
+        if choke > 0 { track["chokeGroup"] = Int(min(choke, 16)) }
         if let voiceMode, ["mono", "legato"].contains(voiceMode) { track["voiceMode"] = voiceMode }
         if let color = sound["color"] as? String { track["color"] = color }
         return Member(track: track, instrument: instrument, owner: owner, soundID: soundID)

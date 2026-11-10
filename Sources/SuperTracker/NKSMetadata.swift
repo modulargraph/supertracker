@@ -134,8 +134,6 @@ struct NKSMetadata {
         dictionary = result
     }
 
-    static func read(url: URL) throws -> NKSMetadata { try NKSMetadata(url: url) }
-
     private static func read(_ handle: FileHandle, at offset: UInt64, count: Int) throws -> [UInt8] {
         guard count >= 0, count <= metadataLimit else { throw ReadError.invalid("NKS read exceeds the metadata limit.") }
         try handle.seek(toOffset: offset)

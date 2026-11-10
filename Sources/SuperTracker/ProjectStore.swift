@@ -295,7 +295,18 @@ final class ProjectStore {
                     target = media.appendingPathComponent(source.lastPathComponent)
                 } else {
                     target = media.appendingPathComponent("\(digest.prefix(16))-\(source.lastPathComponent)")
-                    if !FileManager.default.fileExists(atPath: target.path) { try FileManager.default.copyItem(at: source, to: target) }
+                    if !FileManager.default.fileExists(atPath: target.path) {
+                        // Copy under a private name, then rename: an interrupted copy must not leave a truncated file
+                        // under the final name, which every later save would reject as different content.
+                        let partial = media.appendingPathComponent(".collecting-\(UUID().uuidString)")
+                        do {
+                            try FileManager.default.copyItem(at: source, to: partial)
+                            try FileManager.default.moveItem(at: partial, to: target)
+                        } catch {
+                            try? FileManager.default.removeItem(at: partial)
+                            throw error
+                        }
+                    }
                     guard try Self.contentHash(target) == digest else {
                         throw TrackerError.message("Collected media has different content: \(target.lastPathComponent). The existing file was not overwritten.")
                     }

@@ -239,7 +239,7 @@ struct AudioRoutingAutomation {
                 }
                 owner = id
             } else {
-                let track = try integer(plugin["track"], label: "Plug-in track", range: 0...15, fallback: 0)
+                let track = try integer(plugin["track"], label: "Plug-in track", range: 0...(ProjectLayout.trackSanityLimit - 1), fallback: 0)
                 guard let found = definition.owners.first(where: { $0.trackIndex == track }) else { throw AudioRouting.RoutingError.invalid("Plug-in track does not exist.") }
                 owner = found.id
             }
@@ -271,7 +271,7 @@ struct AudioRoutingAutomation {
             let instruments = try objects(project["instruments"], label: "Instruments")
             var collected: [[String: Any]] = []
             for (track, item) in tracks.enumerated() {
-                let instrument = try integer(item["instrument"], label: "Track instrument", range: 0...63, fallback: 0)
+                let instrument = try integer(item["instrument"], label: "Track instrument", range: 0...(ProjectLayout.instrumentSanityLimit - 1), fallback: 0)
                 if instruments.indices.contains(instrument), var plugin = instruments[instrument]["plugin"] as? [String: Any], plugin["component"] != nil {
                     plugin["track"] = track; plugin["kind"] = "instrument"; plugin["slot"] = 0; collected.append(plugin)
                 }

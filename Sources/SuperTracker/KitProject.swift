@@ -108,7 +108,6 @@ struct KitProject {
         lanes = foundLanes
     }
 
-    func sound(owner: String) -> Sound? { sounds.first { $0.owner == owner } }
     func sound(kitID: String, soundID: String) -> Sound? { sounds.first { $0.kitID == kitID && $0.soundID == soundID } }
     func lane(_ index: Int) -> Lane? { lanes.first { $0.index == index } }
     func sound(lane index: Int, step: [String: Any]) -> Sound? {

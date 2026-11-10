@@ -636,7 +636,19 @@ final class LibraryService: @unchecked Sendable {
             }
             func publishRoot(_ status: String) {
                 rootReport.status = status
-                locked { if activeScan === token { if !token.kitsOnly { rootReports[root.path] = rootReport }; lastErrors = errors } }
+                locked {
+                    if activeScan === token {
+                        if !token.kitsOnly {
+                            rootReports[root.path] = rootReport
+                            // Requested folders inside this one were covered by this walk: give them its outcome
+                            // (they used to stay "pending" for ever).
+                            for nested in requested where nested.path != root.path && Self.isInside(nested.path, root: root.path) {
+                                rootReports[nested.path] = RootReport(path: nested.path, status: status, errors: rootReport.errors)
+                            }
+                        }
+                        lastErrors = errors
+                    }
+                }
                 progress(token: token, root: root.path, scanned: scanned, skipped: skipped, errors: errors)
             }
             var directory: ObjCBool = false

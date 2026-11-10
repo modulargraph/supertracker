@@ -382,8 +382,13 @@ enum KitLibrary {
         let after = try source.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
         guard count == Int64(size), after.fileSize == size, after.contentModificationDate == before.contentModificationDate else { throw failure("A source sample changed while saving the kit: " + source.path) }
         let digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
-        let name = String(source.deletingPathExtension().lastPathComponent.prefix(100)) + "." + source.pathExtension.lowercased()
-        let target = folder.appendingPathComponent(String(digest.prefix(24)) + "-" + name)
+        // A sample already collected under this content hash keeps its name, so saving a kit over itself leaves
+        // the paths an open session still uses valid (they used to gain a second prefix and dangle).
+        let hashPrefix = String(digest.prefix(24)) + "-"
+        var stem = source.deletingPathExtension().lastPathComponent
+        while stem.hasPrefix(hashPrefix) { stem = String(stem.dropFirst(hashPrefix.count)) }
+        let name = String(stem.prefix(100)) + "." + source.pathExtension.lowercased()
+        let target = folder.appendingPathComponent(hashPrefix + name)
         if !FileManager.default.fileExists(atPath: target.path) { try FileManager.default.moveItem(at: temporary, to: target); remaining -= count }
         return target
     }

@@ -306,8 +306,9 @@ final class AgentConnection: @unchecked Sendable {
     }
 
     func close() {
-        queue.async { [weak self] in
-            guard let self else { return }
+        // Strong capture: the server drops its last reference right after calling close(). With a weak capture
+        // the read source was released uncancelled, so its cancel handler never closed the socket.
+        queue.async {
             self.closedLock.lock(); let already = self.closedFlag; self.closedFlag = true; self.closedLock.unlock()
             guard !already else { return }
             self.source?.cancel(); self.source = nil
