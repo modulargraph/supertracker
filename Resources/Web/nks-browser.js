@@ -180,7 +180,7 @@
   function activeFilterCount() { const value = filters(); return !!value.vendor + (value.product !== null) + (value.bank !== null) + (value.bank !== null && value.subBank !== null) + value.types.size + value.subtypes.size + value.characters.size + local.favorites + !!local.query.trim(); }
   const skeleton = () => Array.from({ length: 9 }, (_, index) => `<div class="nksb-row nksb-skeleton" aria-hidden="true" style="--delay:${index * 60}ms"><span></span><span class="nksb-art"></span><div class="nksb-row-name"><strong></strong><small></small></div><span class="nksb-row-type"></span><span></span></div>`).join('');
   function renderRows() {
-    if (!resultsCurrent()) return local.error ? `<div class="browser-empty" role="status"><h3>Could not search presets</h3><p>${html(local.error)}</p></div>` : `<div role="status" class="nksb-loading"><span class="nksb-sr">Searching presets…</span>${skeleton()}</div>`;
+    if (!resultsCurrent()) return local.error ? `<div class="browser-empty" role="status"><h3>Could not search presets</h3><p>${html(local.error)}</p><button class="btn" id="nksb-retry">Retry search</button></div>` : `<div role="status" class="nksb-loading"><span class="nksb-sr">Searching presets…</span>${skeleton()}</div>`;
     if (!local.items.length) {
       if (!local.loaded || (local.status?.indexing && !activeFilterCount())) return `<div role="status" class="nksb-loading"><div class="browser-empty"><h3>Reading NKS presets…</h3><p>The first visit indexes installed presets in the background. Results appear as they are read.</p></div>${skeleton()}</div>`;
       if (activeFilterCount()) return '<div class="browser-empty"><h3>No matching presets</h3><p>Remove a filter or shorten the search.</p><button class="btn" id="nksb-clear-empty">Clear search & filters</button></div>';
@@ -499,7 +499,7 @@
     on('nksb-search', event => { local.query = event.target.value; changed(120); }, 'input');
     on('nksb-favorites', () => { local.favorites = !local.favorites; changed(); });
     on('nksb-autopreview', event => { local.autoPreview = event.target.checked; if (!local.autoPreview) stopPreview(); }, 'change');
-    on('nksb-clear', clearFilters); on('nksb-clear-empty', clearFilters);
+    on('nksb-clear', clearFilters); on('nksb-clear-empty', clearFilters); on('nksb-retry', () => search({ keep: false }));
     on('nksb-rescan', rescan); on('nksb-rescan-empty', rescan);
     on('nksb-more-rows', () => search({ append: true }));
     bindDetail();
