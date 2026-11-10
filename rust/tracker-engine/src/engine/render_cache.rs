@@ -195,8 +195,8 @@ impl Render {
         };
         let count = (audible_end - from) as usize;
         let lost = lost as usize;
-        for (out, left) in [(&mut l, true), (&mut r, false)] {
-            let Some(out) = out.as_deref_mut() else { continue };
+        for (out, left) in [(l.as_deref_mut(), true), (r.as_deref_mut(), false)] {
+            let Some(out) = out else { continue };
             if let Some(prefix) = out.get_mut(..lost) {
                 prefix.fill(0.0);
             }
