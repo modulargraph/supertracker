@@ -1,6 +1,7 @@
 'use strict';
 // Actual app queue, undo stack, native event dispatcher and duplication workflow.
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const copy = value => JSON.parse(JSON.stringify(value));
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -13,10 +14,10 @@ function harness() {
     return nodes.get(key);
   };
   const document = { activeElement: null, querySelector: node, querySelectorAll: () => [], getElementById: node, addEventListener() {}, createElement: node, body: null }; document.body = node('body');
-  const window = { addEventListener() {}, webkit: { messageHandlers: { supertracker: { postMessage(message) {
+  const window = { addEventListener() {}, STHostTransport: hostStub({ post(message) {
     calls.push(copy(message)); const handler = handlers.get(message.command);
-    Promise.resolve().then(() => handler ? handler(message.payload) : {}).then(result => window.nativeReceive({ id: message.id, ok: true, result }), error => window.nativeReceive({ id: message.id, ok: false, error: error.message }));
-  } } } } };
+    Promise.resolve().then(() => handler ? handler(message.payload) : {}).then(result => window.STHostTransport.deliver({ id: message.id, ok: true, result }), error => window.STHostTransport.deliver({ id: message.id, ok: false, error: error.message }));
+  } }) };
   const context = vm.createContext({ window, document, console, innerWidth: 1080, innerHeight: 700, setTimeout(fn) { const id = ++nextTimer; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); }, Date, Map, Set, Math, JSON, Number, String, Object, Array, Promise });
   for (const name of ['routing-project.js', 'app.js', 'track-duplicate-project.js', 'track-duplicate.js']) web.load(context, name);
   web.pendingEditsStub(context.window, 'nksControls', 'STNKSControls', 30);

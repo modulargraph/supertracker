@@ -13,11 +13,11 @@ function harness(view = 'pattern', responses = {}) {
   const toast = h.document.getElementById('toast-region');
   h.document.getElementById = (original => id => id === 'toast-region' ? toast : original(id))(h.document.getElementById);
   // Native requests answer from `responses` (a value or a function of the payload).
-  h.window.webkit.messageHandlers.supertracker.postMessage = message => {
+  h.window.STHostTransport.post = message => {
     h.calls.push(message);
     const answer = responses[message.command];
-    try { const result = typeof answer === 'function' ? answer(message.payload) : answer ?? {}; h.window.nativeReceive({ id: message.id, ok: true, result }); }
-    catch (error) { h.window.nativeReceive({ id: message.id, ok: false, error: error.message }); }
+    try { const result = typeof answer === 'function' ? answer(message.payload) : answer ?? {}; h.window.STHostTransport.deliver({ id: message.id, ok: true, result }); }
+    catch (error) { h.window.STHostTransport.deliver({ id: message.id, ok: false, error: error.message }); }
   };
   const agent = h.window.STAgent;
   async function call(method, params = {}) {

@@ -96,6 +96,9 @@ struct Note {
     end: i64,
 }
 
+/// What makes simultaneous notes one chord: start, source track, channel, end, velocity, program, bank MSB, bank LSB.
+type PacketKey = (i64, usize, usize, i64, i64, i64, i64, i64);
+
 struct Tempo {
     tick: i64,
     micros: i64,
@@ -444,7 +447,7 @@ pub fn import(bytes: &[u8], name: &str, source: &str) -> Result<Project> {
     let mut instrument_ids: BTreeMap<(usize, i64, i64, i64), i64> = BTreeMap::new();
     let mut instruments: Vec<Instrument> = Vec::new();
     // Simultaneous notes of one source with equal end, velocity and program form one packet (a chord).
-    let mut groups: BTreeMap<(i64, usize, usize, i64, i64, i64, i64, i64), Vec<Note>> = BTreeMap::new();
+    let mut groups: BTreeMap<PacketKey, Vec<Note>> = BTreeMap::new();
     for note in &notes {
         groups.entry((note.start, note.track, note.channel, note.end, note.velocity, note.program, note.bank_msb, note.bank_lsb)).or_default().push(*note);
     }

@@ -3,6 +3,7 @@
 // columns take an effect code + value (R04, Y50, P-30 …), each entry one Undo step. Focused step-editor boxes keep
 // their keys (never the piano), and their FX / Ins boxes take typed codes, names and numbers.
 const assert = require('node:assert/strict');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 
 function harness() {
@@ -16,7 +17,7 @@ function harness() {
   const document = { body: element('body'), activeElement: null, querySelector: q => element(q), querySelectorAll: () => [], getElementById: element,
     addEventListener() {}, createElement: tag => element(tag) };
   const calls = [], toasts = [];
-  const window = { addEventListener() {}, webkit: { messageHandlers: { supertracker: { postMessage(message) { calls.push(message); } } } } };
+  const window = { addEventListener() {}, STHostTransport: hostStub({ post(message) { calls.push(message); } }) };
   const { ST, app } = web.app({ document, window, requestAnimationFrame: fn => fn(), setTimeout: () => 1, clearTimeout() {}, innerWidth: 1280, innerHeight: 800 });
   const state = ST.state;
   state.project = ST.demoProject();

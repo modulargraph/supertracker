@@ -384,14 +384,28 @@ model! {
 }
 
 /// `value` with the keys of every object in sorted order, whatever order `serde_json`'s map keeps
-/// (another crate of the workspace may switch it to insertion order).
+/// (it sorts by default; another crate of the workspace may switch it to insertion order).
 fn sorted(value: Value) -> Value {
+    static ALREADY_SORTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let already_sorted = *ALREADY_SORTED.get_or_init(|| {
+        let mut probe = serde_json::Map::new();
+        probe.insert("b".to_string(), Value::Null);
+        probe.insert("a".to_string(), Value::Null);
+        probe.keys().next().map(String::as_str) == Some("a")
+    });
+    if already_sorted {
+        return value;
+    }
+    sort_keys(value)
+}
+
+fn sort_keys(value: Value) -> Value {
     match value {
-        Value::Array(items) => Value::Array(items.into_iter().map(sorted).collect()),
+        Value::Array(items) => Value::Array(items.into_iter().map(sort_keys).collect()),
         Value::Object(map) => {
             let mut entries: Vec<(String, Value)> = map.into_iter().collect();
             entries.sort_by(|left, right| left.0.cmp(&right.0));
-            Value::Object(entries.into_iter().map(|(key, value)| (key, sorted(value))).collect())
+            Value::Object(entries.into_iter().map(|(key, value)| (key, sort_keys(value))).collect())
         }
         other => other,
     }

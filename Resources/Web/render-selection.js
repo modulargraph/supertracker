@@ -91,13 +91,8 @@
 
   /* Long native request without the bridge's default timeout (rendering can take a while). */
   function nativeRequest(command, payload) {
-    const st = state();
-    if (!st?.native || !st.pending || !window.webkit?.messageHandlers?.supertracker) return app().request(command, payload);
-    return new Promise((resolve, reject) => {
-      const id = ++st.requestId;
-      st.pending.set(id, { resolve, reject, timeout: null, command });
-      window.webkit.messageHandlers.supertracker.postMessage({ id, command, payload });
-    });
+    const st = app();
+    return st.longRequest ? st.longRequest(command, payload) : st.request(command, payload);
   }
 
   window.STNativeEvents?.intercept('render.selectionProgress', payload => {

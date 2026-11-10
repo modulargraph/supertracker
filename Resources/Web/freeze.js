@@ -17,13 +17,8 @@
   /* Long native request: freezing renders the whole song offline, which can
      outlast app.js's default 15 s request timeout. */
   function nativeRequest(command, payload) {
-    const st = state();
-    if (!st?.native || !st.pending || !window.webkit?.messageHandlers?.supertracker) return app().request(command, payload);
-    return new Promise((resolve, reject) => {
-      const id = ++st.requestId;
-      st.pending.set(id, { resolve, reject, timeout: null, command });
-      window.webkit.messageHandlers.supertracker.postMessage({ id, command, payload });
-    });
+    const st = app();
+    return st.longRequest ? st.longRequest(command, payload) : st.request(command, payload);
   }
 
   // ---- Protection ----------------------------------------------------------------------

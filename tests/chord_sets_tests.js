@@ -1,6 +1,7 @@
 'use strict';
 // Chord sets and the MIDI-keyboard performance map, without a browser.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const same = (actual, expected, message) => assert.equal(JSON.stringify(actual), JSON.stringify(expected), message);
 const tick = async () => { for (let i = 0; i < 80; i++) await Promise.resolve(); };
@@ -12,7 +13,7 @@ function plainHarness() {
   const doc = { body: element('body'), activeElement: null, querySelector: q => element(q), querySelectorAll: () => [], getElementById: element, addEventListener() {}, createElement: tag => element(tag) };
   const calls = [], timers = [];
   let context;
-  const win = { addEventListener() {}, webkit: { messageHandlers: { supertracker: { postMessage(message) { calls.push(message); context.window.nativeReceive({ id: message.id, ok: true, result: {} }); } } } } };
+  const win = { addEventListener() {}, STHostTransport: hostStub({ post(message) { calls.push(message); context.window.STHostTransport.deliver({ id: message.id, ok: true, result: {} }); } }) };
   context = vm.createContext({ console, window: win, document: doc, performance: { now: () => 0 }, requestAnimationFrame: fn => fn(), setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout() {}, Date, Map, Set, Math, JSON, Number, String, Object, Array, Promise, BigInt, innerWidth: 1280, innerHeight: 800 });
   for (const file of ['app.js', 'note-repeat.js']) web.load(context, file);
   return { ST: win.ST, state: win.ST.state, repeat: win.STNoteRepeat, calls, timers, element };
@@ -164,7 +165,7 @@ async function stoppedMIDIChordRecording() {
   project.patterns.forEach((pat, index) => { pat.id = index ? 19 : 7; pat.length = 8; pat.steps = project.tracks.map(() => Array(8).fill(null)); pat.automation = []; });
   project.activePattern = 7; project.sequence = [7, 19];
   Object.assign(h.state, { playing: false, row: 2, track: 0, instrument: 0, editStep: 1, status: { playing: false, pattern: 7, row: 0 }, audio: { inputAcknowledgements: { version: 1, supported: true } } });
-  h.window.webkit.messageHandlers.supertracker.postMessage = message => { h.calls.push(copy(message)); h.window.nativeReceive({ id: message.id, ok: true, result: {} }); };
+  h.window.STHostTransport.post = message => { h.calls.push(copy(message)); h.window.STHostTransport.deliver({ id: message.id, ok: true, result: {} }); };
   await h.ST.setNoteRecording(true);
   h.ST.setPerformance({ chordSet: 'pop', root: 0 }, false);
   for (const [id, timer] of [...timers]) if (timer.delay === 40) { timers.delete(id); timer.fn(); }

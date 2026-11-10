@@ -304,3 +304,81 @@ macro_rules! serde_through_json {
 }
 
 pub(crate) use {model, serde_through_json, string_enum};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    model! {
+        /// A test object.
+        pub struct Sample {
+            /// A number with a default.
+            "level" => level: f64 = 0.5,
+            /// A whole number.
+            "count" => count: i64 = 3,
+            /// A list.
+            "items" => items: Vec<Option<i64>>,
+        }
+    }
+
+    string_enum! {
+        /// A test enumeration.
+        pub enum Shape {
+            /// Round.
+            Round = "round",
+            /// Square.
+            Square = "square",
+        }
+    }
+
+    #[test]
+    fn readable_fields_are_typed_and_the_rest_is_kept() {
+        let value = json!({ "level": 2, "count": "many", "items": [1, null, 3], "other": { "a": 1 }, "nothing": null });
+        let sample = Sample::from_json(value.clone()).unwrap();
+        assert_eq!((sample.level, sample.count, sample.items.clone()), (Some(2.0), None, Some(vec![Some(1), None, Some(3)])));
+        assert_eq!((sample.level(), sample.count()), (2.0, 3), "an unreadable value reads as the default");
+        assert_eq!(sample.extra.keys().map(String::as_str).collect::<std::collections::BTreeSet<_>>().into_iter().collect::<Vec<_>>(), ["count", "nothing", "other"]);
+        assert_eq!(sample.to_json(), value);
+        assert_eq!(Sample::from_json(json!([1])), Err(json!([1])), "not an object: handed back");
+    }
+
+    #[test]
+    fn a_typed_value_replaces_an_unreadable_one() {
+        let mut sample = Sample::from_json(json!({ "count": "many" })).unwrap();
+        sample.count = Some(7);
+        assert_eq!(sample.to_json(), json!({ "count": 7 }));
+    }
+
+    #[test]
+    fn an_array_with_one_unreadable_element_is_handed_back_unchanged() {
+        let value = json!([1, 2.0, "three", null, 5]);
+        assert_eq!(Vec::<Option<i64>>::from_json(value.clone()), Err(json!([1, 2, "three", null, 5])));
+        let sample = Sample::from_json(json!({ "items": value })).unwrap();
+        assert!(sample.items.is_none() && sample.extra.contains_key("items"));
+        let map = json!({ "a": 1, "b": "x", "c": 3 });
+        assert_eq!(BTreeMap::<String, i64>::from_json(map.clone()), Err(map));
+    }
+
+    #[test]
+    fn numbers() {
+        assert_eq!(i64::from_json(json!(60.0)), Ok(60));
+        assert_eq!(i64::from_json(json!(60.5)), Err(json!(60.5)));
+        assert_eq!(i64::from_json(json!(true)), Err(json!(true)));
+        assert_eq!(f64::from_json(json!(18446744073709551615u64)), Ok(18446744073709551615.0));
+        assert_eq!(f64::from_json(json!("1")), Err(json!("1")));
+        assert_eq!((number(120.0).to_string(), number(0.06).to_string(), number(-3.0).to_string(), number(1e300).to_string()), ("120".into(), "0.06".into(), "-3".into(), "1e+300".into()));
+        assert_eq!(number(f64::NAN), Value::Null);
+    }
+
+    #[test]
+    fn enumerations_and_serde() {
+        assert_eq!(Shape::from_json(json!("square")), Ok(Shape::Square));
+        assert_eq!(Shape::from_json(json!("oval")), Err(json!("oval")));
+        assert_eq!((Shape::Round.as_str(), Shape::parse("round")), ("round", Some(Shape::Round)));
+        let sample: Sample = serde_json::from_str(r#"{"level":1,"x":true}"#).unwrap();
+        assert_eq!(serde_json::to_value(&sample).unwrap(), json!({ "level": 1, "x": true }));
+        assert!(serde_json::from_str::<Sample>("[]").unwrap_err().to_string().contains("Sample must be a JSON object"));
+        assert_eq!(serde_json::to_string(&Shape::Round).unwrap(), "\"round\"");
+    }
+}

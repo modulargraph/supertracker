@@ -3,6 +3,7 @@
 // per-project view preference (saved, never an Undo step), the step editor shows "—" for no gate, OFF/CUT are one click
 // or palette command away, and "Remove gates" clears gates in the selection.
 const assert = require('node:assert/strict');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 
 function harness() {
@@ -15,7 +16,7 @@ function harness() {
   const document = { body: element('body'), activeElement: null, querySelector: q => element(q), querySelectorAll: () => [], getElementById: element,
     addEventListener() {}, createElement: tag => element(tag) };
   const calls = [];
-  const window = { addEventListener() {}, webkit: { messageHandlers: { supertracker: { postMessage(message) { calls.push(message); } } } } };
+  const window = { addEventListener() {}, STHostTransport: hostStub({ post(message) { calls.push(message); } }) };
   const { ST, app } = web.app({ document, window, requestAnimationFrame: fn => fn(), setTimeout: () => 1, clearTimeout() {}, innerWidth: 1280, innerHeight: 800 });
   const state = ST.state;
   state.project = ST.demoProject();

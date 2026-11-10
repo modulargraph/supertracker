@@ -24,8 +24,8 @@ async function harness(options = {}) {
   if (options.mapped !== false) project.timing = { version: 1, tempos: [{ id: 'a', beat: 0, bpm: 120 }, { id: 'b', beat: 2, bpm: 60 }], meters: [{ id: 'm', beat: 0, numerator: 4, denominator: 4 }] };
   Object.assign(h.state, { recordPlacement:'live', playing: true, row: 0, track: 0, instrument: 0, status: { playing: true, pattern: 7, row: 0, seconds: 0 }, audio: { inputAcknowledgements: { version: 1, supported: true } } });
   await h.ST.setNoteRecording(true); h.state.undo = []; h.state.redo = []; h.calls.length = 0;
-  const result = (message, value) => h.window.nativeReceive({ id: message.id, ok: true, result: value });
-  h.window.webkit.messageHandlers.supertracker.postMessage = message => {
+  const result = (message, value) => h.window.STHostTransport.deliver({ id: message.id, ok: true, result: value });
+  h.window.STHostTransport.post = message => {
     h.calls.push(copy(message));
     if (message.payload.captureInput) { contexts.set(message.id, copy(h.window.STInputCapture.recordingContext())); requestIDs.set(message.id, String(++requestID)); return; }
     if (heldCommands.has(message.command)) return;

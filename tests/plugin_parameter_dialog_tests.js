@@ -1,6 +1,7 @@
 // Production app.js with a deterministic DOM and deferred native bridge; no audio or vendors.
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const copy=value=>JSON.parse(JSON.stringify(value));
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return{promise,resolve,reject};}
@@ -26,7 +27,7 @@ function harness(){
   for(const match of html.matchAll(/data-param-label="([^"]+)"/g)){const label=node('label-'+match[1]);label.dataset.paramLabel=match[1];labels.push(label);}
  }
  document.body=node('body','BODY');
- const window={addEventListener(){},webkit:{messageHandlers:{supertracker:{postMessage(message){calls.push(copy(message));Promise.resolve().then(()=>handlers.get(message.command)?.(message.payload)??{}).then(result=>window.nativeReceive({id:message.id,ok:true,result}),error=>window.nativeReceive({id:message.id,ok:false,error:error.message}));}}}}};
+ const window={addEventListener(){},STHostTransport:hostStub({post(message){calls.push(copy(message));Promise.resolve().then(()=>handlers.get(message.command)?.(message.payload)??{}).then(result=>window.STHostTransport.deliver({id:message.id,ok:true,result}),error=>window.STHostTransport.deliver({id:message.id,ok:false,error:error.message}));}})};
  const context=vm.createContext({Event:class{constructor(type,fields){this.type=type;Object.assign(this,fields);}},window,document,console,Date,Math,Map,Set,WeakSet,Number,Array,Object,String,JSON,Promise,innerWidth:1280,innerHeight:800,setTimeout(fn,delay=0){timers.set(++timerID,{fn,delay});return timerID;},clearTimeout(id){timers.delete(id);}});
  web.load(context, 'app.js');
  const ST=window.ST,state=ST.state;state.project=ST.demoProject();state.view='instrument';state.engineReady=true;

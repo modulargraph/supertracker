@@ -38,6 +38,8 @@
 //! map in `timing`, kit lanes in `kits`, the built-in synth instrument) is rejected by
 //! [`validate::validate`] with a message that says so; nothing is converted.
 
+#![warn(missing_docs)]
+
 mod error;
 pub mod files;
 pub mod json;

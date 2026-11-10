@@ -577,6 +577,7 @@ impl<'a> Exclusive<'a> {
         unsafe { (*self.rt.processor.get()).as_mut() }
     }
 
+    #[allow(clippy::mut_from_ref)]
     fn slot(&self) -> &mut Option<Box<dyn Processor>> {
         // SAFETY: this guard holds the gate exclusively.
         unsafe { &mut *self.rt.processor.get() }

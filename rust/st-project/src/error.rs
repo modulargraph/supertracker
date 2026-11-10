@@ -21,7 +21,7 @@ impl Error {
         Error::Invalid(message.into())
     }
 
-    /// An [`Error::Io`] for `path`: "Could not <action> <file name>: <reason>."
+    /// An [`Error::Io`] for `path`, worded "Could not `action` `file name`: `reason`."
     pub fn io(action: &str, path: &Path, error: &std::io::Error) -> Self {
         let name = path
             .file_name()

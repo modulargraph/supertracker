@@ -1272,3 +1272,36 @@ pub fn apply(project: &Project, selections: &[Selection], project_file: Option<&
     let remaining = inspect(&updated, project_file, &Limits::default()).missing;
     Ok(Applied { project: updated, changed: changes.len(), relinked: changes, remaining, warnings })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn collected_names_give_up_their_hash_prefix() {
+        assert_eq!(unhashed_name("0123456789abcdef-Kick.wav"), "Kick.wav");
+        assert_eq!(unhashed_name("0123456789abcdef01234567-Kick.wav"), "Kick.wav");
+        assert_eq!(unhashed_name("0123456789abcdeg-Kick.wav"), "0123456789abcdeg-Kick.wav", "not hexadecimal");
+        assert_eq!(unhashed_name("0123456789abcdef-"), "0123456789abcdef-");
+        assert_eq!(unhashed_name("Kick.wav"), "Kick.wav");
+        assert_eq!(unhashed_name("ééééééééé-Kick.wav"), "ééééééééé-Kick.wav", "multi-byte names are not split inside a character");
+    }
+
+    #[test]
+    fn path_helpers() {
+        assert!(inside("/a/b/c.wav", "/a/b") && inside("/a/b", "/a/b") && inside("/x", "/"));
+        assert!(!inside("/a/bc/d.wav", "/a/b"));
+        assert_eq!(common_suffix("/old/Pack/Drums/Kick.wav", "/new/pack/drums/kick.WAV"), 3);
+        assert_eq!(common_suffix("/old/Kick.wav", "/new/Snare.wav"), 0);
+        assert_eq!(valid_hash(Some("ABCDEF0123456789"), 16).as_deref(), Some("abcdef0123456789"));
+        assert_eq!(valid_hash(Some("abc"), 16), None);
+    }
+
+    #[test]
+    fn limits_default_to_the_documented_bounds() {
+        let limits = Limits::default();
+        assert_eq!((limits.max_files, limits.max_candidates, limits.candidates_per_reference, limits.max_hashes), (250_000, 20_000, 16, 128));
+        assert_eq!((limits.max_hash_bytes, limits.max_file_hash_bytes, limits.seconds), (1 << 30, 256 << 20, 30.0));
+        assert_eq!((Limits { seconds: 0.0, ..Limits::default() }.deadline(), Limits { seconds: f64::NAN, ..Limits::default() }.deadline(), Limits { seconds: 1e9, ..Limits::default() }.deadline()), (0.1, 30.0, 300.0));
+    }
+}

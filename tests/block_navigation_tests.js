@@ -3,6 +3,7 @@
 // ⌥ + arrow conflict rules, dialogs, and the block layout of the Browser, Song, Recording, Automation and
 // Settings pages. Real WebKit geometry is checked with the dev harness (docs/KEYBOARD_NAVIGATION.md).
 const assert = require('node:assert/strict');
+const { hostStub } = require('./helpers/host');
 const vm = require('node:vm');
 const web = require('./helpers/web');
 const { createDOM } = require('./helpers/fake-dom');
@@ -14,7 +15,7 @@ function test(name, run) { tests.push({ name, run }); }
 function harness(view = 'browser') {
   const dom = createDOM(), { document, window } = dom, calls = [];
   let stops = 0, closes = 0;
-  window.webkit = { messageHandlers: { supertracker: { postMessage(message) { calls.push(message); window.nativeReceive?.({ id: message.id, ok: true, result: {} }); } } } };
+  window.STHostTransport = hostStub({ post(message) { calls.push(message); window.STHostTransport.deliver({ id: message.id, ok: true, result: {} }); } });
   const context = vm.createContext({ window, document, console, Date, Map, Set, WeakMap, WeakSet, Math, JSON, Number, String, Object, Array, Promise, RegExp, Error,
     setTimeout() {}, clearTimeout() {} });
   web.prepare(context);

@@ -11,7 +11,7 @@
 //! channel tables it is currently using.
 
 use super::abi::*;
-use super::clock_ffi::EngineTiming;
+use super::timing::EngineTiming;
 use super::control::Control;
 use super::project::{Project, Sample};
 use super::tables::*;
@@ -642,7 +642,7 @@ pub fn emit_event(out: &EventOut, sh: &Shared, mut event: STEvent) -> bool {
     if out.suppress_events {
         return true;
     }
-    event.frameOffset = if out.frame_offset > 0 { out.frame_offset } else { 0 };
+    event.frame_offset = if out.frame_offset > 0 { out.frame_offset } else { 0 };
     let free = sh.events.available();
     if ((event.type_ == ST_EVENT_PARAMETER || event.type_ == ST_EVENT_HOST_PARAMETER) && free <= (MAX_VOICES * 2) as u32)
         || (event.type_ == ST_EVENT_NOTE_ON && free <= MAX_VOICES as u32)

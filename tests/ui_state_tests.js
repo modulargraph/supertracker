@@ -1,5 +1,6 @@
 // State and bridge regression tests, independent of a browser or audio device.
 const fs = require('node:fs');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
@@ -12,7 +13,7 @@ function element(id) {
 const doc = { body: element('body'), activeElement: null, querySelector: q => element(q), querySelectorAll: () => [], getElementById: element, addEventListener() {}, createElement: tag => element(tag) };
 const calls = [];
 let context;
-const win = { addEventListener() {}, webkit: { messageHandlers: { supertracker: { postMessage(message) { calls.push(message); const result = message.command === 'midi.configure' ? {} : message.command === 'plugin.parameters' ? [] : {}; context.window.nativeReceive({ id: message.id, ok: true, result }); } } } } };
+const win = { addEventListener() {}, STHostTransport: hostStub({ post(message) { calls.push(message); const result = message.command === 'midi.configure' ? {} : message.command === 'plugin.parameters' ? [] : {}; context.window.STHostTransport.deliver({ id: message.id, ok: true, result }); } }) };
 // A frozen clock: live-recording gates compare Date.now() against status timestamps.
 const now = Date.now();
 class FrozenDate extends Date { static now() { return now; } }

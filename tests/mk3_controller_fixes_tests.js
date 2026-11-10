@@ -135,10 +135,10 @@ test('plug-in automation gestures end per parameter', async () => {
   h.win.STEffectPages.setMetadata(metadata());
   const plugins = [{ track: 0, kind: 'effect', slot: 0, component: 'stfx:filter', name: 'Multimode Filter', format: 'Builtin', instanceID: 'fx-filter', state: 's' }];
   h.state.project.audioPlugins = clone(plugins);
-  h.win.webkit.messageHandlers.supertracker.postMessage = message => {
+  h.win.STHostTransport.post = message => {
     h.calls.push(message);
     const result = message.command === 'plugin.parameters' ? { parameters: parameterList('stfx:filter') } : message.command === 'engine.snapshot' ? { audioPlugins: clone(plugins) } : {};
-    Promise.resolve().then(() => h.win.nativeReceive({ id: message.id, ok: true, result }));
+    Promise.resolve().then(() => h.win.STHostTransport.deliver({ id: message.id, ok: true, result }));
   };
   const log = [];
   h.win.STAutomationRecord = { mode: 'touch', labels: {}, makeRef: (owner, target, name) => ({ owner, target, name }), wouldRecord: () => true, claimed: () => false,

@@ -4,6 +4,7 @@
 // table picker from sample.wavetables, frame preview), the POS step effect, the wavetablePosition
 // automation target, the LFO "Position" label, migrated projects and the MK3 Position knob.
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict'), path = require('node:path');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 
 const TABLES = [
@@ -24,11 +25,11 @@ function harness() {
   }
   const document = { body: element('body'), activeElement: null, querySelector: element, querySelectorAll: () => [], getElementById: element,
     addEventListener() {}, createElement: element };
-  const window = { addEventListener() {}, webkit: { messageHandlers: { supertracker: { postMessage(message) {
+  const window = { addEventListener() {}, STHostTransport: hostStub({ post(message) {
     calls.push(message); const handler = handlers.get(message.command);
-    Promise.resolve().then(() => handler ? handler(message.payload) : {}).then(result => window.nativeReceive({ id: message.id, ok: true, result }),
-      error => window.nativeReceive({ id: message.id, ok: false, error: error.message }));
-  } } } } };
+    Promise.resolve().then(() => handler ? handler(message.payload) : {}).then(result => window.STHostTransport.deliver({ id: message.id, ok: true, result }),
+      error => window.STHostTransport.deliver({ id: message.id, ok: false, error: error.message }));
+  } }) };
   const context = vm.createContext({ window, document, console, setTimeout: (fn, delay = 0) => { const id = nextTimer++; timers.set(id, { fn, at: clock + delay }); return id; },
     clearTimeout: id => timers.delete(id), Date, Map, Set, Math, JSON, Number, String, Object, Array, Promise, innerWidth: 1280, innerHeight: 800 });
   for (const name of ['fine-control.js', 'routing-project.js', 'project-timing.js']) web.load(context, name);

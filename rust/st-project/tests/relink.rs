@@ -84,7 +84,7 @@ fn moved_root_and_transactional_apply() {
     fs::create_dir_all(relocated.parent().unwrap()).unwrap();
     fs::rename(&original, &relocated).unwrap();
     let before = project.clone();
-    let report = search(&project, None, &[relocated.clone()], &[Relocation { from: original.clone(), to: relocated.clone() }], &Limits::default());
+    let report = search(&project, None, std::slice::from_ref(&relocated), &[Relocation { from: original.clone(), to: relocated.clone() }], &Limits::default());
     assert_eq!(report.missing.len(), 4, "moved media includes every usage");
     assert!(report.missing.iter().all(|row| row.status == FileStatus::Missing && row.requires_selection == Some(true)));
     assert!(report.missing.iter().all(|row| row.candidates.as_ref().unwrap().iter().any(|candidate| candidate.verified && candidate.matched == MatchKind::Sha256)), "root mappings verify actual content");
@@ -138,7 +138,7 @@ fn ambiguity_and_different_content() {
     assert!(options.iter().find(|candidate| candidate.path.ends_with("AmbiguousWrong/Hit.wav")).unwrap().content_mismatch, "same name, different content is flagged");
 
     let selection = Selection { id: row.id.clone(), from: row.path.clone(), to: text(&wrong), allow_different_content: false };
-    let error = relink(&project, &[selection.clone()]).unwrap_err().to_string();
+    let error = relink(&project, std::slice::from_ref(&selection)).unwrap_err().to_string();
     assert!(error.contains("does not match its saved content fingerprint"), "{error}");
     let replaced = relink(&project, &[Selection { allow_different_content: true, ..selection.clone() }]).unwrap();
     assert_eq!(replaced.warnings, vec!["Different content explicitly selected for Drums.".to_string()]);
@@ -200,7 +200,7 @@ fn renamed_by_content_limits_and_safety() {
     put(&data, &folder.join(".hidden/Original.wav"));
     #[cfg(unix)]
     std::os::unix::fs::symlink(&folder, folder.join("cycle")).unwrap();
-    let report = search(&project, None, &[folder.clone()], &[], &Limits::default());
+    let report = search(&project, None, std::slice::from_ref(&folder), &[], &Limits::default());
     let candidates = report.missing[0].candidates.as_ref().unwrap();
     assert!(candidates.iter().any(|candidate| candidate.path.ends_with("Changed name.wav") && candidate.verified), "renamed content of the saved size is found by its hash");
     assert!(!candidates.iter().any(|candidate| candidate.path.contains("._") || candidate.path.contains(".hidden") || candidate.path.contains("cycle")), "hidden files and links are not searched");
@@ -212,10 +212,10 @@ fn renamed_by_content_limits_and_safety() {
     assert_eq!(apply(&project, &verified_selections(&report), None, DEFAULT_APPLY_HASH_BYTES, &cancel).unwrap_err(), Error::Cancelled);
     assert_eq!(Error::Cancelled.to_string(), "The operation was cancelled.");
 
-    let limited = search(&project, None, &[folder.clone()], &[], &Limits { max_hashes: 0, ..Limits::default() });
+    let limited = search(&project, None, std::slice::from_ref(&folder), &[], &Limits { max_hashes: 0, ..Limits::default() });
     assert!(limited.truncated == Some(true) && !limited.missing[0].candidates.as_ref().unwrap().iter().any(|candidate| candidate.verified), "an exhausted verification budget stays unverified and is disclosed");
     assert!(limited.warnings.iter().any(|warning| warning.starts_with("Search or verification reached its limit")));
-    let bounded = search(&project, None, &[folder.clone()], &[], &Limits { max_files: 1, ..Limits::default() });
+    let bounded = search(&project, None, std::slice::from_ref(&folder), &[], &Limits { max_files: 1, ..Limits::default() });
     assert_eq!((bounded.truncated, bounded.scanned_files), (Some(true), Some(2)), "the file bound stops the walk");
     let error = apply(&project, &verified_selections(&report), None, 1, &Cancel::new()).unwrap_err().to_string();
     assert!(error.starts_with("The replacement exceeds the verification budget."), "{error}");
@@ -223,7 +223,7 @@ fn renamed_by_content_limits_and_safety() {
 
     // A name alone never claims verification, but an explicit manual choice works without a fingerprint.
     let weak = fixture(&text(&root.join("Missing/Changed name.wav")), None, None);
-    let weak_report = search(&weak, None, &[folder.clone()], &[], &Limits::default());
+    let weak_report = search(&weak, None, std::slice::from_ref(&folder), &[], &Limits::default());
     let weak_row = &weak_report.missing[0];
     assert!(weak_row.candidates.as_ref().unwrap().iter().all(|candidate| !candidate.verified && candidate.matched == MatchKind::Name));
     assert_eq!(weak_row.resolution, Some(Resolution::Suggested));

@@ -217,3 +217,17 @@ impl Drop for FloatBlock {
 pub fn boxed_slice<T: Clone + Default>(n: usize) -> Box<[T]> {
     vec![T::default(); n].into_boxed_slice()
 }
+
+/// `Box::new(make())` whose own allocation may fail: `None` when memory is exhausted (where the
+/// C++ engine caught `std::bad_alloc`). The storage is reserved before `make` runs.
+pub fn try_box_with<T>(make: impl FnOnce() -> T) -> Option<Box<T>> {
+    let mut slot: Vec<T> = Vec::new();
+    slot.try_reserve_exact(1).ok()?;
+    slot.push(make());
+    // Length equals capacity, so this does not reallocate.
+    let boxed: Box<[T]> = slot.into_boxed_slice();
+    // SAFETY: a boxed slice of exactly one `T` is one initialised `T` allocated with
+    // `Layout::array::<T>(1)`, which is `Layout::new::<T>()`, the layout `Box<T>` frees with.
+    Some(unsafe { Box::from_raw(Box::into_raw(boxed) as *mut T) })
+}
+

@@ -25,10 +25,22 @@ mod imp {
 // ---- macOS: TYPE-CHECKED ONLY ----
 #[cfg(target_os = "macos")]
 mod imp {
+    /// `struct mach_timebase_info` from <mach/mach_time.h> (libc's own binding is
+    /// deprecated in favour of another crate; two integers do not justify a dependency).
+    #[repr(C)]
+    struct Timebase {
+        numer: u32,
+        denom: u32,
+    }
+
+    extern "C" {
+        fn mach_timebase_info(info: *mut Timebase) -> libc::c_int;
+    }
+
     pub fn promote(period_ns: u64) -> bool {
-        let mut timebase = libc::mach_timebase_info { numer: 0, denom: 0 };
+        let mut timebase = Timebase { numer: 0, denom: 0 };
         // SAFETY: valid out-parameter.
-        unsafe { libc::mach_timebase_info(&mut timebase) };
+        unsafe { mach_timebase_info(&mut timebase) };
         if timebase.numer == 0 || timebase.denom == 0 {
             return false;
         }

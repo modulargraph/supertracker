@@ -43,7 +43,7 @@ pub use stpc_transport::region::{
 };
 pub use stpc_transport::PROTOCOL_VERSION;
 pub use supervisor::{
-    ContainerInfo, ContainerState, ExitReason, GroupingPolicy, HostEvent, LossReason, RestartReport, Supervisor,
+    ContainerInfo, ContainerState, EventCallback, ExitReason, GroupingPolicy, HostEvent, LossReason, RestartReport, Supervisor,
     SupervisorConfig, WakePreference, CONTAINER_BINARY_NAME, ENV_CONTAINER_PATH,
 };
 

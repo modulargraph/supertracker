@@ -11,7 +11,7 @@ const tick=async()=>{for(let i=0;i<80;i++)await Promise.resolve();};
 function harness(view='instrument'){
   const h=mounted(view),{ST,state,document,window,context}=h,handlers=new Map(),listeners=new Map();
   context.requestAnimationFrame=fn=>fn();context.innerWidth=1080;context.innerHeight=700;
-  window.webkit.messageHandlers.supertracker.postMessage=message=>{h.calls.push(copy(message));Promise.resolve().then(()=>handlers.get(message.command)?.(message.payload)??{}).then(result=>window.nativeReceive({id:message.id,ok:true,result}),error=>window.nativeReceive({id:message.id,ok:false,error:error.message}));};
+  window.STHostTransport.post=message=>{h.calls.push(copy(message));Promise.resolve().then(()=>handlers.get(message.command)?.(message.payload)??{}).then(result=>window.STHostTransport.deliver({id:message.id,ok:true,result}),error=>window.STHostTransport.deliver({id:message.id,ok:false,error:error.message}));};
   const previousListener=document.addEventListener;
   document.addEventListener=(type,fn,...rest)=>{previousListener(type,fn,...rest);(listeners.get(type)||listeners.set(type,[]).get(type)).push(fn);};
   const append=element=>{document.body.children.push(element);element.parentElement=document.body;};

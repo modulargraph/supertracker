@@ -1,10 +1,12 @@
-/* Native bridge: request() posts commands to Swift and resolves replies in nativeReceive().
-   Outside the macOS app, previewRequest() answers with browser-preview stand-ins. */
+/* Host bridge: request() posts commands to the host through host-transport.js and settles them when
+   the reply arrives; events from the host go to window.nativeEvent() (app-events.js).
+   On a page opened without a host, previewRequest() answers with browser-preview stand-ins. */
 (function () {
   'use strict';
 
   const app = window.STApp;
   const { state, blankProject, toast, download } = app;
+  const transport = window.STHostTransport;
 
   // 'ready' restores the startup session's plug-ins first, which can take longer than any fixed limit; giving up
   // would leave the placeholder project in the window while the host still holds the recovered session.
@@ -49,18 +51,28 @@
           ? 45000
           : 15000);
       state.pending.set(id, { resolve, reject, timeout, command });
-      window.webkit.messageHandlers.supertracker.postMessage({ id, command, payload });
+      transport.post({ id, command, payload });
     });
   }
 
-  window.nativeReceive = function (message) {
-    if (typeof message === 'string') {
-      try {
-        message = JSON.parse(message);
-      } catch {
-        return;
-      }
-    }
+  /** A request with no time limit and no busy checks: for operations that own their busy state and can
+      render for minutes (freezing a track, rendering a selection). */
+  function longRequest(command, payload = {}) {
+    if (!state.native) return previewRequest(command, payload);
+    return new Promise((resolve, reject) => {
+      const id = ++state.requestId;
+      state.pending.set(id, { resolve, reject, timeout: null, command });
+      transport.post({ id, command, payload });
+    });
+  }
+
+  /** Whether the host has a command. `ready` lists the host's commands; for a host that does not say
+      (`state.hostCommands` unset), the answer is `assumed`. */
+  function hostImplements(command, assumed = true) {
+    return state.hostCommands ? state.hostCommands.has(command) : assumed;
+  }
+
+  function receiveReply(message) {
     const p = state.pending.get(message.id);
     if (!p) return;
     clearTimeout(p.timeout);
@@ -72,7 +84,13 @@
     } else {
       p.reject(new Error(message.error || `${p.command} failed`));
     }
-  };
+  }
+
+  // Replies carry the id of their request; everything else from the host is an event.
+  transport?.onMessage(message => {
+    if ('id' in message) receiveReply(message);
+    else window.nativeEvent?.(message);
+  });
 
   async function previewRequest(command, payload) {
     if (command === 'ready') return {
@@ -128,5 +146,5 @@
     throw new Error('This action uses the native macOS app. The browser preview cannot access audio devices, plug-ins, or your sample folders.');
   }
 
-  Object.assign(app, { request });
+  Object.assign(app, { request, longRequest, hostImplements });
 })();

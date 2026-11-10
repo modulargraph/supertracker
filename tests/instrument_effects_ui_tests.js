@@ -4,6 +4,7 @@
 // copies (track duplicate, MK3 pad duplicate, removal reindexing), kits, automation lanes, step-FX lock targets
 // and the MK3 PLUG-IN Instr. level. Only the native message transport and a small DOM are stand-ins.
 const assert = require('node:assert/strict'), vm = require('node:vm');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const { makeDocument } = require('./helpers/mini-dom');
 const { metadata, parameterList } = require('./helpers/builtin-effects');
@@ -51,11 +52,11 @@ function harness({ withMK3 = false } = {}) {
     'builtin.effects': () => metadata(),
     'plugins.list': () => metadata().map(e => ({ id: e.id, name: e.name, type: 'effect', category: e.category, format: 'Builtin' }))
   };
-  const window = { addEventListener() {}, removeEventListener() {}, localStorage: { getItem() { return null; }, setItem() {} }, location: { search: '' }, webkit: { messageHandlers: { supertracker: { postMessage(message) {
+  const window = { addEventListener() {}, removeEventListener() {}, localStorage: { getItem() { return null; }, setItem() {} }, location: { search: '' }, STHostTransport: hostStub({ post(message) {
     const request = clone(message); calls.push(request);
     Promise.resolve().then(() => (handlers[request.command] || (() => ({})))(request.payload || {}))
-      .then(result => window.nativeReceive({ id: request.id, ok: true, result }), error => window.nativeReceive({ id: request.id, ok: false, error: error.message }));
-  } } } } };
+      .then(result => window.STHostTransport.deliver({ id: request.id, ok: true, result }), error => window.STHostTransport.deliver({ id: request.id, ok: false, error: error.message }));
+  } }) };
   const context = vm.createContext({ window, document, console, Date, Map, Set, WeakMap, WeakSet, Math, JSON, Number, String, Object, Array, Promise, Error, RegExp, innerWidth: 1400, innerHeight: 900,
     setTimeout: (fn, delay = 0) => { const id = nextTimer++; timers.set(id, { fn, at: clock + Number(delay || 0) }); return id; }, clearTimeout: id => timers.delete(id), setInterval: () => 0, clearInterval() {},
     requestAnimationFrame: fn => fn(), KeyboardEvent: class { constructor(type, init) { Object.assign(this, init, { type }); } }, Event: class { constructor(type) { this.type = type; } } });

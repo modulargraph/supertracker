@@ -1,5 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -93,9 +94,9 @@ function harness(view = 'song') {
   document.querySelectorAll = selector => document.body.querySelectorAll(selector);
   document.querySelector = selector => document.querySelectorAll(selector)[0] || null;
   document.getElementById = id => nodes.get(id)?.isConnected ? nodes.get(id) : null;
-  const window = { addEventListener() {}, webkit: { messageHandlers: { supertracker: { postMessage(message) {
-    calls.push(message); window.nativeReceive({ id: message.id, ok: true, result: {} });
-  } } } } };
+  const window = { addEventListener() {}, STHostTransport: hostStub({ post(message) {
+    calls.push(message); window.STHostTransport.deliver({ id: message.id, ok: true, result: {} });
+  } }) };
   const context = vm.createContext({ window, document, console, Date, Map, Set, Math, JSON, Number, String, Object, Array, Promise, setTimeout() {}, clearTimeout() {} });
   for (const filename of ['app.js', 'block-nav.js', 'pane-navigation.js']) web.load(context, filename);
   const ST = window.ST, state = ST.state;

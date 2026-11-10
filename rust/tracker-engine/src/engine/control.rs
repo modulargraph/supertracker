@@ -6,12 +6,12 @@
 //! through `Shared::pending`; the render thread adopts it and hands the previous one back on the
 //! `Shared::retired` list, which `collect()` frees together with unreferenced samples and maps.
 
-use super::clock_ffi::EngineTiming;
+use super::timing::EngineTiming;
 use super::project::{Project, Sample};
 use super::state::{Render, Rt, STEngine, Shared};
 use super::tables::{BusRing, ChannelTables, PeakStore};
 use super::abi::default_track;
-use super::util::cmax;
+use super::util::{cmax, try_box_with};
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -19,7 +19,7 @@ use std::sync::Arc;
 /// Source of process-unique pattern content identities (`st_engine_pattern_epoch`).
 static PATTERN_EPOCHS: AtomicU64 = AtomicU64::new(0);
 
-const BAD_ALLOC: &str = "std::bad_alloc";
+pub const BAD_ALLOC: &str = "std::bad_alloc";
 
 pub struct Control {
     /// The project being edited inside (or implicitly outside) an update; `None` when there are
@@ -43,6 +43,17 @@ impl Control {
     pub fn edit(&mut self) -> &mut Project {
         let control = &self.control;
         self.draft.get_or_insert_with(|| Box::new((**control).clone()))
+    }
+
+    /// `edit()` for the setters that report an allocation failure instead of dying (the C++
+    /// functions with a `catch`): the draft's storage is reserved first, so a failed allocation
+    /// leaves the engine unchanged.
+    pub fn try_edit(&mut self) -> Result<&mut Project, String> {
+        if self.draft.is_none() {
+            let control = &self.control;
+            self.draft = Some(try_box_with(|| (**control).clone()).ok_or(BAD_ALLOC)?);
+        }
+        Ok(self.edit())
     }
 
     /// The project control-thread edits apply to, without creating a draft.

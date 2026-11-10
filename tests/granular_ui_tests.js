@@ -5,6 +5,7 @@
 // bursts and MK3 knobs, the playhead overlay (poll on/off, drawing per play mode, no waveform redraw per event)
 // and the MK3 Granular CHANNEL page.
 const vm = require('node:vm'), assert = require('node:assert/strict');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 
 function recorder() {
@@ -34,11 +35,11 @@ function harness() {
   const document = { body: element('body'), activeElement: null, hidden: false, querySelector: element,
     querySelectorAll: query => query === '[data-inst-param]' ? inputs : [], getElementById: element, createElement: element,
     listeners: {}, addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); } };
-  const window = { addEventListener() {}, devicePixelRatio: 1, webkit: { messageHandlers: { supertracker: { postMessage(message) {
+  const window = { addEventListener() {}, devicePixelRatio: 1, STHostTransport: hostStub({ post(message) {
     calls.push(message); const handler = handlers.get(message.command);
-    Promise.resolve().then(() => handler ? handler(message.payload) : {}).then(result => window.nativeReceive({ id: message.id, ok: true, result }),
-      error => window.nativeReceive({ id: message.id, ok: false, error: error.message }));
-  } } } } };
+    Promise.resolve().then(() => handler ? handler(message.payload) : {}).then(result => window.STHostTransport.deliver({ id: message.id, ok: true, result }),
+      error => window.STHostTransport.deliver({ id: message.id, ok: false, error: error.message }));
+  } }) };
   const context = vm.createContext({ window, document, console, performance: { now: () => clock },
     requestAnimationFrame: fn => { frames.push(fn); return frames.length; },
     setTimeout: (fn, delay = 0) => { const id = nextTimer++; timers.set(id, { fn, at: clock + delay }); return id; },

@@ -3,6 +3,7 @@
 // the engine does the clicks and the sample-accurate start; the app arms recording, sends Play with countIn,
 // keeps notes played during the count-in out of the pattern and follows the native status.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const copy = value => JSON.parse(JSON.stringify(value));
 const tick = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
@@ -18,9 +19,9 @@ function harness() {
   }
   const document = { activeElement: null, querySelector: selector => element(selector.startsWith('#') ? selector.slice(1) : selector), querySelectorAll: () => [], getElementById: element, createElement: element, addEventListener() {} };
   document.body = element('body');
-  const window = { addEventListener() {}, webkit: { messageHandlers: { supertracker: { postMessage(message) {
-    calls.push(copy(message)); Promise.resolve().then(() => window.nativeReceive({ id: message.id, ok: true, result: {} }));
-  } } } } };
+  const window = { addEventListener() {}, STHostTransport: hostStub({ post(message) {
+    calls.push(copy(message)); Promise.resolve().then(() => window.STHostTransport.deliver({ id: message.id, ok: true, result: {} }));
+  } }) };
   const context = vm.createContext({ window, document, console, setTimeout: () => 1, clearTimeout() {}, innerWidth: 1280, innerHeight: 800 });
   web.load(context, 'app.js');
   const ST = window.ST, state = ST.state;

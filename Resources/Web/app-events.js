@@ -1,4 +1,5 @@
-/* Native events: everything Swift pushes to the page arrives in window.nativeEvent(). */
+/* Host events: everything the host pushes to the page arrives in window.nativeEvent()
+   (app-bridge.js hands it the events host-transport.js receives). */
 (function () {
   'use strict';
 
@@ -54,6 +55,8 @@
           app.queuedOpenPath = payload.path;
         }
       }
+    } else if (type === 'app.quitRequested') {
+      app.hostQuitRequested?.();
     } else if (type === 'project.loaded' || type === 'project.changed') {
       acceptProject(payload.project || payload);
     } else if (type === 'error') {

@@ -66,7 +66,7 @@ test('a chord played on a MIDI keyboard during step entry lands on one row', asy
     project.activePattern = 7; project.sequence = [7, 19];
     // Stopped step entry, and the default "Selected step" placement while playing.
     Object.assign(s, { playing, recordPlacement: 'selected', row: 2, track: 0, instrument: 0, editStep: 1, status: { playing, pattern: 7, row: 0 }, audio: { inputAcknowledgements: { version: 1, supported: true } } });
-    h.window.webkit.messageHandlers.supertracker.postMessage = message => h.window.nativeReceive({ id: message.id, ok: true, result: {} });
+    h.window.STHostTransport.post = message => h.window.STHostTransport.deliver({ id: message.id, ok: true, result: {} });
     await h.ST.setNoteRecording(true);
     const edges = new Map();
     const pending = (token, note) => { const payload = { on: true, inputOwner: token, recordingPending: true, source: 1, channel: 1, track: 0, instrument: 0, note, velocity: 93 }; edges.set(token, { payload, context: copy(h.window.STInputCapture.recordingContext()), requestID: String(++requestID) }); h.window.nativeEvent({ type: 'midi.note', payload }); };

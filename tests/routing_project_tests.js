@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const fs = require('node:fs');
 const vm = require('node:vm');
@@ -49,7 +50,7 @@ function harness() {
     return nodes.get(id);
   };
   const document = { querySelector: element, querySelectorAll: () => [], getElementById: element, activeElement: null, body: element('body'), addEventListener() {} };
-  const window = { STRoutingProject: routing, addEventListener() {}, webkit: { messageHandlers: { supertracker: { postMessage(message) { calls.push(message); queueMicrotask(() => window.nativeReceive({ id: message.id, ok: true, result: {} })); } } } } };
+  const window = { STRoutingProject: routing, addEventListener() {}, STHostTransport: hostStub({ post(message) { calls.push(message); queueMicrotask(() => window.STHostTransport.deliver({ id: message.id, ok: true, result: {} })); } }) };
   const context = vm.createContext({ window, document, console, setTimeout: (fn, delay) => { timers.push({ fn, delay }); return timers.length; }, clearTimeout() {}, Date, Map, Set, Math, JSON, Number, String, Object, Array, Promise });
   web.load(context, 'app.js');
   const ST = window.ST;

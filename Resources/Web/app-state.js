@@ -56,7 +56,7 @@
     selection: null,
     clipboard: null,
     dirty: false,
-    native: !!window.webkit?.messageHandlers?.supertracker,
+    native: !!window.STHostTransport?.available,
     status: {},
     samples: {},
     plugins: [],

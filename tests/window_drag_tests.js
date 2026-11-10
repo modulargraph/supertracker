@@ -15,12 +15,17 @@ class Element {
   }
   closest(selector) { for (let node = this; node; node = node.parent) if (node.matches(selector)) return node; return null; }
 }
-const listeners = {}, posted = [];
+const listeners = {}, requests = [];
 const context = {
   Element, getComputedStyle: element => ({ cursor: element.cursor }),
-  document: { addEventListener: (type, fn) => (listeners[type] = fn), documentElement: { addEventListener: (type, fn) => (listeners['doc:' + type] = fn) } },
+  document: { addEventListener: (type, fn) => (listeners[type] = fn), documentElement: { addEventListener() {} } },
 };
-context.window = { ...context, addEventListener: (type, fn) => (listeners['win:' + type] = fn), webkit: { messageHandlers: { windowDrag: { postMessage: value => posted.push(value) } } } };
+// The host says which commands it has; only a host whose window has no title bar of its own has this one.
+let hostCommands = new Set(['window.titleBar']);
+context.window = { ...context, addEventListener() {}, ST: {
+  hostImplements: (command, assumed = true) => hostCommands ? hostCommands.has(command) : assumed,
+  request: (command, payload) => { requests.push({ command, payload }); return Promise.resolve(); }
+} };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../Resources/Web/window-drag.js'), 'utf8'), context);
 
@@ -31,8 +36,17 @@ assert.equal(draggable(bar), true); assert.equal(draggable(brand), true);
 for (const control of [button, tempo, clickable, body]) assert.equal(draggable(control), false);
 console.log('PASS empty top bar space drags; controls and the rest of the page do not');
 
-listeners.mouseover({ target: brand }); listeners.mousemove({ target: brand, buttons: 0 }); listeners.mousemove({ target: button, buttons: 1 });
-assert.deepEqual(posted, [true], 'reports only changes, and not while a button is held');
-listeners.mousemove({ target: button, buttons: 0 }); listeners['doc:mouseleave'](); listeners.mouseover({ target: bar }); listeners['win:blur']();
-assert.deepEqual(posted, [true, false, true, false]);
-console.log('PASS the native view hears region changes and is cleared when the pointer leaves or the window blurs');
+let prevented = 0;
+const press = (target, extra = {}) => listeners.mousedown({ target, button: 0, detail: 1, preventDefault: () => prevented++, ...extra });
+press(brand); press(bar, { detail: 2 });
+assert.deepEqual(requests, [{ command: 'window.titleBar', payload: { doubleClick: false } }, { command: 'window.titleBar', payload: { doubleClick: true } }]);
+assert.equal(prevented, 2);
+console.log('PASS a press on empty top bar space asks the host to move the window; a double click to zoom it');
+
+press(button); press(tempo); press(body); press(brand, { button: 2 });
+assert.equal(requests.length, 2, 'controls, the page and other mouse buttons keep their clicks');
+for (const commands of [new Set(['ready']), null]) {
+  hostCommands = commands; press(brand);
+}
+assert.equal(requests.length, 2); assert.equal(prevented, 2);
+console.log('PASS a host with its own title bar (or one that does not list its commands) leaves the press to the page');

@@ -213,7 +213,7 @@ fn reject_old_layouts(project: &Project) -> Result<()> {
             && !instrument.extra.contains_key("type")
             && instrument.extra.contains_key("waveform")
             && instrument.sample_path.as_deref().unwrap_or("").is_empty()
-            && instrument.zones.as_ref().map_or(true, Vec::is_empty)
+            && instrument.zones.as_ref().is_none_or(Vec::is_empty)
             && instrument.plugin.is_none();
         if retired_type || untyped_synth {
             return old("the built-in synth instrument");

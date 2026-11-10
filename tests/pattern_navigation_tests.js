@@ -3,6 +3,7 @@
 // the automation panel under the grid (row grid, linked rows, drawing across song slots) and the Automation view's
 // lane stack. Run: node tests/pattern_navigation_tests.js
 const assert = require('node:assert/strict');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 
 function harness() {
@@ -21,7 +22,7 @@ function harness() {
   const lists = new Map();
   const document = { body: element('body'), activeElement: null, querySelector: q => element(q), querySelectorAll: q => lists.get(q) || [],
     getElementById: id => element('#' + id), addEventListener() {}, createElement: tag => element(tag) };
-  const window = { addEventListener() {}, webkit: { messageHandlers: { supertracker: { postMessage() {} } } } };
+  const window = { addEventListener() {}, STHostTransport: hostStub({ post() {} }) };
   const toasts = [];
   const { ST, app, context } = web.app({ document, window, requestAnimationFrame: fn => fn(), setTimeout: () => 1, clearTimeout() {}, innerWidth: 1280, innerHeight: 800 });
   web.load(context, 'song-model.js');

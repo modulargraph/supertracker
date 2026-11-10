@@ -288,10 +288,10 @@ impl Session {
                 return Ok(());
             }
         }
-        // Names sort by time, so the newest copy is always the last name.
+        // Names sort by time, so the newest copy has the greatest name.
         let mut time = SystemTime::now();
         let mut target = folder.join(format!("Session {}.{PROJECT_EXTENSION}", file_stamp(time)));
-        while target.exists() || existing.first().is_some_and(|newest| newest.file_name() >= target.file_name()) {
+        while target.exists() {
             time += std::time::Duration::from_millis(1);
             target = folder.join(format!("Session {}.{PROJECT_EXTENSION}", file_stamp(time)));
         }
@@ -475,5 +475,30 @@ impl Session {
         let metadata = json!({ "id": id, "name": title, "path": file.to_string_lossy() });
         write_atomic(&folder.join("Metadata.json"), metadata.to_string().as_bytes())?;
         Ok(Template { id, name: title.to_string(), path: file })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn dates_are_formatted_without_a_calendar_library() {
+        let at = |seconds: u64, millis: u64| UNIX_EPOCH + Duration::from_secs(seconds) + Duration::from_millis(millis);
+        assert_eq!(iso8601(at(0, 0)), "1970-01-01T00:00:00Z");
+        assert_eq!(iso8601(at(951_782_400, 0)), "2000-02-29T00:00:00Z");
+        assert_eq!(iso8601(at(1_709_251_199, 0)), "2024-02-29T23:59:59Z");
+        assert_eq!(iso8601(at(1_794_303_000, 0)), "2026-11-10T09:30:00Z");
+        assert_eq!(iso8601(at(4_102_444_800, 0)), "2100-01-01T00:00:00Z");
+        assert_eq!(file_stamp(at(1_794_303_000, 42)), "2026-11-10 09.30.00.042");
+    }
+
+    #[test]
+    fn template_identifiers_cannot_leave_the_templates_folder() {
+        assert!(valid_template_id("hardware-editors_2") && valid_template_id(&"a".repeat(80)));
+        for bad in ["", "../escape", "a/b", "a.b", "with space", &"a".repeat(81)] {
+            assert!(!valid_template_id(bad), "{bad}");
+        }
     }
 }

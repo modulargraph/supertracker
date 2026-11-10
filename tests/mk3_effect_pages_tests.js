@@ -27,10 +27,10 @@ function effectSession() {
     'engine.snapshot': () => ({ audioPlugins: nativePlugins.map(clone) }),
     'mk3.connect': q => ({ connected: true, screens: true, exclusive: !!q.exclusive }), 'mk3.status': () => ({ connected: true, screens: true })
   };
-  h.win.webkit.messageHandlers.supertracker.postMessage = message => {
+  h.win.STHostTransport.post = message => {
     h.calls.push(message);
     Promise.resolve().then(() => (handlers[message.command] || (() => ({})))(message.payload || {}))
-      .then(result => h.win.nativeReceive({ id: message.id, ok: true, result }), error => h.win.nativeReceive({ id: message.id, ok: false, error: error.message }));
+      .then(result => h.win.STHostTransport.deliver({ id: message.id, ok: true, result }), error => h.win.STHostTransport.deliver({ id: message.id, ok: false, error: error.message }));
   };
   h.settle = async () => { for (let i = 0; i < 30; i++) { for (let j = 0; j < 30; j++) await Promise.resolve(); h.advance(100); } };
   h.shift = name => { h.input({ type: 'button', name: 'shift', pressed: true }); h.press(name); h.input({ type: 'button', name: 'shift', pressed: false }); };

@@ -1,6 +1,7 @@
 'use strict';
 // Boot the real app and exercise its registered keyboard/blur handlers. No native audio runs.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const copy = value => JSON.parse(JSON.stringify(value));
 async function harness() {
@@ -38,7 +39,7 @@ async function harness() {
   document.body = node('body', {}, 'BODY'); node('tracker', {}, 'DIV');
   // Input ownership cases need independent tracks/instruments and two patterns;
   // provide that fixture explicitly instead of depending on the fresh-session default.
-  const window = { addEventListener(type, handler) { listen(windowListeners, type, handler); }, webkit: { messageHandlers: { supertracker: { postMessage(message) { calls.push(copy(message)); const result = message.command === 'ready' ? { project: copy(window.ST.demoProject()) } : {}; window.nativeReceive({ id: message.id, ok: true, result }); } } } } };
+  const window = { addEventListener(type, handler) { listen(windowListeners, type, handler); }, STHostTransport: hostStub({ post(message) { calls.push(copy(message)); const result = message.command === 'ready' ? { project: copy(window.ST.demoProject()) } : {}; window.STHostTransport.deliver({ id: message.id, ok: true, result }); } }) };
   class Clock extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } }
   const context = vm.createContext({ window, document, console, Date: Clock, Map, Set, Math, JSON, Number, String, Object, Array, Promise, innerWidth: 1280, innerHeight: 800,
     setTimeout(fn) { timers.set(++timerID, fn); return timerID; }, clearTimeout(id) { timers.delete(id); }

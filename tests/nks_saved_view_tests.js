@@ -1,6 +1,7 @@
 'use strict';
 // Exercise the actual Save/capture path and NKS module against a parsed, replaceable DOM.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const copy = value => JSON.parse(JSON.stringify(value));
 const tick = async () => { for (let n = 0; n < 80; n++) await Promise.resolve(); };
@@ -61,7 +62,7 @@ async function harness() {
     for (const item of overview) { const parent = overview.find(candidate => candidate.element.tagName === 'DETAILS' && item.index > candidate.index && item.index < html.indexOf('</details>', candidate.index)); item.element.parentElement = parent?.element || null; }
     const markup = /<section\b[^>]*data-nks-root="\d+"[\s\S]*?<\/section>/.exec(html)?.[0]; root = markup ? new Root(markup, document) : null;
   } });
-  const window = { addEventListener() {}, webkit: { messageHandlers: { supertracker: { postMessage(message) { calls.push(copy(message)); Promise.resolve().then(() => handlers.get(message.command)?.(copy(message.payload)) ?? {}).then(result => window.nativeReceive({ id: message.id, ok: true, result }), error => window.nativeReceive({ id: message.id, ok: false, error: error.message })); } } } } };
+  const window = { addEventListener() {}, STHostTransport: hostStub({ post(message) { calls.push(copy(message)); Promise.resolve().then(() => handlers.get(message.command)?.(copy(message.payload)) ?? {}).then(result => window.STHostTransport.deliver({ id: message.id, ok: true, result }), error => window.STHostTransport.deliver({ id: message.id, ok: false, error: error.message })); } }) };
   const context = vm.createContext({ window, document, console, Date, Map, Set, Math, JSON, Number, String, Object, Array, Promise, queueMicrotask, innerWidth: 1280, innerHeight: 800, requestAnimationFrame: fn => queueMicrotask(fn), setTimeout(fn, delay) { timers.set(++sequence, { fn, delay }); return sequence; }, clearTimeout(id) { timers.delete(id); } });
   for (const file of ['app.js', 'nks-controls.js']) web.load(context, file, { path: file === 'nks-controls.js' && process.env.SUPERTRACKER_NKS_VIEW_SOURCE });
   const ST = window.ST, project = ST.demoProject(); project.tracks = project.tracks.slice(0, 2); project.tracks[0].routingID = 'track-A'; project.tracks[1].routingID = 'track-B'; project.instruments = project.instruments.slice(0, 2); project.instruments[0].type = 'au';

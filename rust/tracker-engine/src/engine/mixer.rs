@@ -132,25 +132,25 @@ impl<'a> Rt<'a> {
         // trigger is still pending.
         let begin = self.pattern_row_frame(self.e.row);
         let end = self.pattern_row_frame(self.e.row + 1);
-        let timing_matches = if state.timingVersion == 0 {
+        let timing_matches = if state.timing_version == 0 {
             p.timing.is_none()
         } else {
-            p.timing.as_ref().is_some_and(|timing| state.timingRevision == timing.revision)
+            p.timing.as_ref().is_some_and(|timing| state.timing_revision == timing.revision)
         };
-        let saved = state.patternClipValid == 1
-            && state.patternClipPattern == self.e.pattern
-            && (state.patternClipLooped == 0 || state.patternClipLooped == 1)
-            && state.patternClipFrame >= 0
-            && state.patternClipFrame as f64 >= begin.floor()
-            && state.patternClipFrame as f64 <= end.ceil()
+        let saved = state.pattern_clip_valid == 1
+            && state.pattern_clip_pattern == self.e.pattern
+            && (state.pattern_clip_looped == 0 || state.pattern_clip_looped == 1)
+            && state.pattern_clip_frame >= 0
+            && state.pattern_clip_frame as f64 >= begin.floor()
+            && state.pattern_clip_frame as f64 <= end.ceil()
             && timing_matches;
         let e = &mut *self.e;
         e.pattern_clip_frame = if saved {
-            state.patternClipFrame
+            state.pattern_clip_frame
         } else {
             (begin + clamp(e.row_duration - e.row_remaining, 0.0, e.row_duration) - 1e-6).ceil() as i64
         };
-        e.pattern_clip_looped = saved && state.patternClipLooped != 0;
+        e.pattern_clip_looped = saved && state.pattern_clip_looped != 0;
         e.pattern_clip_pattern = e.pattern;
         e.pattern_clip_row = e.row;
         e.pattern_clip_length = p.pattern_length(e.pattern);
@@ -374,7 +374,7 @@ impl<'a> Rt<'a> {
         let e = &mut *self.e;
         let context = &e.musical_context;
         let mapped = p.timing.is_some();
-        let bar_beat = ((e.musical_beat - context.barStartBeat) * context.denominator as f64 / 4.0).floor() as i64;
+        let bar_beat = ((e.musical_beat - context.bar_start_beat) * context.denominator as f64 / 4.0).floor() as i64;
         let beat = if mapped {
             context.bar.wrapping_mul(32).wrapping_add(bar_beat)
         } else {

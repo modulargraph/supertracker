@@ -3,6 +3,7 @@
 // real page at 1500×940), ⌥ / ⌥⌘ moves, the grid keeping all of its keys, the track header buttons (every track and
 // group reachable with arrows, Return presses), focus returning to the grid's cursor cell, and ⌘0 back to the grid.
 const assert = require('node:assert/strict');
+const { hostStub } = require('./helpers/host');
 const vm = require('node:vm');
 const web = require('./helpers/web');
 const { createDOM } = require('./helpers/fake-dom');
@@ -14,7 +15,7 @@ function test(name, run) { tests.push({ name, run }); }
 function harness() {
   const dom = createDOM(), { document, window } = dom, calls = [];
   let stops = 0;
-  window.webkit = { messageHandlers: { supertracker: { postMessage(message) { calls.push(message); window.nativeReceive?.({ id: message.id, ok: true, result: {} }); } } } };
+  window.STHostTransport = hostStub({ post(message) { calls.push(message); window.STHostTransport.deliver({ id: message.id, ok: true, result: {} }); } });
   const context = vm.createContext({ window, document, console, Date, Map, Set, WeakMap, WeakSet, Math, JSON, Number, String, Object, Array, Promise, RegExp, Error,
     setTimeout() {}, clearTimeout() {} });
   web.prepare(context);

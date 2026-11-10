@@ -1,5 +1,7 @@
 //! Integration tests: the real container binary, the real supervisor, on this machine.
 
+#![allow(clippy::bool_assert_comparison, clippy::needless_range_loop, clippy::cloned_ref_to_slice_refs, clippy::unnecessary_map_or)]
+
 mod common;
 
 use std::sync::atomic::{AtomicBool, Ordering};

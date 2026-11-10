@@ -1,5 +1,6 @@
-/* Native context menus. Right-click, the Menu key or Shift+F10 open a real macOS menu
-   whose items depend on what is under the pointer (or focused, from the keyboard). */
+/* Context menus. Right-click, the Menu key or Shift+F10 open a menu whose items depend on what is
+   under the pointer (or focused, from the keyboard): the platform's own menu when the host can show
+   one (`ui.contextMenu`), the page's fallback menu otherwise (a browser, a host without a window). */
 (() => {
   'use strict';
   const S = () => window.ST;
@@ -77,7 +78,7 @@
     const actions = new Map(), prepared = prepare(items, actions);
     if (!prepared.length) return;
     const restore = document.activeElement;
-    if (!S()?.state?.native) { fallbackMenu(x, y, prepared, actions, restore); return; }
+    if (!S()?.state?.native || S().hostImplements?.('ui.contextMenu') === false) { fallbackMenu(x, y, prepared, actions, restore); return; }
     open = true;
     try {
       const result = await S().request('ui.contextMenu', { x, y, items: prepared });

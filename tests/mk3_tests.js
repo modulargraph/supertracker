@@ -3,6 +3,7 @@
 // synthetic 'mk3.input' events drive the real app modules; LEDs and display lists are checked against the
 // software contract in docs/MASCHINE_MK3.md.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const same = (actual, expected, message) => assert.equal(JSON.stringify(actual), JSON.stringify(expected), message);
 const tick = async () => { for (let i = 0; i < 60; i++) await Promise.resolve(); };
@@ -24,7 +25,7 @@ function harness() {
     if (message.command === 'mk3.connect' || message.command === 'mk3.status') return { connected: true, screens: true, exclusive: !!p.exclusive };
     return {};
   };
-  const win = { addEventListener() {}, localStorage: { getItem() { return null; }, setItem() {} }, location: { search: '' }, webkit: { messageHandlers: { supertracker: { postMessage(message) { calls.push(message); Promise.resolve().then(() => context.window.nativeReceive({ id: message.id, ok: true, result: reply(message) })); } } } } };
+  const win = { addEventListener() {}, localStorage: { getItem() { return null; }, setItem() {} }, location: { search: '' }, STHostTransport: hostStub({ post(message) { calls.push(message); Promise.resolve().then(() => context.window.STHostTransport.deliver({ id: message.id, ok: true, result: reply(message) })); } }) };
   const setTimeout_ = (fn, ms = 0) => { const id = ++timerId; timers.push({ id, fn, at: clock.now + Math.max(0, Number(ms) || 0) }); return id; };
   const clearTimeout_ = id => { const index = timers.findIndex(timer => timer.id === id); if (index >= 0) timers.splice(index, 1); };
   context = vm.createContext({ console, window: win, document: doc, performance: { now: () => clock.now }, requestAnimationFrame: fn => fn(), setTimeout: setTimeout_, clearTimeout: clearTimeout_, setInterval: () => 0, clearInterval() {},

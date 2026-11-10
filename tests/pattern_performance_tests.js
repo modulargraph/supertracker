@@ -1,5 +1,6 @@
 // Keyboard performance (scale/chord/note repeat) and pattern tool regressions, without a browser.
 const fs = require('node:fs');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
@@ -12,7 +13,7 @@ function element(id) {
 const doc = { body: element('body'), activeElement: null, querySelector: q => element(q), querySelectorAll: () => [], getElementById: element, addEventListener() {}, createElement: tag => element(tag) };
 const calls = [], timers = [];
 let context;
-const win = { addEventListener() {}, webkit: { messageHandlers: { supertracker: { postMessage(message) { calls.push(message); context.window.nativeReceive({ id: message.id, ok: true, result: message.command === 'plugin.parameters' ? [] : {} }); } } } } };
+const win = { addEventListener() {}, STHostTransport: hostStub({ post(message) { calls.push(message); context.window.STHostTransport.deliver({ id: message.id, ok: true, result: message.command === 'plugin.parameters' ? [] : {} }); } }) };
 context = vm.createContext({ console, window: win, document: doc, performance: { now: () => 0 }, requestAnimationFrame: fn => fn(), setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout() {}, Date, Map, Set, Math, JSON, Number, String, Object, Array, Promise, BigInt, innerWidth: 1280, innerHeight: 800 });
 for (const file of ['app.js', 'note-repeat.js', 'pattern-tools.js']) web.load(context, file);
 const ST = win.ST, state = ST.state, tools = win.STPatternTools, repeat = win.STNoteRepeat;

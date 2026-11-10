@@ -305,6 +305,8 @@ fn join_reader(reader: Option<JoinHandle<()>>) {
 // ---- supervisor -----------------------------------------------------------------------
 
 type Callback = Arc<dyn Fn(&HostEvent) + Send + Sync>;
+/// An event callback; see [`Supervisor::set_event_callback`].
+pub type EventCallback = Box<dyn Fn(&HostEvent) + Send + Sync>;
 
 pub(crate) struct SupInner {
     config: SupervisorConfig,
@@ -404,7 +406,7 @@ impl Supervisor {
     /// Events are always queued for [`Supervisor::poll_event`]; with a callback they are
     /// also delivered right away, on a supervisor thread (never the audio thread). The
     /// callback must not block for long; it may call back into the supervisor.
-    pub fn set_event_callback(&self, callback: Option<Box<dyn Fn(&HostEvent) + Send + Sync>>) {
+    pub fn set_event_callback(&self, callback: Option<EventCallback>) {
         *self.inner.callback.lock().unwrap() = callback.map(Arc::from);
     }
 
@@ -998,7 +1000,8 @@ fn reader_thread(stream: Stream, conn: Arc<Connection>, container: Arc<Container
     }
     // The connection is gone: the process is dead, dying, or misbehaving. Make it dead.
     conn.fail_all();
-    let (status, intent) = {
+    let mut lost = Vec::new();
+    let reason = {
         let mut inner = container.inner.lock().unwrap();
         if inner.generation != generation {
             return;
@@ -1006,28 +1009,29 @@ fn reader_thread(stream: Stream, conn: Arc<Connection>, container: Arc<Container
         let Some(mut process) = inner.process.take() else { return };
         let _ = process.child.kill();
         let status = process.child.wait().ok();
-        (status, inner.intent.take())
+        let reason = inner.intent.take().unwrap_or_else(|| match status {
+            Some(status) => match status.signal() {
+                Some(signal) => ExitReason::Crashed { signal },
+                None => ExitReason::Exited { code: status.code().unwrap_or(-1) },
+            },
+            None => ExitReason::Exited { code: -1 },
+        });
+        // Flag the instances before anyone waiting on `reaped` can look: whoever sees
+        // "no process" also sees the final instance statuses.
+        for shared in container.live_instances() {
+            if shared.generation.load(Ordering::Acquire) != generation || shared.status() == InstanceStatus::Closed {
+                continue;
+            }
+            if reason == ExitReason::Shutdown {
+                shared.mark_lost(InstanceStatus::Closed);
+            } else {
+                shared.mark_lost(InstanceStatus::Lost);
+                lost.push(shared.id);
+            }
+        }
+        container.reaped.notify_all();
+        reason
     };
-    let reason = intent.unwrap_or_else(|| match status {
-        Some(status) => match status.signal() {
-            Some(signal) => ExitReason::Crashed { signal },
-            None => ExitReason::Exited { code: status.code().unwrap_or(-1) },
-        },
-        None => ExitReason::Exited { code: -1 },
-    });
-    let mut lost = Vec::new();
-    for shared in container.live_instances() {
-        if shared.generation.load(Ordering::Acquire) != generation || shared.status() == InstanceStatus::Closed {
-            continue;
-        }
-        if reason == ExitReason::Shutdown {
-            shared.mark_lost(InstanceStatus::Closed);
-        } else {
-            shared.mark_lost(InstanceStatus::Lost);
-            lost.push(shared.id);
-        }
-    }
-    container.reaped.notify_all();
     if let Some(sup) = sup.upgrade() {
         for &instance in &lost {
             sup.emit(HostEvent::InstanceLost { instance, container: container.id, reason });
@@ -1139,7 +1143,7 @@ fn housekeep(sup: &Arc<SupInner>, shared: &Arc<InstanceShared>) {
     if let Some(interval) = sup.config.auto_state_interval {
         if status == InstanceStatus::Running {
             if let Ok(mut control) = shared.control.try_lock() {
-                let due = control.last_state_at.map_or(true, |at| at.elapsed() >= interval);
+                let due = control.last_state_at.is_none_or(|at| at.elapsed() >= interval);
                 if due {
                     control.last_state_at = Some(Instant::now()); // also paces retries after a failure
                     let _ = fetch_state(sup, shared, &mut control);
@@ -1172,7 +1176,13 @@ fn call(shared: &InstanceShared, control: &Control, request: &Request, timeout: 
         _ => {}
     }
     let conn = control.conn.as_ref().ok_or(Error::InstanceLost)?;
-    conn.call(request, &[], timeout)
+    let result = conn.call(request, &[], timeout);
+    if matches!(result, Err(Error::ContainerDied)) {
+        // Return only once the death is fully processed: the instance is flagged lost and
+        // the events are out, so the caller can restore right away.
+        control.container.settle(Duration::from_secs(5));
+    }
+    result
 }
 
 fn fetch_state(sup: &SupInner, shared: &InstanceShared, control: &mut Control) -> Result<Arc<Vec<u8>>> {

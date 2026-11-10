@@ -4,7 +4,7 @@
 //! freeze transitions, status publication and the quiescent flush used by transport checkpoints.
 
 use super::abi::*;
-use super::clock_ffi::fixed_clock_context;
+use super::timing::fixed_clock_context;
 use super::project::Project;
 use super::state::*;
 use super::tables::LaneEventState;
@@ -364,7 +364,7 @@ impl<'a> Rt<'a> {
             v.p.volume = i.volume * v.zone_volume;
             v.p.pan = clamp(i.pan + v.zone_pan, -1.0, 1.0);
             v.p.tune = i.tune + v.zone_tune;
-            v.p.rootNote = if v.zone_root >= 0 { v.zone_root } else { i.rootNote };
+            v.p.root_note = if v.zone_root >= 0 { v.zone_root } else { i.root_note };
             v.p.attack = i.attack;
             v.p.decay = i.decay;
             v.p.sustain = i.sustain;
@@ -372,33 +372,33 @@ impl<'a> Rt<'a> {
             v.p.cutoff = i.cutoff;
             v.p.resonance = i.resonance;
             v.p.drive = i.drive;
-            v.p.bitDepth = i.bitDepth;
-            v.p.lfoRate = i.lfoRate;
-            v.p.lfoDepth = i.lfoDepth;
-            v.p.lfoTarget = i.lfoTarget;
-            v.p.lfoShape = i.lfoShape;
-            v.p.lfo2Rate = i.lfo2Rate;
-            v.p.lfo2Depth = i.lfo2Depth;
-            v.p.lfo2Target = i.lfo2Target;
-            v.p.lfo2Shape = i.lfo2Shape;
-            v.p.lfoSync = i.lfoSync;
-            v.p.lfo2Sync = i.lfo2Sync;
-            v.p.lfoBeats = i.lfoBeats;
-            v.p.lfo2Beats = i.lfo2Beats;
-            v.p.filterAttack = i.filterAttack;
-            v.p.filterDecay = i.filterDecay;
-            v.p.filterSustain = i.filterSustain;
-            v.p.filterRelease = i.filterRelease;
-            v.p.filterEnvAmount = i.filterEnvAmount;
-            v.p.grainSize = i.grainSize;
-            v.p.grainPosition = i.grainPosition;
-            v.p.wavetablePosition = i.wavetablePosition;
-            v.p.grainDensity = i.grainDensity;
-            v.p.grainSpray = i.grainSpray;
-            v.p.grainPitchSpread = i.grainPitchSpread;
-            v.p.grainScan = i.grainScan;
-            v.p.grainReverse = i.grainReverse;
-            v.p.grainStereo = i.grainStereo;
+            v.p.bit_depth = i.bit_depth;
+            v.p.lfo_rate = i.lfo_rate;
+            v.p.lfo_depth = i.lfo_depth;
+            v.p.lfo_target = i.lfo_target;
+            v.p.lfo_shape = i.lfo_shape;
+            v.p.lfo2_rate = i.lfo2_rate;
+            v.p.lfo2_depth = i.lfo2_depth;
+            v.p.lfo2_target = i.lfo2_target;
+            v.p.lfo2_shape = i.lfo2_shape;
+            v.p.lfo_sync = i.lfo_sync;
+            v.p.lfo2_sync = i.lfo2_sync;
+            v.p.lfo_beats = i.lfo_beats;
+            v.p.lfo2_beats = i.lfo2_beats;
+            v.p.filter_attack = i.filter_attack;
+            v.p.filter_decay = i.filter_decay;
+            v.p.filter_sustain = i.filter_sustain;
+            v.p.filter_release = i.filter_release;
+            v.p.filter_env_amount = i.filter_env_amount;
+            v.p.grain_size = i.grain_size;
+            v.p.grain_position = i.grain_position;
+            v.p.wavetable_position = i.wavetable_position;
+            v.p.grain_density = i.grain_density;
+            v.p.grain_spray = i.grain_spray;
+            v.p.grain_pitch_spread = i.grain_pitch_spread;
+            v.p.grain_scan = i.grain_scan;
+            v.p.grain_reverse = i.grain_reverse;
+            v.p.grain_stereo = i.grain_stereo;
         }
         for index in 0..MAX_VOICES {
             let v = &self.e.voices[index];
@@ -575,14 +575,14 @@ impl<'a> Rt<'a> {
         let Some(ack) = e.pending_input_acks.get_mut(e.pending_input_count) else { return };
         e.pending_input_count += 1;
         *ack = STInputAck::default();
-        ack.requestID = c.request_id;
-        ack.runID = e.input_run_id;
+        ack.request_id = c.request_id;
+        ack.run_id = e.input_run_id;
         ack.edge = c.input_edge;
         ack.track = c.a;
         ack.instrument = c.b;
         ack.note = c.c;
         ack.velocity = c.d;
-        ack.applyNote = c.apply_input_note;
+        ack.apply_note = c.apply_input_note;
         ack.early = 0;
         if c.input_edge == ST_INPUT_NOTE_ON
             && e.playing
@@ -664,8 +664,8 @@ impl<'a> Rt<'a> {
         let count = cmin(e.pending_input_count, e.pending_input_acks.len());
         for n in 0..count {
             let mut ack = e.pending_input_acks[n];
-            ack.renderFrame = e.total_frames as i64;
-            ack.graphFrame = if cached && graph_frame <= (1u64 << 52) { graph_frame as i64 } else { i64::MIN };
+            ack.render_frame = e.total_frames as i64;
+            ack.graph_frame = if cached && graph_frame <= (1u64 << 52) { graph_frame as i64 } else { i64::MIN };
             // An early note keeps its placed row while that row is the one now playing or still
             // ahead.
             if ack.early == 0 || ack.pattern != e.pattern || ack.sequence != e.sequence || e.row > ack.row {
@@ -676,21 +676,21 @@ impl<'a> Rt<'a> {
             }
             ack.status = if !audio_frame {
                 ST_INPUT_ACK_CONTROL_FLUSH
-            } else if e.input_run_id == 0 || ack.runID != e.input_run_id {
+            } else if e.input_run_id == 0 || ack.run_id != e.input_run_id {
                 ST_INPUT_ACK_DISCONTINUITY
             } else {
                 ST_INPUT_ACK_APPLIED
             };
             if ack.status == ST_INPUT_ACK_APPLIED {
-                ack.timingRevision = p.timing.as_ref().map_or(0, |timing| timing.revision);
-                ack.distanceBeats = e.musical_beat + e.input_loop_beats;
+                ack.timing_revision = p.timing.as_ref().map_or(0, |timing| timing.revision);
+                ack.distance_beats = e.musical_beat + e.input_loop_beats;
                 ack.flags = (if e.playing { ST_INPUT_CLOCK_PLAYING } else { 0 })
                     | (if p.timing.is_some() { ST_INPUT_CLOCK_MAPPED } else { 0 })
                     | (if e.recording { ST_INPUT_CLOCK_RECORDING } else { 0 });
-                if !ack.distanceBeats.is_finite() || ack.distanceBeats < 0.0 {
+                if !ack.distance_beats.is_finite() || ack.distance_beats < 0.0 {
                     ack.status = ST_INPUT_ACK_DISCONTINUITY;
                     ack.flags = 0;
-                    ack.distanceBeats = 0.0;
+                    ack.distance_beats = 0.0;
                 }
             }
             // Admission reserves a slot for every accepted command, including
@@ -931,7 +931,7 @@ impl<'a> Rt<'a> {
             | (if self.e.playing { ST_CLOCK_PLAYING } else { 0 })
             | (if self.e.recording { ST_CLOCK_RECORDING } else { 0 });
         self.e.musical_context.epoch = self.e.timing_epoch;
-        self.e.musical_context.loopIteration = self.e.clock_loop_iteration;
+        self.e.musical_context.loop_iteration = self.e.clock_loop_iteration;
         if (song_mode && p.loop_song) || (!song_mode && p.timing.is_some()) {
             flags |= ST_CLOCK_LOOPING;
             let (start, end) = if song_mode {
@@ -946,21 +946,21 @@ impl<'a> Rt<'a> {
                     self.e.pattern_origin_beat + self.pattern_domain_end_beat(),
                 )
             };
-            self.e.musical_context.loopStartBeat = start;
-            self.e.musical_context.loopEndBeat = end;
+            self.e.musical_context.loop_start_beat = start;
+            self.e.musical_context.loop_end_beat = end;
         }
         if self.song_loop_active() {
             flags |= ST_CLOCK_LOOPING;
-            self.e.musical_context.loopStartBeat = self.occurrence_beat(p.song_loop_start);
-            self.e.musical_context.loopEndBeat = self.occurrence_beat(self.song_loop_last() + 1);
+            self.e.musical_context.loop_start_beat = self.occurrence_beat(p.song_loop_start);
+            self.e.musical_context.loop_end_beat = self.occurrence_beat(self.song_loop_last() + 1);
         }
         let context = &mut self.e.musical_context;
         if !self.e.playing {
-            context.nextBoundaryFrame = i64::MAX;
-            context.nextBoundaryKinds = 0;
-            context.nextQuarterBeatFrame = i64::MAX;
+            context.next_boundary_frame = i64::MAX;
+            context.next_boundary_kinds = 0;
+            context.next_quarter_beat_frame = i64::MAX;
         }
-        if context.nextQuarterBeatFrame == i64::MAX {
+        if context.next_quarter_beat_frame == i64::MAX {
             flags |= ST_CLOCK_GRID_PROJECTION;
         }
         context.flags = flags;
@@ -1028,7 +1028,7 @@ impl<'a> Rt<'a> {
         sh.status_beat.store(e.musical_beat, relaxed);
         sh.status_bpm.store(e.effective_bpm, relaxed);
         sh.status_bar.store(e.musical_context.bar, relaxed);
-        sh.status_bar_start.store(e.musical_context.barStartBeat, relaxed);
+        sh.status_bar_start.store(e.musical_context.bar_start_beat, relaxed);
         sh.status_numerator.store(e.musical_context.numerator, relaxed);
         sh.status_denominator.store(e.musical_context.denominator, relaxed);
         sh.status_timing_revision.store(e.musical_context.revision, relaxed);
@@ -1372,26 +1372,26 @@ impl<'a> Rt<'a> {
         let timing = self.p.timing.as_ref();
         STTransportState {
             playing: e.playing as i32,
-            songMode: e.song_mode as i32,
+            song_mode: e.song_mode as i32,
             pattern: e.pattern,
             row: e.row,
             sequence: e.sequence,
-            rowHasStarted: e.row_has_started as i32,
-            sequenceFinished: e.sequence_finished as i32,
-            rowRemaining: e.row_remaining,
-            rowDuration: e.row_duration,
-            transportFrames: e.transport_frames,
-            timingVersion: if timing.is_some() { 1 } else { 0 },
-            timingRevision: timing.map_or(0, |timing| timing.revision),
+            row_has_started: e.row_has_started as i32,
+            sequence_finished: e.sequence_finished as i32,
+            row_remaining: e.row_remaining,
+            row_duration: e.row_duration,
+            transport_frames: e.transport_frames,
+            timing_version: if timing.is_some() { 1 } else { 0 },
+            timing_revision: timing.map_or(0, |timing| timing.revision),
             beat: e.musical_beat,
-            patternOriginBeat: e.pattern_origin_beat,
-            loopBeatOffset: e.loop_beat_offset,
-            loopIteration: e.clock_loop_iteration,
+            pattern_origin_beat: e.pattern_origin_beat,
+            loop_beat_offset: e.loop_beat_offset,
+            loop_iteration: e.clock_loop_iteration,
             recording: e.recording as i32,
-            patternClipFrame: e.pattern_clip_frame,
-            patternClipPattern: e.pattern_clip_pattern,
-            patternClipLooped: e.pattern_clip_looped as i32,
-            patternClipValid: e.pattern_clip_valid as i32,
+            pattern_clip_frame: e.pattern_clip_frame,
+            pattern_clip_pattern: e.pattern_clip_pattern,
+            pattern_clip_looped: e.pattern_clip_looped as i32,
+            pattern_clip_valid: e.pattern_clip_valid as i32,
         }
     }
 
@@ -1414,26 +1414,26 @@ impl<'a> Rt<'a> {
         self.e.click_beat = -1;
         self.e.playing = state.playing != 0 && resume;
         self.e.recording = state.recording != 0;
-        self.e.song_mode = state.songMode != 0;
+        self.e.song_mode = state.song_mode != 0;
         self.e.pattern = self.valid_pattern(state.pattern);
         self.e.row = clamp(state.row, 0, p.pattern_length(self.e.pattern) - 1);
         self.e.sequence = clamp(state.sequence, 0, p.sequence.len() as i32 - 1);
-        self.e.row_has_started = state.rowHasStarted != 0;
-        self.e.sequence_finished = state.sequenceFinished != 0 && self.e.song_mode;
+        self.e.row_has_started = state.row_has_started != 0;
+        self.e.sequence_finished = state.sequence_finished != 0 && self.e.song_mode;
         // `1 + sign * swing` is formed in single precision, as in C++.
         let sign: f32 = if self.e.row & 1 != 0 { -1.0 } else { 1.0 };
         let default_duration = rate * 60.0 / p.bpm / p.lpb as f64 * (1.0f32 + sign * p.swing) as f64;
-        self.e.row_duration = clamp(finite64(state.rowDuration, default_duration), 1.0, rate * 6.0);
+        self.e.row_duration = clamp(finite64(state.row_duration, default_duration), 1.0, rate * 6.0);
         self.e.row_remaining = if self.e.sequence_finished {
             1e100
         } else if self.e.row_has_started {
-            clamp(finite64(state.rowRemaining, 0.0), -1.0, self.e.row_duration)
+            clamp(finite64(state.row_remaining, 0.0), -1.0, self.e.row_duration)
         } else if p.frozen_song_policy && self.e.song_mode {
-            clamp(finite64(state.rowRemaining, 0.0), -1.0, 0.0)
+            clamp(finite64(state.row_remaining, 0.0), -1.0, 0.0)
         } else {
             0.0
         };
-        self.e.transport_frames = clamp(finite64(state.transportFrames, 0.0), 0.0, 1e15);
+        self.e.transport_frames = clamp(finite64(state.transport_frames, 0.0), 0.0, 1e15);
         self.e.click_beat = if self.e.transport_frames > 0.0 {
             ((self.e.transport_frames - 1.0) * p.bpm * p.denominator as f64 / (rate * 240.0)).floor() as i64
         } else {
@@ -1445,14 +1445,14 @@ impl<'a> Rt<'a> {
         self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
         if let Some(timing) = &p.timing {
             let width = p.pattern_rows(self.e.pattern) / p.lpb as f64;
-            if state.timingVersion == 1 {
+            if state.timing_version == 1 {
                 self.e.pattern_origin_beat =
-                    clamp(finite64(state.patternOriginBeat, p.pattern_origin_beat), 0.0, 1000000.0 - width);
-                self.e.loop_beat_offset = clamp(finite64(state.loopBeatOffset, 0.0), 0.0, 1e12);
-                self.e.clock_loop_iteration = clamp(state.loopIteration, 0, 1i64 << 52);
+                    clamp(finite64(state.pattern_origin_beat, p.pattern_origin_beat), 0.0, 1000000.0 - width);
+                self.e.loop_beat_offset = clamp(finite64(state.loop_beat_offset, 0.0), 0.0, 1e12);
+                self.e.clock_loop_iteration = clamp(state.loop_iteration, 0, 1i64 << 52);
             }
             self.e.transport_frames = clamp(self.e.transport_frames, 0.0, timing.frame(1000000.0) as f64);
-            if state.timingVersion == 1 && state.timingRevision != timing.revision {
+            if state.timing_version == 1 && state.timing_revision != timing.revision {
                 self.e.transport_frames = timing.frame(clamp(finite64(state.beat, 0.0), 0.0, 1000000.0)) as f64;
                 self.resolve_mapped_timeline(true);
             } else {
@@ -1465,7 +1465,7 @@ impl<'a> Rt<'a> {
                 && timing.context((self.e.transport_frames as i64).wrapping_sub(1), &mut previous) == ST_CLOCK_OK
             {
                 self.e.click_beat = previous.bar.wrapping_mul(32).wrapping_add(
-                    ((previous.beat - previous.barStartBeat) * previous.denominator as f64 / 4.0).floor() as i64,
+                    ((previous.beat - previous.bar_start_beat) * previous.denominator as f64 / 4.0).floor() as i64,
                 );
             }
         }

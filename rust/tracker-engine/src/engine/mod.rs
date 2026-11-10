@@ -18,7 +18,7 @@
 //! |---|---|
 //! | [`abi`] | the header's structures and constants |
 //! | [`util`] | `clamp`, `finite`, `Ring`, `FloatBlock`, `randomBipolar` |
-//! | [`clock_ffi`] | `EngineTiming`, `fixedClockContext`, the `st_clock_*` calls |
+//! | [`timing`] | `EngineTiming`, `fixedClockContext` (on top of `crate::clock`) |
 //! | [`project`] | `Sample`, `Zone`, `Instrument`, `Step`, `Lane`, `Pattern`, `Project`, timing compilation |
 //! | [`tables`] | `ChannelTables`, `BusRing`, `PeakStore`, `FreezeHistory`, `TrackState`, `RatchetState` |
 //! | [`control`] | draft/commit/collect, `buildTables`, engine construction and destruction |
@@ -32,7 +32,6 @@
 
 pub mod abi;
 pub mod capi;
-pub mod clock_ffi;
 pub mod control;
 pub mod mixer;
 pub mod project;
@@ -40,6 +39,7 @@ pub mod render_cache;
 pub mod sequencer;
 pub mod state;
 pub mod tables;
+pub mod timing;
 pub mod transport;
 pub mod util;
 pub mod voice;

@@ -3,6 +3,7 @@
 // consoles, instrument effects) and the Mixer (strips, divider, insert chain, knob page, routing, returns).
 // Layouts mirror the real WebKit geometry at 1500 × 940 (test-output/keyboard-nav/phase2/results.json).
 const assert = require('node:assert/strict');
+const { hostStub } = require('./helpers/host');
 const vm = require('node:vm');
 const web = require('./helpers/web');
 const { createDOM } = require('./helpers/fake-dom');
@@ -13,7 +14,7 @@ function test(name, run) { tests.push({ name, run }); }
 
 function harness(view) {
   const dom = createDOM(), { document, window } = dom, calls = [];
-  window.webkit = { messageHandlers: { supertracker: { postMessage(message) { calls.push(message); window.nativeReceive?.({ id: message.id, ok: true, result: {} }); } } } };
+  window.STHostTransport = hostStub({ post(message) { calls.push(message); window.STHostTransport.deliver({ id: message.id, ok: true, result: {} }); } });
   const context = vm.createContext({ window, document, console, Date, Map, Set, WeakMap, WeakSet, Math, JSON, Number, String, Object, Array, Promise, RegExp, Error,
     setTimeout() {}, clearTimeout() {} });
   web.prepare(context);

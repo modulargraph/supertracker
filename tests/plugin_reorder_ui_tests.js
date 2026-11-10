@@ -1,6 +1,7 @@
 'use strict';
 // Drive the real mixer module. Native fixtures model the plugin.move response contract.
 const assert = require('node:assert/strict');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const fs = require('node:fs');
 const vm = require('node:vm');
@@ -58,7 +59,7 @@ function integratedHarness() {
   const document={activeElement:null,querySelector:element,querySelectorAll:()=>[],getElementById:element,addEventListener(){},createElement:element};
   function element(id){id=String(id).replace(/^#/, '');if(!nodes.has(id))nodes.set(id,{id,innerHTML:'',value:'',dataset:{},style:{},classList:{toggle(){},add(){},remove(){}},focus(){document.activeElement=this;},select(){},scrollIntoView(){},closest(selector){return selector==='.studio-plugin > summary'&&this.tagName==='SUMMARY'?this:null;},querySelectorAll(){return[];},addEventListener(){},setAttribute(){}});return nodes.get(id);}
   document.body=element('body');
-  const window={addEventListener(){},webkit:{messageHandlers:{supertracker:{postMessage(message){
+  const window={addEventListener(){},STHostTransport:hostStub({post(message){
     const request=clone(message);calls.push(request);
     Promise.resolve().then(async()=>{
       if(request.command==='plugin.move'){const result=response(nativeProject,request.payload.track,request.payload.fromSlot,request.payload.toSlot);await moveGate.promise;nativeProject.audioPlugins=[...nativeProject.audioPlugins.filter(p=>p.kind!=='effect'||p.track!==0),...clone(result.plugins)];return result;}
@@ -66,8 +67,8 @@ function integratedHarness() {
       if(request.command==='engine.snapshot')return {audioPlugins:clone(nativeProject.audioPlugins)};
       if(request.command==='project.save')return {saved:true,project:request.payload.project,path:'/tmp/session.supertracker'};
       if(request.command==='plugin.parameters')return {parameters:[]};return {};
-    }).then(result=>window.nativeReceive({id:request.id,ok:true,result}),error=>window.nativeReceive({id:request.id,ok:false,error:error.message}));
-  }}}}};
+    }).then(result=>window.STHostTransport.deliver({id:request.id,ok:true,result}),error=>window.STHostTransport.deliver({id:request.id,ok:false,error:error.message}));
+  }})};
   const context=vm.createContext({window,document,console,setTimeout:(fn,delay=0)=>{const id=nextTimer++;timers.set(id,{fn,at:clock+delay});return id;},clearTimeout:id=>timers.delete(id),Date,Map,Set,Math,JSON,Number,String,Object,Array,Promise,innerWidth:1280,innerHeight:800});
   web.load(context, 'app.js');web.load(context, 'studio.js', { text: source });
   const ST=window.ST;ST.state.project=ST.normalize(fixture());ST.state.view='mixer';ST.state.engineReady=true;nativeProject=clone(ST.state.project);

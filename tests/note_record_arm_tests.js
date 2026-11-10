@@ -1,6 +1,7 @@
 'use strict';
 // Actual app entry points with deliberately delayed host acknowledgments. No audio is run.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const clone=x=>JSON.parse(JSON.stringify(x));
 const tick=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
@@ -10,14 +11,14 @@ function harness({supported=true,native=true}={}){
   function node(id){if(!nodes.has(id)){const classes=new Set();nodes.set(id,{id,dataset:{},innerHTML:'',textContent:'',value:'',style:{},attributes:{},classList:{toggle(k,on){on?classes.add(k):classes.delete(k);},add:k=>classes.add(k),remove:k=>classes.delete(k),contains:k=>classes.has(k)},setAttribute(k,v){this.attributes[k]=v;},getAttribute(k){return this.attributes[k];},addEventListener(){},querySelectorAll(){return [];},scrollIntoView(){},select(){},focus(){document.activeElement=this;},closest(selector){return selector==='.tracker'&&id==='tracker'?this:null;}});}return nodes.get(id);}
   document.body=node('body');
   const window={addEventListener(){}};
-  if(native)window.webkit={messageHandlers:{supertracker:{postMessage(message){calls.push(clone(message));if(message.command==='transport.recordArm'){arms.push(message);return;}window.nativeReceive({id:message.id,ok:true,result:message.command==='engine.snapshot'?clone(ST.state.project):{}});}}}};
+  if(native)window.STHostTransport=hostStub({post(message){calls.push(clone(message));if(message.command==='transport.recordArm'){arms.push(message);return;}window.STHostTransport.deliver({id:message.id,ok:true,result:message.command==='engine.snapshot'?clone(ST.state.project):{}});}});
   const timers=new Map();let timerID=0;
   const context=vm.createContext({window,document,console,setTimeout(fn){const id=++timerID;timers.set(id,fn);return id;},clearTimeout:id=>timers.delete(id),innerWidth:1280,innerHeight:800,requestAnimationFrame:fn=>fn()});
   web.load(context,'app.js');ST=window.ST;
   Object.assign(ST.state,{project:ST.demoProject(),view:'pattern',track:0,instrument:0,row:9,status:supported?{recordArmSupported:true,noteRecordArmed:false}:{}});
   ST.refresh();node('tracker').focus();
   const key=(key,code,mods={})=>{const event={key,code,target:node('tracker'),metaKey:false,ctrlKey:false,altKey:false,shiftKey:false,repeat:false,preventDefault(){this.defaultPrevented=true;},...mods};ST.keyboard(event);return event;};
-  const reply=(index,armed,err)=>{const message=arms[index];assert(message,'Expected arm request '+index);window.nativeReceive({id:message.id,ok:!err,...(err?{error:err}:{result:{armed}})});};
+  const reply=(index,armed,err)=>{const message=arms[index];assert(message,'Expected arm request '+index);window.STHostTransport.deliver({id:message.id,ok:!err,...(err?{error:err}:{result:{armed}})});};
   const status=payload=>window.nativeEvent({type:'status',payload:{recordArmSupported:true,noteRecordArmed:false,playing:false,...payload}});
   return{ST,state:ST.state,window,document,node,calls,arms,key,reply,status};
 }

@@ -125,7 +125,7 @@ fn emit_lane_automation(
             slot: l.slot,
             address: l.address,
             value,
-            hostMap: if event_type == ST_EVENT_HOST_PARAMETER { host_map } else { 0 },
+            host_map: if event_type == ST_EVENT_HOST_PARAMETER { host_map } else { 0 },
             ..STEvent::default()
         };
         state.delivered = emit_event(out, sh, event);
@@ -213,8 +213,8 @@ impl<'a> Rt<'a> {
             *state = TrackState::default();
             state.volume = mix.volume;
             state.pan = mix.pan;
-            state.delay = mix.delaySend;
-            state.reverb = mix.reverbSend;
+            state.delay = mix.delay_send;
+            state.reverb = mix.reverb_send;
         }
         if emit_defaults {
             self.emit_mix_state();
@@ -450,7 +450,7 @@ impl<'a> Rt<'a> {
                 slot: lock.fx.slot,
                 address: lock.fx.address,
                 value: lock.fx.value,
-                hostMap: if host { host_map } else { 0 },
+                host_map: if host { host_map } else { 0 },
                 ..STEvent::default()
             };
             state.known = true;

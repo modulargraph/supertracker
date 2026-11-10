@@ -7,7 +7,7 @@
 
 use super::abi::*;
 use super::project::PluginStepFX;
-use super::util::FloatBlock;
+use super::util::{try_box_with, FloatBlock};
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -188,9 +188,13 @@ pub struct FreezeHistory {
 }
 
 impl FreezeHistory {
-    pub fn new() -> FreezeHistory {
-        let blank = STFreezeContext { contentGraphFrame: i64::MIN, ..STFreezeContext::default() };
-        FreezeHistory { frames: vec![blank; CLOCK_CAPACITY].into_boxed_slice() }
+    /// Control thread. `None` when memory is exhausted (C++ `std::bad_alloc`).
+    pub fn try_new() -> Option<Box<FreezeHistory>> {
+        let blank = STFreezeContext { content_graph_frame: i64::MIN, ..STFreezeContext::default() };
+        let mut frames = Vec::new();
+        frames.try_reserve_exact(CLOCK_CAPACITY).ok()?;
+        frames.resize(CLOCK_CAPACITY, blank);
+        try_box_with(|| FreezeHistory { frames: frames.into_boxed_slice() })
     }
 }
 

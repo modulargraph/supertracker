@@ -280,6 +280,83 @@
     return false;
   }
 
+  /** Why the host cannot quit right now: an operation that must finish or be cancelled first. */
+  function quitBlocker() {
+    if (app.savingProject || app.sessionTransition) return 'Wait for the current save or project change to finish before quitting.';
+    if (window.STKits?.isBusy) return 'Wait for the kit change to finish before quitting.';
+    if (window.STInstrumentEdits?.isBusy) return 'Wait for the instrument or sample change to finish before quitting.';
+    if (window.STStudio?.isMovingEffect) return 'Wait for the effect move to finish before quitting.';
+    if (window.STRouting?.isApplying) return 'Wait for the routing change to finish before quitting.';
+    if (window.STTrackDuplicate?.isApplying) return 'Wait for the track duplication to finish before quitting.';
+    if (window.STMK3?.hasPendingEdits) return 'Finish or retry the pending Maschine control edit before quitting.';
+    if (window.STAutomationRecord?.hasPendingEdits) return 'Finish or retry the pending automation take before quitting.';
+    if (window.STInputCapture?.hasPendingEdits) return 'Wait for the pending input recording edge before quitting.';
+    if (window.STNKSControls?.hasPendingEdits
+        || window.STPluginParameters?.hasPendingEdits
+        || window.STAgent?.hasPendingEdits) return 'Finish or retry the pending plug-in control edit before quitting.';
+    if (window.STExport?.isBusy) return 'Finish or cancel the audio export before quitting.';
+    if (window.STRecording?.isBusy || window.STRecording?.isRecording) return 'Finish the audio recording before quitting.';
+    return null;
+  }
+
+  /** Commits controller and knob gestures that are still in flight, giving up after three seconds so a
+      stale edit cannot keep the application from quitting. */
+  async function flushEditsForQuit() {
+    const work = (async () => {
+      await window.STInstrumentEdits?.waitForIdle?.();
+      await window.STKits?.waitForIdle?.();
+      window.STMK3?.commitBursts?.({ nativeCapture: true, render: false });
+      await window.STMK3?.flushEdits?.({ nativeCapture: true, render: false });
+      window.STNKSControls?.controller?.finish?.();
+      window.STAutomationRecord?.finishPass?.({ nativeCapture: true, render: false });
+      await window.STNKSControls?.flushEdits?.();
+      await window.STPluginParameters?.flushEdits?.();
+      await window.STAgent?.flushEdits?.();
+    })().catch(() => {});
+    await Promise.race([work, new Promise(resolve => setTimeout(resolve, 3000))]);
+  }
+
+  /** The host asks whether it may quit (the window is closing): the `app.quitRequested` event. The page
+      answers with `app.quitAnswer`: 'deciding' at once (it is alive), then 'stay' (an operation must
+      finish, or the person cancelled) or 'proceed' with the final project, which the host secures in
+      its recovery copy before it quits. */
+  async function hostQuitRequested() {
+    if (app.quitDecision) return;
+    const answer = payload => request('app.quitAnswer', payload);
+    app.quitDecision = (async () => {
+      await answer({ state: 'deciding' });
+      await flushEditsForQuit();
+      const blocked = quitBlocker();
+      if (blocked) {
+        toast(blocked, 'error');
+        await answer({ state: 'stay', reason: blocked });
+        return;
+      }
+      // Unsaved changes: Save, Discard or Cancel, exactly as before New and Open.
+      app.sessionTransition = true;
+      let proceed;
+      try {
+        proceed = await confirmSessionReplacement('quitting');
+      } finally {
+        app.sessionTransition = false;
+      }
+      if (!proceed) {
+        await answer({ state: 'stay' });
+        return;
+      }
+      const project = app.startupPending ? {} : { project: clone(state.project) };
+      try {
+        await answer({ state: 'proceed', ...project });
+      } catch (error) {
+        const quitAnyway = await app.confirmChoice('Your latest changes could not be secured',
+            error.message + ' The last automatic recovery copy is kept either way.', 'Quit Anyway');
+        await answer(quitAnyway ? { state: 'proceed', force: true } : { state: 'stay' });
+      }
+    })().catch(error => toast(error.message, 'error')).finally(() => {
+      app.quitDecision = null;
+    });
+  }
+
   // project.open reports a project converted from an older format (built-in synths became
   // wavetable samplers or rendered drum samples, tempo maps were removed): keep it unsaved.
   function migrationMessage(project) {
@@ -328,6 +405,6 @@
 
   Object.assign(app, {
     acceptProject, scheduleAutosave, settleRecordedAutomation, captureNativeEdits, projectAction,
-    midiFileAction, migrationMessage, acceptMigration
+    midiFileAction, migrationMessage, acceptMigration, quitBlocker, hostQuitRequested
   });
 })();

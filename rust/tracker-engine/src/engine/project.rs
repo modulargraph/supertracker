@@ -7,7 +7,7 @@
 //! and lane lists are shared copy-on-write) and handed to the render thread, which only reads it.
 
 use super::abi::*;
-use super::clock_ffi::EngineTiming;
+use super::timing::EngineTiming;
 use super::tables::ChannelTables;
 use super::util::{cmax, cmin};
 use std::ptr::NonNull;

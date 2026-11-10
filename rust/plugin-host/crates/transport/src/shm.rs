@@ -97,7 +97,7 @@ impl AsFdCompat for OwnedFd {
 fn create_fd(len: usize) -> io::Result<OwnedFd> {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
-        if std::env::var_os("STPC_SHM").map_or(true, |v| v != "posix") {
+        if std::env::var_os("STPC_SHM").is_none_or(|v| v != "posix") {
             return create_memfd(len);
         }
     }

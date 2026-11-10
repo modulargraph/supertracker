@@ -4,6 +4,7 @@
 // message transport is a stand-in: a small audio host that keeps plug-in instances and accepts routing.
 // Also: every MCP tool in MCPServer.swift names an existing STAgent method.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const { metadata, parameterList } = require('./helpers/builtin-effects');
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -116,11 +117,11 @@ function harness(project = fixture(), { duringLoad, dropWrite, queueWrites, appl
     'routing.apply': p => { host = clone(p.project); return { project: clone(p.project), capabilities: capabilities(), status: { unavailable: [] } }; },
     'routing.status': () => ({ unavailable: [] })
   };
-  const window = { addEventListener() {}, removeEventListener() {}, localStorage: { getItem() { return null; }, setItem() {} }, location: { search: '' }, webkit: { messageHandlers: { supertracker: { postMessage(message) {
+  const window = { addEventListener() {}, removeEventListener() {}, localStorage: { getItem() { return null; }, setItem() {} }, location: { search: '' }, STHostTransport: hostStub({ post(message) {
     const request = clone(message); calls.push(request);
     Promise.resolve().then(() => (handlers[request.command] || (() => ({})))(request.payload || {}))
-      .then(result => window.nativeReceive({ id: request.id, ok: true, result }), error => window.nativeReceive({ id: request.id, ok: false, error: error.message }));
-  } } } } };
+      .then(result => window.STHostTransport.deliver({ id: request.id, ok: true, result }), error => window.STHostTransport.deliver({ id: request.id, ok: false, error: error.message }));
+  } }) };
   const context = vm.createContext({ window, document, console, Date, Map, Set, WeakMap, WeakSet, Math, JSON, Number, String, Object, Array, Promise, Error, RegExp, innerWidth: 1400, innerHeight: 900,
     setTimeout: (fn, delay = 0) => { const id = nextTimer++; timers.set(id, { fn, at: clock + Number(delay || 0) }); return id; }, clearTimeout: id => timers.delete(id), setInterval: () => 0, clearInterval() {},
     queueMicrotask, requestAnimationFrame: fn => fn(), KeyboardEvent: class { constructor(type, init) { Object.assign(this, init, { type }); } }, Event: class { constructor(type) { this.type = type; } } });
@@ -322,8 +323,8 @@ test('setPluginParameters rewrites values a plug-in dropped from a burst and rep
   // Writes after the first one in a burst are dropped (until the plug-in is read), like the AU in the user's report.
   let sinceRead = 0, reads = 0;
   const h = harness(fixture(), { dropWrite: p => p.owner === 'bus:kit' && (String(p.address) === '3' || sinceRead++ > 0) });
-  const original = h.window.webkit.messageHandlers.supertracker.postMessage;
-  h.window.webkit.messageHandlers.supertracker.postMessage = message => { if (message.command === 'plugin.parameters') { sinceRead = 0; reads++; } return original(message); };
+  const original = h.window.STHostTransport.post;
+  h.window.STHostTransport.post = message => { if (message.command === 'plugin.parameters') { sinceRead = 0; reads++; } return original(message); };
   const undo = h.ST.state.undo.length;
   const result = await h.ok('setPluginParameters', { channel: 'Avenue Kit', slot: 0, values: { '0': '20%', '1': '40%', '2': { normalized: .6 } } });
   assert.deepEqual(result.parameters.map(p => [p.address, p.normalized, p.applied]), [['0', .2, true], ['1', .4, true], ['2', .6, true]]);

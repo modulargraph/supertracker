@@ -33,6 +33,8 @@
     window.addEventListener('blur', stopHeld);
     try {
       const data = await request('ready');
+      // The host lists what it implements, so the page can keep its own fallback for the rest.
+      state.hostCommands = Array.isArray(data?.commands) ? new Set(data.commands) : null;
       if (data?.project) state.project = normalize(data.project);
       app.startupPending = false;
       readPerformance(state.project);
@@ -99,6 +101,8 @@
     midiPerformanceMap,
     commands,
     request,
+    longRequest: (...args) => app.longRequest(...args),
+    hostImplements: (...args) => app.hostImplements(...args),
     get isChangingSession() {
       return app.savingProject || app.sessionTransition;
     },

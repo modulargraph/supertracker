@@ -266,12 +266,12 @@ fn wrap_range(x: f64, range: f64) -> f64 {
 #[inline]
 fn set_grain_target(p: &mut STInstrument, target: i32, x: f32) -> bool {
     match target {
-        ST_TARGET_GRAIN_DENSITY => p.grainDensity = clamp(x, 1.0, ST_GRANULAR_MAX_GRAINS as f32).round() as i32,
-        ST_TARGET_GRAIN_SPRAY => p.grainSpray = clamp(x, 0.0, 1.0),
-        ST_TARGET_GRAIN_PITCH_SPREAD => p.grainPitchSpread = clamp(x, 0.0, 24.0),
-        ST_TARGET_GRAIN_SCAN => p.grainScan = clamp(x, -4.0, 4.0),
-        ST_TARGET_GRAIN_REVERSE => p.grainReverse = clamp(x, 0.0, 1.0),
-        ST_TARGET_GRAIN_STEREO => p.grainStereo = clamp(x, 0.0, 1.0),
+        ST_TARGET_GRAIN_DENSITY => p.grain_density = clamp(x, 1.0, ST_GRANULAR_MAX_GRAINS as f32).round() as i32,
+        ST_TARGET_GRAIN_SPRAY => p.grain_spray = clamp(x, 0.0, 1.0),
+        ST_TARGET_GRAIN_PITCH_SPREAD => p.grain_pitch_spread = clamp(x, 0.0, 24.0),
+        ST_TARGET_GRAIN_SCAN => p.grain_scan = clamp(x, -4.0, 4.0),
+        ST_TARGET_GRAIN_REVERSE => p.grain_reverse = clamp(x, 0.0, 1.0),
+        ST_TARGET_GRAIN_STEREO => p.grain_stereo = clamp(x, 0.0, 1.0),
         _ => return false,
     }
     true
@@ -350,29 +350,29 @@ fn instrument_automation(v: &mut Voice, ts: &TrackState, geometry: bool) {
             ST_TARGET_SUSTAIN => p.sustain = clamp(x, 0.0, 1.0),
             ST_TARGET_RELEASE => p.release = clamp(x, 0.0001, 60.0),
             ST_TARGET_DRIVE => p.drive = clamp(x, 0.0, 1.0),
-            ST_TARGET_BIT_DEPTH => p.bitDepth = clamp(x, 2.0, 16.0) as i32,
-            ST_TARGET_LFO_RATE => p.lfoRate = clamp(x, 0.0, 100.0),
-            ST_TARGET_LFO_DEPTH => p.lfoDepth = clamp(x, 0.0, 1.0),
+            ST_TARGET_BIT_DEPTH => p.bit_depth = clamp(x, 2.0, 16.0) as i32,
+            ST_TARGET_LFO_RATE => p.lfo_rate = clamp(x, 0.0, 100.0),
+            ST_TARGET_LFO_DEPTH => p.lfo_depth = clamp(x, 0.0, 1.0),
             ST_TARGET_START => p.start = clamp(x, 0.0, 0.999999),
             ST_TARGET_END => p.end = clamp(x, p.start + 0.000001, 1.0),
-            ST_TARGET_LOOP_START => p.loopStart = clamp(x, 0.0, 0.999999),
-            ST_TARGET_LOOP_END => p.loopEnd = clamp(x, p.loopStart + 0.000001, 1.0),
-            ST_TARGET_GRAIN_SIZE => p.grainSize = clamp(x, 0.002, 0.5),
-            ST_TARGET_GRAIN_POSITION => p.grainPosition = clamp(x, 0.0, 1.0),
-            ST_TARGET_SLICE_COUNT => p.sliceCount = clamp(x, 1.0, 128.0) as i32,
+            ST_TARGET_LOOP_START => p.loop_start = clamp(x, 0.0, 0.999999),
+            ST_TARGET_LOOP_END => p.loop_end = clamp(x, p.loop_start + 0.000001, 1.0),
+            ST_TARGET_GRAIN_SIZE => p.grain_size = clamp(x, 0.002, 0.5),
+            ST_TARGET_GRAIN_POSITION => p.grain_position = clamp(x, 0.0, 1.0),
+            ST_TARGET_SLICE_COUNT => p.slice_count = clamp(x, 1.0, 128.0) as i32,
             ST_TARGET_INSTRUMENT_VOLUME => p.volume = clamp(x, 0.0, 2.0) * v.zone_volume,
             ST_TARGET_INSTRUMENT_PAN => p.pan = clamp(x + v.zone_pan, -1.0, 1.0),
             ST_TARGET_TUNE => p.tune = clamp(x, -96.0, 96.0) + v.zone_tune,
-            ST_TARGET_FILTER_ATTACK => p.filterAttack = clamp(x, 0.0, 60.0),
-            ST_TARGET_FILTER_DECAY => p.filterDecay = clamp(x, 0.0, 60.0),
-            ST_TARGET_FILTER_SUSTAIN => p.filterSustain = clamp(x, 0.0, 1.0),
-            ST_TARGET_FILTER_RELEASE => p.filterRelease = clamp(x, 0.0001, 60.0),
-            ST_TARGET_FILTER_ENV_AMOUNT => p.filterEnvAmount = clamp(x, -48.0, 48.0),
-            ST_TARGET_LFO2_RATE => p.lfo2Rate = clamp(x, 0.0, 100.0),
-            ST_TARGET_LFO2_DEPTH => p.lfo2Depth = clamp(x, 0.0, 1.0),
-            ST_TARGET_LFO_BEATS => p.lfoBeats = clamp(x, 1.0 / 64.0, 64.0),
-            ST_TARGET_LFO2_BEATS => p.lfo2Beats = clamp(x, 1.0 / 64.0, 64.0),
-            ST_TARGET_WAVETABLE_POSITION => p.wavetablePosition = clamp(x, 0.0, 1.0),
+            ST_TARGET_FILTER_ATTACK => p.filter_attack = clamp(x, 0.0, 60.0),
+            ST_TARGET_FILTER_DECAY => p.filter_decay = clamp(x, 0.0, 60.0),
+            ST_TARGET_FILTER_SUSTAIN => p.filter_sustain = clamp(x, 0.0, 1.0),
+            ST_TARGET_FILTER_RELEASE => p.filter_release = clamp(x, 0.0001, 60.0),
+            ST_TARGET_FILTER_ENV_AMOUNT => p.filter_env_amount = clamp(x, -48.0, 48.0),
+            ST_TARGET_LFO2_RATE => p.lfo2_rate = clamp(x, 0.0, 100.0),
+            ST_TARGET_LFO2_DEPTH => p.lfo2_depth = clamp(x, 0.0, 1.0),
+            ST_TARGET_LFO_BEATS => p.lfo_beats = clamp(x, 1.0 / 64.0, 64.0),
+            ST_TARGET_LFO2_BEATS => p.lfo2_beats = clamp(x, 1.0 / 64.0, 64.0),
+            ST_TARGET_WAVETABLE_POSITION => p.wavetable_position = clamp(x, 0.0, 1.0),
             target => {
                 set_grain_target(p, target, x);
             }
@@ -398,10 +398,10 @@ fn instrument_automation(v: &mut Voice, ts: &TrackState, geometry: bool) {
         v.end = clamp(v.p.end as f64 * frames, v.begin + 1.0, frames);
     }
     if automated(ST_TARGET_LOOP_START) {
-        v.loop_begin = clamp(v.p.loopStart as f64 * frames, v.begin, v.end - 1.0);
+        v.loop_begin = clamp(v.p.loop_start as f64 * frames, v.begin, v.end - 1.0);
     }
     if automated(ST_TARGET_LOOP_END) {
-        v.loop_end = clamp(v.p.loopEnd as f64 * frames, v.loop_begin + 1.0, v.end);
+        v.loop_end = clamp(v.p.loop_end as f64 * frames, v.loop_begin + 1.0, v.end);
     }
     if v.zone_region {
         v.loop_begin = clamp(v.loop_begin, v.begin, v.end - 1.0);
@@ -411,8 +411,8 @@ fn instrument_automation(v: &mut Voice, ts: &TrackState, geometry: bool) {
         // The loop follows the moved region as at note start; left outside it, the next wrap
         // would end the voice.
         if !v.zone_region {
-            v.loop_begin = clamp(v.p.loopStart as f64 * frames, v.begin, v.end - 1.0);
-            v.loop_end = clamp(v.p.loopEnd as f64 * frames, v.loop_begin + 1.0, v.end);
+            v.loop_begin = clamp(v.p.loop_start as f64 * frames, v.begin, v.end - 1.0);
+            v.loop_end = clamp(v.p.loop_end as f64 * frames, v.loop_begin + 1.0, v.end);
         }
         v.pos = clamp(v.pos, v.begin, v.end - 1.0);
         update_sample_bounds(v, sample);
@@ -425,23 +425,23 @@ fn instrument_automation(v: &mut Voice, ts: &TrackState, geometry: bool) {
 #[inline]
 fn granular_sample(v: &mut Voice, s: &Sample, sample_rate: f64, rate: f64, mod_position: f32, mod_size: f32) -> (f32, f32) {
     let p = v.p;
-    let length = clamp(p.grainSize as f64 * mod_size as f64 * sample_rate, 64.0, sample_rate * 0.5);
+    let length = clamp(p.grain_size as f64 * mod_size as f64 * sample_rate, 64.0, sample_rate * 0.5);
     let range = cmax(1.0, v.end - v.begin);
-    if p.grainScan != 0.0 {
-        v.grain_scan = wrap_range(v.grain_scan + p.grainScan as f64 * s.rate / sample_rate, range);
+    if p.grain_scan != 0.0 {
+        v.grain_scan = wrap_range(v.grain_scan + p.grain_scan as f64 * s.rate / sample_rate, range);
     }
     let center =
-        v.begin + clamp(p.grainPosition as f64 + mod_position as f64, 0.0, 1.0) * (v.end - v.begin - 1.0) + v.grain_scan;
+        v.begin + clamp(p.grain_position as f64 + mod_position as f64, 0.0, 1.0) * (v.end - v.begin - 1.0) + v.grain_scan;
     v.grain_center = center;
-    let count = if p.grainDensity >= 1 && p.grainDensity <= ST_GRANULAR_MAX_GRAINS as i32 {
-        p.grainDensity
+    let count = if p.grain_density >= 1 && p.grain_density <= ST_GRANULAR_MAX_GRAINS as i32 {
+        p.grain_density
     } else {
         ST_GRANULAR_DEFAULT_DENSITY
     };
-    let random = p.grainSpray > 0.0 || p.grainPitchSpread > 0.0 || p.grainReverse > 0.0 || p.grainStereo > 0.0;
+    let random = p.grain_spray > 0.0 || p.grain_pitch_spread > 0.0 || p.grain_reverse > 0.0 || p.grain_stereo > 0.0;
     let a = v.grain_phase;
     v.grain_count = count;
-    v.grain_span = length * rate * 0.5 + p.grainSpray as f64 * s.rate;
+    v.grain_span = length * rate * 0.5 + p.grain_spray as f64 * s.rate;
     let (mut l, mut r);
     if count == 2 && !random {
         let c = a + 0.5;
@@ -487,17 +487,17 @@ fn granular_sample(v: &mut Voice, s: &Sample, sample_rate: f64, rate: f64, mod_p
                 g.gain_l = 1.0;
                 g.gain_r = 1.0;
                 if random {
-                    if p.grainSpray > 0.0 {
-                        g.offset = random_bipolar(&mut v.rng) as f64 * p.grainSpray as f64 * s.rate;
+                    if p.grain_spray > 0.0 {
+                        g.offset = random_bipolar(&mut v.rng) as f64 * p.grain_spray as f64 * s.rate;
                     }
-                    if p.grainPitchSpread > 0.0 {
-                        g.ratio = (random_bipolar(&mut v.rng) * p.grainPitchSpread / 12.0).exp2();
+                    if p.grain_pitch_spread > 0.0 {
+                        g.ratio = (random_bipolar(&mut v.rng) * p.grain_pitch_spread / 12.0).exp2();
                     }
-                    if p.grainReverse > 0.0 && (random_bipolar(&mut v.rng) + 1.0) * 0.5 < p.grainReverse {
+                    if p.grain_reverse > 0.0 && (random_bipolar(&mut v.rng) + 1.0) * 0.5 < p.grain_reverse {
                         g.dir = -1;
                     }
-                    if p.grainStereo > 0.0 {
-                        let pan = random_bipolar(&mut v.rng) * p.grainStereo;
+                    if p.grain_stereo > 0.0 {
+                        let pan = random_bipolar(&mut v.rng) * p.grain_stereo;
                         g.gain_l = if pan > 0.0 { 1.0 - pan } else { 1.0 };
                         g.gain_r = if pan < 0.0 { 1.0 + pan } else { 1.0 };
                     }
@@ -541,21 +541,21 @@ fn apply_live(v: &mut Voice, target: i32, x: f32, onset: bool) {
         ST_TARGET_SUSTAIN => p.sustain = clamp(x, 0.0, 1.0),
         ST_TARGET_RELEASE => p.release = clamp(x, 0.0001, 60.0),
         ST_TARGET_DRIVE => p.drive = clamp(x, 0.0, 1.0),
-        ST_TARGET_BIT_DEPTH => p.bitDepth = clamp(x, 2.0, 16.0) as i32,
-        ST_TARGET_LFO_RATE => p.lfoRate = clamp(x, 0.0, 100.0),
-        ST_TARGET_LFO_DEPTH => p.lfoDepth = clamp(x, 0.0, 1.0),
-        ST_TARGET_LFO2_RATE => p.lfo2Rate = clamp(x, 0.0, 100.0),
-        ST_TARGET_LFO2_DEPTH => p.lfo2Depth = clamp(x, 0.0, 1.0),
-        ST_TARGET_LFO_BEATS => p.lfoBeats = clamp(x, 1.0 / 64.0, 64.0),
-        ST_TARGET_LFO2_BEATS => p.lfo2Beats = clamp(x, 1.0 / 64.0, 64.0),
-        ST_TARGET_FILTER_ATTACK => p.filterAttack = clamp(x, 0.0, 60.0),
-        ST_TARGET_FILTER_DECAY => p.filterDecay = clamp(x, 0.0, 60.0),
-        ST_TARGET_FILTER_SUSTAIN => p.filterSustain = clamp(x, 0.0, 1.0),
-        ST_TARGET_FILTER_RELEASE => p.filterRelease = clamp(x, 0.0001, 60.0),
-        ST_TARGET_FILTER_ENV_AMOUNT => p.filterEnvAmount = clamp(x, -48.0, 48.0),
-        ST_TARGET_GRAIN_SIZE => p.grainSize = clamp(x, 0.002, 0.5),
-        ST_TARGET_GRAIN_POSITION => p.grainPosition = clamp(x, 0.0, 1.0),
-        ST_TARGET_WAVETABLE_POSITION => p.wavetablePosition = clamp(x, 0.0, 1.0),
+        ST_TARGET_BIT_DEPTH => p.bit_depth = clamp(x, 2.0, 16.0) as i32,
+        ST_TARGET_LFO_RATE => p.lfo_rate = clamp(x, 0.0, 100.0),
+        ST_TARGET_LFO_DEPTH => p.lfo_depth = clamp(x, 0.0, 1.0),
+        ST_TARGET_LFO2_RATE => p.lfo2_rate = clamp(x, 0.0, 100.0),
+        ST_TARGET_LFO2_DEPTH => p.lfo2_depth = clamp(x, 0.0, 1.0),
+        ST_TARGET_LFO_BEATS => p.lfo_beats = clamp(x, 1.0 / 64.0, 64.0),
+        ST_TARGET_LFO2_BEATS => p.lfo2_beats = clamp(x, 1.0 / 64.0, 64.0),
+        ST_TARGET_FILTER_ATTACK => p.filter_attack = clamp(x, 0.0, 60.0),
+        ST_TARGET_FILTER_DECAY => p.filter_decay = clamp(x, 0.0, 60.0),
+        ST_TARGET_FILTER_SUSTAIN => p.filter_sustain = clamp(x, 0.0, 1.0),
+        ST_TARGET_FILTER_RELEASE => p.filter_release = clamp(x, 0.0001, 60.0),
+        ST_TARGET_FILTER_ENV_AMOUNT => p.filter_env_amount = clamp(x, -48.0, 48.0),
+        ST_TARGET_GRAIN_SIZE => p.grain_size = clamp(x, 0.002, 0.5),
+        ST_TARGET_GRAIN_POSITION => p.grain_position = clamp(x, 0.0, 1.0),
+        ST_TARGET_WAVETABLE_POSITION => p.wavetable_position = clamp(x, 0.0, 1.0),
         ST_TARGET_START => {
             if onset {
                 p.start = clamp(x, 0.0, 0.999999)
@@ -568,17 +568,17 @@ fn apply_live(v: &mut Voice, target: i32, x: f32, onset: bool) {
         }
         ST_TARGET_LOOP_START => {
             if onset {
-                p.loopStart = clamp(x, 0.0, 0.999999)
+                p.loop_start = clamp(x, 0.0, 0.999999)
             }
         }
         ST_TARGET_LOOP_END => {
             if onset {
-                p.loopEnd = clamp(x, p.loopStart + 0.000001, 1.0)
+                p.loop_end = clamp(x, p.loop_start + 0.000001, 1.0)
             }
         }
         ST_TARGET_SLICE_COUNT => {
             if onset {
-                p.sliceCount = clamp(x, 1.0, 128.0) as i32
+                p.slice_count = clamp(x, 1.0, 128.0) as i32
             }
         }
         _ => {
@@ -623,24 +623,24 @@ fn envelope(v: &mut Voice, sample_rate: f64, sink: &mut VoiceSink, index: usize)
 #[inline(always)]
 fn filter_envelope(v: &mut Voice, sample_rate: f64) -> f32 {
     if v.releasing {
-        let length = cmax(0.0001, v.p.filterRelease as f64) * sample_rate;
+        let length = cmax(0.0001, v.p.filter_release as f64) * sample_rate;
         v.filter_env = v.filter_release_start * cmax(0.0, 1.0 - v.filter_elapsed / length) as f32;
     } else if v.filter_env_stage == 0 {
-        let length = cmax(0.0, v.p.filterAttack as f64) * sample_rate;
+        let length = cmax(0.0, v.p.filter_attack as f64) * sample_rate;
         v.filter_env = if length < 1.0 { 1.0 } else { cmin(1.0, v.filter_elapsed / length) as f32 };
         if v.filter_env >= 1.0 {
             v.filter_env_stage = 1;
             v.filter_elapsed = 0.0;
         }
     } else if v.filter_env_stage == 1 {
-        let length = cmax(0.0001, v.p.filterDecay as f64) * sample_rate;
-        v.filter_env = 1.0 + (v.p.filterSustain - 1.0) * cmin(1.0, v.filter_elapsed / length) as f32;
+        let length = cmax(0.0001, v.p.filter_decay as f64) * sample_rate;
+        v.filter_env = 1.0 + (v.p.filter_sustain - 1.0) * cmin(1.0, v.filter_elapsed / length) as f32;
         if v.filter_elapsed >= length {
-            v.filter_env = v.p.filterSustain;
+            v.filter_env = v.p.filter_sustain;
             v.filter_env_stage = 2;
         }
     } else {
-        v.filter_env = v.p.filterSustain;
+        v.filter_env = v.p.filter_sustain;
     }
     v.filter_elapsed += 1.0;
     v.filter_env
@@ -704,22 +704,22 @@ fn route_modulation(m: &mut Modulation, value: f32, depth: f32, target: i32) {
 #[inline(always)]
 fn modulation(v: &mut Voice, sample_rate: f64, effective_bpm: f64) -> Modulation {
     let mut m = Modulation { cutoff_octaves: 0.0, pitch: 0.0, volume: 1.0, pan: 0.0, position: 0.0, grain_size: 1.0 };
-    m.cutoff_octaves = filter_envelope(v, sample_rate) * v.p.filterEnvAmount / 12.0;
+    m.cutoff_octaves = filter_envelope(v, sample_rate) * v.p.filter_env_amount / 12.0;
     let p = v.p;
-    let rate1 = if p.lfoSync != 0 { effective_bpm / (60.0 * p.lfoBeats as f64) } else { p.lfoRate as f64 };
-    let rate2 = if p.lfo2Sync != 0 { effective_bpm / (60.0 * p.lfo2Beats as f64) } else { p.lfo2Rate as f64 };
-    let source1 = if p.lfoDepth > 0.0 || rate1 > 0.0 {
-        lfo_sample(&mut v.lfo_phase, rate1, p.lfoShape, &mut v.lfo_random, &mut v.lfo_rng, p.lfoDepth > 0.0, sample_rate)
+    let rate1 = if p.lfo_sync != 0 { effective_bpm / (60.0 * p.lfo_beats as f64) } else { p.lfo_rate as f64 };
+    let rate2 = if p.lfo2_sync != 0 { effective_bpm / (60.0 * p.lfo2_beats as f64) } else { p.lfo2_rate as f64 };
+    let source1 = if p.lfo_depth > 0.0 || rate1 > 0.0 {
+        lfo_sample(&mut v.lfo_phase, rate1, p.lfo_shape, &mut v.lfo_random, &mut v.lfo_rng, p.lfo_depth > 0.0, sample_rate)
     } else {
         0.0
     };
-    let source2 = if p.lfo2Depth > 0.0 || rate2 > 0.0 {
-        lfo_sample(&mut v.lfo2_phase, rate2, p.lfo2Shape, &mut v.lfo2_random, &mut v.lfo2_rng, p.lfo2Depth > 0.0, sample_rate)
+    let source2 = if p.lfo2_depth > 0.0 || rate2 > 0.0 {
+        lfo_sample(&mut v.lfo2_phase, rate2, p.lfo2_shape, &mut v.lfo2_random, &mut v.lfo2_rng, p.lfo2_depth > 0.0, sample_rate)
     } else {
         0.0
     };
-    route_modulation(&mut m, source1, p.lfoDepth, p.lfoTarget);
-    route_modulation(&mut m, source2, p.lfo2Depth, p.lfo2Target);
+    route_modulation(&mut m, source1, p.lfo_depth, p.lfo_target);
+    route_modulation(&mut m, source2, p.lfo2_depth, p.lfo2_target);
     m
 }
 
@@ -844,8 +844,8 @@ impl<'a> Rt<'a> {
         // A track's own choke group and voice mode win over its instrument's. Track choke groups
         // are scoped to the track's group (scope); instrument choke groups choke any track.
         let track_voice = p.track_voices.get(track as usize).copied().unwrap_or_default();
-        let voice_mode = if track_voice.mode >= 0 { track_voice.mode } else { instrument_data.p.voiceMode };
-        let choke_group = if track_voice.choke > 0 { track_voice.choke } else { instrument_data.p.chokeGroup };
+        let voice_mode = if track_voice.mode >= 0 { track_voice.mode } else { instrument_data.p.voice_mode };
+        let choke_group = if track_voice.choke > 0 { track_voice.choke } else { instrument_data.p.choke_group };
         let choke_scope = if track_voice.choke > 0 { track_voice.scope } else { -1 };
         let kind = instrument_data.p.type_;
         if kind == ST_INSTRUMENT_AU || kind == ST_INSTRUMENT_MIDI {
@@ -1036,7 +1036,7 @@ impl<'a> Rt<'a> {
                     v.zone_root = zone.root_note;
                     v.zone_tune = zone.tune;
                     v.zone_volume = zone.volume;
-                    v.p.rootNote = zone.root_note;
+                    v.p.root_note = zone.root_note;
                     v.p.tune += zone.tune;
                     v.p.volume *= zone.volume;
                     v.zone_pan = zone.pan;
@@ -1050,21 +1050,21 @@ impl<'a> Rt<'a> {
                         v.zone_end = zone.end;
                         v.p.start = zone.start;
                         v.p.end = zone.end;
-                        v.p.loopStart = zone.loop_start;
-                        v.p.loopEnd = zone.loop_end;
+                        v.p.loop_start = zone.loop_start;
+                        v.p.loop_end = zone.loop_end;
                     }
                     break;
                 }
             }
         }
-        v.cycle_width = (if v.p.wavetableFrameSize > 0 {
-            v.p.wavetableFrameSize
+        v.cycle_width = (if v.p.wavetable_frame_size > 0 {
+            v.p.wavetable_frame_size
         } else if instrument_data.cycle_frames > 0 {
             instrument_data.cycle_frames
         } else {
             ST_WAVETABLE_DEFAULT_FRAME
         }) as usize;
-        v.position_smooth = clamp(v.p.wavetablePosition as f64, 0.0, 1.0);
+        v.position_smooth = clamp(v.p.wavetable_position as f64, 0.0, 1.0);
         v.zone_tune += preview_pitch;
         v.p.tune += preview_pitch;
         if slice >= 0 && v.p.type_ == ST_INSTRUMENT_SAMPLE {
@@ -1103,21 +1103,21 @@ impl<'a> Rt<'a> {
         let frames = sample.l.len() as f64;
         v.begin = clamp(v.p.start as f64 * frames, 0.0, frames - 1.0);
         v.end = clamp(v.p.end as f64 * frames, v.begin + 1.0, frames);
-        v.loop_begin = clamp(v.p.loopStart as f64 * frames, v.begin, v.end - 1.0);
-        v.loop_end = clamp(v.p.loopEnd as f64 * frames, v.loop_begin + 1.0, v.end);
+        v.loop_begin = clamp(v.p.loop_start as f64 * frames, v.begin, v.end - 1.0);
+        v.loop_end = clamp(v.p.loop_end as f64 * frames, v.loop_begin + 1.0, v.end);
         if v.p.mode == ST_MODE_SLICE {
-            let count = clamp(v.p.sliceCount, 1, 128);
+            let count = clamp(v.p.slice_count, 1, 128);
             let slices = &instrument_data.slices;
             if slices.is_empty() {
                 let selected =
-                    if slice >= 0 { clamp(slice, 0, count - 1) } else { (note.wrapping_sub(v.p.rootNote) % count + count) % count };
+                    if slice >= 0 { clamp(slice, 0, count - 1) } else { (note.wrapping_sub(v.p.root_note) % count + count) % count };
                 let width = (v.end - v.begin) / count as f64;
                 v.begin += selected as f64 * width;
                 v.end = v.begin + width;
             } else {
                 let size = slices.len() as i32;
                 let selected =
-                    if slice >= 0 { clamp(slice, 0, size - 1) } else { (note.wrapping_sub(v.p.rootNote) % size + size) % size };
+                    if slice >= 0 { clamp(slice, 0, size - 1) } else { (note.wrapping_sub(v.p.root_note) % size + size) % size };
                 let lo = v.begin;
                 let range = v.end - v.begin;
                 let first = slices.get(selected as usize).copied().unwrap_or(0.0);
@@ -1276,37 +1276,37 @@ impl<'a> Rt<'a> {
             | (if v.preview { ST_VOICE_POSITION_PREVIEW } else { 0 })
             | (if v.sequenced { ST_VOICE_POSITION_SEQUENCED } else { 0 })
             | (if zone { ST_VOICE_POSITION_ZONE } else { 0 });
-        o.sampleFrames = voice_sample_ref(v).map_or(0.0, |sample| sample.l.len() as f64);
+        o.sample_frames = voice_sample_ref(v).map_or(0.0, |sample| sample.l.len() as f64);
         o.direction = v.dir;
         o.position = v.pos;
-        o.windowStart = v.pos;
-        o.windowEnd = v.pos;
+        o.window_start = v.pos;
+        o.window_end = v.pos;
         if p.mode == ST_MODE_WAVETABLE {
             let region = v.end - v.begin;
             let width = cmax(1.0, cmin(v.cycle_width as f64, region.floor()));
             let frames = cmax(1.0, (region / width).floor());
             let frame = cmin(frames - 1.0, (v.position_smooth * (frames - 1.0) + 0.5).floor());
             o.position = v.begin + frame * width;
-            o.windowStart = o.position;
-            o.windowEnd = o.windowStart + width;
+            o.window_start = o.position;
+            o.window_end = o.window_start + width;
             o.direction = 1;
         } else if p.mode == ST_MODE_GRANULAR {
             let range = cmax(1.0, v.end - v.begin);
             o.position = v.begin + wrap_range(v.grain_center - v.begin, range);
-            o.windowStart = o.position - v.grain_span;
-            o.windowEnd = o.position + v.grain_span;
-            o.direction = if p.grainScan > 0.0 {
+            o.window_start = o.position - v.grain_span;
+            o.window_end = o.position + v.grain_span;
+            o.direction = if p.grain_scan > 0.0 {
                 1
-            } else if p.grainScan < 0.0 {
+            } else if p.grain_scan < 0.0 {
                 -1
             } else {
                 0
             };
-            o.grainCount = v.grain_count;
+            o.grain_count = v.grain_count;
             let grains = clamp(v.grain_count, 0, ST_GRANULAR_MAX_GRAINS as i32) as usize;
             for k in 0..grains {
-                o.grainPositions[k] = v.grains[k].read;
-                o.grainLevels[k] = v.grains[k].window;
+                o.grain_positions[k] = v.grains[k].read;
+                o.grain_levels[k] = v.grains[k].window;
             }
         }
         o
@@ -1395,7 +1395,7 @@ impl<'a> Rt<'a> {
             let rate_pitch = if v.p.mode == ST_MODE_SLICE && !v.explicit_slice {
                 (v.p.tune + t.pitch + bend + m.pitch) as f64
             } else {
-                pitch - v.p.rootNote as f64
+                pitch - v.p.root_note as f64
             };
             if rate_pitch != v.rate_pitch {
                 v.rate_pitch = rate_pitch;
@@ -1411,7 +1411,7 @@ impl<'a> Rt<'a> {
                 let width = cmax(1.0, cmin(v.cycle_width as f64, region.floor())) as usize;
                 let width = cmax(width, 1);
                 let frames = cmax(1, (region / width as f64) as usize);
-                let target = clamp(v.p.wavetablePosition as f64 + m.position as f64, 0.0, 1.0);
+                let target = clamp(v.p.wavetable_position as f64 + m.position as f64, 0.0, 1.0);
                 let slew = 1.0 / (0.005 * sample_rate);
                 v.position_smooth = if target > v.position_smooth {
                     cmin(target, v.position_smooth + slew)
@@ -1550,7 +1550,7 @@ impl<'a> Rt<'a> {
         cutoff = v.cutoff_smooth;
         let resonance = if t.resonance >= 0.0 { t.resonance } else { v.p.resonance };
         filter_coefficients(v, cutoff, resonance, sample_rate);
-        let (k, a1, a2, a3, kind) = (v.filter_k, v.filter_a1, v.filter_a2, v.filter_a3, v.p.filterType);
+        let (k, a1, a2, a3, kind) = (v.filter_k, v.filter_a1, v.filter_a2, v.filter_a3, v.p.filter_type);
         l = filter(l, &mut v.filter_l1, &mut v.filter_l2, k, a1, a2, a3, kind);
         r = filter(r, &mut v.filter_r1, &mut v.filter_r2, k, a1, a2, a3, kind);
         if v.p.drive > 0.00001 {
@@ -1562,8 +1562,8 @@ impl<'a> Rt<'a> {
             l = (l * v.drive_gain).tanh() * v.drive_scale;
             r = (r * v.drive_gain).tanh() * v.drive_scale;
         }
-        if v.p.bitDepth < 16 {
-            let levels = (1u32 << (clamp(v.p.bitDepth, 2, 16) - 1)) as f32;
+        if v.p.bit_depth < 16 {
+            let levels = (1u32 << (clamp(v.p.bit_depth, 2, 16) - 1)) as f32;
             l = (l * levels).round() / levels;
             r = (r * levels).round() / levels;
         }

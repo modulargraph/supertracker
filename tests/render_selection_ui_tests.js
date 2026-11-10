@@ -4,6 +4,7 @@
 // stubbed native host: one Undo step for a plain render and for bounce in place, cancel,
 // progress events and refusals.
 const vm = require('node:vm'), assert = require('node:assert/strict');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const copy = value => JSON.parse(JSON.stringify(value));
 const tick = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
@@ -21,11 +22,11 @@ function harness() {
   const document = { activeElement: null, querySelector: node, querySelectorAll: () => [], getElementById: node, createElement: node, body: null,
     addEventListener(type, fn) { if (type === 'keydown') keydown.push(fn); } };
   document.body = node('body');
-  const window = { addEventListener() {}, webkit: { messageHandlers: { supertracker: { postMessage(message) {
+  const window = { addEventListener() {}, STHostTransport: hostStub({ post(message) {
     calls.push(copy(message)); const handler = handlers.get(message.command);
-    Promise.resolve().then(() => handler ? handler(message.payload) : {}).then(result => window.nativeReceive({ id: message.id, ok: true, result }),
-      error => window.nativeReceive({ id: message.id, ok: false, error: error.message }));
-  } } } } };
+    Promise.resolve().then(() => handler ? handler(message.payload) : {}).then(result => window.STHostTransport.deliver({ id: message.id, ok: true, result }),
+      error => window.STHostTransport.deliver({ id: message.id, ok: false, error: error.message }));
+  } }) };
   const context = vm.createContext({ window, document, console, innerWidth: 1080, innerHeight: 700, setTimeout() { return 0; }, clearTimeout() {}, setInterval() { return 0; }, clearInterval() {},
     Date, Map, Set, Math, JSON, Number, String, Object, Array, Promise, Error });
   for (const name of ['routing-project.js', 'app.js', 'render-selection.js']) web.load(context, name);

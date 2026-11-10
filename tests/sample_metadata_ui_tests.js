@@ -1,12 +1,13 @@
 // Sample metadata ownership/cache hydration against the actual app, with native requests mocked.
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 function harness(){
   const nodes=new Map(),calls=[],handlers=new Map(),timers=new Map();let context,clock=0,nextTimer=1;
   function advance(milliseconds){clock+=milliseconds;for(const [id,timer] of [...timers])if(timer.at<=clock){timers.delete(id);timer.fn();}}
   function element(id){if(!nodes.has(id))nodes.set(id,{id,innerHTML:'',value:'',dataset:{},attributes:{},classList:{toggle(){},add(){},remove(){}},focus(){},select(){},scrollIntoView(){},closest(){return null;},querySelectorAll(){return[];},addEventListener(){},setAttribute(name,value){this.attributes[name]=String(value);},click(){return this.onclick?.();}});return nodes.get(id);}
   const document={body:element('body'),activeElement:null,querySelector:element,querySelectorAll:()=>[],getElementById:element,addEventListener(){},createElement:element};
-  const window={addEventListener(){},webkit:{messageHandlers:{supertracker:{postMessage(message){calls.push(message);const handler=handlers.get(message.command);Promise.resolve().then(()=>handler?handler(message.payload):{}).then(result=>window.nativeReceive({id:message.id,ok:true,result}),error=>window.nativeReceive({id:message.id,ok:false,error:error.message}));}}}}};
+  const window={addEventListener(){},STHostTransport:hostStub({post(message){calls.push(message);const handler=handlers.get(message.command);Promise.resolve().then(()=>handler?handler(message.payload):{}).then(result=>window.STHostTransport.deliver({id:message.id,ok:true,result}),error=>window.STHostTransport.deliver({id:message.id,ok:false,error:error.message}));}})};
   context=vm.createContext({window,document,console,setTimeout:(fn,delay=0)=>{const id=nextTimer++;timers.set(id,{fn,at:clock+delay});return id;},clearTimeout:id=>timers.delete(id),Date,Map,Set,Math,JSON,Number,String,Object,Array,Promise,innerWidth:1280,innerHeight:800});
   web.load(context, 'app.js');
   const ST=window.ST;ST.state.project=ST.demoProject();ST.state.project.instruments.forEach(inst=>{inst.samplePath='';});/* The demo's built-in wavetables would hydrate too; these tests own every sample path. */ST.state.project.name='Unsaved piece';ST.state.dirty=true;

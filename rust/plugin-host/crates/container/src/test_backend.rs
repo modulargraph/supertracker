@@ -112,6 +112,7 @@ fn crash_now(how: u32) -> ! {
     match how {
         2 => {
             // SAFETY: deliberately not safe: this is the segfault the tests ask for.
+            #[allow(clippy::manual_dangling_ptr)]
             unsafe { std::ptr::write_volatile(8 as *mut u64, 0xDEAD) };
             std::process::abort()
         }

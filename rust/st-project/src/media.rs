@@ -231,3 +231,76 @@ pub fn hash_file(path: &Path, max_bytes: u64, cancel: Option<&Cancel>) -> Result
     }
     Ok(hex(&hasher.finalize()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn sha256_matches_the_standard_vectors() {
+        assert_eq!(sha256_hex(b"abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        assert_eq!(sha256_hex(b""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        assert!(is_sha256(&sha256_hex(b"x")) && !is_sha256("abc") && !is_sha256(&"g".repeat(64)));
+    }
+
+    #[test]
+    fn paths_resolve_without_the_working_directory() {
+        assert_eq!(normalize(Path::new("/a/b/../c/./d.wav")), PathBuf::from("/a/c/d.wav"));
+        assert_eq!(resolve("/x/y.wav", None), Some(PathBuf::from("/x/y.wav")));
+        assert_eq!(resolve("Song.media/y.wav", Some(Path::new("/music/Song.supertracker"))), Some(PathBuf::from("/music/Song.media/y.wav")));
+        assert_eq!(resolve("../shared/y.wav", Some(Path::new("/music/songs/Song.supertracker"))), Some(PathBuf::from("/music/shared/y.wav")));
+        assert_eq!(resolve("relative.wav", None), None);
+        assert_eq!(resolve("", Some(Path::new("/music/Song.supertracker"))), None);
+        assert_eq!(media_folder(Path::new("/music/My Song.supertracker")), PathBuf::from("/music/My Song.media"));
+    }
+
+    #[test]
+    fn media_fields_are_the_schema_fields_only() {
+        let mut project = Project::from_value(json!({
+            "instruments": [{ "samplePath": "/a.wav", "zones": [{ "samplePath": "/z.wav", "path": "/z.wav" }, { "path": "builtin:wavetables/Basic/Saw.wav" }], "plugin": { "state": "/not/media.wav" } },
+                { "samplePath": "" }, { "samplePath": "builtin:drums/kick/00" }],
+            "audioClips": [{ "path": "/c.wav", "samplePath": "/a.wav", "takeSet": { "takes": [{ "path": "/t.wav" }] }, "notes": "/not/media.txt" }],
+            "tracks": [{ "frozen": { "path": "/f.wav", "patternPrints": [{ "path": "/h.wav", "loop": { "path": "/l.wav" } }] } }],
+            "mediaManifest": [{ "path": "/a.wav" }],
+            "audioPlugins": [{ "bundlePath": "/Plug-Ins/x.vst3", "state": "/also/not/media" }]
+        }))
+        .unwrap();
+        assert_eq!(media_paths(&project), ["/a.wav", "/z.wav", "/c.wav", "/t.wav", "/f.wav", "/h.wav", "/l.wav"]);
+        map_media_paths(&mut project, &mut |path| Some(format!("moved{path}")));
+        let value = project.to_value();
+        assert_eq!(value["instruments"][0]["zones"][0], json!({ "samplePath": "moved/z.wav", "path": "moved/z.wav" }));
+        assert_eq!(value["instruments"][0]["zones"][1]["path"], "builtin:wavetables/Basic/Saw.wav");
+        assert_eq!((&value["instruments"][1]["samplePath"], &value["instruments"][2]["samplePath"]), (&json!(""), &json!("builtin:drums/kick/00")));
+        assert_eq!(value["instruments"][0]["plugin"]["state"], "/not/media.wav");
+        assert_eq!((&value["audioClips"][0]["notes"], &value["audioPlugins"][0]["bundlePath"]), (&json!("/not/media.txt"), &json!("/Plug-Ins/x.vst3")));
+        assert_eq!(value["tracks"][0]["frozen"]["patternPrints"][0]["loop"]["path"], "moved/l.wav");
+        assert_eq!(value["mediaManifest"][0]["path"], "moved/a.wav");
+    }
+
+    #[test]
+    fn frozen_prints_must_agree_about_a_file() {
+        let record = |hash: &str| json!({ "path": "/f.wav", "sha256": hash });
+        let project = |first: &str, second: &str| Project::from_value(json!({ "tracks": [{ "frozen": record(first) }, { "frozen": record(second) }] })).unwrap();
+        let hash = "AB".repeat(32);
+        assert_eq!(frozen_print_hashes(&project(&hash, &hash.to_lowercase())).unwrap(), [("/f.wav".to_string(), hash.to_lowercase())]);
+        assert_eq!(frozen_print_hashes(&project(&hash, &"cd".repeat(32))).unwrap_err().to_string(), "Frozen prints disagree about the content of /f.wav.");
+        assert!(frozen_print_hashes(&project(&hash, "")).is_ok(), "a print without a recorded hash is not listed");
+    }
+
+    #[test]
+    fn hashing_is_bounded_and_cancellable() {
+        let folder = std::env::temp_dir().join(format!("st-project-media-unit-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let file = folder.join("data.bin");
+        std::fs::write(&file, vec![7u8; 3_000_000]).unwrap();
+        assert_eq!(hash_file(&file, DEFAULT_HASH_LIMIT, None).unwrap(), sha256_hex(&vec![7u8; 3_000_000]));
+        assert_eq!(hash_file(&file, 100, None).unwrap_err().to_string(), "Media cannot be verified within the size budget: data.bin.");
+        let cancel = Cancel::new();
+        cancel.cancel();
+        assert_eq!(hash_file(&file, DEFAULT_HASH_LIMIT, Some(&cancel)), Err(Error::Cancelled));
+        assert!(hash_file(&folder, DEFAULT_HASH_LIMIT, None).is_err(), "a folder is not media");
+        assert!(is_readable_nonempty_file(&file) && !is_readable_nonempty_file(&folder) && !is_readable_nonempty_file(&folder.join("absent")));
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+}

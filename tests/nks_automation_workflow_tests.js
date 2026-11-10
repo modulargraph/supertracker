@@ -2,6 +2,7 @@
 // Real application + NKS + automation modules; bridge responses are controlled
 // here. NativeUINKSAutomationTests supplies the separate real WebKit/audio check.
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const copy = value => JSON.parse(JSON.stringify(value));
 async function tick() { for (let i=0;i<60;i++) await Promise.resolve(); }
@@ -22,7 +23,7 @@ function harness() {
   const root=node('nks-root');root.dataset.nksRoot='0';const knob=node('nks-0-0-range');knob.type='range';knob.dataset={nksAddress:'270544960',nksName:'Brightness'};
   root.querySelectorAll=selector=>selector==='[data-nks-address]'?[knob]:[];root.querySelector=()=>null;
   document.body=node('body');document.querySelector=id=>node(id);document.querySelectorAll=()=>[];document.getElementById=node;document.addEventListener=()=>{};document.createElement=node;
-  const window={addEventListener(){},webkit:{messageHandlers:{supertracker:{postMessage(message){calls.push(copy(message));Promise.resolve().then(()=>handlers.get(message.command)?.(message.payload)??{}).then(result=>window.nativeReceive({id:message.id,ok:true,result}),error=>window.nativeReceive({id:message.id,ok:false,error:error.message}));}}}}};
+  const window={addEventListener(){},STHostTransport:hostStub({post(message){calls.push(copy(message));Promise.resolve().then(()=>handlers.get(message.command)?.(message.payload)??{}).then(result=>window.STHostTransport.deliver({id:message.id,ok:true,result}),error=>window.STHostTransport.deliver({id:message.id,ok:false,error:error.message}));}})};
   const context=vm.createContext({window,document,console,Date,Map,Set,Math,JSON,Number,String,Object,Array,Promise,queueMicrotask,innerWidth:1280,innerHeight:800,setTimeout:(fn,delay)=>{timers.set(++timerID,{fn,delay});return timerID;},clearTimeout:id=>timers.delete(id),requestAnimationFrame:fn=>fn()});
   for (const file of ['app.js','nks-controls.js','studio.js']) web.load(context, file);
   const ST=window.ST, p=ST.demoProject();p.audioPlugins=[];p.tracks=p.tracks.slice(0,1);p.tracks[0].instrument=0;p.instruments=p.instruments.slice(0,1);p.instruments[0].type='au';p.patterns[0].automation=[];

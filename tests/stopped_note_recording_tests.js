@@ -1,6 +1,7 @@
 'use strict';
 // Exercise the actual app's keyboard, note entry and Undo handlers with a mocked bridge.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const copy = value => JSON.parse(JSON.stringify(value));
 function harness() {
@@ -20,9 +21,9 @@ function harness() {
     querySelectorAll: () => [], getElementById: element, createElement: element, addEventListener() {}
   };
   document.body = element('body');
-  const window = { addEventListener() {}, webkit: { messageHandlers: { supertracker: { postMessage(message) {
-    calls.push(copy(message)); window.nativeReceive({ id: message.id, ok: true, result: {} });
-  } } } } };
+  const window = { addEventListener() {}, STHostTransport: hostStub({ post(message) {
+    calls.push(copy(message)); window.STHostTransport.deliver({ id: message.id, ok: true, result: {} });
+  } }) };
   context = vm.createContext({ window, document, console, setTimeout: () => 1, clearTimeout() {}, innerWidth: 1280, innerHeight: 800 });
   web.load(context, 'app.js');
   const ST = window.ST, state = ST.state;

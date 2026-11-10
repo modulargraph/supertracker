@@ -1,5 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 function harness(){
  const nodes=new Map(),groups=new Map(),calls=[],timers=new Map();let context,nextTimer=0;
@@ -14,7 +15,7 @@ function harness(){
   }};nodes.set(id,el);return el;
  }
  const document={body:null,activeElement:null,querySelector(q){if(q==='.context-menu')return null;return q[0]==='#'?node(q.slice(1)):(groups.get(q)||[])[0]||node(q);},querySelectorAll:q=>groups.get(q)||[],getElementById:id=>nodes.get(id)||null,createElement:node,addEventListener(){}};document.body=node('body',{},'BODY');
- const window={addEventListener(){},webkit:{messageHandlers:{supertracker:{postMessage(message){calls.push(message);window.nativeReceive({id:message.id,ok:true,result:{}});}}}}};
+ const window={addEventListener(){},STHostTransport:hostStub({post(message){calls.push(message);window.STHostTransport.deliver({id:message.id,ok:true,result:{}});}})};
  context=vm.createContext({window,document,console,Date,Map,Set,Math,JSON,Number,String,Object,Array,Promise,innerWidth:1280,innerHeight:800,setTimeout(fn){timers.set(++nextTimer,fn);return nextTimer;},clearTimeout(id){timers.delete(id);}});
  web.load(context, 'app.js');
  const ST=window.ST,state=ST.state;state.project=ST.demoProject();
