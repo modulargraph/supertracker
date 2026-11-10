@@ -28,8 +28,9 @@ pub enum ResampleQuality {
     Preview,
     /// For samples loaded into the engine: about 110 dB rejection, flat to 90 % of Nyquist.
     Standard,
-    /// For exported files: about 140 dB rejection (below the resolution of 24-bit audio), flat
-    /// to 91.5 % of Nyquist (20.2 kHz at 44.1 kHz).
+    /// For exported files: 140 dB design rejection (below the resolution of 24-bit audio), flat
+    /// to 91.5 % of Nyquist (20.2 kHz at 44.1 kHz), computed in double precision. About half
+    /// the speed of `Standard`.
     Mastering,
 }
 
@@ -544,11 +545,13 @@ pub(crate) mod tests {
                 "MEASURE resample mastering {from}->{to}: ripple {:.6} dB, worst tone SNR {:.1} dB, stopband {:.1} dB, sweep alias {:.1} dB",
                 q.ripple_db, q.worst_snr_db, q.stopband_db, q.sweep_alias_db
             );
-            assert!(q.ripple_db < 0.001, "{from}->{to} ripple {}", q.ripple_db);
-            assert!(q.worst_snr_db > 120.0, "{from}->{to} SNR {}", q.worst_snr_db);
+            // For comparison, rubato 5.0.1's best (FFT, single precision) measured with the same
+            // code: SNR 134-136 dB, stop band -139...-142 dB, sweep alias -131...-132 dB.
+            assert!(q.ripple_db < 0.0001, "{from}->{to} ripple {}", q.ripple_db);
+            assert!(q.worst_snr_db > 142.0, "{from}->{to} SNR {}", q.worst_snr_db);
             if to < from {
-                assert!(q.stopband_db < -125.0, "{from}->{to} stopband {}", q.stopband_db);
-                assert!(q.sweep_alias_db < -115.0, "{from}->{to} sweep alias {}", q.sweep_alias_db);
+                assert!(q.stopband_db < -140.0, "{from}->{to} stopband {}", q.stopband_db);
+                assert!(q.sweep_alias_db < -136.0, "{from}->{to} sweep alias {}", q.sweep_alias_db);
             }
         }
     }

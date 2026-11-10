@@ -18,12 +18,12 @@ fn name(index: usize) -> String {
     format!("Sample_{index:08}")
 }
 
-fn synthetic(count: usize) -> impl Iterator<Item = (String, String, String, String, String, Vec<String>, Option<f64>, Option<String>, Option<f64>)> {
-    (0..count).map(|index| {
+fn synthetic(count: usize, root: String) -> impl Iterator<Item = (String, String, String, String, String, Vec<String>, Option<f64>, Option<String>, Option<f64>)> {
+    (0..count).map(move |index| {
         let pack = format!("Pack-{}", index % 100);
         (
-            format!("/synthetic/{pack}/{}.wav", name(index)),
-            "/synthetic".to_string(),
+            format!("{root}/{pack}/{}.wav", name(index)),
+            root.clone(),
             name(index),
             if index % 2 == 0 { "Kick" } else { "Snare" }.to_string(),
             pack,
@@ -50,7 +50,7 @@ fn a_large_index_stays_interactive() {
     let library = Arc::new(Library::open(LibraryConfig::isolated(temp.join("Cache"), vec![temp.join("synthetic")])).unwrap());
     let before = resident_mib();
     let begin = Instant::now();
-    library.load_synthetic(synthetic(COUNT));
+    library.load_synthetic(synthetic(COUNT, temp.text("synthetic")));
     let build = begin.elapsed();
     let memory = resident_mib() - before;
 
