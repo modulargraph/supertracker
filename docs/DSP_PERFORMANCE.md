@@ -39,18 +39,16 @@ The final engine passed all 46 existing engine suites, 17 timing suites, step-FX
 
 ## Reproduction
 
-Run focused behavioral checks with `bash scripts/test-engine-dsp.sh`. They cover both LFOs, all five waveform shapes, inaudible random/phase continuity, changing sampler-region boundaries in six modes, and zero render allocations.
+Run focused behavioral checks with `cargo test -p tracker-engine --release --test engine_dsp_regressions --test engine_parameter_bounds` in `rust/`. They cover both LFOs, all five waveform shapes, inaudible random/phase continuity, changing sampler-region boundaries in six modes, and zero render allocations.
 
-For a fresh immutable comparison, supply a checkout or source snapshot from before this patch:
+The comparison above was made with a runner script against the C++ engine (both are gone with the C++ sources). Its scenarios live on as `rust/tracker-engine/tests/engine_dsp_benchmark.rs`: the ordinary tests check each scenario's recorded PCM and clock hashes and zero render allocations, and
 
 ```sh
-python3 scripts/benchmark-engine-dsp.py \
-  --baseline-root /path/to/baseline \
-  --output /path/to/new-evidence \
-  --repetitions 5
+cd rust
+cargo test -p tracker-engine --release --test engine_dsp_benchmark -- --ignored --nocapture
 ```
 
-The runner saves source snapshots, compiler commands, hashes, hardware metadata, every raw trial, and a summary. It fails on PCM/clock mismatch or render allocation, but deliberately applies no unstable timing pass threshold. This is a pure offline engine test; it opens no audio device or vendor plugin.
+prints one JSON line of timings and hashes per scenario (`ENGINE_DSP_BENCHMARK_REPETITIONS` sets the repetitions).
 
 The run records were kept locally with the source snapshot; they are not part of the repository.
 

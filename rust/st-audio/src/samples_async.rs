@@ -546,7 +546,8 @@ fn worker(inner: Arc<Inner>) {
                     event = Some((outcome, replaced));
                 }
             }
-            let remaining = state.entries.values().filter(|entry| entry.decoding).count();
+            // Only what somebody waits for counts: work done ahead of time is nobody's concern.
+            let remaining = state.entries.values().filter(|entry| entry.decoding && entry.wanted).count();
             (state.listener.clone(), event.map(|(result, replaced)| LoadEvent { path: path.clone(), result, replaced, remaining }))
         };
         inner.settled.notify_all();

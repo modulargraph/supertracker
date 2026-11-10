@@ -192,7 +192,7 @@ diagnosable without leaving a stuck test app running.
   - `tests/kit_groups_ui_tests.js` covers Load/Replace/New/Remove kit as single Undo steps.
   - MK3 group behaviour is in `tests/mk3_groups_tests.js` and its siblings.
 - `scripts/test-kit-groups-migration.sh` converts old kit-lane projects. It uses the installed "1988 Kit" Maschine group when present, and `SUPERTRACKER_KIT_MIGRATION_FIXTURE` for a saved session. It also round-trips Save kit and Load kit.
-- `tests/engine_track_choke_tests.cpp` checks per-track choke and voice modes.
+- `rust/tracker-engine/tests/engine_track_choke.rs` checks per-track choke and voice modes.
 - `tests/AudioRoutingIncrementalTests.swift` adds a kit (a new group bus and sixteen tracks) to a rendering graph with delay and reverb returns, and also adds tracks to an existing group bus.
 - `--kits-self-test` (`NativeKitHostTests`) runs offline. It loads a sixteen-pad kit while four tracks play and requires all of the following:
   - incremental routing, with no rebuild;
@@ -242,7 +242,7 @@ or produce deliberate crashes or timings rather than pass/fail results.
 |---|---|
 | `scripts/test-track-freeze.sh` | Builds the app and runs the native Freeze/Unfreeze checks. |
 | `scripts/test-native-host-regressions.py`, `scripts/test-native-agent-termination.py` | Original-fixture host regressions and agent termination, built from private source snapshots. |
-| `scripts/benchmark-engine-dsp.py` (`tests/engine_dsp_benchmark.cpp`), `tests/engine_benchmark.cpp`, `tests/LibraryIndexBenchmark.swift` | Engine DSP and library index benchmarks. |
+| `rust/tracker-engine/tests/engine_dsp_benchmark.rs`, `engine_benchmark.rs` (`cargo test -p tracker-engine --release --test engine_benchmark -- --ignored --nocapture`), `tests/LibraryIndexBenchmark.swift` | Engine DSP and library index benchmarks. |
 | `tests/vst3_smoke.mm` + `tests/vst3_smoke_runner.py` | Standalone smoke test of one installed VST3 (see [VST3_HOST.md](VST3_HOST.md)). |
 | `tests/vst3_guard_tests.py` | Checks that the diagnostic fatal-signal guard (`tests/vst3_signal_guard.h`) reports crashes as failures. It crashes on purpose, which leaves macOS crash reports. |
 | `tests/vst3_capture_fixture.sh` | Builds the asynchronous-capture VST3 fixture for `tools/run_vst3_native_test.py --capture-fixture-bundle`. |

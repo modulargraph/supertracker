@@ -27,8 +27,9 @@ Native lower-bound validation proves only that the installed projected arrangeme
 No native audio, plugin, device or GUI execution is part of this change. Focused commands:
 
 ```sh
-bash scripts/test-engine-freeze-extent.sh
-bash scripts/test-engine-freeze-extent.sh --sanitize
+cd rust
+cargo test -p tracker-engine --release --test engine_freeze_extent
+cargo test -p tracker-engine --test engine_freeze_extent    # debug: overflow and bounds checks
 ```
 
-The nine focused groups cover API validation, failed allocation/publication, exact 6005/6007 boundaries, removed source clips, later arrangement rejection, tiny positive duration, loops/ACK identity, mid-extension restore/Stop, incompatible cursor clamp, original-policy rollback, Pattern exclusion and maximum extent across 8/48/384 kHz. Render/query allocation and deallocation counters must remain zero. `scripts/test-engine-freeze-extent.sh` runs them; a separate comparison against the old engine checked PCM/event parity.
+The nine focused groups cover API validation, failed allocation/publication, exact 6005/6007 boundaries, removed source clips, later arrangement rejection, tiny positive duration, loops/ACK identity, mid-extension restore/Stop, incompatible cursor clamp, original-policy rollback, Pattern exclusion and maximum extent across 8/48/384 kHz. Render/query allocation and deallocation counters must remain zero. `rust/tracker-engine/tests/engine_freeze_extent.rs` holds them; a separate comparison against the old engine checked PCM/event parity.

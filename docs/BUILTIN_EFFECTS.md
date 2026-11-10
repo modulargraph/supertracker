@@ -59,7 +59,8 @@ D duplicates, ⌫ removes), and the selected module's pages as eight knobs (drag
 resets, ⇧ ← → pages, A automates). It is in the mixer (above the classic per-insert details) and the kit editor.
 All chain edits go through `window.STInserts` (add / remove / setBypass / move / duplicate by owner and slot, each
 one Undo step), which the MK3 Bypass and Remove buttons use too. `tests/effect_pages_tests.js` checks the pages
-against the compiled catalogue (`tests/builtin_effect_metadata_dump.cpp`).
+against the real catalogue (`tests/fixtures/builtin-effects.json`, generated and kept up to date by
+`rust/tracker-engine/tests/effects_metadata.rs`).
 
 ## Hosting contract
 
@@ -129,8 +130,8 @@ decay terminates it even if no note-off arrives. Noise is seeded deterministical
 
 ## Offline validation
 
-Run `bash scripts/test-builtin-effects.sh` and
-`bash scripts/test-drum-synths.sh`. The effects suite checks every registered
+Run `cargo test -p tracker-engine --release` in `rust/` (the effect suites are
+`tests/effects_*.rs`; `effects_builtin` and `effects_drum_synth` are the two described here). The effects suite checks every registered
 processor at 48/96 kHz: parameter ranges and conversions, exact bypass,
 deterministic reset, nonfinite/aliasing sidechain handling, boundary controls,
 zero render allocations, and callback partition invariance. Measured assertions

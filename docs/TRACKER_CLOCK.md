@@ -68,7 +68,7 @@ Query work uses immutable vectors, bounded binary searches, and a bounded number
 
 ## Focused validation
 
-Run `bash scripts/test-clock.sh` or `bash scripts/test-clock.sh --sanitize`. Both passed all eleven groups on the implementation snapshot:
+Run `cargo test -p tracker-engine --release --test clock` in `rust/` (the clock is `tracker_engine::clock`; a debug run, without `--release`, adds overflow and bounds checks). The eleven groups, as measured on the implementation snapshot of the C++ clock this was ported from:
 
 - Tempo/seconds/sample conversion and shortened 5/8 bars.
 - Exact and adjacent-representable ceil boundaries; atomic tempo/meter events.
