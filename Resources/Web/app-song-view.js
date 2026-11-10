@@ -79,7 +79,7 @@
     });
     $('#song-export').onclick = app.showExport;
     bindScalarField($('#signature-numerator'), 'time signature', (p, e) => p.timeSignature = {
-      numerator: clamp(Math.round(Number(e.target.value) || 4), 1, 16),
+      numerator: clamp(Math.round(Number(e.target.value)), 1, 16),
       denominator: p.timeSignature?.denominator || 4
     });
     $('#signature-denominator').onchange = e => {

@@ -170,7 +170,8 @@
     $('#stop').onclick = app.stop;
     $('#record').onclick = toggleNoteRecordingFromUI;
     bindScalarField($('#tempo'), 'tempo', (p, e) => {
-      p.bpm = clamp(Number(e.target.value) || 120, 20, 400);
+      // bindScalarField only commits a number: one outside 20–400 (0 too) goes to the nearest limit.
+      p.bpm = clamp(Number(e.target.value), 20, 400);
       // A project that still carries a tempo map shows (and plays) the map's first tempo.
       if (p.timing?.tempos?.[0]) p.timing.tempos[0].bpm = p.bpm;
     });
