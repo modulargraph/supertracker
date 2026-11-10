@@ -188,11 +188,13 @@ async function main() {
     assert.equal(heard.sampleRate, 48000);
     assert.ok(heard.trackPeaks.length === 8 && heard.trackPeaks.some(peak => peak > 0.001), 'track meters move: ' + JSON.stringify(heard.trackPeaks));
     await page.waitForFunction(seconds => ST.state.status.seconds > seconds + 0.25, heard.seconds, { timeout: 10000 });
-    assert.doesNotMatch(await toasts(page), /not implemented in the Rust host yet/, 'Play must not answer "not implemented"');
+    // (Other areas the page calls on a new session, such as midi.configure, are not ported yet and say so.)
+    assert.doesNotMatch(await toasts(page), /`(transport|engine|note|audio)\.\w+` is not implemented/, 'Play must not answer "not implemented"');
     pass(`Play starts the demo song: the position advances (row ${heard.row}, ${heard.seconds.toFixed(2)} s) and the host reports master peaks ${heard.peakL.toFixed(3)} / ${heard.peakR.toFixed(3)} on the null device`);
 
     // Editing a note while the song plays is published to the engine without stopping it.
     const LIVE = { note: 45, instrument: 0, velocity: 101, gate: 0.5 };
+    const toastsBefore = (await toasts(page)).split('\n');
     await page.evaluate(note => ST.mutate('E2E live edit', () => { ST.state.project.patterns[0].steps[0][2] = note; }), LIVE);
     const deadline = Date.now() + 10000;
     let engineNote = null;
@@ -205,7 +207,8 @@ async function main() {
     const before = await page.evaluate(() => ST.state.status.seconds);
     await page.waitForFunction(seconds => ST.state.playing && ST.state.status.seconds !== seconds, before, { timeout: 5000 });
     assert.equal(await page.evaluate(() => ST.state.playing), true, 'playback continues through the edit');
-    assert.doesNotMatch(await toasts(page), /error|failed|not implemented/i, 'the edit raised no error');
+    const newToasts = (await toasts(page)).split('\n').filter(line => line.trim() && !toastsBefore.includes(line));
+    assert.deepEqual(newToasts.filter(line => /error|fail|not implemented|could not/i.test(line)), [], 'the edit raised no error');
     pass('a note edited while playing reaches the engine and playback continues');
 
     await page.evaluate(() => ST.perform('stop'));

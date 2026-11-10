@@ -317,6 +317,13 @@ fn a_service_without_a_midi_system_still_answers() {
     midi.begin_block(service.clock().now(), 256, 44_100.0);
     midi.clock(0.0, true, 120.0);
     assert!(!midi.note(0, true, 60, 100, 0));
+    // Only the inputs named at start are listened to until the interface says otherwise.
+    let ports = MemoryPorts::new();
+    ports.add_input(1, "Keys");
+    ports.add_input(2, "Pads");
+    let selective = MidiService::new(MidiOptions { input_ids: Some(vec![2]), ..MidiOptions::in_memory(&ports) }).unwrap();
+    assert_eq!(selective.devices(IgnoredAny).unwrap().input_ids, [2]);
+    assert_eq!(ports.input_connections(1), 0);
     // The real system backend: present or not, the service starts.
     let system = MidiService::new(MidiOptions::system(Default::default(), Box::new(|_| Ok(())), Box::new(|_, _| {}))).unwrap();
     let listing = system.devices(IgnoredAny).unwrap();

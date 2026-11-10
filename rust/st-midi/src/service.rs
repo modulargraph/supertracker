@@ -92,6 +92,9 @@ pub struct MidiOptions {
     pub poll_interval: Option<Duration>,
     /// Engine channels a sustained note can sound on (tracks and kit sounds).
     pub destination_count: usize,
+    /// Inputs to connect at start, by device id; `None` connects every input until the interface
+    /// publishes its configuration. Naming them avoids listening to unrelated devices meanwhile.
+    pub input_ids: Option<Vec<i32>>,
 }
 
 impl MidiOptions {
@@ -104,6 +107,7 @@ impl MidiOptions {
             events,
             poll_interval: Some(Duration::from_millis(500)),
             destination_count: 1024,
+            input_ids: None,
         }
     }
 
@@ -116,6 +120,7 @@ impl MidiOptions {
             events: Box::new(|_, _| {}),
             poll_interval: None,
             destination_count: 1024,
+            input_ids: None,
         }
     }
 }
@@ -246,7 +251,7 @@ impl MidiService {
         let for_events = Arc::downgrade(&inner);
         let host = MidiHost::new(HostOptions {
             backend: options.backend,
-            input_ids: None,
+            input_ids: options.input_ids,
             poll_interval: options.poll_interval,
             // Clock, tick and active sensing arrive dozens of times a second, often echoed by a
             // device we clock ourselves, and mean nothing here: they never leave the device thread.
