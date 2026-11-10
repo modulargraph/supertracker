@@ -1,25 +1,15 @@
 'use strict';
-// The real native built-in effect catalogue (ranges, units, curves, labels) as JSON, in the shape of the
-// `builtin.effects` bridge command: tests/builtin_effect_metadata_dump.cpp compiled against the engine sources.
-const fs = require('node:fs'), path = require('node:path'), { execFileSync } = require('node:child_process');
+// The real built-in effect catalogue (ranges, units, curves, labels) as JSON, in the shape of the
+// `builtin.effects` bridge command: tests/fixtures/builtin-effects.json, which the engine crate generates
+// from its catalogue and keeps up to date (rust/tracker-engine/tests/effects_metadata.rs fails when the
+// file is stale; UPDATE_EFFECT_METADATA=1 cargo test -p tracker-engine --test effects_metadata rewrites it).
+const fs = require('node:fs'), path = require('node:path');
 
-const ROOT = path.join(__dirname, '../..');
-const ENGINE = path.join(ROOT, 'Sources/TrackerEngine');
-const SOURCES = [path.join(ROOT, 'tests/builtin_effect_metadata_dump.cpp'), path.join(ENGINE, 'BuiltinEffects.cpp'), path.join(ENGINE, 'include/STBuiltinEffects.h'),
-  ...fs.readdirSync(ENGINE).filter(name => /^Effects.*\.hpp$|^BuiltinEffectsCommon\.hpp$/.test(name)).map(name => path.join(ENGINE, name))];
-const BINARY = path.join(ROOT, '.build/test-bin/builtin-effect-metadata');
+const FIXTURE = path.join(__dirname, '../fixtures/builtin-effects.json');
 let cached = null;
 
 function metadata() {
-  if (cached) return cached;
-  const newest = Math.max(...SOURCES.map(file => fs.statSync(file).mtimeMs));
-  if (!fs.existsSync(BINARY) || fs.statSync(BINARY).mtimeMs < newest) {
-    fs.mkdirSync(path.dirname(BINARY), { recursive: true });
-    const temporary = `${BINARY}.${process.pid}`;
-    execFileSync('clang++', ['-std=c++17', '-O1', '-I', path.join(ENGINE, 'include'), '-I', ENGINE, SOURCES[0], SOURCES[1], '-o', temporary], { stdio: 'inherit' });
-    fs.renameSync(temporary, BINARY);
-  }
-  cached = JSON.parse(execFileSync(BINARY, { encoding: 'utf8' }));
+  if (!cached) cached = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
   return cached;
 }
 

@@ -16,6 +16,9 @@
 //! | [`engine`] | [`AudioEngine`]: the object the host talks to (publish, transport, notes, status, devices, offline render) |
 //! | [`project_sync`] | applies a project to the engine, incrementally (pattern reuse, samples installed once) |
 //! | [`samples`] | [`SampleSource`]: where decoded PCM comes from (the seam to `st-samples`) |
+//! | [`samples_async`] | [`DecodedSamples`]: the source the host runs on, decoding files on worker threads |
+//! | [`live`], [`preview`], [`inputs`], [`recording`] | what runs on the live output after the mixer: browser preview voices, the monitored input, the tap of a master take; input devices; takes written by a writer thread |
+//! | [`offline`], [`export`], [`render_selection`], [`freeze`] | rendering on a private engine while the live one plays: song / pattern / stems / track export, selections to samples, Track Freeze (printing, and playing the prints) |
 //! | [`graph`] | the mixer: spec, compiler and render plan, delay compensation, automation, inserts, send effects, meters, the renderer |
 //! | [`device`] | outputs: `cpal` devices and the null device |
 //! | [`midi`] | the MIDI seam: what the render thread tells MIDI output (external instruments, clock) |
@@ -33,12 +36,10 @@
 //!
 //! | Follow-up | Seam |
 //! |---|---|
-//! | Sample decoding (`st-samples`) | [`SampleSource`]; [`AudioEngine::samples_changed`] when a decode finishes |
 //! | Other insert processors | [`graph::insert::InsertFactory`] / [`graph::insert::InsertProcessor`]; an insert the factory cannot make passes through and is reported unavailable. Plug-ins are made by [`plugins::PluginFactory`] once a manager is attached ([`AudioEngine::set_plugins`]) |
 //! | Other consumers of note events | [`graph::render::ExternalEvents`] receives the engine's note events on the render thread (a track's plug-in instrument gets its notes inside the plan, through [`graph::insert::InsertProcessor::midi`]) |
 //! | MIDI outputs, MIDI clock | [`midi`]: [`AudioEngine::set_midi_output`] puts a [`midi::MidiRender`] on the render thread (the host implements it over `st-midi`) |
-//! | Export, bounce, freeze, render selection | [`AudioEngine::render_offline`] on an engine made with [`DeviceChoice::None`]; `Plan::latency_frames` is the pre-roll to trim |
-//! | Recording, line inputs | the device layer has outputs only; input enumeration is in [`device::system::list`] |
+//! | Live line inputs into track strips | the input's audio reaches the render thread ([`inputs::InputHub`]) but only the output stage; a strip needs a source in [`graph::plan`] beside its engine channel |
 //!
 //! # Platforms
 //!
