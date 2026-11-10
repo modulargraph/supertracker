@@ -21,7 +21,9 @@ pub mod wire;
 /// Version of the control protocol *and* of the shared-memory layout. Both sides must agree
 /// exactly: the host rejects a container whose `Hello` carries another version, and a
 /// container refuses a region whose header carries another version.
-pub const PROTOCOL_VERSION: u32 = 1;
+///
+/// History: 1: first version. 2: `Request::Scan` / `Response::Scan` (plug-in scanning).
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// First field of the handshake message ("STPC").
 pub const HELLO_MAGIC: u32 = 0x5354_5043;

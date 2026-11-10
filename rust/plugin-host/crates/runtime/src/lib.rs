@@ -22,5 +22,5 @@ mod runtime;
 
 pub use plugin::*;
 pub use rt::{enable_denormal_flushing, promote_current_thread_to_realtime};
-pub use runtime::{abort_on_panic, HostHandle, LoopState, Runtime, RuntimeConfig, RuntimeError};
+pub use runtime::{abort_on_panic, HostHandle, LoopState, Runtime, RuntimeConfig, RuntimeError, Scanner};
 pub use stpc_transport as transport;

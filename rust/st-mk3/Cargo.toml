@@ -7,3 +7,8 @@ description = "Maschine MK3 controller driver: HID input, LEDs and displays."
 publish = false
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+nusb = "0.2"
+async-hid = { version = "0.5", default-features = false, features = ["async-io"] }
+ab_glyph = { version = "0.2", features = ["variable-fonts"] }

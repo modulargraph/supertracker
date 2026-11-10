@@ -1026,8 +1026,8 @@ impl<'a> Rt<'a> {
                 apply_live(v, entry.target, entry.value, true);
             }
         }
-        // The sample is not counted yet (see below), so the region is left alone here.
-        instrument_automation_onset(v, ts);
+        // Parameters only: the region is derived below, once the zone is known.
+        instrument_automation(v, ts, false);
         if !instrument_data.zones.is_empty() {
             v.sample = std::ptr::null();
             for zone in &instrument_data.zones {
@@ -1585,10 +1585,4 @@ impl<'a> Rt<'a> {
         }
         (l, r)
     }
-}
-
-/// `instrumentAutomation(v, false)` at note start: parameters only, no region move.
-#[inline]
-fn instrument_automation_onset(v: &mut Voice, ts: &TrackState) {
-    instrument_automation(v, ts, false);
 }

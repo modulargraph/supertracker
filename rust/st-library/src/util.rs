@@ -252,6 +252,12 @@ pub fn modified_seconds(metadata: &fs::Metadata) -> f64 {
         .unwrap_or(0.0)
 }
 
+/// Whether two modification times are the same instant. Times that went through a JSON file
+/// can differ in the last bit; a microsecond is far below what file systems distinguish reliably.
+pub fn same_time(left: f64, right: f64) -> bool {
+    (left - right).abs() < 1.0e-6
+}
+
 // ---------------------------------------------------------------------------------------------
 // Base64 (standard alphabet, padded)
 

@@ -15,7 +15,7 @@ default = ["clock", "unit-range", "effects", "engine"]
 clock = []
 unit-range = []
 effects = []
-engine = []
+engine = ["clock"]
 # Test builds only: Rust allocations go through C++ operator new/delete, so the C++ test programs'
 # allocation counters (they replace operator new) also see allocations made on the render thread here.
 cxx-alloc = []

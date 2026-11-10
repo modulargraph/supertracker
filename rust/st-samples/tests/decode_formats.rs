@@ -44,6 +44,7 @@ const fn lossless(file: &'static str, container: &'static str, codec: &'static s
     Expectation { file, container, codec, rate, channels, frames, exact_within: Some(tolerance), min_snr_db: 0.0, extra_frames: 0, lag: 0 }
 }
 
+#[allow(clippy::too_many_arguments)]
 const fn lossy(file: &'static str, container: &'static str, codec: &'static str, rate: u32, channels: usize, frames: usize, min_snr_db: f64, extra_frames: usize, lag: usize) -> Expectation {
     Expectation { file, container, codec, rate, channels, frames, exact_within: None, min_snr_db, extra_frames, lag }
 }

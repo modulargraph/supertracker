@@ -8,5 +8,6 @@
 //! Further formats (VST3, Audio Units on macOS) are added here as more
 //! [`stpc_runtime::PluginBackend`] implementations and registered in `main.rs`.
 
+pub mod au;
 pub mod clap_backend;
 pub mod test_backend;

@@ -169,6 +169,8 @@ struct HostLink {
     keep: Mutex<Vec<Arc<Region>>>,
     idle_requested: AtomicBool,
     shared: Arc<Shared>,
+    /// The instance's current real-time half, for [`HostHandle::with_processing_excluded`].
+    rt: Mutex<Option<Arc<RtShared>>>,
 }
 
 /// A plug-in's line to the host. Cheap to clone, usable from any thread.
@@ -204,13 +206,35 @@ impl HostHandle {
         self.0.instance
     }
 
-    fn set_region(&self, region: &Arc<Region>) {
-        self.0.keep.lock().unwrap().push(region.clone());
-        self.0.current.store(Arc::as_ptr(region) as *mut Region, Ordering::Release);
+    /// Runs `f` while the instance's real-time thread is kept out of `Processor::process`
+    /// (blocks requested meanwhile are answered "busy" and the host plays its fallback),
+    /// so `f` may do what must not overlap processing, e.g. hand the plug-in a parameter
+    /// flush itself. **Main thread only.** Waits for a running `process` call to return;
+    /// `None` if it does not within five seconds or the instance is closed. Inside
+    /// `Plugin::activate`, `deactivate` and `set_offline` processing is excluded already
+    /// and `f` simply runs.
+    pub fn with_processing_excluded<R>(&self, f: impl FnOnce() -> R) -> Option<R> {
+        let rt = self.0.rt.lock().unwrap().clone()?;
+        // Only the main thread sets the exclusive state, and this is the main thread: if
+        // the gate is exclusive, the caller is already inside an exclusive section.
+        if rt.gate.load(Ordering::Acquire) == GATE_EXCLUSIVE {
+            return Some(f());
+        }
+        let guard = Exclusive::lock(&rt).ok()?;
+        let result = f();
+        drop(guard);
+        Some(result)
+    }
+
+    fn set_rt(&self, rt: &Arc<RtShared>) {
+        self.0.keep.lock().unwrap().push(rt.region.clone());
+        self.0.current.store(Arc::as_ptr(&rt.region) as *mut Region, Ordering::Release);
+        *self.0.rt.lock().unwrap() = Some(rt.clone());
     }
 
     fn close(&self) {
         self.0.current.store(std::ptr::null_mut(), Ordering::Release);
+        *self.0.rt.lock().unwrap() = None;
     }
 }
 
@@ -236,6 +260,7 @@ pub enum LoopState {
 pub struct Runtime {
     config: RuntimeConfig,
     backends: HashMap<String, Box<dyn PluginBackend>>,
+    scanners: HashMap<String, Scanner>,
     shared: Arc<Shared>,
     slots: HashMap<u64, Slot>,
     exit: bool,
@@ -247,6 +272,7 @@ impl Runtime {
         Runtime {
             config,
             backends: HashMap::new(),
+            scanners: HashMap::new(),
             shared: Arc::new(Shared {
                 tasks: Mutex::new(VecDeque::new()),
                 cond: Condvar::new(),
@@ -263,6 +289,14 @@ impl Runtime {
     /// Registers the backend for its format; a later registration replaces an earlier one.
     pub fn register_backend(&mut self, backend: Box<dyn PluginBackend>) {
         self.backends.insert(backend.format().to_string(), backend);
+    }
+
+    /// Registers the scanner for a format: a function that lists the plug-ins in one
+    /// plug-in file or bundle (an empty path: the format's system registry) without
+    /// instantiating them. It runs on the main thread, in a container the host started for
+    /// scanning and is prepared to lose (see `stpc_client::Scanner`).
+    pub fn register_scanner(&mut self, format: &str, scanner: Scanner) {
+        self.scanners.insert(format.to_string(), scanner);
     }
 
     /// For programs whose main thread runs an OS event loop (AppKit, Win32) instead of
@@ -469,6 +503,13 @@ impl Runtime {
                 slot.plugin.set_editor_title(&title);
                 Ok(Response::Ok {})
             }),
+            Request::Scan { format, path } => match self.scanners.get(&format) {
+                Some(scanner) => scanner(&path).map(|plugins| Response::Scan { plugins }).map_err(plugin_error),
+                None => Err((
+                    ERR_UNKNOWN_FORMAT,
+                    format!("this container has no scanner for the format \"{format}\""),
+                )),
+            },
         };
         result.unwrap_or_else(|(code, message)| Response::Error { code, message })
     }
@@ -493,10 +534,11 @@ impl Runtime {
             keep: Mutex::new(Vec::new()),
             idle_requested: AtomicBool::new(false),
             shared: self.shared.clone(),
+            rt: Mutex::new(None),
         }));
         // Map the region first, so the plug-in can notify from inside `create`.
         let rt = build_rt(&params, params.sample_rate, params.max_frames, fds, &self.config)?;
-        link.set_region(&rt.region);
+        link.set_rt(&rt);
         let request = CreateRequest {
             plugin_id: &params.plugin_id,
             name: &params.name,
@@ -548,6 +590,9 @@ impl Runtime {
 }
 
 type Handled = Result<Response, (u32, String)>;
+
+/// See [`Runtime::register_scanner`].
+pub type Scanner = Box<dyn Fn(&str) -> Result<Vec<PluginDescription>, PluginError>>;
 
 fn plugin_error(err: PluginError) -> (u32, String) {
     match err {
@@ -713,7 +758,7 @@ fn reconfigure(
     slot.active = false;
     slot.params.sample_rate = sample_rate;
     slot.params.max_frames = max_frames;
-    slot.link.set_region(&new_rt.region);
+    slot.link.set_rt(&new_rt);
     slot.rt = new_rt;
     slot.thread = Some(spawn_rt_thread(slot.link.instance_id(), &slot.rt)?);
     // The instance is left deactivated: from here on the request cannot fail, so both

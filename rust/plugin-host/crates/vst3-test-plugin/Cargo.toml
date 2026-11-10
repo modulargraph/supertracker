@@ -1,0 +1,17 @@
+[package]
+name = "stpc-vst3-test-plugin"
+description = "A small VST3 plug-in module (gain effect with a separate controller, single-component sine instrument) used to test the container's VST3 backend and the plug-in scanner end to end."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# cdylib: the module itself (the tests package it as a .vst3 bundle).
+# rlib: lets the container crate depend on it so that cargo builds it before the tests,
+# and gives the tests the ids and reference formulas.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+libc.workspace = true
+vst3.workspace = true

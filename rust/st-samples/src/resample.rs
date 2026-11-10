@@ -79,6 +79,10 @@ struct Kernel {
     exact: bool,
     /// `(phases or phases + 1) * taps` coefficients.
     table: Vec<f32>,
+    /// The same coefficients in double precision, for [`ResampleQuality::Mastering`]: summing
+    /// hundreds of products in single precision would put the rounding noise above the filter's
+    /// own stop-band floor.
+    precise: Option<Vec<f64>>,
 }
 
 fn gcd(mut a: u64, mut b: u64) -> u64 {
@@ -107,6 +111,7 @@ impl Kernel {
         let phases = if exact { up as usize } else { dense_phases };
         let rows = if exact { phases } else { phases + 1 };
         let mut table = vec![0f32; rows * taps];
+        let mut precise = (quality == ResampleQuality::Mastering).then(|| vec![0f64; rows * taps]);
         let mut row = vec![0f64; taps];
         for phase in 0..rows {
             let fraction = phase as f64 / phases as f64;
@@ -124,13 +129,17 @@ impl Kernel {
             // Unity gain at DC for every phase: no ripple on steady signals.
             for (tap, value) in row.iter().enumerate() {
                 table[phase * taps + tap] = (value / sum) as f32;
+                if let Some(precise) = precise.as_mut() {
+                    precise[phase * taps + tap] = value / sum;
+                }
             }
         }
-        Kernel { up, down, taps, half, phases, exact, table }
+        Kernel { up, down, taps, half, phases, exact, table, precise }
     }
 
     fn shared(in_rate: u32, out_rate: u32, quality: ResampleQuality) -> Arc<Kernel> {
-        static CACHE: OnceLock<Mutex<HashMap<(u32, u32, ResampleQuality), Arc<Kernel>>>> = OnceLock::new();
+        type Kernels = HashMap<(u32, u32, ResampleQuality), Arc<Kernel>>;
+        static CACHE: OnceLock<Mutex<Kernels>> = OnceLock::new();
         let cache = CACHE.get_or_init(Default::default);
         let key = (in_rate, out_rate, quality);
         if let Some(kernel) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
@@ -169,6 +178,22 @@ impl Kernel {
             a + (b - a) * blend
         }
     }
+
+    /// The same with double-precision input history and coefficients.
+    #[inline]
+    fn apply_precise(&self, precise: &[f64], phase: u64, window: &[f64]) -> f32 {
+        if self.exact {
+            let row = phase as usize * self.taps;
+            dot_precise(window, &precise[row..row + self.taps]) as f32
+        } else {
+            let position = phase as f64 / self.up as f64 * self.phases as f64;
+            let index = (position as usize).min(self.phases - 1);
+            let row = index * self.taps;
+            let a = dot_precise(window, &precise[row..row + self.taps]);
+            let b = dot_precise(window, &precise[row + self.taps..row + 2 * self.taps]);
+            (a + (b - a) * (position - index as f64)) as f32
+        }
+    }
 }
 
 /// Inner product with eight independent accumulators, which the compiler turns into SIMD.
@@ -181,6 +206,62 @@ fn dot(a: &[f32], b: &[f32]) -> f32 {
         }
     }
     ((lanes[0] + lanes[4]) + (lanes[1] + lanes[5])) + ((lanes[2] + lanes[6]) + (lanes[3] + lanes[7]))
+}
+
+/// The same in double precision.
+#[inline]
+fn dot_precise(a: &[f64], b: &[f64]) -> f64 {
+    let mut lanes = [0f64; 8];
+    for (x, y) in a.chunks_exact(8).zip(b.chunks_exact(8)) {
+        for k in 0..8 {
+            lanes[k] += x[k] * y[k];
+        }
+    }
+    ((lanes[0] + lanes[4]) + (lanes[1] + lanes[5])) + ((lanes[2] + lanes[6]) + (lanes[3] + lanes[7]))
+}
+
+/// The input a converter still needs, per channel. Mastering keeps it in double precision so
+/// that the inner loop is a plain double-precision product sum.
+enum History {
+    Single(Vec<Vec<f32>>),
+    Double(Vec<Vec<f64>>),
+}
+
+impl History {
+    fn channels(&self) -> usize {
+        match self {
+            History::Single(channels) => channels.len(),
+            History::Double(channels) => channels.len(),
+        }
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            History::Single(channels) => channels[0].len(),
+            History::Double(channels) => channels[0].len(),
+        }
+    }
+
+    fn extend<C: AsRef<[f32]>>(&mut self, input: &[C]) {
+        match self {
+            History::Single(channels) => channels.iter_mut().zip(input).for_each(|(history, block)| history.extend_from_slice(block.as_ref())),
+            History::Double(channels) => channels.iter_mut().zip(input).for_each(|(history, block)| history.extend(block.as_ref().iter().map(|&v| v as f64))),
+        }
+    }
+
+    fn pad(&mut self, frames: usize) {
+        match self {
+            History::Single(channels) => channels.iter_mut().for_each(|history| history.extend(std::iter::repeat_n(0.0, frames))),
+            History::Double(channels) => channels.iter_mut().for_each(|history| history.extend(std::iter::repeat_n(0.0, frames))),
+        }
+    }
+
+    fn drop_front(&mut self, frames: usize) {
+        match self {
+            History::Single(channels) => channels.iter_mut().for_each(|history| drop(history.drain(..frames))),
+            History::Double(channels) => channels.iter_mut().for_each(|history| drop(history.drain(..frames))),
+        }
+    }
 }
 
 /// `ceil(input_frames * out_rate / in_rate)`: the exact length of a conversion's output.
@@ -201,8 +282,8 @@ pub struct Resampler {
     kernel: Option<Arc<Kernel>>,
     in_rate: u32,
     out_rate: u32,
-    /// Per channel: input frames from absolute index `base` on.
-    history: Vec<Vec<f32>>,
+    /// Input frames from absolute index `base` on.
+    history: History,
     /// Absolute input index of `history[..][0]`; starts negative (silence before the start).
     base: i64,
     received: u64,
@@ -222,11 +303,15 @@ impl Resampler {
         }
         let kernel = (in_rate != out_rate).then(|| Kernel::shared(in_rate, out_rate, quality));
         let half = kernel.as_ref().map_or(0, |k| k.half);
+        let history = match kernel.as_ref().and_then(|k| k.precise.as_ref()) {
+            Some(_) => History::Double(vec![vec![0.0; half]; channels]),
+            None => History::Single(vec![vec![0.0; half]; channels]),
+        };
         Ok(Resampler {
             kernel,
             in_rate,
             out_rate,
-            history: vec![vec![0.0; half]; channels],
+            history,
             base: -(half as i64),
             received: 0,
             next_output: 0,
@@ -236,7 +321,7 @@ impl Resampler {
 
     /// Number of channels.
     pub fn channels(&self) -> usize {
-        self.history.len()
+        self.history.channels()
     }
 
     /// Output frames a complete input of `input_frames` frames produces.
@@ -264,8 +349,8 @@ impl Resampler {
     /// Converts a block (one slice per channel, equal lengths) and appends what can already be
     /// computed to `output` (one vector per channel).
     pub fn process<C: AsRef<[f32]>>(&mut self, input: &[C], output: &mut [Vec<f32>]) {
-        debug_assert_eq!(input.len(), self.history.len());
-        debug_assert_eq!(output.len(), self.history.len());
+        debug_assert_eq!(input.len(), self.history.channels());
+        debug_assert_eq!(output.len(), self.history.channels());
         if self.finished || input.is_empty() {
             return;
         }
@@ -280,9 +365,7 @@ impl Resampler {
             self.next_output = self.next_output.max(self.received);
             return;
         };
-        for (history, channel) in self.history.iter_mut().zip(input) {
-            history.extend_from_slice(channel.as_ref());
-        }
+        self.history.extend(input);
         self.received += frames as u64;
         // Output n needs input up to position(n) + half.
         let available = self.received as i64 - kernel.half as i64;
@@ -296,9 +379,7 @@ impl Resampler {
         }
         self.finished = true;
         let Some(kernel) = self.kernel.clone() else { return };
-        for history in &mut self.history {
-            history.extend(std::iter::repeat_n(0.0, kernel.half));
-        }
+        self.history.pad(kernel.half);
         let received = self.received;
         // Output instants before the end of the input: n * down / up < received.
         self.produce(&kernel, output, |position| position < received);
@@ -316,27 +397,31 @@ impl Resampler {
                 break;
             }
             let start = start as usize;
-            for (history, out) in self.history.iter().zip(output.iter_mut()) {
-                out.push(kernel.apply(phase, &history[start..start + kernel.taps]));
+            match &self.history {
+                History::Single(channels) => {
+                    for (history, out) in channels.iter().zip(output.iter_mut()) {
+                        out.push(kernel.apply(phase, &history[start..start + kernel.taps]));
+                    }
+                }
+                // Double-precision history exists only together with the precise table.
+                History::Double(channels) => {
+                    let precise = kernel.precise.as_deref().unwrap_or_default();
+                    for (history, out) in channels.iter().zip(output.iter_mut()) {
+                        out.push(kernel.apply_precise(precise, phase, &history[start..start + kernel.taps]));
+                    }
+                }
             }
             self.next_output += 1;
         }
         // Forget input no later output needs. Done in large steps to keep the copy cheap.
         let (position, _) = kernel.position(self.next_output);
         let keep_from = position as i64 - kernel.half as i64 + 1;
-        let droppable = (keep_from - self.base).clamp(0, self.history[0].len() as i64) as usize;
-        if droppable >= 8192 || (droppable > 0 && droppable == self.history[0].len()) {
-            for history in &mut self.history {
-                history.drain(..droppable);
-            }
+        let length = self.history.len();
+        let droppable = (keep_from - self.base).clamp(0, length as i64) as usize;
+        // A skipped start can put the next window beyond everything received: drop it all.
+        if droppable >= 8192 || (droppable > 0 && droppable == length) {
+            self.history.drop_front(droppable);
             self.base += droppable as i64;
-        }
-        // A skipped start can put the next window beyond everything received so far.
-        if keep_from > self.base + self.history[0].len() as i64 {
-            self.base = keep_from.min(self.received as i64);
-            for history in &mut self.history {
-                history.clear();
-            }
         }
     }
 }
@@ -552,7 +637,7 @@ pub(crate) mod tests {
     #[test]
     fn equal_rates_copy_and_bad_rates_are_refused() {
         let input = vec![0.1f32, f32::MAX, -0.0, 1.5];
-        assert_eq!(resample(&[input.clone()], 48_000, 48_000, ResampleQuality::Preview).unwrap()[0], input);
+        assert_eq!(resample(&[&input], 48_000, 48_000, ResampleQuality::Preview).unwrap()[0], input);
         let mut resampler = Resampler::new(48_000, 48_000, 1, ResampleQuality::Preview).unwrap();
         resampler.skip_to_output(3);
         let mut out = vec![Vec::new()];

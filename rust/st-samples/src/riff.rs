@@ -154,7 +154,7 @@ pub fn clm_chunk(frame_size: usize) -> WavChunk {
 /// A `smpl` chunk with the given root note and loops.
 pub fn smpl_chunk(sample_rate: u32, root_note: u8, loops: &[SampleLoop]) -> WavChunk {
     let mut data = Vec::with_capacity(36 + loops.len() * 24);
-    let period = if sample_rate > 0 { 1_000_000_000 / sample_rate } else { 0 };
+    let period = 1_000_000_000u32.checked_div(sample_rate).unwrap_or(0);
     for value in [0, 0, period, root_note as u32, 0, 0, 0, loops.len() as u32, 0] {
         data.extend_from_slice(&value.to_le_bytes());
     }

@@ -28,6 +28,16 @@ pub(crate) fn page(offset: Option<f64>, limit: Option<f64>) -> (usize, usize) {
 // ---------------------------------------------------------------------------------------------
 // Requests
 
+/// The payload of a command that takes none. Whatever was sent is ignored.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Empty;
+
+impl<'de> Deserialize<'de> for Empty {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        serde::de::IgnoredAny::deserialize(deserializer).map(|_| Empty)
+    }
+}
+
 /// `library.scan`: the folders to scan (and add to the library), or none for every root.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]

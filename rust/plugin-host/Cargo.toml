@@ -2,7 +2,14 @@
 # Its own workspace: rust/Cargo.toml excludes this directory. See docs/PLUGIN_CONTAINER.md.
 [workspace]
 resolver = "2"
-members = ["crates/transport", "crates/runtime", "crates/client", "crates/container", "crates/clap-test-plugin"]
+members = [
+    "crates/transport",
+    "crates/runtime",
+    "crates/client",
+    "crates/container",
+    "crates/clap-test-plugin",
+    "crates/vst3-test-plugin",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,6 +21,10 @@ publish = false
 libc = "0.2"
 # CLAP ABI definitions (MIT OR Apache-2.0, no dependencies).
 clap-sys = "0.5"
+# VST3 COM interface bindings (MIT OR Apache-2.0; generated from the VST 3.8.0 SDK headers, which
+# Steinberg publishes under the MIT licence; no SDK needed to build). One dependency:
+# com-scrape-types (MIT OR Apache-2.0).
+vst3 = "0.3"
 stpc-transport = { path = "crates/transport" }
 stpc-client = { path = "crates/client" }
 stpc-runtime = { path = "crates/runtime" }

@@ -1,9 +1,14 @@
 //! NKS presets: metadata, loading, the preset catalogue and product artwork.
 
+pub mod artwork;
+pub mod catalog;
 pub mod metadata;
 pub mod msgpack;
 pub mod preset;
+pub mod sqlite;
 
+pub use artwork::{ArtMatch, NksArtwork};
+pub use catalog::{BrowseFacet, NksBrowseResponse, NksCatalog, NksStatus, Registration};
 pub use metadata::{catalog_summary, CatalogSummary, MetadataPage, NksMetadata};
 pub use preset::{is_vst2_compatible, BoundPage, BoundSlot, ControllerPage, ControllerSlot, NksHostPreset, PluginIdentity, PresetSummary};
 

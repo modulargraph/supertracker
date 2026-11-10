@@ -122,6 +122,55 @@ wire_struct! {
     }
 }
 
+// ---- plug-in scanning -------------------------------------------------------------------
+
+/// The plug-in is an instrument (makes sound from notes).
+pub const SCAN_INSTRUMENT: u32 = 1;
+/// The plug-in is an audio effect.
+pub const SCAN_EFFECT: u32 = 2;
+/// The plug-in works on notes / MIDI rather than audio (CLAP note effects, AU MIDI processors).
+pub const SCAN_NOTE_EFFECT: u32 = 4;
+/// The plug-in takes note / MIDI input, as far as the scan could tell without instantiating.
+pub const SCAN_WANTS_MIDI: u32 = 8;
+/// The plug-in emits notes / MIDI, as far as the scan could tell.
+pub const SCAN_PRODUCES_MIDI: u32 = 16;
+/// The plug-in has audio inputs, as far as the scan could tell.
+pub const SCAN_AUDIO_INPUT: u32 = 32;
+pub const SCAN_AUDIO_OUTPUT: u32 = 64;
+/// `SCAN_HAS_EDITOR` is meaningful (most formats only know after instantiating).
+pub const SCAN_EDITOR_KNOWN: u32 = 128;
+pub const SCAN_HAS_EDITOR: u32 = 256;
+/// The plug-in declares a sidechain input in its categories.
+pub const SCAN_SIDECHAIN: u32 = 512;
+
+wire_struct! {
+    /// One installed plug-in, as found by scanning a plug-in file (or the system registry)
+    /// without instantiating it. `format` + `id` + `path` is what an instance
+    /// configuration needs (`InstanceConfig::format`, `plugin_id`, `options`).
+    pub struct PluginDescription {
+        /// "vst3", "clap", "au".
+        pub format: String,
+        /// VST3: the class id as 32 hex digits. CLAP: the plug-in id. AU:
+        /// "type:subtype:manufacturer" four-character codes.
+        pub id: String,
+        pub name: String,
+        pub vendor: String,
+        pub version: String,
+        /// The category as the format states it (VST3 subcategories "Fx|Dynamics", CLAP
+        /// features joined with "|", AU type name).
+        pub category: String,
+        /// `category` split into its parts.
+        pub subcategories: Vec<String>,
+        /// `SCAN_*` bits.
+        pub flags: u32,
+        /// The plug-in file or bundle; empty for registry formats (AU).
+        pub path: String,
+        /// SDK / format version the plug-in was built against ("VST 3.7.8", "1.2.2"), if stated.
+        pub sdk_version: String,
+        pub url: String,
+    }
+}
+
 wire_struct! {
     /// Everything the container needs to build an instance and map its region.
     pub struct CreateParams {
@@ -178,6 +227,10 @@ wire_enum! {
         CloseEditor { instance: u64 } = 41,
         FocusEditor { instance: u64 } = 42,
         SetEditorTitle { instance: u64, title: String } = 43,
+        /// Lists the plug-ins in one plug-in file or bundle without instantiating them
+        /// (`path` empty: the format's system registry, for Audio Units). Loads foreign
+        /// code: the host sends it to a sacrificial container only.
+        Scan { format: String, path: String } = 50,
     }
 }
 
@@ -202,6 +255,7 @@ wire_enum! {
         State { data: Bytes } = 8,
         Presets { list: Vec<PresetInfo> } = 9,
         Editor { info: EditorInfo } = 10,
+        Scan { plugins: Vec<PluginDescription> } = 11,
     }
 }
 
@@ -241,6 +295,7 @@ mod tests {
             Request::SetState { instance: 1, data: Bytes(vec![1, 2, 3, 255]) },
             Request::FormatParameter { instance: 3, id: u64::MAX, values: vec![0.0, -1.5, f64::MAX] },
             Request::OpenEditor { instance: 9, title: "Track 1 – Synth".into() },
+            Request::Scan { format: "vst3".into(), path: "/usr/lib/vst3/X.vst3".into() },
         ];
         for request in requests {
             let bytes = request.encode();
@@ -268,6 +323,17 @@ mod tests {
             }],
         };
         assert_eq!(Response::decode(&response.encode()).unwrap(), response);
+        let scan = Response::Scan {
+            plugins: vec![PluginDescription {
+                format: "clap".into(),
+                id: "com.vendor.synth".into(),
+                name: "Synth".into(),
+                subcategories: vec!["instrument".into(), "stereo".into()],
+                flags: SCAN_INSTRUMENT | SCAN_WANTS_MIDI,
+                ..PluginDescription::default()
+            }],
+        };
+        assert_eq!(Response::decode(&scan.encode()).unwrap(), scan);
         assert_eq!(Response::decode(&[0xFF, 0xFF]).err(), Some(WireError::UnknownOpcode(0xFFFF)));
         // A forged vector length must not allocate or panic.
         let mut forged = (4u16).to_le_bytes().to_vec();

@@ -34,7 +34,7 @@ pub fn detect_frame_size(declared: Option<usize>, frames: usize) -> Option<usize
     if frames == 0 {
         return None;
     }
-    if frames % DEFAULT_FRAME_SIZE == 0 {
+    if frames.is_multiple_of(DEFAULT_FRAME_SIZE) {
         return Some(DEFAULT_FRAME_SIZE);
     }
     if frames <= 4096 && frames.is_power_of_two() && frames >= *FRAME_SIZE_RANGE.start() {

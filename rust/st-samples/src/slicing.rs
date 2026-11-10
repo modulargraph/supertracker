@@ -295,9 +295,9 @@ mod tests {
     #[test]
     fn sustained_synth_note_and_region_relative_markers() {
         let mut synth = vec![0f32; 48_000];
-        for frame in 9_600..40_000 {
-            let n = (frame - 9_600) as f64;
-            synth[frame] = ((n * 2.0 * PI * 220.0 / RATE).sin() * (n / 144.0).min(1.0) * 0.6) as f32;
+        for (n, value) in synth[9_600..40_000].iter_mut().enumerate() {
+            let n = n as f64;
+            *value = ((n * 2.0 * PI * 220.0 / RATE).sin() * (n / 144.0).min(1.0) * 0.6) as f32;
         }
         let note = points(&sample(synth, RATE, false), &SliceRequest::default());
         assert!(note.len() == 2 && (note[1] - 0.2).abs() < 0.012, "{note:?}");
