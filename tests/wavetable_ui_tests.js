@@ -153,31 +153,6 @@ test('POS step effect, wavetablePosition automation target and the LFO Position 
   assert.match(mod, /<option value="position"[^>]*>Position<\/option>/);
 });
 
-test('project.open of a migrated project marks it unsaved and says what was converted', async () => {
-  const h = harness(), { ST } = h;
-  const project = ST.normalize({ name: 'Old synths', tracks: [{ id: 0, name: 'Bass', instrument: 0 }, { id: 1, name: 'Lead', instrument: 1 }],
-    instruments: [{ id: 0, name: 'Bass', type: 'sample', mode: 'wavetable', samplePath: 'builtin:wavetables/Basic/Saw.wav', wavetablePosition: 0 },
-      { id: 1, name: 'Lead', type: 'sample', mode: 'wavetable', samplePath: 'builtin:wavetables/Basic/Square.wav', wavetablePosition: 0 }] });
-  h.handlers.set('project.open', () => ({ project, path: '/Old.supertracker', migrated: true, dirty: true }));
-  ST.state.dirty = false;
-  await ST.projectAction('open', '/Old.supertracker'); await settle();
-  assert.equal(ST.state.project.name, 'Old synths'); assert.equal(ST.state.dirty, true);
-  assert.match(h.toast(), /Converted 2 synth instruments to wavetable samplers/);
-  h.handlers.set('project.open', () => ({ project: { ...project, name: 'Current' }, path: '/New.supertracker', migrated: false, dirty: false }));
-  ST.state.dirty = false; h.element('#toast-region').innerHTML = ''; await ST.projectAction('open', '/New.supertracker'); await settle();
-  assert.equal(ST.state.dirty, false); assert.doesNotMatch(h.toast(), /Converted/);
-});
-
-test('projects that never passed the native migration still load synths as wavetable samplers', () => {
-  const h = harness(), p = h.ST.normalize({ instruments: [{ id: 0, type: 'synth', name: 'Old', waveform: 'square' }, { id: 1, type: 'synth', waveform: 'noise' },
-    { id: 2, type: 'sample', mode: 'wavetable', samplePath: '/t.wav', grainPosition: .3 }] });
-  assert.equal(p.instruments[0].type, 'sample'); assert.equal(p.instruments[0].mode, 'wavetable'); assert.equal(p.instruments[0].samplePath, 'builtin:wavetables/Basic/Square.wav');
-  assert.equal(p.instruments[0].waveform, undefined);
-  assert.equal(p.instruments[1].mode, 'forward'); assert.equal(p.instruments[1].samplePath, 'builtin:wavetables/Basic/Noise.wav');
-  assert.equal(p.instruments[2].wavetablePosition, .3);
-  assert(h.ST.demoProject().instruments.every(inst => inst.type === 'sample' && inst.samplePath.startsWith('builtin:wavetables/Basic/')));
-});
-
 test('agent API: sample/midi types, wavetable parameters and the "position" step effect', async () => {
   const h = harness(), { window } = h; web.load(h.context, 'agent-api.js');
   const api = window.STAgent;

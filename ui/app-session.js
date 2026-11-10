@@ -275,7 +275,6 @@
       const result = await request('project.open', { project: state.project, ...(path ? { path } : {}) });
       if (result?.cancelled) return;
       acceptProject(result.project || result);
-      acceptMigration(result);
     });
     return false;
   }
@@ -369,28 +368,6 @@
     });
   }
 
-  // project.open reports a project converted from an older format (built-in synths became
-  // wavetable samplers or rendered drum samples, tempo maps were removed): keep it unsaved.
-  function migrationMessage(project) {
-    const instruments = project?.instruments || [];
-    const tables = instruments.filter(inst => /^builtin:wavetables\//.test(inst?.samplePath || '')).length,
-      drums = instruments.filter(inst => /^builtin:drums\//.test(inst?.samplePath || '')).length;
-    const parts = [tables ? `${tables} synth instrument${tables === 1 ? '' : 's'} to wavetable samplers` : '',
-      drums ? `${drums} drum synth${drums === 1 ? '' : 's'} to samples` : ''].filter(Boolean);
-    return parts.length ? `Converted ${parts.join(' and ')}` : 'Updated this project to the current format';
-  }
-
-  function acceptMigration(result) {
-    if (result?.migrated !== true) return false;
-    if (result.dirty !== false) {
-      state.dirty = true;
-      updateTransport();
-    }
-    const kits = (result.migrationNotes || []).filter(note => typeof note === 'string' && note);
-    toast(kits.length ? kits.join(' ') + ' Save to keep the converted project; the original file is unchanged until then.' : migrationMessage(state.project));
-    return true;
-  }
-
   async function midiFileAction(importing) {
     const operation = async () => {
       const result = await request(importing ? 'project.importMIDI' : 'project.exportMIDI', importing ? {} : {
@@ -417,6 +394,6 @@
 
   Object.assign(app, {
     acceptProject, scheduleAutosave, settleRecordedAutomation, captureNativeEdits, projectAction,
-    midiFileAction, migrationMessage, acceptMigration, quitBlocker, flushEditsForQuit, hostQuitRequested
+    midiFileAction, quitBlocker, flushEditsForQuit, hostQuitRequested
   });
 })();
