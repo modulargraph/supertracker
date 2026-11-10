@@ -45,7 +45,7 @@ fn session(sample: &str, zone: &str) -> Value {
         "instruments": [
             { "id": 0, "type": "sample", "name": "Lead", "samplePath": "/elsewhere/lead.wav" },
             { "id": 1, "type": "au", "name": "Synth" },
-            { "id": 2, "type": "sample", "name": "Layered kick", "samplePath": sample, "rootNote": 36, "start": 0.03, "end": 0.91, "cutoff": 1532.0,
+            { "id": 2, "type": "sample", "name": "Layered kick", "samplePath": sample, "rootNote": 36, "start": 0.03, "end": 0.91, "cutoff": 1532.5,
               "zones": [ { "samplePath": zone, "rootNote": 42, "keyLow": 36, "keyHigh": 60, "volume": 0.71 }, { "path": sample, "rootNote": 48, "velocityLow": 80, "velocityHigh": 127 } ] },
             { "id": 3, "type": "sample", "name": "Empty", "samplePath": "" }
         ],

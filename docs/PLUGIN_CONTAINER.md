@@ -43,7 +43,7 @@ The host creates one `Supervisor`. It starts `supertracker-plugin-container` pro
 | `PerPlugin` (default) | format + plug-in id | all instances of one plug-in share a process |
 | `PerInstance` | the instance | best isolation, one process per instance |
 
-`set_policy` affects instances created afterwards; existing ones stay where they are. A container process ends when its last instance is destroyed. The executable is found at `SupervisorConfig::container_path`, else `$STPC_CONTAINER_PATH`, else next to the host's own executable; it is always this standalone binary.
+`set_policy` affects instances created afterwards; existing ones stay where they are. Containers inherit the host's standard output and error, so what a plug-in prints ends up in the host's log. A container process ends when its last instance is destroyed. The executable is found at `SupervisorConfig::container_path`, else `$STPC_CONTAINER_PATH`, else next to the host's own executable; it is always this standalone binary.
 
 Start-up of a container: the supervisor binds a Unix socket at a fresh path inside its private directory (`stpc-<pid>-<random>`, mode 0700, under `socket_dir`, `$XDG_RUNTIME_DIR` or the temporary directory), starts the process with `--stpc-endpoint <path> --stpc-token <random>`, accepts one connection and removes the path at once. The container sends `Hello` (magic, protocol version, pid, token, wake-up capabilities, formats); the supervisor answers `Welcome` or a refusal. A version or token mismatch is refused, on both sides. Directories left by a host process that no longer exists are removed when a supervisor starts.
 
