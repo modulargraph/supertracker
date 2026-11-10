@@ -12,3 +12,6 @@
 
 .pattern-destination label[for="pattern-record-placement"]{flex:0 0 auto;max-width:none}
 .pattern-destination #pattern-record-placement{width:128px;min-width:128px}
+/* Short windows: the help line gives its row back to the grid. It stays in the document, so controls that name it
+   with aria-describedby still announce it. */
+@media(max-height:760px){.pattern-destination p{display:none}}

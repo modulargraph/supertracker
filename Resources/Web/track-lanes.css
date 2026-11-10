@@ -44,6 +44,8 @@ body.lane-dragging, body.lane-dragging * { cursor:grabbing !important; user-sele
 /* Mixer strip delete */
 .studio-channel { position:relative; }
 .studio-channel > .strip-delete { position:absolute; top:6px; right:6px; z-index:2; opacity:0; }
+/* The strip title stops short of the delete button, so its focus ring and click area never sit under the ×. */
+.studio-channel:has(> .strip-delete) > .studio-channel-title { width:calc(100% - 14px); }
 .studio-channel:hover > .strip-delete, .studio-channel.is-selected > .strip-delete, .studio-channel > .strip-delete:focus-visible { opacity:1; }
 #mixer-channels .studio-channel-title { cursor:grab; }
 /* The group row's spacer above a slim track must not widen it (the first row sets fixed-layout widths). */

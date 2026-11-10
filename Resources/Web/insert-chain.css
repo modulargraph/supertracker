@@ -3,6 +3,8 @@
 .fx-chain-head { display:flex; align-items:center; gap:12px; min-height:24px; }
 .fx-chain-title { display:flex; align-items:baseline; gap:8px; min-width:0; }
 .fx-chain-title h3 { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fx-chain-title h3 { min-width:0; }
+.fx-chain-title > :not(h3) { flex:none; white-space:nowrap; }
 .fx-count { font:11px var(--mono); color:var(--dim); }
 .fx-chain-hint { margin-left:auto; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
 .fx-chain-head .btn { font-size:11px; padding:4px 8px; flex:none; }

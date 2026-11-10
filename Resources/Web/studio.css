@@ -124,6 +124,9 @@
 .studio-lane-box-plot .studio-envelope-line,.studio-lane-box-plot .studio-song-hold{vector-effect:non-scaling-stroke}
 .studio-lane-panel{padding:0!important}
 .studio-lane-header{display:flex;align-items:start;justify-content:space-between;gap:15px}
+/* A long lane or track name wraps inside its own column; the lane's controls keep their width. */
+.studio-lane-header>div:first-child{min-width:0;overflow-wrap:anywhere}
+.studio-lane-header>.studio-lane-header-actions{flex:none}
 .studio-lane-name{font-size:14px!important;font-weight:500;width:min(290px,100%);padding:3px 5px!important;margin-left:0;min-height:25px;background:transparent!important;border:1px solid transparent!important;border-radius:2px!important;letter-spacing:0}
 .studio-lane-name:hover,.studio-lane-name:focus{border-color:var(--line,#383831)!important}
 .studio-lane-source{font-size:11px;margin-top:3px;color:var(--dim,#969083)}
@@ -289,7 +292,9 @@
 .studio-fader-well .studio-meter{height:auto;align-self:stretch;margin-top:26px}
 .studio-fader-well .studio-volume input[type=range]{flex:1 1 auto;height:auto;min-height:50px}
 .studio-routed-channel .studio-routed-spacer{flex:1 1 0;min-height:0}
-.studio-mixer>.studio-bottom{flex:0 0 auto;display:flex;align-items:stretch;gap:0 26px;max-height:calc(100% - 56px - 170px);min-height:0}
+/* By default the detail takes at most 46% of the workspace: a tall side column (routing, live input, returns) scrolls
+   on its own instead of squeezing the strips down to their minimum. The splitter sets any other height. */
+.studio-mixer>.studio-bottom{flex:0 0 auto;display:flex;align-items:stretch;gap:0 26px;max-height:min(calc(100% - 56px - 170px),46%);min-height:0}
 .studio-bottom>.studio-rack{flex:1.35 1 0;min-width:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:12px!important}
 .studio-bottom>.studio-returns,.studio-bottom>.studio-side{flex:1 1 0;min-width:280px;overflow-y:auto;overscroll-behavior:contain}
 .studio-side{display:flex;flex-direction:column;border-left:1px solid var(--line)}

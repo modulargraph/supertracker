@@ -164,10 +164,6 @@
 .browser-destination-name{margin:0;color:#d8c8ab;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .browser-destination>.btn{display:flex;align-items:center;justify-content:space-between;gap:6px;text-align:left;font-size:11px;padding:6px 8px;min-width:0}
 .browser-destination>.btn:disabled{opacity:.45}.browser-destination>.browser-small{font-size:11px;line-height:1.4;color:#bcb3a2}
-.browser-destination-pads{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
-.browser-destination-pads>button{min-width:0;height:34px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;border:1px solid #635e50;background:#201f1a;color:#c5bdab;padding:3px 5px;border-radius:2px;text-align:left}
-.browser-destination-pads>button>span{font:11px var(--mono,monospace);color:#b6ac97}.browser-destination-pads strong{width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:500}
-.browser-destination-pads>button[aria-pressed=true]{background:#49372a;border-color:#d69264;color:#f1e4d0}.browser-destination-pads>button[aria-pressed=true]>span{color:#e4bb8c}
 /* Calmer search focus: a thin accent underline instead of a bright full border. */
 .browser-search-wrap:focus-within{box-shadow:inset 0 -2px 0 rgba(237,113,68,.75);background:#212019}
 .browser-search:focus-visible,#nksb-search:focus-visible,#kitb-search:focus-visible{outline:none}

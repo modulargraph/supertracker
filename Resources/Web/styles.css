@@ -207,6 +207,17 @@ body.native .statusbar #cpu { flex:0 0 11ch; width:11ch; min-width:0; }
 .modal-head h2 { font-size:14px; }
 .modal-body { padding:18px; }
 .modal-foot { display:flex; justify-content:flex-end; gap:7px; padding:12px 18px; border-top:1px solid #4d4431; }
+/* A dialog taller than the window scrolls its body under a pinned title and action row, so focusing the default button
+   (at the bottom) never hides the title or the close button. */
+.modal > .modal-head { position:sticky; top:0; z-index:2; }
+.modal > .modal-foot { position:sticky; bottom:0; z-index:2; background:#25241d; }
+/* One track's live input in the Line inputs dialog: a quiet group box with its controls on one wrapping row. */
+.modal fieldset.field { margin:8px 0; padding:8px 10px 10px; border:1px solid #4d4431; border-radius:3px; min-width:0; }
+.modal fieldset.field > legend { padding:0 5px; font-size:11px; color:var(--text); }
+.modal fieldset.field > .row { flex-wrap:wrap; align-items:flex-end; gap:8px 14px; }
+.modal fieldset.field > .row > label { display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--muted); min-width:0; }
+.modal fieldset.field > .row > label:has(> input[type=checkbox]) { flex-direction:row; align-items:center; gap:6px; min-height:26px; color:var(--text); white-space:nowrap; }
+.modal fieldset.field .line-input-lane-status { margin:6px 0 0; font-size:11px; color:var(--muted); }
 .studio-settings-modal { display:flex; flex-direction:column; overflow:hidden; }
 .studio-settings-modal .modal-head,.studio-settings-modal .modal-foot { flex:0 0 auto; }
 .studio-settings-modal .modal-body { min-height:0; overflow:auto; scroll-padding-block:10px; }
@@ -215,11 +226,15 @@ body.native .statusbar #cpu { flex:0 0 11ch; width:11ch; min-width:0; }
 .palette-list { max-height:390px; overflow:auto; padding:4px; border-top:1px solid #6b5537; }
 .palette-item { width:100%; display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border:0; border-radius:2px; background:transparent; text-align:left; font-size:12px; }
 .palette-item.active { color:#f2d6b8; background:#55402a; box-shadow:inset 2px 0 var(--teal); }
-.shortcut-grid { display:grid; grid-template-columns:1fr 1fr; gap:22px 28px; }
+.palette-item kbd:empty { display:none; }
+.shortcut-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:22px 28px; }
 .shortcut-item { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:10px 0; color:var(--muted); font-size:11px; }
+/* Long key descriptions wrap inside their column instead of pushing the dialog wider than the window. */
+.shortcut-item > span { min-width:0; }
+.shortcut-item > kbd { flex:0 1 auto; max-width:62%; white-space:normal; text-align:right; }
 .notice { padding:11px 12px; border:0; border-left:2px solid #a7854d; border-radius:0; background:#353022; color:#ccbd9c; font-size:11px; line-height:1.6; }
 .notice.info { background:#292d25; border-color:#9a9d71; color:#c1c7ab; }
-.context-menu { position:fixed; z-index:150; min-width:230px; padding:4px; border:1px solid #716046; border-radius:3px; background:#2e2b21; box-shadow:0 8px 25px #0009; }
+.context-menu { position:fixed; z-index:150; min-width:230px; max-height:calc(100vh - 16px); overflow-y:auto; overscroll-behavior:contain; padding:4px; border:1px solid #716046; border-radius:3px; background:#2e2b21; box-shadow:0 8px 25px #0009; }
 .context-menu button { width:100%; display:block; border:0; background:transparent; text-align:left; font-size:11px; }
 .context-menu button:hover { background:#59432a; }
 .plugin-parameters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:15px 20px; max-height:420px; overflow:auto; }
@@ -480,3 +495,21 @@ img,a,svg,canvas { -webkit-user-drag:none; }
 .auto-stroke-preview { fill:none; stroke:#f3e2a6; stroke-width:1.5; pointer-events:none; }
 .auto-playhead { stroke:#a4bc92; stroke-width:1.5; }
 .auto-lane-svg .studio-envelope-point { cursor:grab; }
+
+/* Long names (a rename accepts 120 characters; imports can be longer) are cut with an ellipsis instead of pushing
+   their neighbours out of the layout. Full names stay available in tooltips, selects and the rename dialog. */
+.sidebar-item > .grow { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.sidebar-item .sub { white-space:normal; overflow-wrap:anywhere; }
+.view-title > div:first-child { min-width:0; }
+.view-title h1 { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.view-title > .row { flex:none; }
+.view-title button { white-space:nowrap; max-width:280px; overflow:hidden; text-overflow:ellipsis; }
+.left-pane { grid-template-columns:minmax(0,1fr); }
+/* A track column is as wide as its cells: neither the track nor the instrument name may widen it. */
+.track-head .track-title > .track-name, .track-head .track-source > .source-name { flex:1 1 0; width:0; }
+/* The app's single column never grows past the window, whatever a row's unbreakable content measures. */
+#app { grid-template-columns:minmax(0,1fr); }
+.statusbar { white-space:nowrap; }
+.statusbar > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.statusbar > span:first-child, .statusbar .end { flex:none; }
+.pattern-foot > span:nth-child(2) { min-width:0; overflow:hidden; text-overflow:ellipsis; }
