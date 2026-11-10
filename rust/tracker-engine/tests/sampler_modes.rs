@@ -2,6 +2,8 @@
 //! play modes. A ramp sample encodes the read position in its value, so the rendered output
 //! reveals where (and in which direction) the voice is reading.
 #![cfg(feature = "engine")]
+// The index loops mirror the C++ loops they translate.
+#![allow(clippy::needless_range_loop)]
 
 mod engine_support_b;
 

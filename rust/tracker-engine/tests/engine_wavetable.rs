@@ -104,7 +104,9 @@ fn explicit_and_registered_frame_sizes() {
     registered.note_on(0, 0, 69, 127);
     assert!((peak(&render(&mut registered, 9600), 4800, 9600) - 0.8).abs() < 0.01);
     assert!(
-        !registered.set_sample_cycle(0, 8) && !registered.set_sample_cycle(0, 9000) && !registered.set_sample_cycle(-1, 256)
+        !registered.set_sample_cycle(0, 8)
+            && !registered.set_sample_cycle(0, 9000)
+            && !registered.set_sample_cycle(-1, 256)
     );
     // Replacing the sample clears the registered size: the default 2048-sample read then spans
     // all eight cycles.

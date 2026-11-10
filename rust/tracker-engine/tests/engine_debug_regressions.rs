@@ -91,7 +91,10 @@ fn checkpoint_print(mapped: bool, after_wrap: bool) {
         );
     }
     for n in 0..out.len() {
-        require(out[n] == sign * pcm[1000 + n], "Pattern print checkpoint must restore exact cursor and head/loop asset");
+        require(
+            out[n] == sign * pcm[1000 + n],
+            "Pattern print checkpoint must restore exact cursor and head/loop asset",
+        );
     }
     require(e.status().row == 0 && e.status().playing != 0, "Checkpoint musical row preserved");
 }
@@ -142,10 +145,7 @@ fn section_next_quarter(mapped: bool) {
     let mut span = STClockSpan::default();
     require(e.clock_span(27000, 1, 0, &mut span) == ST_CLOCK_OK, "Section next-beat context");
     require(span.context.next_boundary_frame == 30000, "Quarter query loop boundary");
-    require(
-        span.context.next_quarter_beat_frame == 48000,
-        "Next quarter after wrap must subtract nonzero loop origin",
-    );
+    require(span.context.next_quarter_beat_frame == 48000, "Next quarter after wrap must subtract nonzero loop origin");
     require(
         e.clock_span(27127, 1, 127, &mut span) == ST_CLOCK_OK && span.context.next_quarter_beat_frame == 48127,
         "Upstream PDC shifts next quarter exactly once",
@@ -185,7 +185,10 @@ fn checkpoint_bounds() {
             let out = audio(&mut e, 64);
             let pcm = print_pcm();
             for n in 0..out.len() {
-                require(out[n] == pcm[7250 + n], "Invalid/default print checkpoint reconstructs row-local head position");
+                require(
+                    out[n] == pcm[7250 + n],
+                    "Invalid/default print checkpoint reconstructs row-local head position",
+                );
             }
         }
         temporary_song_render(&mut e);
@@ -215,7 +218,9 @@ fn checkpoint_at_boundary() {
 }
 
 fn silent_sample_region() {
-    for mode in [ST_MODE_ONESHOT, ST_MODE_FORWARD, ST_MODE_REVERSE, ST_MODE_PINGPONG, ST_MODE_GRANULAR, ST_MODE_WAVETABLE] {
+    for mode in
+        [ST_MODE_ONESHOT, ST_MODE_FORWARD, ST_MODE_REVERSE, ST_MODE_PINGPONG, ST_MODE_GRANULAR, ST_MODE_WAVETABLE]
+    {
         let mut e = Engine::new();
         setup(&mut e, false, 4);
         let mut pcm = vec![0.8f32; 1024];
@@ -337,10 +342,7 @@ fn external_retrigger() {
             && events[2].1 == 12000,
         "Retrigger ends the older note at the new onset",
     );
-    require(
-        events[3].0 == ST_EVENT_NOTE_OFF && events[3].1 == 12000 + 24000,
-        "The newer note keeps its full gate",
-    );
+    require(events[3].0 == ST_EVENT_NOTE_OFF && events[3].1 == 12000 + 24000, "The newer note keeps its full gate");
 }
 
 #[test]

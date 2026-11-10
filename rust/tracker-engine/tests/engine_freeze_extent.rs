@@ -128,7 +128,10 @@ fn bounded_extent_publication_admission_allocation_failure_idempotence_and_polic
     assert!(e.set_frozen_song_extent(8, 7000).is_err());
     assert!(e.set_frozen_song_extent(0, 7000).is_err());
     fail_next_allocation();
-    assert!(e.set_frozen_song_extent(7, 7000).is_err_and(|error| error == "std::bad_alloc") && !allocation_failure_pending());
+    assert!(
+        e.set_frozen_song_extent(7, 7000).is_err_and(|error| error == "std::bad_alloc")
+            && !allocation_failure_pending()
+    );
     assert!(e.duration(true) == 6000.0 / 48000.0);
     extent(&mut e, 7000);
     assert!(e.set_frozen_song_extent(7, 7000).is_ok());

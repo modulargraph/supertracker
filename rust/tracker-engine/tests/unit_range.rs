@@ -10,6 +10,8 @@
 //! null channel pointer, and the error-buffer variants of a failing creation (8-byte truncation,
 //! the 1-byte buffer and the null buffer with a capacity).
 #![cfg(all(feature = "unit-range", feature = "clock"))]
+// The index loops mirror the C++ loops they translate.
+#![allow(clippy::needless_range_loop)]
 
 mod engine_support_b;
 
@@ -163,8 +165,12 @@ impl Source for Probe {
             BadSpan::Denominator => result.context.denominator = 3,
         }
         if self.query_trace_count < self.query_trace.len() {
-            self.query_trace[self.query_trace_count] =
-                Call { frame: start, frames: result.frames, revision: result.context.revision, epoch: result.context.epoch };
+            self.query_trace[self.query_trace_count] = Call {
+                frame: start,
+                frames: result.frames,
+                revision: result.context.revision,
+                epoch: result.context.epoch,
+            };
             self.query_trace_count += 1;
         }
         self.planned_end = start.wrapping_add(result.frames as i64);
@@ -190,8 +196,13 @@ impl Source for Probe {
             {
                 let mut nested: [&mut [f32]; 2] = [&mut l, &mut r];
                 assert!(
-                    self.cache.render(start, 4, &mut nested[..self.channels as usize], &mut NeverCalled, Callbacks::ALL)
-                        == ST_UNIT_RANGE_BUSY
+                    self.cache.render(
+                        start,
+                        4,
+                        &mut nested[..self.channels as usize],
+                        &mut NeverCalled,
+                        Callbacks::ALL
+                    ) == ST_UNIT_RANGE_BUSY
                 );
             }
             assert!(l.iter().all(|&value| value == 0.0));
@@ -482,7 +493,9 @@ fn clock_replacement_and_epoch_boundaries() {
     }
     assert!(fixture.process_trace[0].revision == 7 && fixture.process_trace[1].frames == 5);
     assert!(
-        fixture.process_trace[2].frame == 13 && fixture.process_trace[2].revision == 8 && fixture.process_trace[2].epoch == 12
+        fixture.process_trace[2].frame == 13
+            && fixture.process_trace[2].revision == 8
+            && fixture.process_trace[2].epoch == 12
     );
     let (queries, processes) = (fixture.queries, fixture.processes);
     // Replace the provider's map/origin entirely. Retained samples keep their old interpretation.

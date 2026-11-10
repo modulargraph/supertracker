@@ -123,3 +123,43 @@ pub fn allocation_failure_pending() -> bool {
 pub fn cancel_allocation_failure() {
     FAIL_NEXT.with(|fail| fail.set(false));
 }
+
+/// Runs in every test binary that includes this module: the "zero render allocations"
+/// assertions and the injected allocation failures mean something only if this allocator is the
+/// one in use and behaves as described.
+#[cfg(all(test, not(feature = "cxx-alloc")))]
+mod self_check {
+    use super::*;
+    use std::hint::black_box;
+
+    #[test]
+    fn test_allocator_counts_render_sections_and_fails_once_on_request() {
+        reset_render_allocations();
+        let outside = black_box(vec![0u8; 100]);
+        assert_eq!((render_allocations(), render_deallocations()), (0, 0));
+        let inside = realtime(|| black_box(vec![1u8; 100]));
+        assert_eq!((render_allocations(), render_deallocations()), (1, 0));
+        realtime(|| drop(inside));
+        assert_eq!((render_allocations(), render_deallocations()), (1, 1));
+        drop(outside);
+        assert_eq!((render_allocations(), render_deallocations()), (1, 1));
+        // Another thread's allocations are not this thread's.
+        realtime(|| {
+            std::thread::scope(|scope| scope.spawn(|| drop(black_box(vec![2u8; 100]))).join().expect("thread"))
+        });
+        let after_thread = render_allocations();
+        reset_render_allocations();
+        assert_eq!((render_allocations(), render_deallocations()), (0, 0));
+
+        fail_next_allocation();
+        let mut storage: Vec<u64> = Vec::new();
+        assert!(storage.try_reserve_exact(1000).is_err());
+        assert!(!allocation_failure_pending());
+        assert!(storage.try_reserve_exact(1000).is_ok());
+        fail_next_allocation();
+        cancel_allocation_failure();
+        assert!(!allocation_failure_pending());
+        // Spawning the thread above allocated on this thread while it was "rendering".
+        assert!(after_thread >= 1);
+    }
+}

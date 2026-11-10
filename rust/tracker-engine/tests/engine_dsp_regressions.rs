@@ -91,7 +91,9 @@ fn zero_depth_continuity() {
 fn region_automation_bounds() {
     // Both samples contain the same selected silence, but only one has loud excluded material.
     // Moving each selection edge with automation must never borrow that excluded material.
-    for mode in [ST_MODE_ONESHOT, ST_MODE_FORWARD, ST_MODE_REVERSE, ST_MODE_PINGPONG, ST_MODE_GRANULAR, ST_MODE_WAVETABLE] {
+    for mode in
+        [ST_MODE_ONESHOT, ST_MODE_FORWARD, ST_MODE_REVERSE, ST_MODE_PINGPONG, ST_MODE_GRANULAR, ST_MODE_WAVETABLE]
+    {
         let mut e = Engine::new();
         let mut p = instrument();
         p.type_ = ST_INSTRUMENT_SAMPLE;

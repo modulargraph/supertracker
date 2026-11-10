@@ -1,6 +1,8 @@
 //! Port of `tests/engine_step_effect_tests.cpp`: step effect playback regressions (sticky
 //! ratchets, gateless note lifetime, probability, sample commands, live tempo changes).
 #![cfg(feature = "engine")]
+// The index loops mirror the C++ loops they translate.
+#![allow(clippy::needless_range_loop)]
 
 mod engine_support_b;
 

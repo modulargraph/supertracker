@@ -174,7 +174,16 @@ impl Cache {
         let pointers = self.pointers(frames, output);
         // SAFETY: a live cache; `pointers` holds one writable buffer per channel (checked above).
         unsafe {
-            st_unit_range_render(self.raw, graph_frame, frames, pointers.as_ptr(), None, None, None, std::ptr::null_mut())
+            st_unit_range_render(
+                self.raw,
+                graph_frame,
+                frames,
+                pointers.as_ptr(),
+                None,
+                None,
+                None,
+                std::ptr::null_mut(),
+            )
         }
     }
 
@@ -231,7 +240,13 @@ impl Source for NeverCalled {
     fn span(&mut self, _graph_frame: i64, _frames: u32, _span: &mut STClockSpan) -> i32 {
         panic!("span called on a request that must be rejected first");
     }
-    fn process(&mut self, _context: &STClockContext, _graph_frame: i64, _frames: u32, _output: &mut [&mut [f32]]) -> i32 {
+    fn process(
+        &mut self,
+        _context: &STClockContext,
+        _graph_frame: i64,
+        _frames: u32,
+        _output: &mut [&mut [f32]],
+    ) -> i32 {
         panic!("process called on a request that must be rejected first");
     }
 }

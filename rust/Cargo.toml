@@ -15,3 +15,5 @@ lto = "thin"
 
 [profile.dev]
 panic = "abort"
+# Line tables only: full debug info makes every build folder several gigabytes.
+debug = "line-tables-only"

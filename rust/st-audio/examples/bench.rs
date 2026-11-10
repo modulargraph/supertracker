@@ -135,8 +135,10 @@ fn main() {
         for pattern in engine_only["patterns"].as_array_mut().unwrap() {
             pattern["automation"].as_array_mut().unwrap().retain(|lane| lane.get("owner").is_none());
         }
-        let (engine, _, _) = measure(&engine_only, 10, 512);
-        let (whole, peak, unavailable) = measure(&project, 10, 512);
+        // The best of three runs each: other work on the machine only ever adds time.
+        let best = |project: &Value| (0..3).map(|_| measure(project, 10, 512)).min_by(|a, b| a.0.total_cmp(&b.0)).expect("three runs");
+        let (engine, _, _) = best(&engine_only);
+        let (whole, peak, unavailable) = best(&project);
         assert_eq!(unavailable, 0, "every insert of the benchmark is a built-in effect");
         println!("{name}: {whole:.2}% of real time at 48 kHz / 512 frames (engine alone {engine:.2}%, mixer {:.2}%), peak {peak:.3}", whole - engine);
     }

@@ -34,7 +34,7 @@ fn sample(e: &mut Engine, instrument: i32, frames: usize, seed: i32) {
         s = s.wrapping_mul(1664525).wrapping_add(1013904223);
         let noise = (s as i32) as f32 / 2147483647.0f32;
         let decay = (-(i as f64) / frames as f64 * 5.0).exp() as f32;
-        let tone = (i as f64 * 2.0 * 3.141592653589793 * (60 + seed * 40) as f64 / RATE).sin() as f32;
+        let tone = (i as f64 * 2.0 * std::f64::consts::PI * (60 + seed * 40) as f64 / RATE).sin() as f32;
         l[i] = (tone * 0.7f32 + noise * 0.3f32) * decay * 0.5f32;
         r[i] = (tone * 0.6f32 + noise * 0.4f32) * decay * 0.5f32;
     }
@@ -217,9 +217,30 @@ struct Case {
 // Budgets are 4-13x the measured cost on an M4 core (1.2%, 0.4%, 7%): they catch an
 // order-of-magnitude regression, never scheduling noise from a loaded machine.
 const CASES: [Case; 3] = [
-    Case { name: "template-kit-playing", build: template_kit, playing: true, tracks: 27, budget: 10.0, pcm: [0xe0df736ea3152284, 0x2771f605f2f53bf8] },
-    Case { name: "template-kit-stopped", build: template_kit, playing: false, tracks: 27, budget: 5.0, pcm: [0x411662941a3e2383, 0x1b97e38001038383] },
-    Case { name: "sixty-four-tracks", build: many_tracks, playing: true, tracks: 64, budget: 40.0, pcm: [0x64552246f1cd4fe1, 0xcf5186b565f35cb7] },
+    Case {
+        name: "template-kit-playing",
+        build: template_kit,
+        playing: true,
+        tracks: 27,
+        budget: 10.0,
+        pcm: [0xe0df736ea3152284, 0x2771f605f2f53bf8],
+    },
+    Case {
+        name: "template-kit-stopped",
+        build: template_kit,
+        playing: false,
+        tracks: 27,
+        budget: 5.0,
+        pcm: [0x411662941a3e2383, 0x1b97e38001038383],
+    },
+    Case {
+        name: "sixty-four-tracks",
+        build: many_tracks,
+        playing: true,
+        tracks: 64,
+        budget: 40.0,
+        pcm: [0x64552246f1cd4fe1, 0xcf5186b565f35cb7],
+    },
 ];
 
 /// The PCM hashes depend on the platform's `sin`/`exp` (the samples are generated here) and on

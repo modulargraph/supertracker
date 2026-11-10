@@ -27,7 +27,8 @@ fn scene(test: i32, value: f32) -> Audio {
     p.sustain = 1.0;
     p.release = 0.001;
     p.volume = 0.2;
-    let pcm: Vec<f32> = (0..32768).map(|n| (0.4 * (n as f64 * 0.07).sin() + 0.2 * (n as f64 * 0.019).cos()) as f32).collect();
+    let pcm: Vec<f32> =
+        (0..32768).map(|n| (0.4 * (n as f64 * 0.07).sin() + 0.2 * (n as f64 * 0.019).cos()) as f32).collect();
     assert!(e.set_sample(0, &pcm, None, 48000.0));
     e.set_instrument(0, p);
     let mut step = default_step();

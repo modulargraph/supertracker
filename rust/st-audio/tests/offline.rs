@@ -333,3 +333,34 @@ fn the_metronome_goes_through_the_master() {
     let (half, _) = render(&click, FRAMES);
     assert_signal(&half, |i| left[i] * 0.5, 1e-7, "the master fader scales the click");
 }
+
+#[test]
+fn a_new_plan_while_playing_keeps_tails_delays_and_insert_state() {
+    // Ported in spirit from tests/AudioRoutingIncrementalTests.swift: changing the mixer under
+    // a playing song must not disturb what is already sounding. Here the change is one that
+    // cannot be heard (a new, unconnected return bus), so the render must be bit-identical to an
+    // undisturbed one although the plan was replaced in the middle.
+    let mut playing = project(3);
+    playing["routing"]["buses"] = json!([bus("g", "group", 0.7)]);
+    playing["routing"]["outputs"] = json!({ "track:a": "bus:g" });
+    playing["tracks"][0]["delaySend"] = json!(0.5);
+    playing["tracks"][1]["reverbSend"] = json!(0.5);
+    playing["delay"] = json!({ "time": 0.11, "feedback": 0.6, "mix": 0.5 });
+    playing["audioPlugins"] = json!([effect("track:b", 0, "lat", "test:latency:333"), effect("bus:g", 0, "comp", "stfx:compressor"), effect("master", 0, "phase", "stfx:phaser")]);
+    playing["patterns"][0]["automation"] = json!([{ "id": "l", "owner": "bus:g", "target": "volume", "interpolation": "linear", "points": [{ "row": 0, "value": 0.2 }, { "row": 8, "value": 0.9 }] }]);
+    let undisturbed = render(&playing, 2 * FRAMES);
+
+    let engine = engine();
+    engine.publish(&parse(&playing)).unwrap();
+    engine.play(&st_audio::PlayOptions { from_start: true, ..Default::default() });
+    let (mut left, mut right) = engine.render_offline(FRAMES, 512);
+    let mut changed = playing.clone();
+    changed["routing"]["buses"].as_array_mut().unwrap().push(bus("spare", "return", 1.0));
+    engine.publish(&parse(&changed)).unwrap();
+    assert_eq!(engine.status()["routing"]["strips"].as_array().unwrap().len(), 6, "the mixer was recompiled");
+    let (more_left, more_right) = engine.render_offline(FRAMES, 512);
+    left.extend(more_left);
+    right.extend(more_right);
+    assert!(peak(&left) > 0.05);
+    assert!(left == undisturbed.0 && right == undisturbed.1, "the plan swap changed the audio");
+}

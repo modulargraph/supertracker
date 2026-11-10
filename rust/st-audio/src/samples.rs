@@ -181,8 +181,8 @@ mod tests {
         let right: Vec<f32> = left.iter().map(|v| -v).collect();
         let pcm = read_wav(&wav_bytes(&left, Some(&right), 44_100)).unwrap();
         assert_eq!((pcm.sample_rate, pcm.frames()), (44_100.0, 64));
-        for i in 0..64 {
-            assert!((pcm.left[i] - left[i]).abs() < 1.0 / 32000.0 && (pcm.right[i] + pcm.left[i]).abs() < 1.0 / 16000.0);
+        for ((read_left, read_right), wrote) in pcm.left.iter().zip(&pcm.right).zip(&left) {
+            assert!((read_left - wrote).abs() < 1.0 / 32000.0 && (read_right + read_left).abs() < 1.0 / 16000.0);
         }
         let mono = read_wav(&wav_bytes(&left, None, 48_000)).unwrap();
         assert_eq!(mono.left, mono.right);

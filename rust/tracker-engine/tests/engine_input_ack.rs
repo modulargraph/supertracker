@@ -12,8 +12,6 @@ use engine_support_b::alloc::{realtime, render_allocations};
 use engine_support_b::engine::{st_instrument_capacity, Engine};
 use engine_support_b::tone::*;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tracker_engine::engine::control::Control;
-use tracker_engine::engine::state::Shared;
 use tracker_engine::engine::*;
 
 fn render(e: &mut Engine, count: u32) {
@@ -130,7 +128,10 @@ fn exact_applied_onset_row_and_quarter_beat_distance_across_tempo_meter_boundari
     let first = ack(&mut e);
     assert!(first.status == ST_INPUT_ACK_APPLIED && first.pattern == 0 && first.row == 0 && first.sequence == 0);
     assert!(
-        first.request_id == 1 && first.timing_revision == 91 && first.graph_frame == i64::MIN && first.render_frame == 0
+        first.request_id == 1
+            && first.timing_revision == 91
+            && first.graph_frame == i64::MIN
+            && first.render_frame == 0
     );
     equal(first.distance_beats, 0.0);
     render(&mut e, 5999);
@@ -144,7 +145,11 @@ fn exact_applied_onset_row_and_quarter_beat_distance_across_tempo_meter_boundari
     render(&mut e, 1);
     let late = ack(&mut e);
     assert!(
-        late.pattern == 1 && late.row == 3 && late.sequence == 1 && late.render_frame == 64000 && late.run_id == first.run_id
+        late.pattern == 1
+            && late.row == 3
+            && late.sequence == 1
+            && late.render_frame == 64000
+            && late.run_id == first.run_id
     );
     equal(late.distance_beats, 1.75);
     empty(&mut e);
@@ -512,53 +517,42 @@ fn strict_tokens_argument_bounds_and_reserved_ack_capacity_with_command_failure_
     zero_render_allocations();
 }
 
-/// The control half of an engine, lent to a producer thread while this thread renders.
-///
-/// TODO(api): the safe API cannot express the engine's own threading model ("one serial control
-/// thread", "the render thread"): `Control` is not `Send` (a published project holds a raw
-/// `retired_next` pointer) and `Shared` is not `Sync` (the voice snapshot's `UnsafeCell`), so a
-/// host cannot hand the control half to its control thread without `unsafe`.
-struct ControlHalf<'a> {
-    control: &'a mut Control,
-    shared: &'a Shared,
-}
-
-// SAFETY: this is the engine's documented contract (`engine/mod.rs`, "Threading model"): one
-// thread uses the control half and the command ring's producer side while another renders;
-// everything they share is in `Shared`, whose atomics and single-producer/single-consumer rings
-// are built for exactly that. The producer thread is joined before the engine is used again.
-unsafe impl Send for ControlHalf<'_> {}
-
+/// The engine's own threading model, through `engine::host::split`: the control half moves to a
+/// producer thread while this thread, holding the render half, renders and consumes the ACKs
+/// (the C++ test's "single-producer/audio-consumer").
 #[test]
 fn concurrent_single_producer_audio_consumer_20000_edge_delivery_without_lost_acks() {
-    let mut e = Engine::new();
+    let halves = host::split(48000.0);
+    assert!(halves.is_some());
+    let (mut control, mut render, _status) = halves.unwrap();
     let done = AtomicBool::new(false);
-    let STEngine { shared, control, render, .. } = &mut *e.e;
-    let shared: &Shared = shared;
-    let producer_half = ControlHalf { control: control.get_mut(), shared };
-    let render = render.get_mut();
     let mut expected: u64 = 1;
     std::thread::scope(|scope| {
         let done = &done;
         let producer = scope.spawn(move || {
-            let half = producer_half;
             for id in 1..=20000u64 {
-                while !half.control.input_note(half.shared, id, ST_INPUT_NOTE_ON, 0, 0, 60, 100, 0) {
+                loop {
+                    let (c, shared, _) = control.parts();
+                    if c.input_note(shared, id, ST_INPUT_NOTE_ON, 0, 0, 60, 100, 0) {
+                        break;
+                    }
                     std::thread::yield_now();
                 }
             }
             done.store(true, Ordering::Release);
+            control
         });
         while !done.load(Ordering::Acquire) || expected <= 20000 {
-            realtime(|| render.render(shared, None, None, 1));
+            let (r, shared) = render.parts();
+            realtime(|| r.render(shared, None, None, 1));
             while let Some(a) = shared.pop_input_ack() {
                 assert!(a.request_id == expected && a.status == ST_INPUT_ACK_APPLIED);
                 expected += 1;
             }
         }
-        producer.join().expect("producer thread");
+        let _control = producer.join().expect("producer thread");
     });
     assert!(expected == 20001);
-    empty(&mut e);
+    assert!(render.parts().1.pop_input_ack().is_none());
     zero_render_allocations();
 }

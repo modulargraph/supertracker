@@ -118,7 +118,9 @@ fn default_off_policy_bounded_allocation_failure_and_invalid_policy_rollback() {
     assert!(e.set_frozen_song_policy(2, 7).is_err_and(|error| !error.is_empty()));
     assert!(e.set_frozen_song_policy(1, 0).is_err());
     fail_next_allocation();
-    assert!(e.set_frozen_song_policy(1, 7).is_err_and(|error| error == "std::bad_alloc") && !allocation_failure_pending());
+    assert!(
+        e.set_frozen_song_policy(1, 7).is_err_and(|error| error == "std::bad_alloc") && !allocation_failure_pending()
+    );
     assert!(e.freeze_span(0, 1, 0, &mut out) == ST_FREEZE_NOT_CONFIGURED);
     fixture_plain(&mut e, 120.0, 4, 0.0);
     render(&mut e, 0, 1);
@@ -203,7 +205,8 @@ fn mid_row_restore_avoids_retrigger_exact_rollback_and_pending_row_start_remaind
     let base = 48000.0 * 60.0 / 123.0 / 4.0;
     let origin = ((1.0 + SWING) * base).ceil();
     assert!(
-        restored_notes == vec![0, ((2.0 * base).ceil() - origin) as i64, (((3.0 + SWING) * base).ceil() - origin) as i64]
+        restored_notes
+            == vec![0, ((2.0 * base).ceil() - origin) as i64, (((3.0 + SWING) * base).ceil() - origin) as i64]
     );
     zero_render_allocations();
 }

@@ -174,7 +174,10 @@ fn return_bus_follows_track_count() {
     e.set_timing(120.0, 4, 0.0, 1.0);
     commit(&mut e);
     assert!(
-        st_return_bus(3) == 16 && st_channel_count(3) == 16 && st_output_bus_count(3) == 17 && st_channel_output_bus(3, 2) == 2
+        st_return_bus(3) == 16
+            && st_channel_count(3) == 16
+            && st_output_bus_count(3) == 17
+            && st_channel_output_bus(3, 2) == 2
     );
     e.begin_update();
     assert!(e.set_track_count(40));

@@ -581,7 +581,9 @@ impl AudioEngine {
     // ---- status --------------------------------------------------------------------------
 
     /// Housekeeping, on the status timer: frees what the audio thread has retired, advances the
-    /// meters by one reading, and looks after the device (see [`AudioEngine::watch_device`]).
+    /// meters by one reading, and looks after the device: a stream that died is replaced (by the
+    /// wanted device if it still exists, else by the null device), and while the null device stands
+    /// in for a wanted device, that one is tried again every two seconds.
     /// Returns true when the device in use changed.
     pub fn tick(&self) -> bool {
         let mut state = self.lock();
@@ -892,7 +894,7 @@ impl AudioEngine {
                 let Some(engine) = engine.upgrade() else { break };
                 engine.poll_inputs();
                 count += 1;
-                if count % 5 == 0 {
+                if count.is_multiple_of(5) {
                     let changed = engine.tick();
                     on_status(&engine, changed);
                 }

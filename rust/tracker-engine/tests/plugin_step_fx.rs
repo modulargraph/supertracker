@@ -5,6 +5,8 @@
 //! result collection and normal control-thread project copies are excluded); every group ends
 //! with the C++ program's "zero render/event-consumer allocations" assertion for its own thread.
 #![cfg(feature = "engine")]
+// The index loops mirror the C++ loops they translate.
+#![allow(clippy::needless_range_loop)]
 
 mod engine_support_b;
 
@@ -68,8 +70,7 @@ fn destination(track: i32, slot: i32, host: i32, address: u64) -> Destination {
 
 fn drain(engine: &mut Engine, base: u64) -> Events {
     let mut events = Vec::new();
-    loop {
-        let Some(event) = realtime(|| engine.pop_event()) else { break };
+    while let Some(event) = realtime(|| engine.pop_event()) {
         assert!(event.frame_offset >= 0);
         events.push(TimedEvent { frame: base + event.frame_offset as u64, event });
     }

@@ -321,7 +321,17 @@ impl Engine {
         fade_out: f32,
         muted: bool,
     ) {
-        self.control().0.add_audio_clip(asset, track, start_beat, duration_beats, source_offset, gain, fade_in, fade_out, muted);
+        self.control().0.add_audio_clip(
+            asset,
+            track,
+            start_beat,
+            duration_beats,
+            source_offset,
+            gain,
+            fade_in,
+            fade_out,
+            muted,
+        );
     }
 
     pub fn add_pattern_clip(&mut self, head_asset: i32, loop_asset: i32, track: i32, pattern: i32, gain: f32) {

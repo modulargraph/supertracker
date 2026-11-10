@@ -207,3 +207,71 @@ impl Render {
         count
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::abi::{default_instrument, default_track, STStep, ST_EVENT_PARAMETER, ST_MODE_FORWARD};
+    use crate::engine::edits::Pcm;
+
+    fn assert_send<T: Send>() {}
+
+    #[test]
+    fn the_halves_move_to_their_threads_and_the_block_render_exposes_every_bus() {
+        assert_send::<ControlHalf>();
+        assert_send::<RenderHalf>();
+        assert_send::<StatusHandle>();
+        assert!(split(1_000.0).is_none(), "an unsupported rate gives no engine");
+        let (mut control, mut render, status) = split(48_000.0).expect("an engine");
+        {
+            let (edit, shared, rate) = control.parts();
+            edit.begin_update(shared);
+            edit.set_host_mixing_tracks(true, &[], true);
+            assert!(edit.set_track_count(2) && edit.set_instrument_count(1));
+            // A fader the host must not hear in the raw bus.
+            edit.set_track(0, crate::engine::abi::STTrack { volume: 0.25, ..default_track() });
+            let mut instrument = default_instrument();
+            instrument.mode = ST_MODE_FORWARD;
+            instrument.volume = 1.0;
+            edit.set_instrument(0, instrument);
+            let tone = vec![0.5f32; 4_800];
+            assert!(edit.set_sample(shared, rate, 0, Some(Pcm { left: &tone, right: None, rate: 48_000.0 })));
+            edit.set_pattern(0, 16);
+            edit.set_step(0, 0, 0, STStep { note: 60, instrument: 0, velocity: 127, gate: 0.0, ..Default::default() }, None);
+            edit.set_sequence(&[0], false, 0);
+        }
+        control.commit().expect("the project is accepted");
+        {
+            let (edit, shared, _) = control.parts();
+            edit.play(shared, 0);
+        }
+        // The render half works on another thread while this one keeps the control half.
+        let rendered = std::thread::spawn(move || {
+            assert_eq!(render.render_block(0, 100_000), MAX_BLOCK as u32, "a block is at most MAX_BLOCK frames");
+            let mut mix_events = 0;
+            while let Some(event) = render.pop_event() {
+                mix_events += (event.type_ == ST_EVENT_PARAMETER && event.frame_offset == 0) as usize;
+            }
+            let block = render.block();
+            assert_eq!(block.track_count(), 2);
+            let (left, right) = block.track(0).expect("the playing track's bus");
+            let peak = left[..MAX_BLOCK].iter().chain(&right[..MAX_BLOCK]).fold(0.0f32, |peak, sample| peak.max(sample.abs()));
+            assert!(block.track(1).is_none(), "nothing played on the second track");
+            assert!(block.track(2).is_none());
+            assert!(block.return_bus().0[..MAX_BLOCK].iter().all(|sample| *sample == 0.0), "no metronome: a silent return bus");
+            // Contiguous blocks continue the song; another timestamp starts a new timeline without failing.
+            assert_eq!(render.render_block(MAX_BLOCK as u64, 256), 256);
+            assert_eq!(render.render_block(1_000_000, 64), 64);
+            (peak, mix_events)
+        })
+        .join()
+        .expect("the render thread");
+        assert!(rendered.0 > 0.3, "the bus holds the raw voice, not the faded one (peak {})", rendered.0);
+        assert!(rendered.1 >= 12, "the mixer defaults of both tracks were sent as events");
+        let state = status.status();
+        assert!(state.playing != 0 && state.track_count == 2);
+        assert!(status.track_peak(0) > 0.3);
+        assert!(control.pop_input_ack().is_none());
+        assert_eq!((control.sample_rate(), status.sample_rate()), (48_000.0, 48_000.0));
+    }
+}

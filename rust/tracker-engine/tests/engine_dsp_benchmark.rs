@@ -39,14 +39,7 @@ struct Scenario {
     clock: u64,
 }
 
-const fn scenario(
-    name: &'static str,
-    voices: i32,
-    mode: i32,
-    flags: [bool; 4],
-    pcm: u64,
-    clock: u64,
-) -> Scenario {
+const fn scenario(name: &'static str, voices: i32, mode: i32, flags: [bool; 4], pcm: u64, clock: u64) -> Scenario {
     Scenario { name, voices, mode, modulated: flags[0], mapped: flags[1], host: flags[2], edits: flags[3], pcm, clock }
 }
 
@@ -65,8 +58,22 @@ const SCENARIOS: [Scenario; 13] = [
     scenario("wavetable-mod-64", 64, ST_MODE_WAVETABLE, MODULATED, 0x57af8fdf2672b5f7, 0x14650fb0739d0383),
     scenario("slice-mod-64", 64, ST_MODE_SLICE, MODULATED, 0x468f93cf60f61227, 0x14650fb0739d0383),
     scenario("mapped-host-16", 16, -1, [false, true, true, false], 0xce6d2072e77b9eef, 0x945348bc0bda79b3),
-    scenario("mapped-host-loop-64", 64, ST_MODE_FORWARD, [true, true, true, false], 0x62bdf0d81869a8aa, 0x945348bc0bda79b3),
-    scenario("automated-region-lfo-64", 64, ST_MODE_FORWARD, [false, true, false, true], 0x96d754cfcba9c72e, 0x14650fb0739d0383),
+    scenario(
+        "mapped-host-loop-64",
+        64,
+        ST_MODE_FORWARD,
+        [true, true, true, false],
+        0x62bdf0d81869a8aa,
+        0x945348bc0bda79b3,
+    ),
+    scenario(
+        "automated-region-lfo-64",
+        64,
+        ST_MODE_FORWARD,
+        [false, true, false, true],
+        0x96d754cfcba9c72e,
+        0x14650fb0739d0383,
+    ),
 ];
 
 /// The hashes depend on the platform's `sin`/`cos` (the sample is generated here) and on the
@@ -187,7 +194,7 @@ fn scene(scenario: &Scenario) -> Outcome {
     let start = Instant::now();
     let mut offset = 0usize;
     while offset < FRAMES {
-        if scenario.mode == ST_MODE_SLICE && offset > 0 && offset % 8192 == 0 {
+        if scenario.mode == ST_MODE_SLICE && offset > 0 && offset.is_multiple_of(8192) {
             for n in 0..scenario.voices {
                 e.note_on(n % 16, 0, 36 + n % 36, 80);
             }
@@ -232,8 +239,7 @@ fn scene(scenario: &Scenario) -> Outcome {
         }
         for bus in 0..(if scenario.host { 16 } else { 1 }) {
             for n in 0..count {
-                let pair =
-                    if scenario.host { [bus_l[bus][n], bus_r[bus][n]] } else { [left[n], right[n]] };
+                let pair = if scenario.host { [bus_l[bus][n], bus_r[bus][n]] } else { [left[n], right[n]] };
                 for value in pair {
                     assert!(value.is_finite());
                     assert!(value.abs() <= 1.0);
@@ -265,7 +271,10 @@ fn scene(scenario: &Scenario) -> Outcome {
 fn regression(name: &str) {
     let scenario = SCENARIOS.iter().find(|scenario| scenario.name == name).expect("scenario");
     let result = scene(scenario);
-    println!("{{\"scenario\":\"{}\",\"pcm\":\"{:016x}\",\"clock\":\"{:016x}\"}}", scenario.name, result.pcm, result.clock);
+    println!(
+        "{{\"scenario\":\"{}\",\"pcm\":\"{:016x}\",\"clock\":\"{:016x}\"}}",
+        scenario.name, result.pcm, result.clock
+    );
     if HASHES_APPLY {
         assert!(
             result.pcm == scenario.pcm && result.clock == scenario.clock,

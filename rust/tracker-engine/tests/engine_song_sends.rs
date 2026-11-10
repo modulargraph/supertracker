@@ -225,8 +225,8 @@ fn synced_delay_and_tone() {
     let faster = delay_impulse(0.5, 0.1, 1.0, 150.0, 60000);
     echo = first_above(&faster, 200, 1e-4);
     assert!((9595..=9605).contains(&echo)); // follows tempo
-    // Tone 1 is bit-identical to the legacy open path; a dark tone removes high-frequency energy
-    // from the echo.
+                                            // Tone 1 is bit-identical to the legacy open path; a dark tone removes high-frequency energy
+                                            // from the echo.
     let open = delay_impulse(0.0, 0.1, 1.0, 120.0, 60000);
     let dark = delay_impulse(0.0, 0.1, 0.0, 120.0, 60000);
     let (mut open_peak, mut dark_peak) = (0.0f64, 0.0f64);

@@ -7,6 +7,8 @@
 //! the null tempo list, the one-byte error buffer, and the "output left untouched on error"
 //! halves of five assertions (a `Result`/`Option` has no output to touch).
 #![cfg(feature = "clock")]
+// The index loops mirror the C++ loops they translate.
+#![allow(clippy::needless_range_loop)]
 
 mod engine_support_b;
 
@@ -96,7 +98,10 @@ fn context_at(t: &STClockTimeline, frame: i64, latency: i64) -> STClockContext {
     assert!(result.is_ok());
     let result = result.unwrap();
     assert!(
-        result.beat.is_finite() && result.bpm.is_finite() && result.bar_start_beat.is_finite() && result.bar_end_beat.is_finite()
+        result.beat.is_finite()
+            && result.bpm.is_finite()
+            && result.bar_start_beat.is_finite()
+            && result.bar_end_beat.is_finite()
     );
     result
 }
@@ -126,12 +131,19 @@ fn zero_query_allocations() {
 #[test]
 fn conversions_and_meters() {
     let map = map_48k(&[tempo(0.0, 120.0), tempo(4.0, 60.0)], &[meter(0.0, 4, 4), meter(6.0, 5, 8)]);
-    assert!(frame(&map, 0.0) == 0 && frame(&map, 4.0) == 96000 && frame(&map, 6.0) == 192000 && frame(&map, 8.5) == 312000);
+    assert!(
+        frame(&map, 0.0) == 0 && frame(&map, 4.0) == 96000 && frame(&map, 6.0) == 192000 && frame(&map, 8.5) == 312000
+    );
     assert!(beat(&map, 192000) == 6.0);
     let timeline = default_timeline(&map);
     let a = context(&timeline, 96000);
     assert!(
-        a.bpm == 60.0 && a.beat == 4.0 && a.numerator == 4 && a.bar == 2 && a.bar_start_beat == 4.0 && a.bar_end_beat == 6.0
+        a.bpm == 60.0
+            && a.beat == 4.0
+            && a.numerator == 4
+            && a.bar == 2
+            && a.bar_start_beat == 4.0
+            && a.bar_end_beat == 6.0
     );
     let b = context(&timeline, 192000);
     assert!(
@@ -224,7 +236,8 @@ fn preroll_bar_boundaries() {
                     assert!(last.bar == range.context.bar && last.bar_start_beat == range.context.bar_start_beat);
                     if range.context.next_boundary_kinds & ST_CLOCK_BOUNDARY_BAR != 0 {
                         assert!(
-                            context_at(&current, range.context.next_boundary_frame, 1i64 << 30).bar != range.context.bar
+                            context_at(&current, range.context.next_boundary_frame, 1i64 << 30).bar
+                                != range.context.bar
                         );
                     }
                 }
@@ -288,7 +301,9 @@ fn stopped_and_immutable_lifetime() {
     let newer = map_with(&[tempo(0.0, 60.0)], &[meter(0.0, 7, 8)], 48000.0, 10);
     let next = timeline_at(&newer, origin(1000, 3.125, 1, 0, 0.0, 0.0, 42));
     assert!(
-        context(&next, 1100).revision == 10 && context(&paused, 1100).revision == 9 && context(&paused, 1100).bpm == 120.0
+        context(&next, 1100).revision == 10
+            && context(&paused, 1100).revision == 9
+            && context(&paused, 1100).bpm == 120.0
     );
     zero_query_allocations();
 }
@@ -478,7 +493,8 @@ fn quarter_beat_and_loop_context() {
 
 #[test]
 fn exact_frame_inverse_after_tempo_change() {
-    let map = map_48k(&[tempo(0.0, 120.0), tempo(0.5, 60.0), tempo(1.5, 180.0)], &[meter(0.0, 4, 4), meter(0.75, 3, 4)]);
+    let map =
+        map_48k(&[tempo(0.0, 120.0), tempo(0.5, 60.0), tempo(1.5, 180.0)], &[meter(0.0, 4, 4), meter(0.75, 3, 4)]);
     let timeline = default_timeline(&map);
     let expected: [i64; 9] = [0, 6000, 12000, 24000, 36000, 48000, 60000, 64000, 68000];
     for n in 0..9 {

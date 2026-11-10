@@ -402,3 +402,114 @@ impl GraphSpec {
 pub fn is_external(kind: InstrumentKind) -> bool {
     kind != InstrumentKind::Sample
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{json, Value};
+
+    fn spec(project: Value) -> GraphSpec {
+        GraphSpec::from_project(&Project::from_value(project).expect("a project"))
+    }
+
+    fn effect(owner: &str, slot: i64, instance: &str) -> Value {
+        json!({ "owner": owner, "kind": "effect", "slot": slot, "instanceID": instance, "component": "stfx:eq" })
+    }
+
+    // Ported from tests/MixerChannelTests.swift: a track channel runs its instrument's chain
+    // ahead of its own inserts, each in slot order, one instance of the chain per track.
+    #[test]
+    fn a_track_runs_its_instruments_chain_before_its_own_inserts() {
+        let spec = spec(json!({
+            "tracks": [{ "routingID": "a", "instrument": 1 }, { "routingID": "b", "instrument": 1 }, { "routingID": "c", "instrument": 0 }],
+            "instruments": [{}, {}],
+            "routing": { "version": 1, "mixModel": "standard" },
+            "audioPlugins": [
+                effect("track:a", 3, "own3"), effect("track:a", 0, "own0"), effect("instrument:1", 5, "chain5"), effect("instrument:1", 1, "chain1"),
+                effect("master", 0, "m"), effect("track:a", 16, "beyond"), { "owner": "track:a", "kind": "instrument", "slot": 0, "instanceID": "synth" },
+            ],
+        }));
+        let keys = |owner: &str| spec.strip(owner).unwrap().inserts.iter().map(|insert| insert.key.as_str()).collect::<Vec<_>>();
+        assert_eq!(keys("track:a"), ["chain1-on-a", "chain5-on-a", "own0", "own3"]);
+        assert_eq!(keys("track:b"), ["chain1-on-b", "chain5-on-b"]);
+        assert!(keys("track:c").is_empty(), "a track that plays another instrument does not get the chain");
+        assert_eq!(keys("master"), ["m"]);
+        let chain = &spec.strip("track:a").unwrap().inserts[0];
+        assert_eq!((chain.instance_id.as_str(), chain.slot, chain.instrument_chain), ("chain1", 1, true));
+        assert_eq!(chain.builtin_id(), Some("eq"));
+        // An instrument lane reaches every track's instance; a track lane only its own insert.
+        assert_eq!(spec.lane_destinations("instrument:1", "plugin:effect:5:7"), [(Destination::Insert("chain5-on-a".into()), 7), (Destination::Insert("chain5-on-b".into()), 7)]);
+        assert_eq!(spec.lane_destinations("track:a", "plugin:effect:3:2"), [(Destination::Insert("own3".into()), 2)]);
+        assert!(spec.lane_destinations("track:a", "plugin:effect:5:2").is_empty(), "slot 5 of the track itself is empty");
+        assert_eq!(spec.lock_destination(0, "chain1"), Some((Destination::Insert("chain1-on-a".into()), 1)));
+        assert_eq!(spec.lock_destination(2, "chain1"), None);
+    }
+
+    #[test]
+    fn strips_are_tracks_then_buses_then_the_master_with_their_outputs() {
+        let spec = spec(json!({
+            "masterVolume": 0.75,
+            "tracks": [{ "routingID": "a", "name": "Drums", "volume": 0.8, "pan": -0.25, "solo": true, "delaySend": 0.3 }, { "routingID": "b", "volume": 1.2 }],
+            "routing": {
+                "version": 1, "mixModel": "standard",
+                "buses": [{ "id": "drums", "name": "Drums", "type": "group", "volume": 1.1, "pan": 0.2 }, { "id": "space", "name": "Space", "type": "return" }],
+                "outputs": { "track:a": "bus:drums", "track:b": null },
+                "sends": [{ "id": "s", "source": "track:a", "tap": "preFader", "destination": "bus:space", "gain": 0.5 }, { "id": "off", "source": "track:b", "tap": "postFader", "destination": "bus:space", "enabled": false }],
+                "sidechains": [{ "id": "k", "source": "track:b", "tap": "postFader", "destination": { "instanceID": "comp", "inputBus": 1 } }],
+            },
+        }));
+        let ids: Vec<&str> = spec.strips.iter().map(|strip| strip.id.as_str()).collect();
+        assert_eq!(ids, ["track:a", "track:b", "bus:drums", "bus:space", "master"]);
+        let a = spec.strip("track:a").unwrap();
+        assert_eq!((a.kind.clone(), a.volume, a.pan, a.solo, a.delay_send, a.output.as_deref()), (StripKind::Track(0), 0.8, -0.25, true, 0.3, Some("bus:drums")));
+        assert_eq!(spec.strip("track:b").unwrap().output, None, "an explicit null is a disconnected output");
+        assert_eq!(spec.strip("bus:space").unwrap().output.as_deref(), Some("master"), "an owner without an entry outputs to the master");
+        assert_eq!((spec.strip("bus:drums").unwrap().kind.clone(), spec.strip("bus:space").unwrap().kind.clone()), (StripKind::Group, StripKind::Return));
+        let master = spec.strip("master").unwrap();
+        assert_eq!((master.volume, master.output.clone()), (0.75, None));
+        assert_eq!((spec.sends.len(), spec.sends[0].tap, spec.sends[0].gain, spec.sends[1].enabled), (2, Tap::PreFader, 0.5, false));
+        assert_eq!(spec.sidechains[0].destination, RouteDestination::Insert("comp".into()));
+        assert_eq!(spec.lane_destinations("track:a", "send:s"), [(Destination::Route("s".into()), 0)]);
+        assert_eq!(spec.lane_destinations("track:b", "send:k"), [(Destination::Route("k".into()), 0)]);
+        assert!(spec.lane_destinations("track:a", "send:nothing").is_empty());
+        assert_eq!(spec.lane_destinations("bus:drums", "pan"), [(Destination::Mix("bus:drums".into()), 1)]);
+        assert!(spec.lane_destinations("track:a", "volume").is_empty(), "track mix is the engine's");
+        assert!(spec.lane_destinations("bus:drums", "cutoff").is_empty());
+    }
+
+    #[test]
+    fn a_project_without_routing_is_the_same_mixer_without_buses() {
+        let plain = spec(json!({ "tracks": [{ "name": "One" }, { "name": "Two", "mute": true }] }));
+        let ids: Vec<&str> = plain.strips.iter().map(|strip| strip.id.as_str()).collect();
+        assert_eq!(ids, ["track:#0", "track:#1", "master"]);
+        assert!(plain.strips[..2].iter().all(|strip| strip.output.as_deref() == Some("master")));
+        assert_eq!((plain.strips[0].volume, plain.strips[1].mute, plain.strip("master").unwrap().volume), (0.8, true, 0.7));
+        assert_eq!(GraphSpec::empty().strips.len(), 1);
+    }
+
+    #[test]
+    fn destinations_are_numbered_by_first_use_and_the_map_identity_follows_them() {
+        let project = |lanes: Value| {
+            json!({
+                "tracks": [{ "routingID": "a" }],
+                "routing": { "version": 1, "mixModel": "standard", "buses": [{ "id": "g", "name": "G", "type": "group" }], "sends": [{ "id": "s", "source": "track:a", "tap": "postFader", "destination": "bus:g" }] },
+                "audioPlugins": [effect("track:a", 0, "fx")],
+                "patterns": [{ "length": 16, "steps": [[{ "fx1": { "type": "plugin", "instanceID": "fx", "address": "3", "value": 0.5 } }]], "automation": lanes }],
+            })
+        };
+        let lanes = json!([
+            { "owner": "bus:g", "target": "volume", "points": [] }, { "owner": "bus:g", "target": "pan", "points": [] },
+            { "owner": "master", "target": "volume", "points": [] }, { "owner": "track:a", "target": "send:s", "points": [] },
+            { "track": 0, "target": "volume", "points": [] }, { "owner": "track:a", "target": "volume", "points": [] },
+        ]);
+        let first = spec(project(lanes.clone()));
+        // Volume and pan of a strip share one destination; native track lanes have none.
+        assert_eq!(first.destinations, [Destination::Mix("bus:g".into()), Destination::Mix("master".into()), Destination::Route("s".into()), Destination::Insert("fx".into())]);
+        assert_eq!(first.destination_index(&Destination::Route("s".into())), Some(2));
+        assert_ne!(first.host_map, 0);
+        assert_eq!(first.host_map, spec(project(lanes)).host_map, "the same lanes give the same map");
+        let fewer = spec(project(json!([{ "owner": "master", "target": "volume", "points": [] }])));
+        assert_eq!(fewer.destinations, [Destination::Mix("master".into()), Destination::Insert("fx".into())]);
+        assert_ne!(first.host_map, fewer.host_map, "another numbering is another map");
+    }
+}

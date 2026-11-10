@@ -244,6 +244,29 @@ pub struct ApplyReport {
     pub problems: Vec<SampleProblem>,
 }
 
+/// One point of a host automation lane, resolved to its destination number.
+#[derive(Clone, Copy)]
+struct HostPoint {
+    destination: usize,
+    address: u64,
+    stepped: i32,
+    row: f64,
+    value: f64,
+}
+
+/// One plug-in step lock, resolved to its destination number.
+#[derive(Clone, Copy)]
+struct Lock {
+    track: i32,
+    row: i32,
+    /// 0 for the step's first effect, 1 for its second.
+    column: i32,
+    slot: i32,
+    destination: i32,
+    address: u64,
+    value: f64,
+}
+
 /// Identity of an installed sample: its path and which decoded PCM it was.
 #[derive(Clone, PartialEq)]
 struct Installed {
@@ -421,8 +444,8 @@ impl ProjectSync {
 
         // Host automation: every (destination, address) some lane or lock drives, anywhere.
         let mut driven: Vec<(usize, u64)> = Vec::new();
-        let mut host_points: HashMap<i32, Vec<(usize, u64, i32, f64, f64)>> = HashMap::new();
-        let mut locks: HashMap<i32, Vec<(i32, i32, i32, i32, i32, u64, f64)>> = HashMap::new();
+        let mut host_points: HashMap<i32, Vec<HostPoint>> = HashMap::new();
+        let mut locks: HashMap<i32, Vec<Lock>> = HashMap::new();
         let patterns = project.pattern_list();
         let numbered: Vec<(i32, &Pattern)> = patterns.iter().take(ST_MAX_PATTERNS as usize).enumerate().map(|(index, pattern)| (clamp_i32(pattern.number(index)), pattern)).collect();
         for (number, pattern) in &numbered {
@@ -436,7 +459,7 @@ impl ProjectSync {
                     }
                     let points = host_points.entry(*number).or_default();
                     for point in lane.points.as_deref().unwrap_or(&[]) {
-                        points.push((index, address, stepped, point.row(), point.value()));
+                        points.push(HostPoint { destination: index, address, stepped, row: point.row(), value: point.value() });
                     }
                 }
             }
@@ -451,7 +474,7 @@ impl ProjectSync {
                         if !driven.contains(&(index, address)) {
                             driven.push((index, address));
                         }
-                        locks.entry(*number).or_default().push((track as i32, row as i32, column as i32, slot as i32, index as i32, address, effect.value().clamp(0.0, 1.0)));
+                        locks.entry(*number).or_default().push(Lock { track: track as i32, row: row as i32, column: column as i32, slot: slot as i32, destination: index as i32, address, value: effect.value().clamp(0.0, 1.0) });
                     }
                 }
             }
@@ -461,9 +484,9 @@ impl ProjectSync {
         for (number, _) in &numbered {
             let points = host_points.entry(*number).or_default();
             for (index, address) in &driven {
-                if !points.iter().any(|point| point.0 == *index && point.1 == *address) {
+                if !points.iter().any(|point| point.destination == *index && point.address == *address) {
                     if let Some(value) = spec.destinations.get(*index).and_then(|destination| defaults(destination, *address)) {
-                        points.push((*index, *address, 1, 0.0, value));
+                        points.push(HostPoint { destination: *index, address: *address, stepped: 1, row: 0.0, value });
                     }
                 }
             }
@@ -477,10 +500,10 @@ impl ProjectSync {
             let number = *number;
             let mut derived: Vec<u64> = Vec::new();
             for point in host_points.get(&number).into_iter().flatten() {
-                derived.extend([0, point.0 as u64, point.1, point.2 as u64, point.3.to_bits(), point.4.to_bits()]);
+                derived.extend([0, point.destination as u64, point.address, point.stepped as u64, point.row.to_bits(), point.value.to_bits()]);
             }
             for lock in locks.get(&number).into_iter().flatten() {
-                derived.extend([1, lock.0 as u64, lock.1 as u64, lock.2 as u64, lock.3 as u64, lock.4 as u64, lock.5, lock.6.to_bits()]);
+                derived.extend([1, lock.track as u64, lock.row as u64, lock.column as u64, lock.slot as u64, lock.destination as u64, lock.address, lock.value.to_bits()]);
             }
             let unchanged = reusable && self.patterns.get(&number).is_some_and(|(source, key)| *key == derived && source == *pattern);
             if unchanged && control.reuse_pattern(number) {
@@ -530,10 +553,10 @@ impl ProjectSync {
                 }
             }
             for point in host_points.get(&number).into_iter().flatten() {
-                control.add_host_automation_point(number, point.0 as i32, point.1, point.2, point.3, point.4);
+                control.add_host_automation_point(number, point.destination as i32, point.address, point.stepped, point.row, point.value);
             }
             for lock in locks.get(&number).into_iter().flatten() {
-                control.set_plugin_step_fx(number, lock.0, lock.1, lock.2, lock.3, lock.4, lock.5, lock.6);
+                control.set_plugin_step_fx(number, lock.track, lock.row, lock.column, lock.slot, lock.destination, lock.address, lock.value);
             }
             sent.insert(number, ((*pattern).clone(), derived));
         }

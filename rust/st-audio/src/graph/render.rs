@@ -18,7 +18,7 @@
 //! | "the project changed" | control -> render | `automation_epoch` counter: the render resets automated values to the plan's defaults and asks the engine to re-send lanes |
 //! | a knob turned | control -> render | `messages` ring of [`Message`]s, addressed by plan serial and target |
 //! | silence everything (panic) | control -> render | `clear_tails` flag |
-//! | meters | render -> reader | atomics in the plan's [`MeterBank`] |
+//! | meters | render -> reader | atomics in the plan's [`MeterBank`](super::meters::MeterBank) |
 //! | load, clock, counters | render -> anyone | atomics |
 //!
 //! Nothing here blocks: the render side uses atomic swaps and single-producer/single-consumer

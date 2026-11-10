@@ -337,7 +337,9 @@ fn live_positions() {
         render(&mut e, 256);
         let a = positions(&e);
         assert!(a.len() == 1 && a[0].direction == 1 && a[0].mode == ST_MODE_FORWARD && a[0].sample_frames == N as f64);
-        assert!((a[0].position - 1536.0).abs() < 2.0 && a[0].instrument == 0 && a[0].note == 60 && a[0].level > 0.99f32);
+        assert!(
+            (a[0].position - 1536.0).abs() < 2.0 && a[0].instrument == 0 && a[0].note == 60 && a[0].level > 0.99f32
+        );
         render(&mut e, 48000 - 1536 + 2400);
         let b = positions(&e);
         assert!(b[0].position >= 0.5 * N as f64 && b[0].position < 0.6 * N as f64);
@@ -395,7 +397,9 @@ fn live_positions() {
         e.note_on(0, 0, 62, 100);
         render(&mut e, 512);
         let v = positions(&e);
-        assert!(v.len() == 1 && v[0].position >= 0.5 * N as f64 && v[0].position < 0.75 * N as f64 && v[0].direction == 1);
+        assert!(
+            v.len() == 1 && v[0].position >= 0.5 * N as f64 && v[0].position < 0.75 * N as f64 && v[0].direction == 1
+        );
     }
     // Wavetable: the current frame region.
     {
@@ -426,7 +430,10 @@ fn live_positions() {
         render(&mut e, 1024);
         let mut v = positions(&e);
         assert!(
-            v.len() == 2 && v[0].grain_count == 3 && v[0].window_start < v[0].position && v[0].window_end > v[0].position
+            v.len() == 2
+                && v[0].grain_count == 3
+                && v[0].window_start < v[0].position
+                && v[0].window_end > v[0].position
         );
         for k in 0..3 {
             assert!(

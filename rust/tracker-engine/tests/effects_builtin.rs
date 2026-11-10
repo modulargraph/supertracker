@@ -13,6 +13,8 @@
 //! Dropped from the C++ program (C pointer mechanics): `st_builtin_effect_find(nullptr)` inside
 //! the "invalid catalogue lookup" check (the other two lookups of that check are kept).
 #![cfg(feature = "effects")]
+// The index loops mirror the C++ loops they translate.
+#![allow(clippy::needless_range_loop)]
 
 mod engine_support_b;
 
@@ -161,7 +163,10 @@ fn catalogue_tests() {
             let p = p.expect("parameter");
             check(params.insert(p.id()), &format!("{} unique parameter", id_of(d)));
             check(
-                p.minimum.is_finite() && p.maximum > p.minimum && p.default_value >= p.minimum && p.default_value <= p.maximum,
+                p.minimum.is_finite()
+                    && p.maximum > p.minimum
+                    && p.default_value >= p.minimum
+                    && p.default_value <= p.maximum,
                 "valid physical range",
             );
             if p.flags & PARAMETER_LOG != 0 {
@@ -189,7 +194,9 @@ fn catalogue_tests() {
     }
     check(catalogue().nth(count).is_none() && find(c"invalid").is_none(), "invalid catalogue lookup");
     check(
-        Fx::create("eq", 0.0, 256).is_none() && Fx::create("eq", 48000.0, 0).is_none() && Fx::create("invalid", 48000.0, 256).is_none(),
+        Fx::create("eq", 0.0, 256).is_none()
+            && Fx::create("eq", 48000.0, 0).is_none()
+            && Fx::create("invalid", 48000.0, 256).is_none(),
         "invalid construction",
     );
     finish("catalogue");
@@ -335,10 +342,7 @@ fn response_tests(sr: f64) {
         r[100] = 2.0;
         f.run(&mut l, &mut r);
         let latency = f.fx().latency() as usize;
-        check(
-            (l[100 + latency] as f64 - 10.0f64.powf(-6.0 / 20.0)).abs() < 1e-6,
-            "limiter lookahead and ceiling",
-        );
+        check((l[100 + latency] as f64 - 10.0f64.powf(-6.0 / 20.0)).abs() < 1e-6, "limiter lookahead and ceiling");
         let mut peak = 0.0f64;
         for v in &l {
             peak = peak.max((*v as f64).abs());
@@ -533,7 +537,8 @@ fn gating_tests() {
         let mut qr = quiet.clone();
         f.run(&mut quiet, &mut qr);
         check(
-            peak_of(&quiet, quiet.len() - (sr * 0.5) as usize, 0) == 0.0 && peak_of(&qr, qr.len() - (sr * 0.5) as usize, 0) == 0.0,
+            peak_of(&quiet, quiet.len() - (sr * 0.5) as usize, 0) == 0.0
+                && peak_of(&qr, qr.len() - (sr * 0.5) as usize, 0) == 0.0,
             "gated reverb renders exact silence after its tail",
         );
         check(peak_of(&quiet, 0, (sr * 0.1) as usize) > 0.0, "reverb tail is not cut while it rings");
