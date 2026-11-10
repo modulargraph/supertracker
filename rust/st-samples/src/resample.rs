@@ -420,7 +420,11 @@ pub(crate) mod tests {
             high = high.max(db(amplitude / 0.5));
             worst_snr = worst_snr.min(db(amplitude / std::f64::consts::SQRT_2) - db(residual));
         }
-        let (mut stopband, mut sweep_alias) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+        // Converting up there is nothing to alias; images show up in the tone SNR above.
+        let (mut stopband, mut sweep_alias) = (f64::NAN, f64::NAN);
+        if out_rate < in_rate {
+            stopband = f64::NEG_INFINITY;
+        }
         if out_rate < in_rate {
             let in_nyquist = in_rate as f64 / 2.0;
             for step in 0..=8 {
@@ -530,7 +534,8 @@ pub(crate) mod tests {
                 resampler.finish(&mut out);
                 assert!(out == whole, "block size {block} changed the {to} Hz output");
             }
-            for skip in [1u64, 5000, 18_000, whole[0].len() as u64 - 1] {
+            let length = whole[0].len() as u64;
+            for skip in [1u64, length / 4, length * 9 / 10, length - 1] {
                 let mut resampler = Resampler::new(48_000, to, 2, ResampleQuality::Standard).unwrap();
                 resampler.skip_to_output(skip);
                 let mut out = vec![Vec::new(), Vec::new()];

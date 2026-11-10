@@ -240,12 +240,20 @@ fn measure(instance: &Instance, rig: &mut Rig, frames: usize, blocks: usize, pac
 }
 
 /// Puts the calling thread into (or takes it out of) SCHED_FIFO, as a host's audio thread
-/// would be. Needs privileges; returns whether it worked.
+/// would be. Needs privileges; returns whether it worked. Linux only.
 fn set_realtime(on: bool) -> bool {
-    let param = libc::sched_param { sched_priority: if on { 10 } else { 0 } };
-    let policy = if on { libc::SCHED_FIFO } else { libc::SCHED_OTHER };
-    // SAFETY: valid parameter block; 0 addresses the calling thread.
-    unsafe { libc::sched_setscheduler(0, policy, &param) == 0 }
+    #[cfg(target_os = "linux")]
+    {
+        let param = libc::sched_param { sched_priority: if on { 10 } else { 0 } };
+        let policy = if on { libc::SCHED_FIFO } else { libc::SCHED_OTHER };
+        // SAFETY: valid parameter block; 0 addresses the calling thread.
+        unsafe { libc::sched_setscheduler(0, policy, &param) == 0 }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = on;
+        false
+    }
 }
 
 /// A quick sanity bound that runs with the normal suite.
