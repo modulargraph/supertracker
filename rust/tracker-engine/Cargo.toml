@@ -1,0 +1,21 @@
+[package]
+name = "tracker-engine"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "SuperTracker's audio engine: sequencer, sampler voices, clock and built-in effects, behind the C API in Sources/TrackerEngine/include."
+publish = false
+
+[lib]
+# staticlib: linked into the app and the C++ test programs. rlib: Rust tests and other crates.
+crate-type = ["staticlib", "rlib"]
+
+[features]
+default = ["clock", "unit-range", "effects", "engine"]
+clock = []
+unit-range = []
+effects = []
+engine = []
+# Test builds only: Rust allocations go through C++ operator new/delete, so the C++ test programs'
+# allocation counters (they replace operator new) also see allocations made on the render thread here.
+cxx-alloc = []

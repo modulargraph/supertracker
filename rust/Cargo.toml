@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["tracker-engine"]
+# The plug-in container has its own workspace (different dependencies and binaries).
+exclude = ["plugin-host"]
+
+[profile.release]
+opt-level = 3
+debug = 1
+panic = "abort"
+codegen-units = 1
+lto = "thin"
+
+[profile.dev]
+panic = "abort"

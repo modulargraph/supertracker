@@ -18,3 +18,7 @@ prototypes/**/*-tests
 __pycache__/
 .build-*/
 .build-mcp/
+
+# Rust build output
+rust/target/
+rust/**/target/
