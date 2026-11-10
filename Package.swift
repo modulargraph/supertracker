@@ -56,15 +56,35 @@ func testableImports(_ modules: String...) -> SwiftSetting {
     .unsafeFlags(modules.flatMap { ["-Xfrontend", "-testable-import-module", "-Xfrontend", $0] })
 }
 
+// The engine (module TrackerEngine: the C headers in Sources/TrackerEngine/include) has two implementations:
+//
+//   rust  the static library built from rust/tracker-engine by scripts/build-engine.sh (scripts/build.sh runs it)
+//   cpp   the original C++ sources in Sources/TrackerEngine, kept until the Rust engine has shipped
+//
+// SUPERTRACKER_ENGINE=rust|cpp chooses. Without it, a plain `swift build` links the Rust library when it has been
+// built and compiles the C++ sources otherwise, so the package always builds.
+let rustEngineDirectory = Context.packageDirectory + "/rust/target/release"
+let usesRustEngine: Bool = {
+    switch ProcessInfo.processInfo.environment["SUPERTRACKER_ENGINE"] {
+    case "rust": return true
+    case "cpp": return false
+    default: return FileManager.default.fileExists(atPath: rustEngineDirectory + "/libtracker_engine.a")
+    }
+}()
+let engineTarget: Target = usesRustEngine
+    ? .target(name: "TrackerEngine", path: "Sources/TrackerEngine", sources: ["RustEngineLink.c"], publicHeadersPath: "include",
+              linkerSettings: [.unsafeFlags(["-L" + rustEngineDirectory]), .linkedLibrary("tracker_engine")])
+    // SwiftPM builds C-family release targets at -Os, which leaves the realtime DSP's small
+    // inline helpers as out-of-line calls; the engine and built-in effects are measured at -O2.
+    : .target(name: "TrackerEngine", path: "Sources/TrackerEngine", publicHeadersPath: "include",
+              cxxSettings: [.unsafeFlags(["-std=c++17"]), .unsafeFlags(["-O2"], .when(configuration: .release))])
+
 let package = Package(
     name: "SuperTracker",
     platforms: [.macOS(.v14)],
     products: [.executable(name: "SuperTracker", targets: ["SuperTracker"])],
     targets: [
-        // SwiftPM builds C-family release targets at -Os, which leaves the realtime DSP's small
-        // inline helpers as out-of-line calls; the engine and built-in effects are measured at -O2.
-        .target(name: "TrackerEngine", path: "Sources/TrackerEngine", publicHeadersPath: "include",
-                cxxSettings: [.unsafeFlags(["-std=c++17"]), .unsafeFlags(["-O2"], .when(configuration: .release))]),
+        engineTarget,
         .target(name: "VST3Host", path: "Sources/VST3Host", publicHeadersPath: "include", cxxSettings: [
             .headerSearchPath("../../Vendor/vst3sdk")
         ], linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("CoreFoundation")]),

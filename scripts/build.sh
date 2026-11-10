@@ -27,6 +27,14 @@ case "$CONFIGURATION" in
   *) echo "Usage: scripts/build.sh [debug|release|selftest] [path/to/App.app]" >&2; exit 64 ;;
 esac
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-module-cache"
+# SUPERTRACKER_ENGINE=rust links the Rust engine (rust/tracker-engine); the default is still the C++ sources
+# until the port passes the whole engine test suite.
+export SUPERTRACKER_ENGINE="${SUPERTRACKER_ENGINE:-cpp}"
+case "$SUPERTRACKER_ENGINE" in
+  rust) ./scripts/build-engine.sh >/dev/null ;;
+  cpp) ;;
+  *) echo "SUPERTRACKER_ENGINE must be rust or cpp" >&2; exit 64 ;;
+esac
 build_started=$SECONDS
 swift build --disable-sandbox -c "$SWIFT_CONFIGURATION" --scratch-path "$SCRATCH" ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"}
 echo "Compiled $CONFIGURATION in $((SECONDS - build_started))s"
