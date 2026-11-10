@@ -106,7 +106,7 @@ pub struct ExportFormatRequest {
     pub encoding: Option<String>,
     /// 44100, 48000 or 96000.
     pub sample_rate: Option<f64>,
-    /// "none" (default) or "tpdf"; applies to the integer encodings.
+    /// "tpdf" (default) or "none"; applies to the integer encodings.
     pub dither: Option<String>,
 }
 
@@ -175,7 +175,7 @@ pub fn capabilities() -> ExportCapabilities {
         encodings: ExportEncoding::ALL.iter().map(|encoding| encoding.name()).collect(),
         default_encoding: ExportEncoding::DEFAULT.name(),
         dithers: vec!["none", "tpdf"],
-        default_dither: "none",
+        default_dither: "tpdf",
     }
 }
 
@@ -214,8 +214,8 @@ impl ExportFormat {
             None => ExportEncoding::DEFAULT,
         };
         let dither = match request.dither.as_deref() {
-            None | Some("none") => Dither::None,
-            Some("tpdf") => Dither::Tpdf,
+            Some("none") => Dither::None,
+            None | Some("tpdf") => Dither::Tpdf,
             Some(_) => return Err(SampleError::invalid("Choose no dither or TPDF dither.")),
         };
         if mode == ExportMode::Track {
@@ -255,7 +255,7 @@ mod tests {
     fn defaults_and_every_rate_encoding_mode_combination() {
         for mode in ["song", "pattern", "stems"] {
             let implicit = resolve("{}", mode).unwrap();
-            assert_eq!((implicit.encoding, implicit.sample_rate, implicit.dither), (ExportEncoding::Pcm24, 48_000, Dither::None));
+            assert_eq!((implicit.encoding, implicit.sample_rate, implicit.dither), (ExportEncoding::Pcm24, 48_000, Dither::Tpdf));
         }
         let mut cases = 0;
         for mode in ["song", "pattern", "stems", "track"] {
@@ -356,7 +356,7 @@ mod tests {
         assert_eq!(json["defaultSampleRate"], 48_000);
         assert_eq!(json["dithers"], serde_json::json!(["none", "tpdf"]));
         let metadata = serde_json::to_value(resolve(r#"{"encoding":"pcm16","sampleRate":44100}"#, "song").unwrap().metadata()).unwrap();
-        assert_eq!(metadata, serde_json::json!({"container":"wav","encoding":"pcm16","sampleRate":44100,"bitDepth":16,"isFloat":false,"dither":"none","renderSampleRate":48000}));
+        assert_eq!(metadata, serde_json::json!({"container":"wav","encoding":"pcm16","sampleRate":44100,"bitDepth":16,"isFloat":false,"dither":"tpdf","renderSampleRate":48000}));
         assert_eq!(serde_json::to_value(ExportEncoding::Float32).unwrap(), "float32");
     }
 }

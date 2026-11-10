@@ -21,6 +21,8 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
 - **Audio engine in Rust**, translated from the 0.1 engine and bit-identical to it on x86-64 at the time of the
   switch.
 
+- **Exports to 16- and 24-bit WAV are dithered (TPDF) by default.**
+
 ### Removed, without migration
 
 - **Projects and kits saved by 0.1 do not open.** There is one project layout; older ones are refused with a message.
