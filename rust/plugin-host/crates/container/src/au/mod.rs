@@ -30,3 +30,23 @@ pub fn list_components() -> Vec<ComponentInfo> {
         Vec::new()
     }
 }
+
+#[cfg(target_os = "macos")]
+mod backend;
+#[cfg(target_os = "macos")]
+mod editor;
+#[cfg(target_os = "macos")]
+mod listing;
+#[cfg(target_os = "macos")]
+mod objc;
+#[cfg(target_os = "macos")]
+mod observe;
+#[cfg(target_os = "macos")]
+mod plist;
+#[cfg(target_os = "macos")]
+mod render;
+#[cfg(target_os = "macos")]
+mod unit;
+
+#[cfg(target_os = "macos")]
+pub use backend::AuBackend;
