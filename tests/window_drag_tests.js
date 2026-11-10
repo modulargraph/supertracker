@@ -27,7 +27,7 @@ context.window = { ...context, addEventListener() {}, ST: {
   request: (command, payload) => { requests.push({ command, payload }); return Promise.resolve(); }
 } };
 vm.createContext(context);
-vm.runInContext(fs.readFileSync(path.join(__dirname, '../Resources/Web/window-drag.js'), 'utf8'), context);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../ui/window-drag.js'), 'utf8'), context);
 
 const body = new Element('main'), bar = new Element('header', body, { class: 'topbar' }), brand = new Element('div', bar, { class: 'brand' });
 const button = new Element('button', bar), tempo = new Element('input', bar), clickable = new Element('div', bar, {}, 'pointer');

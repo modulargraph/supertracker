@@ -19,7 +19,7 @@ Claude Code / Desktop ──stdio MCP──▶ SuperTracker --mcp ──Unix soc
   Methods are the `window.STAgent` API (`help` lists them) plus native `app.ping` and `app.screenshot`.
 - Requests run one at a time on the main thread. Nothing simulates key presses.
 - **Settings › Allow AI control (MCP)** turns the socket on or off (on by default; the choice is
-  stored in `ai-control.json` in the support folder). The status bar shows **AI connected** while a
+  stored in the `agent` section of `settings.json` in the support folder). The status bar shows **AI connected** while a
   client is connected and pulses while it edits.
 
 ## Set up in Claude Code
@@ -89,7 +89,7 @@ Prints the JSON result; exits 1 with the error message on failure.
 | `set_song_settings` | Name, BPM, swing, meter, lines per beat, master volume, loop, metronome |
 | `get_instrument`, `create_instrument`, `edit_instrument` | Built-in synth/sampler/MIDI instruments, parameters by name with units |
 | `search_library`, `load_sample` | Sample library search and loading |
-| `list_plugins`, `load_plugin`, `get_plugin_parameters`, `set_plugin_parameters` | AU/VST3/VST2/built-in instruments and effects, on tracks, buses and Master (`channel`) |
+| `list_plugins`, `load_plugin`, `get_plugin_parameters`, `set_plugin_parameters` | AU/VST3/CLAP/built-in instruments and effects, on tracks, buses and Master (`channel`) |
 | `edit_insert` | Bypass, remove or reorder an insert on any channel |
 | `get_mixer` | Mix model, Master, buses, every track's output/sends/inserts, sidechains, delay/reverb settings |
 | `edit_channel` | Name, volume, pan, mute, solo and output of tracks, buses and Master (one or several channels) |
@@ -148,9 +148,9 @@ Not reachable yet: sidechain connections (listed by `get_mixer`, edited in the m
 
 ## Development
 
-- API: `Resources/Web/agent-api.js` (tests: `tests/agent_api_tests.js`, `tests/agent_safety_tests.js`; mixer, routing
+- API: `ui/agent-api.js` (tests: `tests/agent_api_tests.js`, `tests/agent_safety_tests.js`; mixer, routing
   and inserts on the real mixer modules: `tests/agent_mixer_tests.js`, which also checks that every MCP tool names an
   existing method).
-- App listener: `Sources/SuperTracker/AgentControlServer.swift`; client, framing and socket path:
-  `AgentControlProtocol.swift`; MCP server, tool catalogue and `--ctl`: `MCPServer.swift`
-  (tests: `tests/AgentMCPTests.swift`, run by `scripts/test.sh`).
+- Host side: the crate `st-agent` (`server.rs` is the application's listener, `client.rs` and `framing.rs` the
+  client and wire format, `mcp.rs` and `tools.json` the MCP server and its tool catalogue; tests in
+  `crates/st-agent/tests/`). The browser test (`tests/host_e2e/run.js`) runs an MCP session against the page.

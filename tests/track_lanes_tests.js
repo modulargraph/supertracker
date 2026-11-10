@@ -3,7 +3,7 @@
 // collapsed (slim) tracks, drag-and-drop reordering in the pattern editor and the mixer, and deleting tracks and
 // groups, with Undo / Redo for each.
 const assert = require('node:assert/strict');
-const G = require('../Resources/Web/track-groups.js');
+const G = require('../ui/track-groups.js');
 const { session } = require('./helpers/mk3-session');
 const tests = [], test = (name, run) => tests.push([name, run]);
 const same = (actual, expected, message) => assert.equal(JSON.stringify(actual), JSON.stringify(expected), message);

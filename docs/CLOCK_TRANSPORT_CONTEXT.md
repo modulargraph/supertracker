@@ -1,5 +1,7 @@
 # Retained musical context
 
+> The function names in this document are methods of the Rust engine (`tracker_engine::engine`: `ControlHalf` for edits and commands, `RenderHalf` for rendering and span queries; `cargo doc -p tracker-engine`). Errors are `Result`s.
+
 The native clock distinguishes an actual reachable quarter-beat boundary from
 the distance to the next line of the unwrapped musical grid:
 
@@ -34,7 +36,7 @@ existing context behavior without using this AU-specific fallback.
 
 ## Recording intent
 
-`st_engine_set_recording(engine, enabled)` queues transient host recording intent
+`set_recording(enabled)` queues transient host recording intent
 on the normal single-producer control queue. It applies at the next uncached
 render/control-flush boundary. This flag can be true while stopped: the host
 defines it as active audio capture or armed note recording. Play and Stop do not
@@ -52,7 +54,6 @@ playing override. Export must capture first, explicitly disable recording for
 the export, and restore the captured/current intended arm only if the host
 session still matches. These fields are transient, never project persistence.
 
-This is an additive native ABI change. Rebuild clients with the current headers.
 `STClockOrigin` is unchanged; standalone immutable timelines default to no
 recording flag, and the engine adds its queued recording state. Clock and engine
 regressions cover stopped fractional/integer positions, tiny loops, future tempo

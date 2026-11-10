@@ -1,8 +1,8 @@
 # Keyboard navigation: blocks
 
 Every page and dialog is made of **blocks**: regions such as the browser's filter column, the results list or the song
-settings. One shared module, `Resources/Web/block-nav.js` (`window.STBlockNav`), moves focus between them; the blocks
-of each page are declared in `Resources/Web/pane-navigation.js`. Frame and hint styles are in `block-nav.css`.
+settings. One shared module, `ui/block-nav.js` (`window.STBlockNav`), moves focus between them; the blocks
+of each page are declared in `ui/pane-navigation.js`. Frame and hint styles are in `block-nav.css`.
 
 ## Keys
 
@@ -159,7 +159,3 @@ keeps keyboard focus on it after the grid re-renders. Header buttons do not own 
   unchanged (arrows, Tab, transpose, Esc), header button reachability and Return, cursor-cell focus restore, ⌘0.
 * `tests/pane_navigation_tests.js`: F6 order and robustness, unchanged.
 * `tests/helpers/fake-dom.js`: a small DOM with layout boxes for such tests.
-* Real WebKit geometry: drive the dev harness (`SUPERTRACKER_DEV_SCRIPT`, see `DevHarness.swift`) with synthetic
-  ⌥ + arrow `keydown` events and read `STBlockNav.current()`; screenshots of the frame go to `test-output/keyboard-nav/`
-  (Instrument and Mixer: `test-output/keyboard-nav/phase2/`; Pattern: `test-output/keyboard-nav/phase3/`). The harness window is never key, so WebKit draws no
-  `:focus` ring there; the `.block-nav-focus` mark shows it.

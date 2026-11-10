@@ -48,7 +48,7 @@ Maschine `.mxgrp` support imports verified portions of the native archive. The b
 
 The built-in studio effects and DrumSynths are independent implementations. Their names describe the corresponding effect families; they are not NI binaries and have not been established as sonically identical. Verified parameter conversions are used where available; approximate or default mappings are reported.
 
-See [built-in effects](BUILTIN_EFFECTS.md) for processor coverage, [kit package format](KIT_LIBRARY.md) for persistence and [kits as track groups](KIT_GROUPS_DESIGN.md) for the data model.
+See [built-in effects](BUILTIN_EFFECTS.md) for processor coverage and `cargo doc -p st-library` for the kit package format and the data model.
 
 ## MK3 (in development)
 

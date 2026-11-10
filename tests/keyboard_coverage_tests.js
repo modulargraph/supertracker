@@ -3,7 +3,9 @@
 // documented in the help sheet, native menu items forward known commands, and menu key equivalents match.
 const assert = require('node:assert/strict'), fs = require('node:fs');
 const web = require('./helpers/web');
-const swift = fs.readFileSync('Sources/SuperTracker/App.swift', 'utf8');
+// The native menu bar: crates/st-app/src/menus.rs, `keyed(title, command, shortcut)` and `command(title, command)`.
+const menus = fs.readFileSync('crates/st-app/src/menus.rs', 'utf8');
+const menuItems = [...menus.matchAll(/\b(?:keyed|command)\("([^"]+)", "([^"]+)"(?:, "([^"]+)")?\)/g)].map(m => ({ title: m[1], id: m[2], shortcut: m[3] || '' }));
 const { app, ST } = web.app();
 const source = web.source('app.js'), compact = source.replace(/\s+/g, '');
 const commands = JSON.parse(JSON.stringify(ST.commands));
@@ -49,26 +51,24 @@ function handled(id) {
   console.log('PASS no two global palette commands share a shortcut');
 }
 {
-  const symbols = { command: '⌘', shift: '⇧', option: '⌥', control: '⌃' };
-  const items = [...swift.matchAll(/add\(\w+, "([^"]+)", ("view:" \+ command|"[^"]*"), ("[^"]*"|f6|String\(index \+ 1\))(?:, modifiers: \[?([^\])]*)\]?)?\)/g)];
+  const symbols = { CmdOrCtrl: '⌘', Shift: '⇧', Alt: '⌥', Ctrl: '⌃' };
+  const items = menuItems;
   assert(items.length > 60, 'menu items parsed: ' + items.length);
   const ids = new Set(commands.map(c => c[0]));
-  const menuIDs = items.filter(m => m[2].startsWith('"')).map(m => m[2].slice(1, -1));
+  const menuIDs = items.map(m => m.id).filter(id => !id.startsWith('view:'));
   const unknown = menuIDs.filter(id => !(ids.has(id) || id === 'palette') || !(handled(id) || id === 'palette'));
   assert.deepEqual(unknown, [], 'menu commands are palette commands handled by perform()');
   assert(app.hasCommand('palette'));
-  for (const group of ['File', 'Edit', 'View', 'Transport', 'Pattern', 'Track', 'Instrument', 'Window', 'Help']) assert(swift.includes(`submenu("${group}")`), group);
+  for (const group of ['File', 'Edit', 'View', 'Transport', 'Pattern', 'Track', 'Instrument', 'Window', 'Help']) assert(menus.includes(`title: "${group}"`), group);
   const helpText = helpKeys.join(' ');
   for (const m of items) {
-    const key = m[3];
-    if (key === '""') continue;
-    const mods = m[4] === undefined ? ['command'] : m[4].split(',').map(x => x.trim().replace('.', '')).filter(Boolean);
-    const glyph = key === 'f6' ? 'F6' : key.startsWith('String') ? null : key.slice(1, -1).toUpperCase();
-    if (!glyph) continue;
-    const shortcut = mods.map(x => symbols[x]).join('') + glyph;
-    const id = m[2].slice(1, -1), palette = commands.find(c => c[0] === id)?.[2] || '';
+    if (!m.shortcut) continue;
+    const parts = m.shortcut.split('+'), key = parts.pop();
+    if (/^[1-7]$/.test(key) && m.id.startsWith('view:')) continue;
+    const shortcut = parts.map(x => symbols[x]).join('') + key.toUpperCase();
+    const palette = commands.find(c => c[0] === m.id)?.[2] || '';
     const same = (a, b) => [...a].sort().join('') === [...b].sort().join('');
-    assert(same(palette, shortcut) || helpText.split(/ \/ | · | /).some(token => same(token, shortcut)), `menu ${m[1]} ${shortcut} matches palette (${palette}) or help`);
+    assert(same(palette, shortcut) || helpText.split(/ \/ | · | /).some(token => same(token, shortcut)), `menu ${m.title} ${shortcut} matches palette (${palette}) or help`);
   }
   console.log(`PASS ${items.length} native menu items forward handled commands; key equivalents match palette/help`);
 }

@@ -6,14 +6,14 @@ This guide describes the current source of SuperTracker. It covers every workspa
 
 ## Build and launch
 
-You need an Apple Silicon Mac, macOS 14 or newer, Apple's command-line developer tools and the Steinberg SDK checkout at `Vendor/vst3sdk`. Build the current source to its own location and open it:
+You need Rust (stable, from rustup.rs); on a Mac also Apple's command-line developer tools, on Linux the packages listed in the README. Build and open it:
 
 ```sh
-./scripts/build.sh release build/SourcePreview/SuperTracker.app
-open build/SourcePreview/SuperTracker.app
+./scripts/build.sh
+open build/SuperTracker.app        # Linux: build/supertracker/supertracker
 ```
 
-`./scripts/build.sh` with no arguments builds a release app at `build/SuperTracker.app`; `./scripts/run.sh` builds a debug app there and opens it. All builds share recovery storage under `~/Library/Application Support/SuperTracker`, so save and quit the running app before you switch builds.
+`./scripts/build.sh` builds a release app at `build/SuperTracker.app`; `./scripts/run.sh` builds a debug host and runs it from the repository. All builds share recovery storage under `~/Library/Application Support/SuperTracker`, so save and quit the running app before you switch builds.
 
 The interface is bundled into the native app. This is a locally signed development build, not a notarized distribution. Opening the bundled HTML file directly only shows an interface preview without audio.
 
@@ -82,7 +82,7 @@ Previewing, loading and favoriting sounds across the real Native Access and Loop
 
 ## Instruments and sample editing
 
-An instrument supplies a sound; a track supplies its sequenced events and processing. Instrument (`Cmd+2`) lets you select/assign a synth, sample, AU/VST3/VST2 or external MIDI source. Plug-in instruments use their exposed parameters for internal sound controls (see [Plug-in control pages](#plug-in-control-pages)).
+An instrument supplies a sound; a track supplies its sequenced events and processing. Instrument (`Cmd+2`) lets you select/assign a synth, sample, AU/VST3/CLAP or external MIDI source. Plug-in instruments use their exposed parameters for internal sound controls (see [Plug-in control pages](#plug-in-control-pages)).
 
 ### Instrument page
 
@@ -304,7 +304,7 @@ Tools act on the selection, or on the cursor track's whole pattern when nothing 
 
 ### Step effect picker
 
-The **Step effect** picker also opens from the FX buttons below the tracker. Search built-in effects or exposed AU/VST3/VST2 parameters by effect, plug-in, parameter or mapped NKS name. Up/Down/Home/End browses results; Return chooses one and focuses its value. Enter the value and press Return or Apply. The Column control selects FX 1 or FX 2; Remove effect clears only that slot. Escape/Cancel leaves the step unchanged. Effects already used on the track rank first. Opening or searching the picker does not change the live parameter; Apply checks that the project, row and plug-in target still match.
+The **Step effect** picker also opens from the FX buttons below the tracker. Search built-in effects or exposed AU/VST3/CLAP parameters by effect, plug-in, parameter or mapped NKS name. Up/Down/Home/End browses results; Return chooses one and focuses its value. Enter the value and press Return or Apply. The Column control selects FX 1 or FX 2; Remove effect clears only that slot. Escape/Cancel leaves the step unchanged. Effects already used on the track rank first. Opening or searching the picker does not change the live parameter; Apply checks that the project, row and plug-in target still match.
 
 Applying a parameter effect to an empty row leaves the note as dots; it changes a parameter without playing a new note. Adding a note later preserves its effects, and OFF/CUT rows can carry locks while releasing/cutting their note. Slice and probability require a note on the row. Ratchet can repeat the last note or chord through empty rows. Reverse and sample offset can change currently playing sample voices on an effect-only row; they apply to the addressed track.
 
@@ -382,11 +382,11 @@ Plug-in delay compensation aligns native samples, AU instruments, insert chains 
 
 ## Plug-ins and NKS
 
-Browser → Plug-ins lists instruments and effects with All, AU, VST3 and VST2 format filters. Plug-ins are scanned in the background after launch, in separate helper processes, so a plug-in that fails to scan cannot stop the app from starting; the browser shows **Scanning plug-ins · n of m** while this runs, and **Refresh plug-ins** rescans. Choose Instruments or Audio Effects, search by name/manufacturer, select a destination and press Return to load. Instruments play on the selected track; effects occupy the selected channel's insert slots. Open the vendor editor for its full interface or use the parameter controls for keyboard-accessible editing. Third-party editor accessibility depends on its vendor.
+Browser → Plug-ins lists instruments and effects with All, AU, VST3 and CLAP format filters. Plug-ins are scanned in the background after launch, in separate processes, so a plug-in that fails to scan cannot stop the app from starting; the browser shows **Scanning plug-ins · n of m** while this runs, and **Refresh plug-ins** rescans. Choose Instruments or Audio Effects, search by name/manufacturer, select a destination and press Return to load. Instruments play on the selected track; effects occupy the selected channel's insert slots. Open the vendor editor for its full interface or use the parameter controls for keyboard-accessible editing. Third-party editor accessibility depends on its vendor.
 
-### VST2 plug-ins
+### Plug-ins run outside the app
 
-SuperTracker hosts native arm64 VST2 instruments and effects from `~/Library/Audio/Plug-Ins/VST` and `/Library/Audio/Plug-Ins/VST`, including shell plug-ins that contain several plug-ins in one bundle. VST2 plug-ins play sequenced MIDI, follow transport, save their state with the project and open their own editor. Intel-only VST2 bundles (for example Super 8) cannot load on Apple Silicon and do not appear in the plug-in list.
+Every plug-in runs in a separate container process (one per plug-in by default). If a plug-in crashes or stops responding, its track falls silent or passes audio through, the rest of the song keeps playing, and the plug-in review offers **Retry** to start the plug-in again with its saved state. A plug-in that crashes twice in a row while loading is held back at the next start until you retry it.
 
 ### NKS browser
 
@@ -410,19 +410,17 @@ Instrument presets replace the instrument on the selected track (or create a new
 
 ### How NKS presets load
 
-NKS metadata, tags, banks and previews are separate from preset compatibility. Direct loading reads the preset's exact plug-in identity and saved state. Presets made for a VST3 load into that VST3. Presets made for a VST2 load into the native VST2 plug-in when it runs on this Mac; when the VST2 is Intel-only, they load into the vendor's VST2-compatible VST3 release if one is installed, which accepts the VST2 state and parameter IDs. Return/Load requests native loading and Option-Return requests a new instrument; Inspect remains available separately. Mappings bind only when the class identity and actual exposed parameter IDs agree. A preset's controller IDs are never assumed to be AU addresses.
+NKS metadata, tags, banks and previews are separate from preset compatibility. Direct loading reads the preset's exact plug-in identity and saved state. Presets made for a VST3 load into that VST3. Presets made for a VST2 load into the vendor's VST2-compatible VST3 release if one is installed, which accepts the VST2 state and parameter IDs (VST2 plug-ins themselves are not hosted). Return/Load requests native loading and Option-Return requests a new instrument; Inspect remains available separately. Mappings bind only when the class identity and actual exposed parameter IDs agree. A preset's controller IDs are never assumed to be AU addresses.
 
 ### Plug-in control pages
 
 After a validated NKS load, Instrument offers eight named controls per NKS page. Save retains the selected page and knob, including repeated saves while another view is open; opening another project or replacing the plug-in resets that view state. Left/Right selects a knob; Up/Down adjusts it (Shift: 10%, Option: fine); `Shift+Left/Right` or `Ctrl+Page Up/Down` changes pages; digits `1`–`8` jump to a knob while the keyboard piano is off; `A` automates the focused knob. `Option+A` or the parameter context action finishes a pending edit and creates/selects its lane at the selected pattern row. Existing lanes rank first; search accepts mapped names, page names, aliases and the plug-in's own parameter names. **Use on step…** opens the picker for that exact parameter; choose the FX column/value and Apply. Opening it creates no note and changes no live value. Cancel preserves the step, Undo history and prior focus. Unassigned, read-only, non-automatable or unavailable controls cannot be used for these actions.
 
-Every other plug-in on the selected track (AU, VST3 or VST2 instruments without NKS pages, and every insert effect) gets the same eight-knob console with pages generated from its parameter list. NKS effects use their own NKS pages. Tabs across the top select the plug-in: Left/Right on the tabs, or `Option+Left/Right` from anywhere in the console. On a knob, Up/Down adjusts by 1% (Shift 10%, Option fine), `Shift+Left/Right` changes page, `1`–`8` jump to a knob and `A` automates it. On generated pages you can also make your own: Return assigns a parameter to the focused knob, `/` finds a parameter, `P` pins the knob's parameter to your page, Delete clears the knob, and **New page** / **Rename** manage user pages. User pages are saved with the project.
+Every other plug-in on the selected track (AU, VST3 or CLAP instruments without NKS pages, and every insert effect) gets the same eight-knob console with pages generated from its parameter list. NKS effects use their own NKS pages. Tabs across the top select the plug-in: Left/Right on the tabs, or `Option+Left/Right` from anywhere in the console. On a knob, Up/Down adjusts by 1% (Shift 10%, Option fine), `Shift+Left/Right` changes page, `1`–`8` jump to a knob and `A` automates it. On generated pages you can also make your own: Return assigns a parameter to the focused knob, `/` finds a parameter, `P` pins the knob's parameter to your page, Delete clears the knob, and **New page** / **Rename** manage user pages. User pages are saved with the project.
 
 Save and Undo wait for pending mapped edits, including a gesture made just before leaving Instrument. Undo removes the completed gesture and Redo restores it. Failed writes/captures retain a retryable edit; replacing its plug-in cancels the old target with an explanation. New input cannot be overwritten by an older capture. If you continue editing during Save, another save may be needed. Previews and dependent project changes wait for mapped edits and plug-in restoration before using the new graph.
 
-The accepted installed-preset check covers **Massive X 1.7.1 / Contender** through the actual mounted controls: immediate mapped Save, a named automation lane, an exact-instance step effect, fresh-instance Open and finite non-silent offline output. Eight groups pass with normal exit. It uses a separate hidden diagnostic with Candidate0050's production sources/resources; physical keys, realtime playback, listening and sample-exact vendor timing were not tested. Other presets/versions remain unverified. Edited controls may take about one second to save.
-
-The earlier original AU with synthetic NKS pages separately verifies precise envelope/step-lock PCM behavior. Historical installed capture results and failed attempts remain documented in [VST3_HOST.md](VST3_HOST.md); the accepted result does not rewrite those failures.
+No installed NKS product has been loaded through the 0.2 host yet; the loader is tested with generated presets and test plug-ins.
 
 The installed **Komplete Kontrol AU** is a possible route to authentic NKS sounds: load it and use its own preset browser. Its compatible instruments and licensing remain inside that host. This route has not passed the application's playback/mapping/save acceptance tests, and SuperTracker does not claim to open a selected NKS catalog entry directly in Komplete Kontrol. This fallback also does not establish direct NKS loading or mapped control support. Komplete Kontrol AU does not provide MIDI output for capturing its generated arpeggiator notes. See [NI’s MIDI-control manual](https://docs.native-instruments.com/online-guides/komplete-kontrol-manual/en/automation-and-midi-control.html). Native tests cover Apple DLSMusicDevice, AUDelay wet/bypass/time changes, effect-order differences, AU send bounces and basic state save/reopen; this does not establish compatibility with every installed AU.
 

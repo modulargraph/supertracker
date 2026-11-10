@@ -140,7 +140,7 @@ test('the selected channel detail is a fixed panel under the strips: chain besid
   const side = h.html.slice(h.html.indexOf('class="studio-side"'));
   assert(side.indexOf('studio-fixed-returns') < side.indexOf('</section></div></div></div>') + 30, 'returns sit in the side column');
   // Styles: the workspace no longer scrolls as a whole; the strips give way to the detail panel, whose columns scroll.
-  const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '../Resources/Web/studio.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '../ui/studio.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   const last = selector => { const rules = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter(m => m[1].split(',').map(x => x.trim()).includes(selector)); return rules.map(m => m[2]).join(';'); };
   const value = (selector, property) => { const found = [...last(selector).matchAll(new RegExp(`(?:^|;)\\s*${property}:([^;]+)`, 'g'))]; return found.at(-1)?.[1].trim(); };
   assert.equal(value('.studio-mixer', 'display'), 'flex'); assert.equal(value('.studio-mixer', 'flex-direction'), 'column'); assert.equal(value('.studio-mixer', 'overflow'), 'hidden');

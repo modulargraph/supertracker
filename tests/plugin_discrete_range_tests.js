@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-const web=name=>fs.readFileSync(path.join(process.env.ST_DISCRETE_SOURCE||path.join(__dirname,'../Resources/Web'),name),'utf8');
+const web=name=>fs.readFileSync(path.join(process.env.ST_DISCRETE_SOURCE||path.join(__dirname,'../ui'),name),'utf8');
 const fixtureRequire=name=>name==='node:fs'?{...fs,readFileSync(filename,...options){const base=path.basename(String(filename));return fs.readFileSync(process.env.ST_DISCRETE_SOURCE&&['nks-controls.js','plugin-pages.js','app.js','fine-control.js','automation-record.js'].includes(base)?path.join(process.env.ST_DISCRETE_SOURCE,base):filename,...options);}}:require(name);
 function fixture(name,addition=''){const src=fs.readFileSync(path.join(__dirname,name),'utf8').replace(/^#!.*\n/,'');return new Function('require','__dirname',src.slice(0,src.indexOf('(async'))+addition+'\nreturn harness;')(fixtureRequire,__dirname);}
 const nksHarness=fixture('nks_controls_ui_tests.js');

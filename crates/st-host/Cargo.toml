@@ -1,0 +1,20 @@
+[package]
+name = "st-host"
+version.workspace = true
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "SuperTracker's application core: session state, the bridge's command table, events and settings."
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+st-project = { path = "../st-project" }
+# The audio area (src/areas/audio.rs): the engine and mixer, and sample decoding for it.
+st-audio = { path = "../st-audio" }
+st-samples = { path = "../st-samples" }
+# The service areas (src/areas/services.rs): the sound library, MIDI, the Maschine MK3, AI control.
+st-library = { path = "../st-library" }
+st-midi = { path = "../st-midi" }
+st-mk3 = { path = "../st-mk3" }
+st-agent = { path = "../st-agent" }

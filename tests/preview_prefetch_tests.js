@@ -26,7 +26,7 @@ function context(extra = {}) {
   assert.deepEqual(order(P.order(5, 20, -1, 3)), [5, 4, 6, 3, 7, 2, 8], 'moving up warms the items above first');
   assert.deepEqual(order(P.order(0, 3, 1, 3)), [0, 1, 2]);
   assert.deepEqual(order(P.order(9, 3, 1, 3)), []);
-  console.log('PASS neighbour order is nearest first, biased toward travel (matches PreviewPrefetchPlan in Swift)');
+  console.log('PASS neighbour order is nearest first, biased toward travel');
 
   const items = [
     { path: '/s/a.wav' }, { path: '/s/b.mid' }, { path: '/off/c.wav', available: false }, { path: '/s/d.aif' },

@@ -281,22 +281,22 @@ Interface → audio host commands used by the controller (also available to the 
 - `midi.expression {track, kind:"pitchBend"|"cc"|"aftertouch"|"polyAftertouch"|"sustain", value, controller?, note?}` —
   live expression for the track's instrument through the same destinations as hardware MIDI input: plug-ins get the
   MIDI message, external MIDI instruments get it on their output channel, built-in instruments get pitch bend
-  (`st_engine_pitch_bend`, ±2 semitones) and CC1 (`st_engine_mod_wheel`, filter close). `value` is −1…1 for pitch
+  (`pitch_bend`, ±2 semitones) and CC1 (`mod_wheel`, filter close). `value` is −1…1 for pitch
   bend, 0…1 otherwise; `sustain` = CC64. Repeated identical values are dropped natively; the controller quantizes to
   MIDI resolution and sends at most one message per stream every 15 ms with a trailing latest value.
 - `transport.queue {pattern}|{sequence}|{clear:true}` — queued jump honoured by the engine at the next pattern (or
-  pattern-loop-range) end, sample-accurately (`st_engine_queue_jump`). Ignored while stopped (`queued:false`).
+  pattern-loop-range) end, sample-accurately (`queue_jump`). Ignored while stopped (`queued:false`).
   Status carries `queuedPattern`/`queuedSequence` (−1 = none). The song arranger also offers it: **Q** / "Play from
   here at pattern end" while the song plays.
 - `transport.play {…, countIn:bars}` — the engine clicks `bars` bars at the start position's tempo/meter (accented
   downbeats, metronome volume, even with the metronome off), then starts Play exactly one bar later
-  (`st_engine_play_count_in`). Status carries `countIn` (clicks left). The app's `ST.recordWithCountIn()` and the
+  (`play_count_in`). Status carries `countIn` (clicks left). The app's `ST.recordWithCountIn()` and the
   palette command **Record with count-in** arm note recording first; notes played during the count-in sound but are
   not step-entered, acknowledged input after the downbeat records live.
 
 ### Track groups (kits)
 
-A kit is a track group (docs/KIT_GROUPS_DESIGN.md): ordinary member tracks, one per loaded pad, routed to the
+A kit is a track group ([KITS.md](KITS.md)): ordinary member tracks, one per loaded pad, routed to the
 group's bus. The MK3 follows Maschine's model: group buttons A–H choose tracks and groups, PAD MODE pads choose and
 play the tracks of the cursor's group, and CHANNEL / PLUG-IN add a **Group** level for the group bus. Steps are
 plain tracker cells: each member track has its own column with Note, Ins, Vel, FX 1, FX 2 and Gate, and every

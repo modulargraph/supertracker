@@ -1,0 +1,25 @@
+[package]
+name = "st-samples"
+version.workspace = true
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Audio files for SuperTracker: decoding, resampling, sample editing, time stretch, slicing, wavetables, encoding."
+publish = false
+
+[dependencies]
+# Result and request types cross the bridge as JSON (st-host serializes them).
+serde = { version = "1", features = ["derive"] }
+# Pure-Rust demuxers and decoders (MPL-2.0). No C libraries.
+symphonia = { version = "0.6", default-features = false, features = [
+    "wav", "aiff", "caf", "flac", "ogg", "vorbis", "isomp4", "aac", "alac",
+    "mp1", "mp2", "mp3", "pcm", "adpcm", "id3v1", "id3v2", "opt-simd",
+] }
+# Canonical (NFC) comparison of export filenames (MIT/Apache-2.0).
+unicode-normalization = "0.1"
+
+[target.'cfg(unix)'.dependencies]
+# Directory-relative file operations and exclusive renames for the export transaction (MIT/Apache-2.0).
+libc = "0.2"
+
+[dev-dependencies]
+serde_json = "1"

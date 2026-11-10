@@ -45,11 +45,11 @@ the unwanted sideband near DC and Nyquist; it is a creative effect.
 
 ## Control pages and the insert chain
 
-Every built-in effect has one shared description in `Resources/Web/effect-pages.js`: named pages of up to eight
+Every built-in effect has one shared description in `ui/effect-pages.js`: named pages of up to eight
 parameters in a musical order, grouped in sections, with short knob names (Maschine-style, for example Multimode
 Filter: Main = Cutoff, Reso, Mode · Mod amount, Mod source · Mix; then LFO, Envelope and Sidechain pages). Ranges,
 units, curves (linear, logarithmic, stepped), defaults and choice labels are not copied: they come from the native
-catalogue through the bridge command `builtin.effects` (`BuiltinEffectsCatalogue.swift`), and values are shown in
+catalogue through the bridge command `builtin.effects`, and values are shown in
 their own units (16 kHz, −18 dB, 4:1, 1/8., Band-pass). The plug-in pages console, the insert chain and the MK3
 PLUG-IN pages all use these pages; other plug-ins keep NKS or generated pages.
 
@@ -60,11 +60,11 @@ resets, ⇧ ← → pages, A automates). It is in the mixer (above the classic p
 All chain edits go through `window.STInserts` (add / remove / setBypass / move / duplicate by owner and slot, each
 one Undo step), which the MK3 Bypass and Remove buttons use too. `tests/effect_pages_tests.js` checks the pages
 against the real catalogue (`tests/fixtures/builtin-effects.json`, generated and kept up to date by
-`rust/tracker-engine/tests/effects_metadata.rs`).
+`crates/tracker-engine/tests/effects_metadata.rs`).
 
 ## Hosting contract
 
-`STBuiltinEffects.h` exposes a C catalogue, physical parameter metadata, normalized
+`tracker_engine::effects` exposes the catalogue, physical parameter metadata, normalized
 conversion, instance creation, atomic parameter/tempo/bypass mailboxes, reset,
 latency/tail metadata, and in-place stereo processing with optional sidechain.
 The host should persist processor IDs and parameter IDs/values, not catalogue
@@ -94,26 +94,13 @@ staging remains important. Feedback loops have bounded coefficients/state.
 
 ## Insert chain nodes
 
-In a routed project (`AudioRoutingGraph`), consecutive built-in inserts of one strip render inside one graph node, a
-`BuiltinEffectsChain` (`BuiltinEffectsAudioUnit.swift`): it pulls its input once and runs each member's
-`processInPlace` back to back on the same buffer, allocation-free, through the `AURenderShim` direct render path.
-The members stay ordinary `BuiltinEffectsAudioUnit` instances, so slots, instance IDs, parameter trees and
-addresses, editors, MK3 pages, saved state, bypass crossfades and latency are unchanged; only their rendering moves.
-Scheduled automation (`scheduleParameterBlock`: lanes, step-FX locks) goes to each unit's own lock-free queue, so it
-lands at the same sample whether the unit renders as its own node or in a chain.
-
-- A chain splits around hosted AU/VST3/VST2 inserts, around a built-in insert that receives a sidechain (it keeps its
-  own node with its key input) and where a compensation delay would sit between two inserts. The pure routing graph
-  keeps one node per insert: latency, PDC and automation offsets are planned per insert exactly as before.
-- Loading, replacing, removing or reordering built-in inserts while playing usually changes only a chain's member
-  list: `AudioPluginRack.applyInsertChainUpdate` hands the new list to the renderer (atomic program swap; retired lists
-  are released once no render can use them) without pausing or rewiring. A change that alters the graph's shape
-  (a chain appears or disappears, a hosted insert changes, compensation timing changes) uses the usual rebuild.
-- Flat (unrouted) projects keep one node per insert.
+The mixer graph of `st-audio` runs a strip's inserts back to back on the strip's buffer: a built-in effect is
+processed in place in the host (`tracker_engine::effects::Effect`), a plug-in in its container. Scheduled
+automation (lanes, step-FX locks) reaches each effect's lock-free parameter queue with its frame offset.
 
 ## Drum families
 
-`MaschineDrums.hpp` supplies six allocation-free per-voice synthesizers: kick
+`tracker_engine::effects::drums` supplies six allocation-free per-voice synthesizers: kick
 (swept sine/harmonic body), snare (dual body modes plus filtered noise), hi-hat
 (six band-limited square sources plus noise), tom (four modal partials),
 percussion (decaying FM), and cymbal (eight inharmonic modes plus noise).
@@ -130,7 +117,7 @@ decay terminates it even if no note-off arrives. Noise is seeded deterministical
 
 ## Offline validation
 
-Run `cargo test -p tracker-engine --release` in `rust/` (the effect suites are
+Run `cargo test -p tracker-engine --release` (the effect suites are
 `tests/effects_*.rs`; `effects_builtin` and `effects_drum_synth` are the two described here). The effects suite checks every registered
 processor at 48/96 kHz: parameter ranges and conversions, exact bypass,
 deterministic reset, nonfinite/aliasing sidechain handling, boundary controls,
@@ -163,7 +150,7 @@ with chord and string modes. Prepared buffers cover the supported 20 BPM floor:
 Beat Delay reserves 51 seconds of stereo storage; Stretch 24 seconds; Grain
 Delay six seconds. No render-time allocation is required.
 
-`builtin_spatial_delay_tests.cpp` adds checks at 44.1/48/96 kHz covering
+`crates/tracker-engine/tests/effects_spatial_delay.rs` has checks at 44.1/48/96 kHz covering
 tempo echoes, ping-pong, predelay, decay, stereo response, Ice resonant-band movement/decay,
 Resochord tuning, granular octaves, capture/retrigger, block partitioning,
 boundary parameters and zero render allocations. The suite also passes

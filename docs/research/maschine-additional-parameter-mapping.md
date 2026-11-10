@@ -6,7 +6,7 @@ The analysis read symbols, bounded constructor/serializer/converter disassembly,
 and parameter-name literals. No NI executable, plug-in, or DSP was run.
 This is saved-state interoperability information, not a claim of sonic equivalence.
 
-`MaschineGroupAdditionalMapping.swift` consumes raw values in the following
+The importer (`st-library`, `maschine/`) consumes raw values in the following
 verified serializer order. Constructor/UI order can differ. Unknown versions,
 wrong field counts and nonfinite payloads fail closed; invalid individual fields
 keep target defaults with warnings. The importer retains original numeric fields.

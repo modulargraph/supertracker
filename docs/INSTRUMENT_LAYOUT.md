@@ -1,6 +1,6 @@
 # Instrument view layout: pages for Synth and Sampler
 
-Status: implemented (Resources/Web: `instrument-navigation.js`, `app-instrument-view.js` `renderInstrument` / `renderSoundGroups` / `renderInstrumentPages`, `sampler.js`, `sampler.css`, `styles.css`, `pane-navigation.js`).
+Status: implemented (ui: `instrument-navigation.js`, `app-instrument-view.js` `renderInstrument` / `renderSoundGroups` / `renderInstrumentPages`, `sampler.js`, `sampler.css`, `styles.css`, `pane-navigation.js`).
 
 ## Why
 

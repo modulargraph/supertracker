@@ -1,5 +1,5 @@
 'use strict';
-// A stand-in for Resources/Web/host-transport.js: the test plays the host.
+// A stand-in for ui/host-transport.js: the test plays the host.
 //
 //   window.STHostTransport = hostStub({ post(message) { ... } })
 //       post() receives every request object the page sends ({id, command, payload}).

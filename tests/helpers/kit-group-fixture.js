@@ -1,6 +1,6 @@
 'use strict';
-// What native kit.read returns for a kit file: the kit as a group project (KitGroups.groupProject in
-// Swift): one member track per loaded pad with its instrument, inserts and mix, plus the group bus.
+// What native kit.read returns for a kit file: the kit as a group project:
+// one member track per loaded pad with its instrument, inserts and mix, plus the group bus.
 function groupProject({ name = 'Fixture Kit', pads = [0, 1, 2], plugins = [], busInserts = 0, choke = {}, notes = [] } = {}) {
   const kitID = 'srckit', busID = 'srcbus';
   const tracks = pads.map((pad, i) => ({

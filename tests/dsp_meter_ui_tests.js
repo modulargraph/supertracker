@@ -10,7 +10,7 @@ for(const [value,expected] of [[0,'DSP 0%'],[.1,'DSP 0%'],[.5,'DSP 1%'],[.99,'DS
   assert.equal(context.formatNativeDSPUsage(value),expected,`${String(value)} is native percent, not a fraction`);
 }
 assert(source.includes("$('#cpu').textContent = formatNativeDSPUsage(state.status.cpu)"),'transport display uses percentage formatter');
-const css=fs.readFileSync(path.join(__dirname,'../Resources/Web/styles.css'),'utf8');
+const css=fs.readFileSync(path.join(__dirname,'../ui/styles.css'),'utf8');
 const declarations=selector=>Object.fromEntries((css.match(new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*\\{([^}]+)\\}'))?.[1]||'').split(';').filter(value=>value.includes(':')).map(value=>value.split(':').map(part=>part.trim())));
 const meter=declarations('.statusbar #cpu'),nativeMeter=declarations('body.native .statusbar #cpu');
 assert(meter['font-variant-numeric']?.includes('tabular-nums'),'changing DSP digits retain equal advance widths');

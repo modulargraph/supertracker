@@ -26,6 +26,4 @@ Take coverage, source bounds, fades, waveform geometry, splitting and import/rec
 
 ## Verification scope
 
-Focused JavaScript checks cover immutable proposals, source coverage, per-take slip, mapped split offsets, split/duplicate independence, keyboard focus, async import cancellation, manager editing, preview cancellation and alternate-recording retry/stale-destination behavior. Native `TakesMediaTests.swift` uses actual generated WAV files for portable save/read, deduplication, fingerprints, inactive references and relinking. Existing media, recording, clip, track-duplication and session regressions were run.
-
-`NativeUITakesTests.swift` adds five mounted WebKit/Bridge groups for actual metadata import, keyboard cycling and splitting, manager edits, Undo/Redo/native project publication and private Save/Open. All five runtime groups pass in Candidate1850. These checks do not assert physical keyboard delivery, monitoring, audible splice quality or hardware recording latency.
+Focused JavaScript checks cover immutable proposals, source coverage, per-take slip, mapped split offsets, split/duplicate independence, keyboard focus, async import cancellation, manager editing, preview cancellation and alternate-recording retry/stale-destination behavior.

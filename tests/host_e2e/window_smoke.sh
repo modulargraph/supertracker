@@ -15,8 +15,8 @@
 # See tests/host_e2e/README.md.
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-BIN="${1:-${SUPERTRACKER_BIN:-${CARGO_TARGET_DIR:-$ROOT/rust/target}/debug/supertracker}}"
-[ -x "$BIN" ] || { echo "FAIL build the host first (cd rust && cargo build -p st-app); no executable at $BIN"; exit 1; }
+BIN="${1:-${SUPERTRACKER_BIN:-${CARGO_TARGET_DIR:-$ROOT/target}/debug/supertracker}}"
+[ -x "$BIN" ] || { echo "FAIL build the host first (cargo build -p st-app); no executable at $BIN"; exit 1; }
 for tool in xvfb-run xdotool; do command -v "$tool" > /dev/null || { echo "FAIL $tool is not installed"; exit 1; }; done
 
 if [ -z "${ST_WINDOW_SMOKE_INNER:-}" ]; then
@@ -27,7 +27,7 @@ if [ -z "${ST_WINDOW_SMOKE_INNER:-}" ]; then
 fi
 
 WORK="$ST_WINDOW_SMOKE_INNER"; LOG="$WORK/trace.log"
-SUPERTRACKER_TRACE=1 SUPERTRACKER_SUPPORT_DIR="$WORK/support" "$BIN" --ui "$ROOT/Resources/Web" > "$LOG" 2>&1 &
+SUPERTRACKER_TRACE=1 SUPERTRACKER_SUPPORT_DIR="$WORK/support" "$BIN" --ui "$ROOT/ui" > "$LOG" 2>&1 &
 APP=$!
 failures=0
 check() { if grep -qE "$2" "$LOG"; then echo "PASS $1"; else echo "FAIL $1 (no line matching: $2)"; failures=$((failures + 1)); fi; }

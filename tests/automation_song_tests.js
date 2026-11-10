@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const M = require('../Resources/Web/automation-song.js');
+const M = require('../ui/automation-song.js');
 const web = require('./helpers/web');
 const copy = value => JSON.parse(JSON.stringify(value));
 const close = (actual, expected, eps = 1e-6) => assert(Math.abs(actual - expected) < eps, `${actual} != ${expected}`);

@@ -313,7 +313,7 @@ test('DUPLICATE + group duplicates the whole group: members, bus and its inserts
 });
 
 test('no kit code paths remain in the MK3 modules', () => {
-  const fs = require('node:fs'), path = require('node:path'), dir = path.join(__dirname, '../Resources/Web');
+  const fs = require('node:fs'), path = require('node:path'), dir = path.join(__dirname, '../ui');
   for (const file of fs.readdirSync(dir).filter(name => /^mk3-.*\.js$/.test(name))) {
     const text = fs.readFileSync(path.join(dir, file), 'utf8');
     assert.doesNotMatch(text, /STKits|kitView|kitEvents|soundID|selectedSoundID|'sound:/, file);

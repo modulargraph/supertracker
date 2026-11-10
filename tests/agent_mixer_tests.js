@@ -2,7 +2,7 @@
 // window.STAgent mixer reach (agent-api.js): buses, master, outputs, sends, send effects, inserts on any channel and
 // bus/master automation, on the real app modules (app.js, routing.js, studio.js, send-effects.js). Only the native
 // message transport is a stand-in: a small audio host that keeps plug-in instances and accepts routing.
-// Also: every MCP tool in rust/st-agent/src/tools.json names an existing STAgent method.
+// Also: every MCP tool in crates/st-agent/src/tools.json names an existing STAgent method.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
@@ -371,8 +371,8 @@ test('track automation needs a target the mixer lists for that track', async () 
 
 test('every MCP tool names an STAgent method, and the mixer tools take channel', async () => {
   const h = harness(), methods = new Set(h.window.STAgent.methods());
-  // The MCP server's tool catalogue (rust/st-agent/src/tools.json; `supertracker --mcp` serves it).
-  const catalogue = JSON.parse(fs.readFileSync(path.join(__dirname, '../rust/st-agent/src/tools.json'), 'utf8'));
+  // The MCP server's tool catalogue (crates/st-agent/src/tools.json; `supertracker --mcp` serves it).
+  const catalogue = JSON.parse(fs.readFileSync(path.join(__dirname, '../crates/st-agent/src/tools.json'), 'utf8'));
   const tools = catalogue.tools.map(tool => [tool.name, tool.method]);
   for (const [name, method] of tools) assert(/^[a-z_]+$/.test(name) && typeof method === 'string' && method, `${name} has a method`);
   assert(tools.length >= 50, `${tools.length} tools`);

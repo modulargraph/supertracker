@@ -2,7 +2,7 @@
 'use strict';
 
 // Run with: node tests/fine_control_tests.js
-// Perceptual slider curves, magnitude-relative steps and ⌥/⇧ fine drags (Resources/Web/fine-control.js).
+// Perceptual slider curves, magnitude-relative steps and ⌥/⇧ fine drags (ui/fine-control.js).
 const assert = require('node:assert/strict');
 const web = require('./helpers/web');
 const fs = require('node:fs');

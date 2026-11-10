@@ -1,9 +1,9 @@
 'use strict';
-// Track groups project model (Resources/Web/track-groups.js): creation, contiguous members,
+// Track groups project model (ui/track-groups.js): creation, contiguous members,
 // auto-routing to the group bus, reordering with every index-based reference, ungrouping,
 // dissolving and load-time repair.
 const assert = require('node:assert/strict');
-const G = require('../Resources/Web/track-groups.js');
+const G = require('../ui/track-groups.js');
 
 let serial = 0;
 const makeID = () => `id${++serial}`;

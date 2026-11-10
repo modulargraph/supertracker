@@ -5,7 +5,7 @@ const web = require('./helpers/web');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
-const timing = require('../Resources/Web/project-timing.js');
+const timing = require('../ui/project-timing.js');
 const source = web.source('clip-arranger.js');
 const copy = value => JSON.parse(JSON.stringify(value));
 function harness() {

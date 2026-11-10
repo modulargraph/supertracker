@@ -12,6 +12,3 @@ Native bridge commands:
 - `project.new` accepts optional `templateID`, or `blank: true` to bypass defaults. It returns `{project: ...}` for a template and null for the ordinary web blank factory.
 
 Files live under the application's support directory: `Templates/<id>/Template.supertracker`, collected `Template.media`, `Metadata.json`, and `ProjectTemplates.json` for the default preference. `SUPERTRACKER_SUPPORT_DIR` isolates this storage for tests.
-
-`tests/ProjectStoreTests.swift` verifies template persistence, an empty eight-track fixture with five unassigned tracks, recovery precedence, explicit blank creation, current-session/recovery isolation, invalid IDs, missing templates, and corrupt defaults. These tests do not instantiate plug-ins or test physical MIDI/audio connections.
-

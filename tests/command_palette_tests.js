@@ -13,7 +13,7 @@ function harness(){
  return {context,app,search,performed,get modal(){return modal;},get closed(){return closed;},get items(){return items;},ids:query=>Array.from(app.searchCommands(query),c=>c[0]),query(value){search.value=value;search.oninput();},key(key,extra={}){const event={key,preventDefault(){this.prevented=true;},...extra};search.onkeydown(event);return event;},active(){return items.find(item=>item.active);},list:()=>nodes.get('palette-list')};
 }
 {
- const html=fs.readFileSync('Resources/Web/index.html','utf8');
+ const html=fs.readFileSync('ui/index.html','utf8');
  assert(!/maschine-chordsets/.test(html),'production page loads no imported chord catalogue');
  const h=harness();
  h.query('chord set');

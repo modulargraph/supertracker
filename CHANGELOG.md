@@ -1,6 +1,50 @@
 # Release notes
 
-## 0.1.0 — first public preview (draft)
+## 0.2.0 — Rust host (in development)
+
+The native side of SuperTracker was rewritten in Rust. The Swift application, the C++ engine and the
+Objective-C++ plug-in hosts are gone; the interface is the same web interface, now in `ui/`.
+
+**Not yet run on a Mac.** Everything below was built and tested on Linux without audio hardware. The macOS code
+(window, Core Audio, CoreMIDI, Audio Units) compiles for Apple Silicon and has never been started. Use 0.1 for
+making music until this has had its first run on a Mac ([checklists](docs/PLUGIN_CONTAINER.md)).
+
+### New
+
+- **Plug-ins run in separate processes.** Every Audio Unit, VST3 and CLAP plug-in lives in a
+  `supertracker-plugin-container` process: one per plug-in by default, or one for all, one per manufacturer or one
+  per instance (Settings section `plugins`). A plug-in that crashes or hangs costs its container; the song keeps
+  playing and the plug-in can be restored with its state.
+- **CLAP plug-ins.**
+- **One host for every platform.** The same Rust host runs the Mac window and a Linux window, and
+  `supertracker --serve` serves the interface to a browser over a token-protected local WebSocket.
+- **Audio engine in Rust**, translated from the 0.1 engine and bit-identical to it on x86-64 at the time of the
+  switch.
+
+### Removed, without migration
+
+- **Projects and kits saved by 0.1 do not open.** There is one project layout; older ones are refused with a message.
+- **Plug-in and built-in effect states saved by 0.1 are not read.** Plug-ins are identified as `clap:…`, `vst3:…`
+  and `au:type:subtype:manufacturer`.
+- **VST2 hosting.** NKS presets made for a VST2 plug-in load into the vendor's VST2-compatible VST3 when installed.
+- The second ("legacy") mixer, the in-app self-test modes and the keyboard QA build.
+
+### Not implemented yet in the new host
+
+Live line inputs into track strips, freeze by recording, routing checks before a change, kit preview rendering,
+controllers beyond pitch bend, mod wheel and sustain to plug-in instruments, base patch capture, screenshots for AI
+clients. [docs/FEATURE_STATUS.md](docs/FEATURE_STATUS.md) and [docs/HOST.md](docs/HOST.md) have the details.
+
+### Build
+
+Rust (stable) and, on Linux, `libgtk-3-dev libwebkit2gtk-4.1-dev libasound2-dev pkg-config`.
+`./scripts/build.sh` builds `build/SuperTracker.app` on macOS and `build/supertracker/` elsewhere;
+`./scripts/test.sh` runs the tests.
+
+## 0.1.0 — first public preview
+
+The notes below describe 0.1 as it was: a Swift and C++ application for macOS. Its build steps, scripts and file
+paths no longer exist in this tree.
 
 SuperTracker is a keyboard-first music tracker and studio for macOS: a Polyend Tracker-style pattern workflow with Maschine-style sound browsing, chords and performance tools, plus mixing, automation, recording and export. It is a native AppKit app with a bundled WebKit interface and an original C++ audio engine, and it hosts Audio Unit, VST3 and VST2 plug-ins.
 

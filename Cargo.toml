@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/tracker-engine", "crates/st-project", "crates/st-samples", "crates/st-library", "crates/st-midi",
+    "crates/st-mk3", "crates/st-agent", "crates/st-audio", "crates/st-host", "crates/st-app",
+]
+# The plug-in container has its own workspace (different dependencies and binaries).
+exclude = ["crates/plugin-host"]
+
+[workspace.package]
+version = "0.2.0"
+
+[profile.release]
+opt-level = 3
+debug = 1
+panic = "abort"
+codegen-units = 1
+lto = "thin"
+
+[profile.dev]
+panic = "abort"
+# Line tables only: full debug info makes every build folder several gigabytes.
+debug = "line-tables-only"

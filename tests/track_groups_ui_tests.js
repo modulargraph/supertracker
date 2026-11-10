@@ -66,7 +66,7 @@ test('a collapsed overview keeps a fixed column width and never stretches to fil
   assert.doesNotMatch(page, /tracker-fill/, 'no filler while track columns take the spare width');
   // The grid uses automatic table layout, where a cell's min-content width overrides its <col>: the hit chips must
   // not contribute (a row with many hits would otherwise widen the overview again).
-  const css = fs.readFileSync(path.join(__dirname, '../Resources/Web/groups.css'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '../ui/groups.css'), 'utf8');
   assert.match(/\.group-hits \{([^}]*)\}/.exec(css)[1], /contain:inline-size/);
   assert.match(/\.group-hits \{([^}]*)\}/.exec(css)[1], /flex-wrap:nowrap/, 'one line per row');
   // Only the group (all eight tracks): a filler column after it takes the rest of the window.

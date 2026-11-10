@@ -1,5 +1,5 @@
 'use strict';
-// Shared built-in effect pages (Resources/Web/effect-pages.js) against the real native catalogue, and their use by
+// Shared built-in effect pages (ui/effect-pages.js) against the real native catalogue, and their use by
 // the plug-in pages console (plugin-pages.js): curated pages, units, value curves, defaults and the console view.
 const assert = require('node:assert/strict'), vm = require('node:vm');
 const web = require('./helpers/web');

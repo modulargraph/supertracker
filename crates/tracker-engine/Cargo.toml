@@ -1,0 +1,14 @@
+[package]
+name = "tracker-engine"
+version.workspace = true
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "SuperTracker's audio engine: sequencer, sampler voices, clock and built-in effects."
+publish = false
+
+[features]
+default = ["clock", "unit-range", "effects", "engine"]
+clock = []
+unit-range = []
+effects = []
+engine = ["clock"]

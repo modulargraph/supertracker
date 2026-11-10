@@ -1,6 +1,6 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "web-preview", "runtimeExecutable": "python3", "runtimeArgs": ["-m", "http.server", "8765", "--directory", "Resources/Web"], "port": 8765 }
+    { "name": "web-preview", "runtimeExecutable": "python3", "runtimeArgs": ["-m", "http.server", "8765", "--directory", "ui"], "port": 8765 }
   ]
 }

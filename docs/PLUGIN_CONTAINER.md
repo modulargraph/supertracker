@@ -1,6 +1,6 @@
 # Plug-in container: out-of-process plug-in hosting
 
-Plug-ins run in separate processes ("containers"), as in Bitwig Studio, so that a crashing or hanging plug-in cannot take the application down. The code is the cargo workspace `rust/plugin-host/` (excluded from `rust/Cargo.toml`). Everything is Rust; there is no C API.
+Plug-ins run in separate processes ("containers"), as in Bitwig Studio, so that a crashing or hanging plug-in cannot take the application down. The code is the cargo workspace `crates/plugin-host/` (excluded from `Cargo.toml`). Everything is Rust; there is no C API.
 
 Status in one paragraph: the cross-platform core (transport, host-side client, container runtime, container executable with test plug-ins and a CLAP backend) is built and **verified by running on Linux x86-64** (see [Verification](#verification-on-linux)). For macOS the whole workspace **type-checks** (`cargo check --target aarch64-apple-darwin --all-targets`), and nothing has run there; the macOS-only code paths are listed under [macOS](#macos-what-a-rust-host-needs-to-know). On top of that core: a [VST3 backend](#vst3-backend) (verified on Linux against a VST3 test plug-in; its macOS module loading and editor are type-checked only) and [plug-in scanning](#plug-in-scanning) for all formats (verified on Linux).
 
@@ -22,7 +22,7 @@ Status in one paragraph: the cross-platform core (transport, host-side client, c
                                                 └──────────────────────────────────────────────┘
 ```
 
-| Crate (`rust/plugin-host/crates/`) | Kind | Contents |
+| Crate (`crates/plugin-host/crates/`) | Kind | Contents |
 |---|---|---|
 | `transport` (`stpc-transport`) | lib | Shared region layout, notification queue, wake-up primitive, control channel, protocol messages and encoding, anonymous shared memory. |
 | `client` (`stpc-client`) | lib | What the host application links: `Supervisor`, `Instance`, events; `Scanner` (installed plug-ins). |
@@ -304,10 +304,10 @@ Nothing of this has run on macOS. With the container built there, take a few wel
 
 Format `"au"`: version 2 components and version 3 extensions, both through `AUAudioUnit` (AudioToolbox, AVFAudio, CoreAudioKit for views), written in Rust on `objc2` and its framework crates. There is no Swift, Objective-C or C++ source in the tree. The container's main thread runs AppKit on macOS; the editor window helper is shared with the VST3 backend.
 
-**Status: nothing in this section has run.** It was written on Linux. Everything that needs no Mac is in platform-independent modules and tested on Linux (54 unit tests); the rest is type-checked for `aarch64-apple-darwin` (clippy clean) and written from Apple's documented contracts and from what the previous Swift host learned (`AudioPluginRack*.swift`). [Validating on a Mac](#validating-audio-units-on-a-mac) is the ordered list of what to run first, with `tests/au.rs` as its automated part.
+**Status: nothing in this section has run.** It was written on Linux. Everything that needs no Mac is in platform-independent modules and tested on Linux (54 unit tests); the rest is type-checked for `aarch64-apple-darwin` (clippy clean) and written from Apple's documented contracts. [Validating on a Mac](#validating-audio-units-on-a-mac) is the ordered list of what to run first, with `tests/au.rs` as its automated part.
 
 ```sh
-cd rust/plugin-host
+cd crates/plugin-host
 cargo test -p stpc-container --lib au::                                      # Linux: the platform-independent logic
 CC_aarch64_apple_darwin=clang cargo check  --target aarch64-apple-darwin -p stpc-container --all-targets
 CC_aarch64_apple_darwin=clang cargo clippy --target aarch64-apple-darwin -p stpc-container --all-targets
@@ -413,7 +413,7 @@ Carried over from the old host:
 `state()` returns a small frame (`STAU`, version, payload kind, flags, the component's three codes, length) around `fullStateForDocument` (or `fullState` if the unit has none), serialised as a binary property list. `set_state` refuses a frame saved by another component with a readable message, and also accepts a bare property list, which is what an `.aupreset` file contains.
 
 * **Values a property list cannot hold** (the old host failed the whole save on them): the dictionary is then written as a keyed archive, which keeps them; only if that fails too are the offending values left out, and the frame says so. Objective-C exceptions raised while reading, writing or restoring state become errors.
-* **Byte-identical state for an unchanged plug-in.** Property-list serialisation does not order dictionaries deterministically. Each capture also computes a canonical form (keys sorted, number types preserved); if it equals the previous capture's, the previous bytes are returned. After a restore the loaded bytes become that reference. A capture always reads the unit's real state first; reuse never substitutes for it (this replaces `AudioAUStateReuse.swift`).
+* **Byte-identical state for an unchanged plug-in.** Property-list serialisation does not order dictionaries deterministically. Each capture also computes a canonical form (keys sorted, number types preserved); if it equals the previous capture's, the previous bytes are returned. After a restore the loaded bytes become that reference. A capture always reads the unit's real state first; reuse never substitutes for it.
 * After a state or preset load the backend re-reads the tree and the latency, and tells a bridged unit's parameter listeners that everything may have changed (what refreshes the unit's own Cocoa view).
 
 ### Editors and windows on macOS
@@ -561,7 +561,7 @@ After a request has failed with `ContainerDied`, and after `kill_container`, the
 All of this ran on Linux x86-64 (4 cores, shared virtual machine), in debug and `--release`, each with address waits and with `STPC_TEST_WAKE=pipe`, and with `STPC_SHM=posix`. Every integration test spawns the real container binary through a real `Supervisor` and ends by asserting that no container process or zombie, no socket, no socket directory and no named shared-memory object is left.
 
 ```sh
-cd rust/plugin-host
+cd crates/plugin-host
 cargo test
 cargo test --release
 STPC_TEST_WAKE=pipe cargo test  # the portable wake-up path
@@ -641,7 +641,7 @@ Nothing below has run on macOS. `cargo check --target aarch64-apple-darwin --all
 
 ## In the application
 
-The application's host uses the client through `st_audio::plugins` (`rust/st-audio/src/plugins/`, `cargo doc -p st-audio`): a `PluginManager` owns the `Supervisor` and one instance per plug-in of the project, `PluginInsert` puts an instance into the mixer graph as an effect or an instrument (one `process_raw` call per block, parameter changes and notes as timed events, the time left in the device callback as the deadline, no deadline in the offline copy used for exports), `Catalog` wraps the `Scanner`, and a recovery store holds back plug-ins that crash twice in a row while loading. The bridge commands are in `st_host::areas::plugins` (`docs/RUST_PORT_STATUS.md`).
+The application's host uses the client through `st_audio::plugins` (`crates/st-audio/src/plugins/`, `cargo doc -p st-audio`): a `PluginManager` owns the `Supervisor` and one instance per plug-in of the project, `PluginInsert` puts an instance into the mixer graph as an effect or an instrument (one `process_raw` call per block, parameter changes and notes as timed events, the time left in the device callback as the deadline, no deadline in the offline copy used for exports), `Catalog` wraps the `Scanner`, and a recovery store holds back plug-ins that crash twice in a row while loading. The bridge commands are in `st_host::areas::plugins` (`docs/HOST.md`).
 
 ## Open points and risks
 

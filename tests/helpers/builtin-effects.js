@@ -1,7 +1,7 @@
 'use strict';
 // The real built-in effect catalogue (ranges, units, curves, labels) as JSON, in the shape of the
 // `builtin.effects` bridge command: tests/fixtures/builtin-effects.json, which the engine crate generates
-// from its catalogue and keeps up to date (rust/tracker-engine/tests/effects_metadata.rs fails when the
+// from its catalogue and keeps up to date (crates/tracker-engine/tests/effects_metadata.rs fails when the
 // file is stale; UPDATE_EFFECT_METADATA=1 cargo test -p tracker-engine --test effects_metadata rewrites it).
 const fs = require('node:fs'), path = require('node:path');
 

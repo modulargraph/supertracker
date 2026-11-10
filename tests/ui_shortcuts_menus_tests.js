@@ -109,21 +109,13 @@ async function test(name, run) { await run(); count++; console.log('PASS ' + nam
     assert.equal(new Set(names).size, names.length);
   });
 
-  await test('native menu key equivalents are unique (app items and system items alike)', () => {
-    const swift = fs.readFileSync('Sources/SuperTracker/App.swift', 'utf8');
-    const start = swift.indexOf('private func createMenus()'), body = swift.slice(start, swift.indexOf('private func add(', start));
+  await test('native menu key equivalents are unique', () => {
+    // crates/st-app/src/menus.rs: `keyed(title, command, shortcut)`; a Rust test there checks each one parses.
+    const menus = fs.readFileSync('crates/st-app/src/menus.rs', 'utf8');
     const seen = new Map();
-    const remember = (shortcut, title) => {
-      assert(!seen.has(shortcut), `${title} and ${seen.get(shortcut)} share ${shortcut}`);
-      seen.set(shortcut, title);
-    };
-    for (const m of body.matchAll(/add\(\w+, "([^"]+)", (?:"[^"]*"|"view:" \+ command), ("[^"]*"|f6|String\(index \+ 1\))(?:, modifiers: (\[[^\]]*\]))?\)/g)) {
-      if (m[2] === '""') continue;
-      if (m[2].startsWith('String')) { for (let i = 1; i <= 7; i++) remember(`[.command]${i}`, m[1] + i); continue; }
-      remember(`${m[3] || '[.command]'}${m[2]}`, m[1]);
-    }
-    for (const m of body.matchAll(/addItem\(withTitle: "([^"]+)", action: [^,]+, keyEquivalent: "([^"]+)"\)(?:\s*\n\s*\w+\.keyEquivalentModifierMask = (\[[^\]]*\]))?/g)) {
-      remember(`${m[3] || '[.command]'}"${m[2]}"`, m[1]);
+    for (const m of menus.matchAll(/\bkeyed\("([^"]+)", "[^"]+", "([^"]+)"\)/g)) {
+      assert(!seen.has(m[2]), `${m[1]} and ${seen.get(m[2])} share ${m[2]}`);
+      seen.set(m[2], m[1]);
     }
     assert(seen.size >= 20, 'parsed ' + seen.size);
   });

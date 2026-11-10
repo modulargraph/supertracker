@@ -117,9 +117,7 @@ test('a refused sampler attach restores canonical native state and retries the s
   assert.equal(h.calls.filter(c=>c.command==='audio.record').length,1);assert.equal(h.calls.filter(c=>c.command==='audio.stopRecord').length,1);assert.equal(h.edits.length,1);
  }
 });
-test('authorized footer and native modal close keep restoration busy through the real quit gate without stranding the dialog',async()=>{
-  const bridgeSource=fs.readFileSync(path.join(__dirname,'../Sources/SuperTracker/Bridge.swift'),'utf8');
-  const quitSource=bridgeSource.match(/private static let projectSnapshotScript = """\n([\s\S]*?)\n    """/)[1];
+test('authorized footer and native modal close keep restoration busy through the page quit gate without stranding the dialog',async()=>{
   for(const close of ['footer','native']){
     const gate=wait();let configurations=0;
     const h=harness({'audio.configure':async payload=>{if(++configurations===2)await gate.promise;return payload;}});
@@ -129,8 +127,8 @@ test('authorized footer and native modal close keep restoration busy through the
     await h.open();await h.get('record-meter-enable').fire('click');
     if(close==='footer')await h.get('record-close').fire('click');else h.ST.closeModal();
     assert.equal(h.state.modal,null,'An authorized close must dismiss the dialog');assert.equal(configurations,2);assert(h.ui.isBusy,'Pending input restoration still owns the audio-settings gate');
-    assert.equal(vm.runInContext(quitSource,h.context).ok,false,'Quit must wait for the accepted input restoration');
-    gate.resolve();for(let i=0;i<12;i++)await Promise.resolve();assert(!h.ui.isBusy);assert.equal(vm.runInContext(quitSource,h.context).ok,true);
+    assert.match(app.quitBlocker(),/audio recording/,'Quit must wait for the accepted input restoration');
+    gate.resolve();for(let i=0;i<12;i++)await Promise.resolve();assert(!h.ui.isBusy);assert.equal(app.quitBlocker(),null);
     await h.open();assert.equal(h.state.modal,'recording');
   }
 });

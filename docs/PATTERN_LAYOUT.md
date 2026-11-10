@@ -1,6 +1,6 @@
 # Pattern view layout: lane headers, destination strip and toolbar
 
-Status: implemented (Resources/Web: `app-pattern-columns.js` `trackSource` / `trackHeader`, `app-pattern-view.js` `renderPattern`, `app-pattern-bind.js` `bindPattern`,
+Status: implemented (ui: `app-pattern-columns.js` `trackSource` / `trackHeader`, `app-pattern-view.js` `renderPattern`, `app-pattern-bind.js` `bindPattern`,
 `styles.css` "Pattern header" block, `pattern-destination.css`).
 
 ## Why

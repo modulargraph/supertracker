@@ -1,10 +1,10 @@
 'use strict';
-// End-to-end test of the Rust host: the real interface, in Chromium, against `supertracker --serve`.
+// End-to-end test of the host: the real interface, in Chromium, against `supertracker --serve`.
 //
 //   node tests/host_e2e/run.js [path/to/supertracker]
 //
 // The executable defaults to $SUPERTRACKER_BIN, then $CARGO_TARGET_DIR/debug/supertracker, then
-// rust/target/{debug,release}/supertracker. Build it first: cd rust && cargo build -p st-app
+// target/{debug,release}/supertracker. Build it first: cargo build -p st-app
 // See tests/host_e2e/README.md.
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
@@ -17,9 +17,9 @@ const NOTE = { note: 64, instrument: 0, velocity: 97 };
 function executable() {
   const candidates = [process.argv[2], process.env.SUPERTRACKER_BIN,
     process.env.CARGO_TARGET_DIR && path.join(process.env.CARGO_TARGET_DIR, 'debug/supertracker'),
-    path.join(repository, 'rust/target/debug/supertracker'), path.join(repository, 'rust/target/release/supertracker')].filter(Boolean);
+    path.join(repository, 'target/debug/supertracker'), path.join(repository, 'target/release/supertracker')].filter(Boolean);
   const found = candidates.find(candidate => fs.existsSync(candidate));
-  if (!found) throw new Error('Build the host first (cd rust && cargo build -p st-app) or pass the path to supertracker. Looked in:\n  ' + candidates.join('\n  '));
+  if (!found) throw new Error('Build the host first (cargo build -p st-app) or pass the path to supertracker. Looked in:\n  ' + candidates.join('\n  '));
   return found;
 }
 
@@ -33,7 +33,7 @@ const environment = folder => ({ ...process.env, SUPERTRACKER_SUPPORT_DIR: path.
 
 /** Starts the host and resolves with its process and the URL it prints first. */
 function startHost(bin, folder, extra = []) {
-  const host = spawn(bin, ['--serve', '--ui', path.join(repository, 'Resources/Web'), '--dialog-answers', path.join(folder, 'answers.json'), ...extra], {
+  const host = spawn(bin, ['--serve', '--ui', path.join(repository, 'ui'), '--dialog-answers', path.join(folder, 'answers.json'), ...extra], {
     env: environment(folder), stdio: ['pipe', 'pipe', 'pipe']
   });
   host.log = '';
@@ -138,12 +138,12 @@ function mcpSession(bin, folder) {
 
 const GAIN = 'clap:org.supertracker.test.gain';
 
-/** The plug-in container and the CLAP test plug-in of rust/plugin-host next to the host executable (the place the
+/** The plug-in container and the CLAP test plug-in of crates/plugin-host next to the host executable (the place the
     host looks for its container), built there when missing; the plug-in is installed into `<folder>/Plug-Ins`. */
 function installTestPlugin(bin, folder) {
   const build = path.dirname(bin), library = path.join(build, process.platform === 'darwin' ? 'libstpc_clap_test_plugin.dylib' : 'libstpc_clap_test_plugin.so');
   if (!fs.existsSync(path.join(build, 'supertracker-plugin-container')) || !fs.existsSync(library)) {
-    const built = spawnSync('cargo', ['build', '--manifest-path', path.join(repository, 'rust/plugin-host/Cargo.toml'), '-p', 'stpc-container', '-p', 'stpc-clap-test-plugin',
+    const built = spawnSync('cargo', ['build', '--manifest-path', path.join(repository, 'crates/plugin-host/Cargo.toml'), '-p', 'stpc-container', '-p', 'stpc-clap-test-plugin',
       ...(path.basename(build) === 'release' ? ['--release'] : [])], { env: { ...process.env, CARGO_TARGET_DIR: path.dirname(build) }, encoding: 'utf8', timeout: 900000 });
     if (built.status !== 0 || !fs.existsSync(library)) throw new Error('The plug-in container and its test plug-in could not be built next to ' + bin + ':\n' + built.stderr);
   }
@@ -191,7 +191,7 @@ async function main() {
     const origin = new URL(url).origin, token = new URL(url).searchParams.get('token');
     const socketBase = origin.replace('http', 'ws') + '/bridge?token=';
     assert.equal((await fetch(origin + '/index.html')).status, 200);
-    assert.equal((await fetch(origin + '/../rust/Cargo.toml')).status, 404);
+    assert.equal((await fetch(origin + '/../Cargo.toml')).status, 404);
     assert.equal((await fetch(origin + '/bridge?token=' + token)).status, 426, 'the bridge is a WebSocket, not a page');
     assert.equal(await openSocket(socketBase + 'wrong'), 'refused');
     // Node's WebSocket sends no Origin header: a client that is not the served page is refused even with the token.
@@ -213,7 +213,7 @@ async function main() {
     for (const command of ['ready', 'engine.project', 'project.save', 'project.open', 'settings.get']) assert.ok(boot.commands.includes(command), command);
     assert.ok(!boot.commands.includes('ui.contextMenu'), 'a host without a window has no native menus');
     const ready = await request(page, 'ready');
-    assert.equal(ready.ok.version, '0.1.0');
+    assert.match(ready.ok.version, /^\d+\.\d+\.\d+$/);
     assert.notEqual(ready.ok.version, 'browser preview');
     // The library starts with this run's own kit folder; MIDI devices are off for the run.
     assert.deepEqual(ready.ok.roots.map(root => root.path), [path.join(folder, 'support/Kits')]);
@@ -241,11 +241,11 @@ async function main() {
     pass('a note entered in the page is saved to the chosen file through project.save');
 
     // ---- An unimplemented command fails with its name, and the page carries on ---------------
-    // (Whichever of these the host has not ported yet; the list shrinks as areas arrive.)
-    const unported = ['freeze.track', 'audio.record', 'routing.apply', 'audio.renderDiagnostics', 'plugin.captureBasePatch', 'plugin.load'].find(command => !boot.commands.includes(command));
-    if (unported) {
-      const refused = await request(page, unported, { track: 0, kind: 'instrument' });
-      assert.match(refused.error, new RegExp('^`' + unported.replace('.', '\\.') + '` is not implemented in the Rust host yet \\(it belongs to st-[a-z*-]+\\)\\.$'));
+    // (Whichever of these the host does not implement yet.)
+    const unimplemented = ['freeze.track', 'audio.record', 'routing.apply', 'audio.renderDiagnostics', 'plugin.captureBasePatch', 'plugin.load'].find(command => !boot.commands.includes(command));
+    if (unimplemented) {
+      const refused = await request(page, unimplemented, { track: 0, kind: 'instrument' });
+      assert.match(refused.error, new RegExp('^`' + unimplemented.replace('.', '\\.') + '` is not implemented yet \\(it belongs to st-[a-z*-]+\\)\\.$'));
     }
     assert.equal((await request(page, 'no.such.command')).error, '`no.such.command` is not a command this host knows.');
     assert.deepEqual(await request(page, 'settings.set', { key: 'e2e', value: 7 }), { ok: {} });
@@ -288,7 +288,7 @@ async function main() {
     await page.click('#view-pattern');
 
     // ---- The session survives the host: quit it cleanly, start it again, and the page gets the project
-    const foreign = problems.filter(text => !/not implemented in the Rust host yet|Failed to load resource/.test(text));
+    const foreign = problems.filter(text => !/not implemented yet|Failed to load resource/.test(text));
     assert.deepEqual(foreign, [], 'the page reported errors');
     assert.equal(await quit(host), 0, 'the host must exit cleanly on quit\n' + host.log);
     await page.waitForFunction(() => /connection to the SuperTracker host was lost/.test(document.querySelector('#toast-region').innerText), null, { timeout: 5000 });
@@ -349,7 +349,7 @@ async function main() {
     const stopped = await page.evaluate(() => ST.state.status.seconds);
     await page.waitForTimeout(300);
     assert.equal(await page.evaluate(() => ST.state.status.seconds), stopped, 'a stopped transport does not move');
-    assert.deepEqual(problems.filter(text => !/not implemented in the Rust host yet|Failed to load resource/.test(text)), [], 'the page reported errors while playing');
+    assert.deepEqual(problems.filter(text => !/not implemented yet|Failed to load resource/.test(text)), [], 'the page reported errors while playing');
     pass('Stop stops the transport');
 
     // ---- Samples and export: a WAV loaded from the page is heard; the song is exported to a file -------
@@ -472,7 +472,7 @@ async function main() {
     }
     assert.equal(reopened.ok?.parameters?.[0]?.value, 0.5, 'the reopened project restores the saved gain: ' + JSON.stringify(reopened));
     assert.equal((await request(page, 'plugin.state', target)).ok.state, stored.state, 'the restored plug-in reads back the saved state');
-    assert.deepEqual(problems.filter(text => !/not implemented in the Rust host yet|Failed to load resource/.test(text)), [], 'the page reported errors with plug-ins');
+    assert.deepEqual(problems.filter(text => !/not implemented yet|Failed to load resource/.test(text)), [], 'the page reported errors with plug-ins');
     pass('the project saves the plug-in with its state, and opening it again restores the plug-in with that state');
     assert.equal(await page.evaluate(() => ST.projectAction('demo')), true, 'loading the demo again failed: ' + await toasts(page));
     await page.click('#view-pattern');
@@ -530,7 +530,7 @@ async function main() {
     const back = await mcp.tool('get_song');
     assert.equal(back.isError, false, back.text);
     assert.equal(await mcp.close(), 0, 'the MCP server exits cleanly when its input ends');
-    assert.deepEqual(problems.filter(text => !/not implemented in the Rust host yet|Failed to load resource/.test(text)), [], 'the page reported errors during AI control');
+    assert.deepEqual(problems.filter(text => !/not implemented yet|Failed to load resource/.test(text)), [], 'the page reported errors during AI control');
     pass('AI control turned off in Settings disconnects the clients; turned on again, the MCP session reconnects');
     assert.equal(await quit(host), 0);
     host = null;

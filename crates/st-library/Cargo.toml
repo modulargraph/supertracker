@@ -1,0 +1,17 @@
+[package]
+name = "st-library"
+version.workspace = true
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "SuperTracker's sound library: index and search, NKS metadata and presets, kits, Maschine group import."
+publish = false
+
+[dependencies]
+st-project = { path = "../st-project" }
+# Request/response types of the bridge commands (MIT/Apache-2.0).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# SHA-256 of samples collected into kit packages (RustCrypto, MIT/Apache-2.0; already used by st-project).
+sha2 = "0.10"
+# Substring search over the index (SIMD memmem; Unlicense/MIT; already in the tree through serde_json).
+memchr = "2"

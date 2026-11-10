@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const duplicate = require('../Resources/Web/track-duplicate-project.js');
+const duplicate = require('../ui/track-duplicate-project.js');
 const project = {
   tracks: [{id: 0, name: 'Performance', instrument: 0}], instruments: [{id: 0, type: 'sample'}],
   patterns: [{id: 0, length: 1, steps: [[null]]}], sequence: [0],

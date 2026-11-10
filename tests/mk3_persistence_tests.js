@@ -23,7 +23,6 @@ function controller(){
  const write=delta=>m.page().knobs[0].turn(delta);
  return {...h,m,write};
 }
-function quitScript(name){const swift=fs.readFileSync(process.env.ST_BRIDGE_SOURCE||path.join(__dirname,'../Sources/SuperTracker/Bridge.swift'),'utf8');const marker=`private static let ${name} = """`;const start=swift.indexOf(marker);assert(start>=0);return swift.slice(start+marker.length,swift.indexOf('"""',start+marker.length));}
 test('Save settles an unfinished MK3 gesture exactly once',async()=>{
  const h=controller(),before=h.ST.state.project.tracks[0].volume;h.write(-.2);assert.equal(h.ST.state.project.tracks[0].volume,before);
  assert.equal(await h.ST.projectAction('save'),true);const saved=h.calls.find(x=>x.command==='project.save');assert(saved.payload.project.tracks[0].volume<before);assert.equal(h.ST.state.undo.length,1);assert.equal(h.m.hasPendingEdits,false);
@@ -44,13 +43,13 @@ test('Knob activity arriving during Save stays dirty and remains pending',async(
  const h=controller();h.write(-.1);const owner=h.ST.state.project;let resolveSave;h.handlers.set('project.save',p=>new Promise(resolve=>resolveSave=()=>resolve({saved:true,project:copy(p.project),path:'/tmp/piece.supertracker'})));
  const saving=h.ST.projectAction('save');for(let i=0;i<40&&!resolveSave;i++)await tick();assert(resolveSave);h.write(-.1);resolveSave();assert.equal(await saving,false);assert.equal(h.ST.state.project,owner);assert.equal(h.ST.state.dirty,true);assert(h.m.hasPendingEdits);
 });
-test('Native quit flush captures an unfinished MK3 gesture before snapshot',async()=>{
- const h=controller(),before=h.ST.state.project.tracks[0].volume;h.write(-.2);await vm.runInContext('(async()=>{'+quitScript('flushEditsScript')+'})()',h.context);
- h.window.__supertracker={getProject:()=>copy(h.ST.state.project)};const result=vm.runInContext(quitScript('projectSnapshotScript'),h.context);assert.equal(result.ok,true);assert(result.project.tracks[0].volume<before);assert.equal(h.ST.state.undo.length,1);
+test('Quit flush captures an unfinished MK3 gesture before snapshot',async()=>{
+ const h=controller(),before=h.ST.state.project.tracks[0].volume;h.write(-.2);await h.window.STApp.flushEditsForQuit();
+ assert.equal(h.window.STApp.quitBlocker(),null);assert(h.ST.state.project.tracks[0].volume<before);assert.equal(h.ST.state.undo.length,1);
 });
-test('Native quit refuses a checkpoint when controller validation still rejects',async()=>{
- const h=controller();h.write(-.2);h.window.STFreeze={checkMutation:()=>({message:'Unfreeze first'}),explain(){}};await vm.runInContext('(async()=>{'+quitScript('flushEditsScript')+'})()',h.context);h.window.__supertracker={getProject:()=>copy(h.ST.state.project)};
- const result=vm.runInContext(quitScript('projectSnapshotScript'),h.context);assert.equal(result.ok,false);assert(h.m.hasPendingEdits);
+test('Quit refuses a checkpoint when controller validation still rejects',async()=>{
+ const h=controller();h.write(-.2);h.window.STFreeze={checkMutation:()=>({message:'Unfreeze first'}),explain(){}};await h.window.STApp.flushEditsForQuit();
+ assert.match(h.window.STApp.quitBlocker(),/pending Maschine control edit/);assert(h.m.hasPendingEdits);
 });
 
 // Constant tempo (tempo maps were removed): the MK3 tempo overlay edits project.bpm as one pending gesture.

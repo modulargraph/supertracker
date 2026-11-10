@@ -8,19 +8,12 @@ redesign in phases. It covers what is closer to Maschine and where a tracker sho
 
 Sources:
 
-- the code (`Resources/Web/mk3.js`, `mk3-screens.js`, `mk3-sim.js`, `Sources/SuperTracker/MaschineMK3*.swift`);
+- the code (`ui/mk3.js`, `mk3-screens.js`, `mk3-sim.js`, the crate `st-mk3`);
 - `docs/MASCHINE_MK3.md`, which remains the control map of the current build;
 - NI's hardware layout (printed labels, verified 25 Oct 2026:
   <https://docs.native-instruments.com/online-guides/maschine-accessibility/en/maschine-hardware-layout>);
 - the Maschine MK3 / Maschine 2–3 manuals' interaction model (Group/Sound/Pattern/Scene/Section, Control/Plug-in/
   Channel modes, Browse, Pad modes, Step, Note Repeat/Arp, Lock snapshots, Events, Variation, Smart Strip).
-
-The rendered screens referenced in §1–7 are in `test-output/mk3-design/*.png` (the interface before phase 1); the
-phase-1 screens are in `test-output/mk3-design/phase1/*.png` (§9). Each PNG holds both 480 × 272 screens,
-drawn by the native renderer (`MK3ScreenRenderer`, so the fonts and clipping match the hardware), with the group
-(A–H) and pad LED colours beneath. The PNGs show LED colours as sent, not as quantised by the hardware palette. To
-regenerate them, use `test-output/mk3-design/tools/` (`capture.js` drives the real `mk3.js` with the demo project,
-and `render-main.swift` is compiled with `MaschineMK3Protocol.swift` + `MaschineMK3Screen.swift`).
 
 ---
 
@@ -402,7 +395,7 @@ These are the reasons to use SuperTracker. The redesign makes the *controls* Mas
 ## 8. Fixes made during this study (already implemented)
 
 See the final report for file/line detail. All of these are covered by `tests/mk3_state_sync_tests.js` and
-`tests/MaschineMK3ProtocolTests.swift`:
+`crates/st-mk3/tests/protocol.rs`:
 
 - LED palette:
   - muted track colours no longer quantise to white on groups/pads;
@@ -424,12 +417,10 @@ See the final report for file/line detail. All of these are covered by `tests/mk
 
 ## 9. Phase 1 as implemented
 
-All five phase-1 items are in `Resources/Web/mk3.js` (controller pages) and `Resources/Web/mk3-screens.js` (display
-lists); the native side (`MaschineMK3*.swift`) needed no change, since the new screens use the existing draw ops.
+All five phase-1 items are in `ui/mk3.js` (controller pages) and `ui/mk3-screens.js` (display
+lists); the host side (`st-mk3`) needed no change, since the new screens use the existing draw ops.
 Tests: `tests/mk3_phase1_tests.js` (one group per item) plus the updated `tests/mk3_*` suites
-(`./scripts/test.sh --only mk3`). Renders: `test-output/mk3-design/phase1/*.png`, regenerated with
-`node test-output/mk3-design/tools/capture-phase1.js out.json`, then `render-main.swift` as described at the top (copy it to
-`main.swift` when compiling it with `swiftc`).
+(`./scripts/test.sh --only mk3`). 
 
 ### 9.1 Home across both screens (PNG 01–08, 42, 50, 54)
 
@@ -491,7 +482,7 @@ Tests: `tests/mk3_phase1_tests.js` (one group per item) plus the updated `tests/
   "Bypassed" while off; the chain list shows "· off") and display button 8 is Remove. Remove asks first: the button
   turns into a lit "Confirm" with the flash "Remove *name*? Press again" for 2.5 s; Shift + Remove removes at once.
   Both are one Undo step. Built-in effects show their curated pages (`effect-pages.js`). Tests:
-  `tests/mk3_effect_pages_tests.js`; renders: `node test-output/mk3-design/tools/capture-effects.js out.json`.
+  `tests/mk3_effect_pages_tests.js`.
 
 ### 9.4 Encoder modes, no full-screen overlays (PNG 10–16, 32)
 
@@ -521,4 +512,3 @@ Tests: `tests/mk3_phase1_tests.js` (one group per item) plus the updated `tests/
   - Shift + PATTERN adds a pattern.
   - **Not done:** the momentary hold.
 - FOLLOW makes the STEP page follow the playhead. Shift + STEP is plain STEP.
-

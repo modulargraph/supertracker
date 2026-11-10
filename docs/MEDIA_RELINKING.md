@@ -1,6 +1,6 @@
 # Missing-media relinking
 
-The relinker inventories instrument samples, multisample zones, timeline audio clips and retained takes, and frozen audio prints. Kit pads are ordinary tracks with ordinary instruments (see [kits as track groups](KIT_GROUPS_DESIGN.md)); the kit Sound inventory below applies to `.stkit` kit files and to projects saved before the conversion. A missing external disk is reported separately from an available file. Reconnecting the disk at the same path restores availability without rewriting the project.
+The relinker inventories instrument samples, multisample zones, timeline audio clips and retained takes, and frozen audio prints. Kit pads are ordinary tracks with ordinary instruments (see [kits](KITS.md)); the kit Sound inventory below applies to `.stkit` kit files and to projects saved before the conversion. A missing external disk is reported separately from an available file. Reconnecting the disk at the same path restores availability without rewriting the project.
 
 Search is read-only. Choose a replacement folder, or provide a root mapping such as `/Volumes/Sound Drive` → `/Volumes/Sound Drive 1`. A root mapping preserves the relative folder structure below that root. The relinker also checks the project's `.media` directory, matching filenames, and saved file sizes when a full fingerprint exists.
 

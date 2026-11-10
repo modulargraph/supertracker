@@ -4,7 +4,7 @@ const web = require('./helpers/web');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const S = require('../Resources/Web/send-effects.js');
+const S = require('../ui/send-effects.js');
 const project = (extra = {}) => ({ bpm: 120, tracks: [{ name: 'A', delaySend: .2, reverbSend: 0 }, { name: 'B' }], delay: { time: .375, feedback: .35, mix: .3 }, reverb: { size: .7, damping: .4, mix: .25 }, ...extra });
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });

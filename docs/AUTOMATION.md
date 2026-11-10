@@ -5,11 +5,10 @@
 - Each pattern owns its lanes: `project.patterns[].automation = [{id, track | owner, target, name, interpolation, points:[{row, value}]}]`.
   Rows are pattern rows (live recording stores 1/64-row points); a lane holds its first value before
   its first point and its last value after its last point.
-- `AudioProject.swift` sends native lanes to the engine with `st_engine_add_automation_point`;
-  bus, send and plug-in lanes are mapped by `AudioRoutingAutomation` and sent as host lanes
-  (`st_engine_add_host_automation_point`). The engine evaluates the lanes of the pattern that is
-  playing (`TrackerEngine::automation`) and publishes parameter events, which the host applies
-  sample-accurately (`AudioMixAutomation` for track and send levels).
+- `st-audio` (`project_sync.rs`) sends the engine's own lanes with `add_automation_point`;
+  bus, send and plug-in lanes are sent as host lanes (`add_host_automation_point`). The engine
+  evaluates the lanes of the pattern that is playing and publishes parameter events, which the
+  mixer graph applies sample-accurately.
 - When the playing pattern has **no lane** for a parameter (or an empty one), the engine leaves the
   parameter where the previous pattern put it. Stop, seek and project refresh reset to the base value.
 - In Song mode the engine plays `project.sequence` (a flat list of pattern ids; the arranger shows
@@ -24,7 +23,7 @@ plug-in step locks and live recording, plus a precedence rule users must learn (
 pattern lane, except…"). Every one of those paths already plays pattern lanes correctly.
 
 So SuperTracker keeps **one** model: automation lives in pattern lanes. Automating across patterns is
-an editing layer (`Resources/Web/automation-song.js`) that lays the song out as a timeline and writes
+an editing layer (`ui/automation-song.js`) that lays the song out as a timeline and writes
 what you draw into the pattern lanes of the slots it touches. Consequences:
 
 - Existing projects load, play and export exactly as before; no project field was added and the

@@ -1,5 +1,5 @@
 'use strict';
-// Sessions have no fixed track limit (only TRACK_SANITY_LIMIT = 1024, shared with the engine and Swift).
+// Sessions have no fixed track limit (only TRACK_SANITY_LIMIT = 1024, shared with the engine and the host).
 // Real app.js / studio.js / mk3.js: adding tracks past sixteen, the sanity bound, horizontal virtualization
 // of the pattern grid and mixer at 200+ tracks, and MK3 track banks of eight over any number of tracks.
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict');

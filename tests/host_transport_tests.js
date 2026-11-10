@@ -1,7 +1,7 @@
 'use strict';
 // host-transport.js: channel selection (web view, WebSocket, none) and what each channel guarantees.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
-const source = fs.readFileSync(path.join(__dirname, '../Resources/Web/host-transport.js'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '../ui/host-transport.js'), 'utf8');
 
 function load(window) {
   const context = vm.createContext({ window, URLSearchParams, console: { error() {} }, Promise, JSON, Set, Error });

@@ -1,5 +1,5 @@
 'use strict';
-// Maschine MK3 controller interface (Resources/Web/mk3.js + mk3-screens.js) without a browser or hardware:
+// Maschine MK3 controller interface (ui/mk3.js + mk3-screens.js) without a browser or hardware:
 // synthetic 'mk3.input' events drive the real app modules; LEDs and display lists are checked against the
 // software contract in docs/MASCHINE_MK3.md.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');

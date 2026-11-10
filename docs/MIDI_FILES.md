@@ -35,29 +35,4 @@ Channels use 1–16; programs and controller numbers use 0–127. `midiCCRanges`
 
 ## Verification
 
-`tests/MIDIFileTests.swift` generates independent SMF fixtures and inspects exported event bytes. Passing checks cover running status, velocity-zero note-offs, type 1 metadata, changing tempo, sustain, independent chord durations, microtiming gate compensation, controller carry across patterns, channel/program routing, sequence order, mapped controller curves, exact pattern boundaries, trailing silence, 17-row sustained notes, 256-row gate roundtrip, capacity warnings, and malformed lengths/status/VLQ/SMPTE rejection.
-
-```sh
-swiftc -module-cache-path /tmp/supertracker-swift-cache \
-  Sources/SuperTracker/MIDIFile.swift tests/MIDIFileTests.swift \
-  -o /tmp/supertracker-midi-tests
-/tmp/supertracker-midi-tests
-```
-
 The reader bounds files to 64 MiB and one million events, validates chunk boundaries and four-byte variable-length quantities, and does not execute or send imported SysEx data.
-
-## Virtual port verification
-
-`tests/MIDILoopbackTests.swift` compiles against the current production `MIDIHost.swift`. It creates a temporary CoreMIDI source and destination and explicitly selects their unique IDs; it never selects a physical output. It verifies running status, realtime messages, note/sustain/pitch bytes, source identity, input-channel filtering, output status lengths/channel preservation, note-off/CC123 bytes, clock/transport/program bytes, invalid-channel rejection and disabled output. The endpoint client is disposed when the test completes.
-
-```sh
-mkdir -p .build/test-bin .build/clang-module-cache
-swiftc -swift-version 5 -module-cache-path .build/clang-module-cache \
-  Sources/SuperTracker/MIDIHost.swift tests/MIDILoopbackTests.swift \
-  -o .build/test-bin/midi-loopback
-.build/test-bin/midi-loopback test-output/midi-loopback-report.json
-```
-
-Run with access to the macOS CoreMIDI service. A restricted command environment may be unable to create a client: the test then writes `status: skipped`, exits 77 and does not claim success. This service-dependent test is separate from the default file/DSP regression command.
-
-The recorded current-source run passed on 9 October 2026 with nine input and nine output messages. This establishes virtual CoreMIDI transport and byte handling, not physical-controller playing, hardware roundtrip timing, clock synchronization, sound-engine all-notes-off behavior or the complete application's MIDI-recording workflow. The native AU timing fixtures are separate evidence and do not substitute for external MIDI timing.

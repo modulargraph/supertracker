@@ -1,5 +1,5 @@
 'use strict';
-// Shared loader for the web UI sources (Resources/Web) in node vm contexts.
+// Shared loader for the web UI sources (ui) in node vm contexts.
 //
 // - Script order comes from index.html, so tests load exactly what the app loads.
 // - 'app.js' and 'mk3.js' are group names: they expand to the split module sets
@@ -9,7 +9,7 @@
 //   once, before the first module, exactly as index.html loads them first.
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 
-const WEB = path.join(__dirname, '../../Resources/Web');
+const WEB = path.join(__dirname, '../../ui');
 const file = name => path.join(WEB, name);
 const read = name => fs.readFileSync(file(name), 'utf8');
 

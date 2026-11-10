@@ -1,14 +1,14 @@
 # End-to-end tests of the Rust host
 
-These run the real interface (`Resources/Web`) against the real host (`rust/st-app`), not against a
+These run the real interface (`ui`) against the real host (`crates/st-app`), not against a
 stand-in. They need the executable to be built first:
 
 ```sh
-cd rust && cargo build -p st-app
+cargo build -p st-app
 ```
 
 Both scripts take the path of `supertracker` as their argument; without one they use
-`$SUPERTRACKER_BIN`, then `$CARGO_TARGET_DIR/debug/supertracker`, then `rust/target/debug/supertracker`.
+`$SUPERTRACKER_BIN`, then `$CARGO_TARGET_DIR/debug/supertracker`, then `target/debug/supertracker`.
 Each run works in a temporary folder (its own support folder through `SUPERTRACKER_SUPPORT_DIR`) and
 removes it.
 
@@ -28,7 +28,7 @@ Needs Node 22 and Playwright with Chromium (`require('playwright')`). It starts
 3. a note entered in the page is saved to a file through `project.save`, whose Save chooser is answered
    from the answers file; the file on disk contains the note;
 4. a command the host has not ported yet (the test takes one that is missing from `ready.commands`)
-   is refused with "… is not implemented in the Rust host yet …" and later requests still work;
+   is refused with "… is not implemented yet …" and later requests still work;
 5. after a reload the page gets the session back; New clears it; `project.open` through the (scripted)
    Open chooser brings the note back;
 6. `quit` on the host's standard input ends it with status 0, and the page reports the lost connection
@@ -57,8 +57,8 @@ machine. The control socket follows the run's support folder, so a run never mee
 that is open on the same machine.
 
 Plug-ins (after the audio checks): the run needs `supertracker-plugin-container` and the CLAP test
-plug-in of `rust/plugin-host` next to the host executable and builds them there when they are
-missing (`cargo build --manifest-path rust/plugin-host/Cargo.toml -p stpc-container -p
+plug-in of `crates/plugin-host` next to the host executable and builds them there when they are
+missing (`cargo build --manifest-path crates/plugin-host/Cargo.toml -p stpc-container -p
 stpc-clap-test-plugin` with the same target directory). It then checks that a folder holding the
 plug-in is scanned by container processes (`plugins.scan`) and listed with the built-in effects
 without the plug-in being mapped into the host (`/proc/<pid>/maps`); that the mixer's "Add

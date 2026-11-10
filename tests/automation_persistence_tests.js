@@ -25,7 +25,6 @@ function recording(){
  return {...h,r,write};
 }
 function recorded(p){return p.patterns.find(x=>x.id===p.activePattern).automation.find(x=>x.target==='volume');}
-function quitScript(name){const swift=fs.readFileSync(process.env.ST_BRIDGE_SOURCE||path.join(__dirname,'../Sources/SuperTracker/Bridge.swift'),'utf8');const marker=`private static let ${name} = """`;const start=swift.indexOf(marker);assert(start>=0);return swift.slice(start+marker.length,swift.indexOf('"""',start+marker.length));}
 test('Save captures a pending automation take as one history entry',async()=>{
  const h=recording();h.write(.31);assert.equal(recorded(h.ST.state.project),undefined);assert.equal(await h.ST.projectAction('save'),true);
  const saved=h.calls.find(x=>x.command==='project.save');assert(recorded(saved.payload.project),'Save omitted the current automation take');assert(recorded(saved.payload.project).points.some(x=>Math.abs(x.value-.41)<.001));assert.equal(h.ST.state.undo.length,1);assert.equal(h.r.hasPendingEdits,false);
@@ -47,12 +46,12 @@ test('Recording arriving during Save keeps newer edits dirty and retains their o
 test('Normal engine previews preserve a single pending take',async()=>{
  const h=recording();h.write(.3);await h.ST.syncEngineProject(()=>copy(h.ST.state.project));assert(h.r.hasPendingEdits);assert.equal(h.ST.state.undo.length,0);
 });
-test('Native quit flush commits the pending take before its checkpoint',async()=>{
- const h=recording();h.write(.35);await vm.runInContext('(async()=>{'+quitScript('flushEditsScript')+'})()',h.context);assert(recorded(h.ST.state.project),'Quit checkpoint would omit automation');
- h.window.__supertracker={getProject:()=>copy(h.ST.state.project)};const result=vm.runInContext(quitScript('projectSnapshotScript'),h.context);assert.equal(result.ok,true);assert(recorded(result.project));
+test('Quit flush commits the pending take before its checkpoint',async()=>{
+ const h=recording();h.write(.35);await h.window.STApp.flushEditsForQuit();assert(recorded(h.ST.state.project),'Quit checkpoint would omit automation');
+ assert.equal(h.window.STApp.quitBlocker(),null);assert(recorded(h.ST.state.project));
 });
-test('Native quit refuses an automation take that cannot commit',async()=>{
- const h=recording();h.write(.35);h.window.STFreeze={checkMutation:()=>({message:'Unfreeze this track first.'})};await vm.runInContext('(async()=>{'+quitScript('flushEditsScript')+'})()',h.context);h.window.__supertracker={getProject:()=>copy(h.ST.state.project)};
- const result=vm.runInContext(quitScript('projectSnapshotScript'),h.context);assert.equal(result.ok,false,'Quit accepted a checkpoint omitting the pending take');assert(h.r.hasPendingEdits);
+test('Quit refuses an automation take that cannot commit',async()=>{
+ const h=recording();h.write(.35);h.window.STFreeze={checkMutation:()=>({message:'Unfreeze this track first.'})};await h.window.STApp.flushEditsForQuit();
+ assert.match(h.window.STApp.quitBlocker(),/pending automation take/,'Quit accepted a checkpoint omitting the pending take');assert(h.r.hasPendingEdits);
 });
 (async()=>{let failed=0;for(const t of tests){try{await t.run();console.log('PASS '+t.name);}catch(e){failed++;console.error('FAIL '+t.name+'\n'+e.stack);}}console.log(`${tests.length-failed}/${tests.length} automation persistence groups passed`);process.exitCode=failed?1:0;})().catch(e=>{console.error(e);process.exitCode=1;});

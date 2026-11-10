@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const web = require('./helpers/web');
-const file = path.join(__dirname, '../Resources/Web/track-duplicate-project.js');
+const file = path.join(__dirname, '../ui/track-duplicate-project.js');
 const duplicate = require(file), copy = value => JSON.parse(JSON.stringify(value));
 const tests = [], test = (name, run) => tests.push({ name, run });
 globalThis.TRACK_SANITY_LIMIT = 1024; // app.js defines it in the app

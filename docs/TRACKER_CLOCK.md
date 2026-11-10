@@ -1,8 +1,8 @@
-# Immutable native clock foundation
+# Immutable clock
 
-`TrackerClock.h` provides a C ABI for an immutable tempo/meter map and a graph-time origin. The native engine now adopts it through an optional checked map API. **The saved project adapter, hosted plug-in callbacks, export UI, and tempo-map interface have not enabled the feature yet.** Existing projects without a map retain the legacy scheduling path. See `ENGINE_TIMING.md` for the engine integration contract.
+`tracker_engine::clock` provides an immutable tempo/meter map (`ClockMap`) and a timeline with a graph-time origin (`ClockTimeline`). The engine adopts it through an optional checked map API. **The host does not publish maps yet** (projects carry one tempo and meter); a project without a map is scheduled from its tempo alone. See `ENGINE_TIMING.md` for the engine integration contract.
 
-The implementation consists of `TrackerClock.cpp` and the internal `ClockTimingMap.hpp/.cpp`. The C layer adds sample quantization, timeline origins, preroll, loops, latency-adjusted contexts, and bounded span queries.
+The implementation is `crates/tracker-engine/src/clock/` (`timing_map.rs` is the map; `mod.rs` adds sample quantization, timeline origins, preroll, loops, latency-adjusted contexts, and bounded span queries).
 
 ## Coordinates and rounding
 
@@ -18,22 +18,15 @@ Tempo and meter events at the same exact beat take effect atomically. Distinct e
 
 Create a map and timeline on a control thread:
 
-```c
-STClockTempoEvent tempos[] = {{0, 120}, {16, 90}};
-STClockMeterEvent meters[] = {{0, 4, 4}, {32, 5, 8}};
-char error[256];
-STClockMap *map = st_clock_map_create(48000, tempos, 2, meters, 2,
-                                     1, error, sizeof error);
-if (!map) { /* Report error and return on the control thread. */ return; }
+```rust
+use tracker_engine::clock::{ClockMap, ClockMeterEvent, ClockOrigin, ClockTempoEvent, ClockTimeline};
 
-STClockOrigin origin = {0};
-origin.graphOriginFrame = 100000;
-origin.startBeat = 8;
-origin.playing = 1;
-origin.epoch = 1;
-STClockTimeline *timeline = st_clock_timeline_create(map, origin,
-                                                    error, sizeof error);
-st_clock_map_destroy(map); /* The timeline owns its map reference. */
+let tempos = [ClockTempoEvent { beat: 0.0, bpm: 120.0 }, ClockTempoEvent { beat: 16.0, bpm: 90.0 }];
+let meters = [ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }, ClockMeterEvent { beat: 32.0, numerator: 5, denominator: 8 }];
+let map = ClockMap::new(48000.0, &tempos, &meters, 1)?;        // revision 1; the error says what is wrong
+
+let origin = ClockOrigin { graph_origin_frame: 100_000, start_beat: 8.0, playing: 1, epoch: 1, ..Default::default() };
+let timeline = ClockTimeline::new(&map, origin)?;              // the timeline keeps its own reference to the map
 ```
 
 After successful creation, publish the immutable timeline through the host's render-safe ownership mechanism. Queries do not acquire ownership or perform reference-count operations. The owner must retain each timeline while readers or cached ranges can still refer to it. Destroy it on a control thread only after those readers are quiescent. Replacing a map or changing a seek/loop/play origin creates a new object; there are no mutable setters.
@@ -54,7 +47,7 @@ Queries before the origin are marked `ST_CLOCK_PREROLL` and extrapolate backward
 
 `st_clock_span` returns the largest prefix of the requested range that does not cross a tempo, meter, bar, loop, origin, or domain boundary. The context belongs to the first sample of that span. It combines boundary flags when several changes share a frame. Advance by the returned `frames` and query again for the remainder. A zero result at the domain endpoint terminates playback; callers must not retry the same zero-length span indefinitely. Requested lengths may be 1 through 65,536, including 4097 and other non-power-of-two pulls.
 
-This is a read-only timing query. It does not render audio, advance a sequencer, drain events, apply pending commands, inspect mutable transport status, or retain PCM. In particular, it does not solve overlapping AVAudioEngine pulls by itself. The host still needs timestamp-range output caches so a stateful AU/VST processes only each uncached suffix. Every unit's context and MIDI/parameter offsets must use the same timeline revision and latency coordinate as that suffix. Main and sidechain pulls need consistent context ownership.
+This is a read-only timing query. It does not render audio, advance a sequencer, drain events, apply pending commands, inspect mutable transport status, or retain PCM. In particular, it does not solve overlapping pulls of one source by itself. A host that pulls a source more than once per block needs timestamp-range output caches so a stateful plug-in processes only each uncached suffix. Every unit's context and MIDI/parameter offsets must use the same timeline revision and latency coordinate as that suffix. Main and sidechain pulls need consistent context ownership.
 
 An earlier Audio Unit experiment showed why splitting only the outer graph request is insufficient: a plug-in can ask for 4097 input frames during a 4096-frame output pull. Per-unit splitting plus range caching remains a later integration step.
 
@@ -68,7 +61,7 @@ Query work uses immutable vectors, bounded binary searches, and a bounded number
 
 ## Focused validation
 
-Run `cargo test -p tracker-engine --release --test clock` in `rust/` (the clock is `tracker_engine::clock`; a debug run, without `--release`, adds overflow and bounds checks). The eleven groups, as measured on the implementation snapshot of the C++ clock this was ported from:
+Run `cargo test -p tracker-engine --release --test clock` (the clock is `tracker_engine::clock`; a debug run, without `--release`, adds overflow and bounds checks). The eleven groups, as measured on the implementation snapshot of the C++ clock this was ported from:
 
 - Tempo/seconds/sample conversion and shortened 5/8 bars.
 - Exact and adjacent-representable ceil boundaries; atomic tempo/meter events.

@@ -1,18 +1,20 @@
-# Native frozen-stage timeline provider
+# Frozen-stage timeline provider
 
-Status: implemented, default disabled, pure native tests only. No Host/Rack/JavaScript activation is included. The existing input ACK structs, functions and recording-run semantics are unchanged.
+> The function names in this document are methods of the Rust engine (`tracker_engine::engine`: `ControlHalf` for edits and commands, `RenderHalf` for rendering and span queries; `cargo doc -p tracker-engine`). Errors are `Result`s.
+
+Status: implemented and tested in the engine, off by default; **the host does not use it** (see [AUDIO_FREEZE_EXTENT.md](AUDIO_FREEZE_EXTENT.md)).
 
 ## Control publication and lifetime
 
-`st_engine_set_frozen_song_policy(engine, enabled, publicationID, error, capacity)` edits the immutable project draft. Enable accepts exactly `1` and a nonzero publication ID; disable accepts exactly `0`. Checked project commit remains the atomic publication boundary. The setter catches allocation errors and leaves the draft policy unchanged on failure. Enabling lazily allocates one fixed 262,144-frame metadata history on the control thread, retained until quiescent engine destruction. It uses `sizeof(STFreezeContext) * 262144` bytes (22 MiB with the current ABI), outside the decoded freeze-PCM budget. Discarding a draft can leave this bounded reusable history allocated. No history allocation or destruction occurs on render/query paths.
+`set_frozen_song_policy(enabled, publicationID)` edits the immutable project draft. Enable accepts exactly `1` and a nonzero publication ID; disable accepts exactly `0`. Checked project commit remains the atomic publication boundary. The setter catches allocation errors and leaves the draft policy unchanged on failure. Enabling lazily allocates one fixed 262,144-frame metadata history on the control thread, retained until quiescent engine destruction. It uses `sizeof(STFreezeContext) * 262144` bytes (22 MiB with the current ABI), outside the decoded freeze-PCM budget. Discarding a draft can leave this bounded reusable history allocated. No history allocation or destruction occurs on render/query paths.
 
 The host supplies a fresh publication identity for the verified set of stage assets and retains their session owner separately. Publication ID alone is not a user-session identity. Graph installation, policy changes, rollback and source retirement require host quiescence/lifetime fencing. The provider neither owns decoded assets nor validates their SHA256 metadata.
 
 ## Preparation authority, including an entirely frozen song
 
-`st_engine_freeze_span(engine, graphFrame, requestedFrames, upstreamLatencyFrames, &span)` is a read-only query, serialized with `st_engine_render_bus`. It never processes commands, advances transport, renders audio or reads periodic status. It returns unavailable when the requested range has not been prepared.
+`freeze_span(graphFrame, requestedFrames, upstreamLatencyFrames, &span)` is a read-only query, serialized with `render_bus`. It never processes commands, advances transport, renders audio or reads periodic status. It returns unavailable when the requested range has not been prepared.
 
-The graph must retain a silent transport anchor or an equivalent serialized preflight that calls `st_engine_render_bus` for every needed new graph range. Null left/right output pointers and any valid bus are supported. This requirement remains when **every track is frozen or muted and no original source node is pulled**. The existing shared timestamp cache is the sole advancement authority: overlapping requests such as `(0,4097)`, `(0,4096)` and `(4096,4096)` generate each suffix once. A query cannot replace this preparation step. Preparing all dependent ranges must precede child/source rendering, with bounded retained PDC history; do not add a second independent clock or infer playback from status.
+The graph must retain a silent transport anchor or an equivalent serialized preflight that calls `render_bus` for every needed new graph range. Null left/right output pointers and any valid bus are supported. This requirement remains when **every track is frozen or muted and no original source node is pulled**. The existing shared timestamp cache is the sole advancement authority: overlapping requests such as `(0,4097)`, `(0,4096)` and `(4096,4096)` generate each suffix once. A query cannot replace this preparation step. Preparing all dependent ranges must precede child/source rendering, with bounded retained PDC history; do not add a second independent clock or infer playback from status.
 
 ## Exact contiguous spans
 
@@ -43,6 +45,6 @@ An applied explicit Stop immediately produces `STOPPED` and a new transition/pla
 
 ## Validation
 
-Run `cargo test -p tracker-engine --release --test engine_freeze_timeline` in `rust/` (without `--release` for a build with overflow and bounds checks). Ten groups cover allocation failure and invalid-policy rollback; fractional swung seek boundaries; pending/mid-row checkpoint restoration; exact no-freeze rollback; natural end versus Stop; tempo maps; clips extending by both whole samples and less than the legacy tolerance; 700+ loop wraps per pull; retained publication/PDC contexts; pattern exclusion; bounded history and coordinates; and transport preparation with all computation bits disabled. Render and query paths measure zero C++ allocations.
+Run `cargo test -p tracker-engine --release --test engine_freeze_timeline` (without `--release` for a build with overflow and bounds checks). Ten groups cover allocation failure and invalid-policy rollback; fractional swung seek boundaries; pending/mid-row checkpoint restoration; exact no-freeze rollback; natural end versus Stop; tempo maps; clips extending by both whole samples and less than the legacy tolerance; 700+ loop wraps per pull; retained publication/PDC contexts; pattern exclusion; bounded history and coordinates; and transport preparation with all computation bits disabled. Render and query paths measure zero C++ allocations.
 
-`rust/tracker-engine/tests/engine_freeze_timeline.rs` holds the pure tests. A separate legacy comparison checked nine fixtures against the original pre-timing engine, including overlapping bus pulls. These are bounded pure-engine proofs, not end-to-end production Freeze validation.
+`crates/tracker-engine/tests/engine_freeze_timeline.rs` holds the pure tests. A separate legacy comparison checked nine fixtures against the original pre-timing engine, including overlapping bus pulls. These are bounded pure-engine proofs, not end-to-end production Freeze validation.

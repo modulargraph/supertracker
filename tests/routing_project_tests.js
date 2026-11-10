@@ -3,7 +3,7 @@ const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const routing = require('../Resources/Web/routing-project.js');
+const routing = require('../ui/routing-project.js');
 
 {
   const project = { tracks: [{ id: 0 }, { id: 0 }, { routingID: 'saved' }] };

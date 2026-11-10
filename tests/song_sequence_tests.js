@@ -4,7 +4,7 @@ const web = require('./helpers/web');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const M = require('../Resources/Web/song-model.js');
+const M = require('../ui/song-model.js');
 const copy = value => JSON.parse(JSON.stringify(value));
 const pattern = (id, length = 16) => ({ id, name: 'P' + id, length, steps: [Array(length).fill(null)], automation: [] });
 const base = (sequence = [0, 0, 1, 2, 2, 2], extra = {}) => ({ linesPerBeat: 4, tracks: [{}], patterns: [pattern(0), pattern(1, 32), pattern(2)], sequence: sequence.slice(), loopSong: false, ...extra });

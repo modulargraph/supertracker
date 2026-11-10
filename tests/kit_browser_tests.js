@@ -56,7 +56,7 @@ function harness() {
       return {};
     }
   };
-  const groups = require('../Resources/Web/track-groups.js');
+  const groups = require('../ui/track-groups.js');
   const window = { ST, STGroups: groups, STKitGroups: { async loadKit(file, options) { loads.push({ file, options }); return true; }, createKit() { calls.push({ command: 'create' }); },
     cursorGroup: () => groups.ofTrack(state.project, state.track) } };
   const context = vm.createContext({ window, document, Map, Set, Promise, queueMicrotask: fn => Promise.resolve().then(fn),

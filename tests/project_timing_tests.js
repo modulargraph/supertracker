@@ -1,5 +1,5 @@
 'use strict';
-const assert=require('node:assert/strict'),timing=require('../Resources/Web/project-timing.js');
+const assert=require('node:assert/strict'),timing=require('../ui/project-timing.js');
 const copy=value=>JSON.parse(JSON.stringify(value));
 const mapped={bpm:99,timeSignature:{numerator:4,denominator:4},timing:{version:1,tempos:[{id:'a',beat:0,bpm:120},{id:'b',beat:4,bpm:60},{id:'c',beat:7.5,bpm:180}],meters:[{id:'a',beat:0,numerator:4,denominator:4},{id:'b',beat:5.5,numerator:7,denominator:8},{id:'c',beat:12.5,numerator:3,denominator:4}]}};
 const near=(actual,expected,epsilon=1e-9)=>assert(Math.abs(actual-expected)<=epsilon,`${actual} != ${expected}`);
