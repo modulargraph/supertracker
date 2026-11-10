@@ -297,6 +297,8 @@
 .studio-mixer>.studio-bottom{flex:0 0 auto;display:flex;align-items:stretch;gap:0 26px;max-height:min(calc(100% - 56px - 170px),46%);min-height:0}
 .studio-bottom>.studio-rack{flex:1.35 1 0;min-width:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:12px!important}
 .studio-bottom>.studio-returns,.studio-bottom>.studio-side{flex:1 1 0;min-width:280px;overflow-y:auto;overscroll-behavior:contain}
+/* The column clips at its own edge (it scrolls): a small inset keeps focus rings of right-aligned controls whole. */
+.studio-bottom>.studio-side{padding-right:6px}
 .studio-side{display:flex;flex-direction:column;border-left:1px solid var(--line)}
 .studio-side>.studio-routing-panel{border-left:0}
 .studio-side>.studio-fixed-returns{padding-left:24px!important}

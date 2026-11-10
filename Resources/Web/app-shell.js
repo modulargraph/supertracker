@@ -97,7 +97,7 @@
         + ` : ${String(state.row).padStart(2, '0')}</span></div><div class="separator">`
         + `</div><div class="readout"><span class="label">Tempo</span><input class="tempo" id="tempo"`
         + ` aria-label="Tempo in beats per minute" type="number" min="20" max="400" value="${p.timing?.tempos?.[0]?.bpm ?? p.bpm}"`
-        + ` title="${p.timing ? 'Initial tempo · edit all changes in Song → Tempo & meter' : 'Song tempo'}">`
+        + ` title="${p.timing ? 'Initial tempo of this song’s tempo map' : 'Song tempo'}">`
         + `</div><div class="readout"><span class="label">Grid</span><span class="value" style="font-size:12px">1/${p.linesPerBeat * 4}</span>`
         + `</div><button id="metronome" class="metronome ${p.metronome ? 'active' : ''}" aria-label="Metronome"`
         + ` aria-pressed="${!!p.metronome}" title="Toggle metronome · ⌘⇧M"><svg viewBox="0 0 20 22" aria-hidden="true">`

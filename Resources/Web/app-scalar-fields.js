@@ -58,6 +58,13 @@
   function bindScalarField(input, label, apply, owns = () => true, commit = null, options = {}) {
     const scope = app.scalarFields;
     input.addEventListener('input', () => scope.drafts.add(input));
+    // Escape leaves a typed field without committing it, as in the step fields: the stored value comes back
+    // before the key moves focus away (which would otherwise commit the draft).
+    input.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || input.type === 'range' || !scope.drafts.has(input)) return;
+      input.value = input.defaultValue;
+      scope.drafts.delete(input);
+    });
     input.addEventListener('blur', () => {
       scope.drafts.delete(input);
       if (scope.pending) paintScalarFields(scope);

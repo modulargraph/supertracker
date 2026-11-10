@@ -45,6 +45,9 @@
       const target = controls.find(el => el.closest('.modal-body') && field(el))
           || controls.find(el => el.closest('.modal-body'))
           || controls.find(field)
+          // Only text in the body: the default action rather than × (a destructive default waits for its own Tab).
+          || controls.find(el => el.closest('.modal-foot') && el.classList.contains('primary') && !el.classList.contains('danger'))
+          || controls.find(el => el.closest('.modal-foot'))
           || controls[0];
       target?.focus();
     }, 0);
