@@ -134,7 +134,7 @@
   const M = {
     connected: false, screens: false, exclusive: false, error: '',
     shift: false, held: new Map(), latched: null,
-    screen: 'notes', overlay: null, fileMenu: null, page: {},
+    screen: 'notes', overlay: null, page: {},
     padMode: 'pad', padAlt: false, padBank: { pad: 0, pattern: 0, scene: 0 }, stepPage: 0,
     // PATTERN page shown while PATTERN pad mode is pinned (patternPage); the pad mode to return to.
     patternPage: false, prevPadMode: 'pad',
@@ -144,13 +144,13 @@
     bank: 0, touched: new Set(), encoderAcc: new Map(), mainAcc: 0,
     strip: { mode: null, value: .5, touched: false, start: null }, perfFx: 'filter',
     fixedVel: false, fixedVelValue: 70, variationAmount: 12, lastNote: new Map(),
-    lists: { arranger: 0, patterns: 0, autoLanes: 0, pluginSlots: 0, file: 0, settings: 0 }, sendPage: 0,
+    lists: { patterns: 0, autoLanes: 0, file: 0, settings: 0 }, sendPage: 0,
     // Scroll position of every on-screen list (key → first visible row) and main-encoder acceleration.
     listTops: new Map(), mainRun: { at: -Infinity, direction: 0, count: 0 },
     // Browser columns: the focused column ('results' or a filter field), the filter cursors and a pending filter.
     browser: { focus: 'results', last: {}, cursor: {}, pending: null },
     knobs: { master: null, headphone: null, mic: null }, pedal: false,
-    taps: [], flash: null, lastView: null, wrapped: false, queued: null, bendTrack: null, modTrack: null, pedalTracks: null,
+    taps: [], flash: null, lastView: null, queued: null, bendTrack: null, modTrack: null, pedalTracks: null,
     // Count-in is app/engine state (ST.recordWithCountIn): remaining clicks from the native status.
     get countIn() {
       const count = st()?.countIn;

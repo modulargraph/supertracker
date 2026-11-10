@@ -144,10 +144,14 @@
     return { label: o.label, name: o.name || o.label, value: o.fmt(value), norm: clamp01(toNorm(value, o)), base: value, lock: o.lock || null, bipolar: o.min < 0 && o.max > 0, global: isGlobalKey(o.key),
       turn(delta) {
         const current = burstValue(o.key, o.read);
-        let next = fromNorm(clamp01(toNorm(current, o) + delta * (o.speed || 1)), o);
-        if (o.step) next = Math.round(next / o.step) * o.step;
+        // A stepped knob continues from the unrounded position of its gesture: one encoder count (0.001) is less
+        // than half a step, so rounding every turn on its own left Swing, fine Tempo and FX values stuck on slow turns.
+        const fine = o.step ? bursts.get(o.key)?.fine : null, from = fine && fine.shown === current ? fine.exact : current;
+        const exact = fromNorm(clamp01(toNorm(from, o) + delta * (o.speed || 1)), o);
+        let next = o.step ? Math.round(exact / o.step) * o.step : exact;
         next = Number(clamp(next, o.min, o.max).toFixed(6));
         burstEdit(o.key, o.label, o.read, o.write, next, { ref: o.ref, commit: o.commit });
+        if (o.step) bursts.get(o.key).fine = { shown: next, exact };
       } };
   }
   function intKnob(o) {

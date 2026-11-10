@@ -209,7 +209,7 @@
     const write = (p, v) => {
       const target = p.patterns.find(item => item.id === patternId); if (!target) return;
       let s = target.steps[track][row]; const key = find(s);
-      if (v === null) { if (key) { delete s[key]; if (s.note === -3 && !s.fx1 && !s.fx2) target.steps[track][row] = null; } return; }
+      if (v === null) { if (key) { delete s[key]; if (s.note === -3 && !s.fx1 && !s.fx2 && !s.columns) target.steps[track][row] = null; } return; }
       if (!s) { if (['probability', 'ratchet', 'microtiming', 'glide', 'reverse', 'offset', 'arpeggio',
           'slice'].includes(type)) return; s = ensureStep(p, target, track, row); }
       const slot = key || ['fx1', 'fx2'].find(k => !s[k]); if (!slot) return;

@@ -89,6 +89,18 @@ test('default effect load fills a free sparse slot; a full rack requires explici
   const reply=await h.call('loadPlugin',{plugin:'New FX',track:0,kind:'effect'});assert.equal(reply.ok,!full);if(full){assert.equal(loaded,undefined);assert.match(reply.error,/occupied/);assert.equal(h.state.undo.length,0)}else{assert.equal(loaded.slot,1);assert.equal(h.state.project.audioPlugins.find(x=>x.slot===2).state,'KEEP')}
  }
 });
+test('default NKS effect load fills a free sparse slot; a full rack requires explicit replacement',async()=>{
+ for(const full of [false,true]){
+  const h=harness();web.load(h.context,'nks-loader.js');const old=(full?Array.from({length:16},(_,i)=>i):[0,2]).map(slot=>({track:0,kind:'effect',slot,instanceID:'old'+slot,name:'Old'+slot,state:'KEEP'}));h.state.project.audioPlugins=clone(old);const loads=[];
+  h.ST.syncEngineProject=async make=>{make();return true};h.ST.request=async(command,payload)=>{if(command==='plugin.loadNKS'){loads.push(payload);return{component:'aufx:verb',name:'Verb',instanceID:'new',nks:{name:'Verb',path:payload.path},state:'NEW'}}throw Error(command)};
+  const reply=await h.call('loadNKS',{path:'/presets/Verb.nksfx',track:0,kind:'effect'});assert.equal(reply.ok,!full,reply.error);
+  if(full){assert.deepEqual(loads,[]);assert.match(reply.error,/occupied/);assert.equal(h.state.undo.length,0);assert.deepEqual(clone(h.state.project.audioPlugins),old)}
+  else{assert.equal(loads[0].slot,1);assert.equal(reply.result.slot,1);assert.equal(h.state.project.audioPlugins.find(x=>x.slot===2).state,'KEEP');assert.equal(h.state.project.audioPlugins.find(x=>x.slot===1).name,'Verb')}
+  // An explicit slot still replaces what it holds, and a refused instrument choice leaves the selection alone.
+  if(!full){const replaced=await h.call('loadNKS',{path:'/presets/Verb.nksfx',track:0,kind:'effect',slot:2});assert.equal(replaced.ok,true,replaced.error);assert.equal(h.state.project.audioPlugins.find(x=>x.slot===2).name,'Verb');
+   const selected=h.state.instrument,refused=await h.call('loadNKS',{path:'/presets/Pad.nksf',track:0,instrument:3});assert.equal(refused.ok,false);assert.match(refused.error,/replaces the instrument the track plays/);assert.equal(h.state.instrument,selected)}
+ }
+});
 test('transport validates all fields before stop, mode or selection mutation',async()=>{
  for(const invalid of [{row:9999},{block:9999},{loop:{from:0,to:9999}},{loop:3}]){
   const h=harness(),p=h.state.project,pat=clone(p.patterns[0]);pat.id=42;p.patterns.push(pat);p.activePattern=0;h.state.row=3;h.state.playing=true;h.state.playbackMode='song';const calls=[];h.ST.perform=async name=>{calls.push(name);if(name==='stop')h.state.playing=false;return true};

@@ -33,6 +33,8 @@
     S().mutate(value === -1 ? 'insert note off' : 'insert note cut', p => {
       const pat = p.patterns.find(item => item.id === p.activePattern);
       pat.steps[track][row] = { ...(pat.steps[track][row] || {}), note: value, instrument: p.tracks[track]?.instrument ?? 0, velocity: 100, gate: 0 };
+      // An OFF / CUT is no chord: the row's FX and extra note columns stay, the replaced note's chord does not.
+      delete pat.steps[track][row].chord;
       if (!st().playing) st().row = (row + (st().editStep || 0)) % pat.length;
     });
   }

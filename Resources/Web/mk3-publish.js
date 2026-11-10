@@ -95,6 +95,8 @@
     const p = P(), pat = pattern(); if (!p || !pat) return;
     const pages = (count, size) => Math.max(0, Math.ceil(count / size) - 1);
     M.stepPage = clamp(M.stepPage, 0, pages(pat.length, 16));
+    // EVENTS rows chosen in a longer pattern: nudging them wrote past the end of this one.
+    for (const row of M.events) if (row >= pat.length) M.events.delete(row);
     // Banks of eight group-button entries (tracks and track groups); the bank follows the cursor track's entry.
     const list = mk.entries(p), banks = pages(list.length, 8), group = mk.groupOf(st().track, p);
     const trackKey = `${st().track}:${p.tracks[st().track]?.routingID || ''}`;
@@ -185,7 +187,7 @@
     const repeated = M.held.has('noteRepeat') || M.latched === 'noteRepeat';
     M.held.clear(); M.latched = null;
     if (repeated) HANDLERS.noteRepeat.onRelease(false);
-    M.shift = false; M.fileMenu = null; M.overlay = null; M.variationHeld = null; M.variationUsed = false; M.autoHold = null;
+    M.shift = false; M.overlay = null; M.variationHeld = null; M.variationUsed = false; M.autoHold = null;
     M.touched.clear(); M.mainTouch = null; M.encoderAcc.clear(); M.events.clear(); M.shiftPads = []; M.dupSource = null; M.queued = null;
     M.strip.touched = false; M.strip.shift = false; M.strip.owner = null;
     if (M.stutter && !projectChanged) {

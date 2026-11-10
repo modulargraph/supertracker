@@ -495,7 +495,6 @@
     }
     return y + rows * rowH;
   }
-  /** Legacy helper (chain and page lists without a stored window). */
   function chordPads(g, chords, y0 = CONTENT_Y + 116) {
     // Laid out like the pads: chord 1 bottom-left, 13 top-left.
     chords.slice(0, 16).forEach((name, i) => {

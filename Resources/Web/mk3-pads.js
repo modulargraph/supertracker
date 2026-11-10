@@ -235,6 +235,8 @@
         || [], block = blocks[M.padBank.scene * 16 + i]; if (block) { st().sequence = block.start; window.STSong?.actions?.duplicate(); } return; }
     if (M.padMode === 'step') {
       const track = st().track, row = M.stepPage * 16 + i, pat = pattern();
+      // Pads past the pattern end are dark: no step to copy from and none to copy to.
+      if (row >= pat.length) return;
       if (M.dupSource == null) { if (!pat.steps[track][row]) { flash('Choose a step to copy'); return; } M.dupSource = row; flash(`Copy row ${row} → press target pad`,
           900); return; }
       const from = M.dupSource; M.dupSource = null;
@@ -260,7 +262,8 @@
     const p = P();
     switch (M.padMode) {
       case 'step': { const row = M.stepPage * 16 + i; if (row < pattern().length) setCursor({ row }); return; }
-      case 'pattern': { const index = M.padBank.pattern * 16 + i; if (p.patterns[index]) { p.activePattern = p.patterns[index].id; scheduleRefresh(); } return; }
+      // Through selectPattern: the cursor row, pattern loop and engine follow the pattern, as for a plain pad press.
+      case 'pattern': { const index = M.padBank.pattern * 16 + i; if (p.patterns[index]) selectPattern(index); return; }
       case 'scene': { const blocks = window.STSongModel?.blocks(p.sequence)
           || [], block = blocks[M.padBank.scene * 16 + i]; if (block) { st().sequence = block.start; scheduleRefresh(); } return; }
       case 'keyboard': S().setPerformance({ root: keyboardPitch(i) % 12 }, false); flash(`Key ${NOTE_NAMES[keyboardPitch(i) % 12]}`, 700); return;

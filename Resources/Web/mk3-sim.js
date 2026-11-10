@@ -17,7 +17,7 @@
     else if (payload.type === 'pad') { if (payload.phase !== 'down' && !sim.heldPads.has(payload.pad)) return; if (payload.phase !== 'pressure') update(sim.heldPads, payload.pad, payload.phase === 'down'); }
     else if (payload.type === 'touch') { if (!payload.touched && !sim.heldTouches.has(payload.target)) return; update(sim.heldTouches, payload.target, payload.touched); }
     else if (payload.type === 'pedal') { if (!payload.down && !sim.pedalDown) return; sim.pedalDown = !!payload.down; }
-    return MK3()?.event('mk3.input', payload);
+    return MK3()?.event('mk3.input', payload, 'simulator');
   }
   const LABELS = { channel: 'CHANNEL', plugin: 'PLUG-IN', arranger: 'ARRANGER', mixer: 'MIXER', browser: 'BROWSER', sampling: 'SAMPLING', arrowLeft: '◄', arrowRight: '►', file: 'FILE', settings: 'SETTINGS', auto: 'AUTO', macro: 'MACRO',
     notes: 'NOTES', volume: 'VOLUME', swing: 'SWING', tempo: 'TEMPO', noteRepeat: 'NOTE REPEAT', lock: 'LOCK', pitch: 'PITCH', mod: 'MOD', perform: 'PERFORM', padMode: 'PAD MODE', keyboard: 'KEYBOARD', chords: 'CHORDS', step: 'STEP',

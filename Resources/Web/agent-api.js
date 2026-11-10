@@ -76,8 +76,10 @@
     slice: { unit: '', scale: 1, aliases: ['slc'] },
     position: { unit: '%', scale: 100, aliases: ['pos', 'wavetable', 'wtpos', 'wavetableposition'] }
   };
-  const FX_ALIAS = {};
+  // Tables looked up with caller-supplied keys have no prototype: "constructor" or "toString" is not an effect.
+  const FX_ALIAS = Object.create(null);
   for (const [type, spec] of Object.entries(FX_TYPES)) { FX_ALIAS[type] = type; for (const alias of spec.aliases) FX_ALIAS[alias] = type; }
+  const ownValue = (table, key) => typeof key === 'string' && Object.hasOwn(table, key) ? table[key] : undefined;
   function fxRange(type) { return S().FX?.[type] || [-1e9, 1e9, .01]; }
   function formatFX(fx) {
     if (!fx || typeof fx !== 'object') return null;
@@ -100,8 +102,7 @@
         if (!Number.isFinite(v) || v < 0 || v > 1) fail(`${slot}: plug-in effect value must be 0–1.`);
         return { type: 'plugin', instanceID: value.instanceID, address: String(value.address), name: String(value.name || ''), value: v };
       }
-      if (typeof value.type !== 'string'
-          || !FX_TYPES[value.type]) fail(`${slot}: unknown effect type "${value.type}". Types: ${Object.keys(FX_TYPES).join(', ')}.`);
+      if (!ownValue(FX_TYPES, value.type)) fail(`${slot}: unknown effect type "${value.type}". Types: ${Object.keys(FX_TYPES).join(', ')}.`);
       return checkFX(value.type, Number(value.value), slot, value.value);
     }
     if (typeof value !== 'string'
@@ -186,7 +187,7 @@
     lfo2Sync: { label: 'LFO 2 tempo sync', bool: true },
     monitor: { label: 'Input monitor', bool: true, types: ['midi'] }
   };
-  const PARAM_ALIAS = {};
+  const PARAM_ALIAS = Object.create(null);
   for (const [key, spec] of Object.entries(PARAMS)) { PARAM_ALIAS[key.toLowerCase()] = key; PARAM_ALIAS[spec.label.toLowerCase()] = key; }
   Object.assign(PARAM_ALIAS, {
     level: 'volume',
@@ -322,7 +323,8 @@
   }
   function trackList(p, ref) {
     if (ref === undefined || ref === null) return p.tracks.map((_, i) => i);
-    return (Array.isArray(ref) ? ref : [ref]).map(item => findTrack(p, item));
+    // Each track once: a track named twice ([0, "Bass"]) must not be shifted or transposed twice.
+    return [...new Set((Array.isArray(ref) ? ref : [ref]).map(item => findTrack(p, item)))];
   }
   function rowRange(pat, from, to) {
     const a = from === undefined ? 0 : from, b = to === undefined ? pat.length - 1 : to;
@@ -687,7 +689,6 @@
   // An extra note column: {note, instrument, velocity, gate}. The track grows to show it (same undo step).
   function applyColumn(p, pat, plan) {
     const steps = pat.steps[plan.track], prior = steps[plan.row], column = plan.column, existing = prior?.columns?.[column - 1] || null;
-    if (p.tracks[plan.track] && noteColumns(p, plan.track) <= column) p.tracks[plan.track].noteColumns = column + 1;
     const write = cell => {
       const next = { ...(prior || { note: -3 }), columns: [...(prior?.columns || [])] };
       while (next.columns.length < column) next.columns.push(null);
@@ -698,6 +699,8 @@
     };
     if (plan.clear || plan.note === null) return write(null);
     if (!existing && plan.note === undefined) fail(`Track ${plan.track} row ${plan.row} column ${column} is empty: give a note to create it.`);
+    // Only a written cell adds its column to the track; clearing a column the track does not have changes nothing.
+    if (p.tracks[plan.track] && noteColumns(p, plan.track) <= column) p.tracks[plan.track].noteColumns = column + 1;
     const cell = { ...(existing || { instrument: p.tracks[plan.track].instrument ?? 0, velocity: 100, gate: 0 }) };
     if (plan.note !== undefined) cell.note = plan.note;
     if (plan.instrument !== undefined) cell.instrument = plan.instrument;
@@ -739,7 +742,8 @@
     const p = project(), pat = findPattern(p, params.pattern), plans = planSteps(p, pat, params.steps);
     requireUnfrozen(p, [...new Set(plans.map(plan => plan.track))]);
     const id = pat.id;
-    const notes = plans.filter(plan => plan.note >= 0).length, cleared = plans.filter(plan => plan.clear).length;
+    // note: null (FX only / clear the note) is not a note; null >= 0 is true.
+    const notes = plans.filter(plan => isInt(plan.note) && plan.note >= 0).length, cleared = plans.filter(plan => plan.clear).length;
     return commit(params.label || `write ${plans.length} step${plans.length === 1 ? '' : 's'} in ${pat.name}`, target => {
       const t = target.patterns.find(x => x.id === id);
       for (const plan of plans) applyStep(target, t, plan);
@@ -824,21 +828,28 @@
       setValue = Number(params.set);
       if (!Number.isFinite(setValue) || setValue !== 0 && (setValue < .01 || setValue > 256)) fail('gate set must be 0.01–256 rows, or 0 to remove gates.');
     }
-    if (op === 'instrument') setValue = findInstrument(p, params.set, 'set');
+    if (op === 'instrument') {
+      setValue = findInstrument(p, params.set, 'set');
+      // As writeSteps and the grid's instrument column: a plug-in instrument only plays on its own track.
+      const foreign = p.instruments[setValue].type === 'au' ? tracks.find(t => (p.tracks[t].instrument ?? 0) !== setValue) : undefined;
+      if (foreign !== undefined) fail(`Instrument ${setValue} "${p.instruments[setValue].name}" is a plug-in that track ${foreign} "${p.tracks[foreign].name}" does not play. `
+          + 'Plug-in instruments only play on their own track; limit tracks to it.');
+    }
     const humanize = amount ?? 12;
     return commit(params.label || `${op} ${pat.name} rows ${from}–${to}`, target => {
-      const t = target.patterns.find(x => x.id === id); let changed = 0;
+      // `affected` counts the steps / notes the operation visited; commit() reports `changed` (false for a no-op).
+      const t = target.patterns.find(x => x.id === id); let affected = 0;
       for (const track of tracks) {
         const steps = t.steps[track];
         if (op === 'reverse' || op === 'rotate') {
           const slice = steps.slice(from, to + 1), n = slice.length;
           const result = op === 'reverse' ? slice.reverse() : slice.map((_, i) => slice[((i - amount) % n + n) % n]);
-          for (let i = 0; i < n; i++) steps[from + i] = result[i]; changed += slice.filter(Boolean).length; continue;
+          for (let i = 0; i < n; i++) steps[from + i] = result[i]; affected += slice.filter(Boolean).length; continue;
         }
         for (let r = from; r <= to; r++) {
           const step = steps[r]; if (!step) continue;
-          if (op === 'quantize') { for (const key of ['fx1', 'fx2']) if (step[key]?.type === 'microtiming') { delete step[key]; changed++; } steps[r] = dropEmpty(step); continue; }
-          if (op === 'removeFX') { if (step.fx1 || step.fx2) { delete step.fx1; delete step.fx2; changed++; steps[r] = dropEmpty(step); } continue; }
+          if (op === 'quantize') { for (const key of ['fx1', 'fx2']) if (step[key]?.type === 'microtiming') { delete step[key]; affected++; } steps[r] = dropEmpty(step); continue; }
+          if (op === 'removeFX') { if (step.fx1 || step.fx2) { delete step.fx1; delete step.fx2; affected++; steps[r] = dropEmpty(step); } continue; }
           // Every note column's note.
           for (const cell of noteCells(step)) {
             if (op === 'transpose') cell.note = clampNum(cell.note + amount, 0, 127);
@@ -853,11 +864,11 @@
               for (let k = 0; k < 12 && !scaleSet.has(((n - rootPc) % 12 + 12) % 12); k++) n = n + 1 <= 127 ? n + 1 : n - 1;
               cell.note = n;
             }
-            changed++;
+            affected++;
           }
         }
       }
-      return { operation: op, changed };
+      return { operation: op, affected };
     });
   });
   function pitchClass(value) {
@@ -986,7 +997,8 @@
     if (action === 'insert') count = repeats(params.repeats);
     if (action === 'move' && (params.delta !== -1 && params.delta !== 1)) fail('move needs delta -1 (earlier) or 1 (later).');
     return commit(params.label || `song ${action}`, target => {
-      switch (action) {
+      // The song model refuses with plain errors (slot limit, last block): they are answers, not internal errors.
+      try { switch (action) {
         case 'set': target.sequence = sequence.slice(); if (target.songLoop) model.clearLoop(target); break;
         // Appending goes through the model too: it enforces the 1024-slot song limit the host validates.
         case 'insert': model.insert(target, a === null ? blocks.length - 1 : a, patternId, { before: a !== null && !!params.before, count }); break;
@@ -997,7 +1009,7 @@
         case 'duplicate': model.duplicate(target, a, b); break;
         case 'loop': model.setLoop(target, a, b); break;
         case 'clearLoop': model.clearLoop(target); break;
-      }
+      } } catch (error) { if (error instanceof AgentError || error?.name !== 'Error') throw error; fail(error.message); }
       return { sequence: target.sequence.slice(), blocks: model.blocks(target.sequence).map(x => ({ block: x.index, pattern: x.pattern, repeats: x.count })), loop: model.loopRange(target) };
     });
   });
@@ -1192,14 +1204,15 @@
     const p = project(), i = params.instrument === undefined ? st().instrument : findInstrument(p, params.instrument), inst = p.instruments[i];
     const name = params.name === undefined ? null : checkName(params.name);
     if (params.type !== undefined && !['sample', 'midi'].includes(params.type)) fail('type must be "sample" or "midi".');
+    // Validate the parameters before the type switch below: it retires the hosted plug-in and must not run for a call that is then refused.
+    const plan = planParams({ ...inst, type: params.type || inst.type }, params.params);
+    requireUnfrozen(p, p.tracks.map((t, ti) => (t.instrument ?? 0) === i ? ti : -1).filter(ti => ti >= 0));
     if (params.type !== undefined && params.type !== inst.type && inst.type === 'au') {
       // Leaving a plug-in instrument removes the hosted plug-in natively; use the app's own command.
       st().instrument = i; await S().perform('instrumentType:' + params.type);
       if (project().instruments[i]?.type !== params.type) fail(`Could not change the instrument type${toastText() ? ': ' + toastText() : '.'}`);
     }
     const current = project().instruments[i];
-    const plan = planParams({ ...current, type: params.type || current.type }, params.params);
-    requireUnfrozen(p, p.tracks.map((t, ti) => (t.instrument ?? 0) === i ? ti : -1).filter(ti => ti >= 0));
     if (name === null
         && !Object.keys(plan).length
         && (params.type === undefined || params.type === current.type)) return { changed: params.type !== undefined
@@ -1248,7 +1261,8 @@
       if (!found.items.length) fail(`No library sample matches "${params.query}". Try searchLibrary with other words.`);
       path = found.items[0].path;
     }
-    if (typeof path !== 'string' || !path.startsWith('/')) fail('path must be an absolute file path.');
+    // Built-in samples are project references the host resolves itself (createInstrument names one).
+    if (typeof path !== 'string' || !(path.startsWith('/') || /^builtin:./.test(path))) fail('path must be an absolute file path, or a built-in sample such as "builtin:wavetables/Basic/Saw.wav".');
     const track = params.track === undefined ? st().track : findTrack(p, params.track);
     const index = params.instrument === undefined ? (p.tracks[track].instrument ?? 0) : findInstrument(p, params.instrument);
     requireUnfrozen(p, [track]);
@@ -1516,8 +1530,10 @@
   method('pluginParameters', 'List a plug-in\'s parameters (a track\'s instrument, or an effect slot on a track, bus or master), optionally filtered by query.', ['track',
       'channel', 'kind', 'slot', 'query', 'limit', 'offset'], async params => {
     const p = project(), ref = pluginRef(p, params), { channel, kind } = ref;
-    const { plugin, list } = await fetchParameters(p, ref);
     const words = String(params.query || '').toLowerCase().split(/\s+/).filter(Boolean), limit = params.limit ?? 100, offset = params.offset ?? 0;
+    if (!isInt(limit) || limit < 1) fail('limit must be a whole number, 1 or more.');
+    if (!isInt(offset) || offset < 0) fail('offset must be 0 or more.');
+    const { plugin, list } = await fetchParameters(p, ref);
     const hits = list.filter(item => words.every(word => `${item.name} ${item.id} ${item.address}`.toLowerCase().includes(word)));
     return { plugin: { name: plugin.name, format: plugin.format, instanceID: plugin.instanceID }, ...(channel.type === 'track'
         ? { track: channel.track }
@@ -1673,7 +1689,8 @@
         ? { note: 'The NKS catalogue is still being indexed.' }
         : {}) };
   });
-  method('loadNKS', 'Load an NKS preset (by path, or the best match for query) on a track: kind "instrument" (default) or "effect" with slot.', ['path',
+  method('loadNKS', 'Load an NKS preset (by path, or the best match for query) on a track: kind "instrument" (default) or "effect" (slot 0–15; default: the next '
+      + 'free slot, an explicit slot replaces what it holds).', ['path',
       'query', 'track', 'kind', 'slot', 'instrument'], async params => {
     const p = project(); if (!st().native) fail('NKS presets load only in the macOS app.');
     if (!window.STNKS) fail('The NKS loader is unavailable.');
@@ -1686,27 +1703,30 @@
     requireUnfrozen(p, [track]);
     const busy = blockedByBusyUI(); if (busy) fail(`Cannot load a preset while ${busy}.`);
     const options = { kind, stay: true };
-    if (kind === 'effect') { options.slot = params.slot
-        ?? Math.min(LIMITS.effectSlots - 1,
-            (p.audioPlugins || []).filter(x => onTrack(p, x, track) && x.kind === 'effect').length); if (!isInt(options.slot)
-                || options.slot < 0
-                || options.slot >= LIMITS.effectSlots) fail(`slot must be 0–${LIMITS.effectSlots - 1}.`); }
-    else {
+    if (kind === 'effect') {
+      // As loadPlugin: the first free slot. The loader replaces what a slot holds, so only an explicit slot may do that.
+      const usedSlots = new Set((p.audioPlugins || []).filter(x => onTrack(p, x, track) && x.kind === 'effect').map(x => x.slot ?? 0));
+      options.slot = params.slot ?? Array.from({ length: LIMITS.effectSlots }, (_, i) => i).find(i => !usedSlots.has(i));
+      if (options.slot === undefined) fail(`All ${LIMITS.effectSlots} effect slots are occupied. Choose an explicit slot to replace an effect.`);
+      if (!isInt(options.slot)
+          || options.slot < 0
+          || options.slot >= LIMITS.effectSlots) fail(`slot must be 0–${LIMITS.effectSlots - 1}.`);
+    } else {
       const own = p.tracks[track].instrument ?? 0, shared = p.tracks.some((t, ti) => ti !== track && (t.instrument ?? 0) === own);
       const choice = params.instrument === undefined
           ? shared ? 'new' : own
           : params.instrument === 'new'
           ? 'new'
           : findInstrument(p, params.instrument);
-      if (choice === 'new') options.newInstrument = true; else st().instrument = choice;
       if (choice !== 'new' && choice !== own) fail('An NKS instrument replaces the instrument the track plays. Leave instrument out (or "new").');
+      if (choice === 'new') options.newInstrument = true;
     }
     st().track = track; if (kind === 'instrument' && !options.newInstrument) st().instrument = p.tracks[track].instrument ?? 0;
     const before = st().undo[st().undo.length - 1];
     const ok = await window.STNKS.load(path, options);
     if (!ok || st().undo[st().undo.length - 1] === before) fail(`The preset was not loaded${toastText() ? ': ' + toastText() : '.'}`);
     const q = project();
-    return { changed: true, track, kind, path, instrument: kind === 'instrument' ? q.tracks[track].instrument : undefined, name: kind === 'instrument'
+    return { changed: true, track, kind, path, ...(kind === 'effect' ? { slot: options.slot } : {}), instrument: kind === 'instrument' ? q.tracks[track].instrument : undefined, name: kind === 'instrument'
         ? q.instruments[q.tracks[track].instrument]?.name
         : undefined };
   });
@@ -1723,11 +1743,21 @@
     pitch: { min: -24, max: 24, kind: 'semi' }
   };
   function automationSpec(p, t, target) {
-    const descriptor = window.STStudio?.target?.(t, target);
-    const known = BUILTIN_AUTOMATION[target] || PARAMS[target];
-    if (target.startsWith('plugin:')) return { min: 0, max: 1, kind: 'pct', name: descriptor?.name || target, descriptor };
+    const studio = window.STStudio, descriptor = studio?.target?.(t, target);
+    const known = ownValue(BUILTIN_AUTOMATION, target) || ownValue(PARAMS, target);
+    if (target.startsWith('plugin:')) {
+      // plugin:<instrument|effect>:<slot>:<address> of a plug-in this track holds (as bus and master lanes check).
+      const match = /^plugin:(instrument|effect):(\d+):(.+)$/.exec(target);
+      if (!match || !pluginOn(p, t, match[1], Number(match[2]))) fail(`Track ${t} "${p.tracks[t].name}" has no plug-in for "${target}". Plug-in targets are `
+          + 'plugin:instrument:0:<address> and plugin:effect:<slot>:<address> (see automationTargets).');
+      return { min: 0, max: 1, kind: 'pct', name: descriptor?.name || target, descriptor };
+    }
     if (descriptor && descriptor.available === false) fail(descriptor.unavailableReason || `${target} cannot be automated on this track.`);
-    if (!descriptor && !known) fail(`Unknown automation target "${target}". Use automationTargets to list them.`);
+    // The mixer lists the targets this track can play (STStudio.target); one it does not list would be a lane nothing reads.
+    // Without the mixer only the numeric built-in parameters are known.
+    if (!descriptor && (studio?.target || !known || !Number.isFinite(known.min))) fail(studio?.target && known
+        ? `"${target}" cannot be automated on track ${t} "${p.tracks[t].name}". Use automationTargets to list what can.`
+        : `Unknown automation target "${target}". Use automationTargets to list them.`);
     return { min: descriptor?.min ?? known.min, max: descriptor?.max ?? known.max, kind: known?.kind || 'num', name: descriptor?.name
         || known?.label
         || target, descriptor };
@@ -1782,16 +1812,21 @@
     const { channel, ownerLane } = automationChannel(p, params, params.target), t = channel.track;
     const spec = ownerLane ? ownerAutomationSpec(p, channel, params.target) : automationSpec(p, t, params.target);
     if (!Array.isArray(params.points) || !params.points.length || params.points.length > 1024) fail('points must be a list of 1–1024 {row, value}.');
-    const points = params.points.map((point, k) => {
+    const parsed = params.points.map((point, k) => {
       if (!point || !isInt(point.row) || point.row < 0 || point.row >= pat.length) fail(`points[${k}].row must be 0–${pat.length - 1}.`);
-      const value = typeof point.value === 'string' && spec.kind !== 'num'
+      // A number or a string: null, true or [] would otherwise become 0 or 1.
+      const given = typeof point.value === 'number' || typeof point.value === 'string' && point.value.trim() !== '';
+      const value = !given ? NaN : typeof point.value === 'string' && spec.kind !== 'num'
           ? parseValue(spec, point.value, `points[${k}].value`)
           : Number(point.value);
       if (!Number.isFinite(value)
           || value < spec.min - 1e-9
           || value > spec.max + 1e-9) fail(`points[${k}].value must be between ${spec.min} and ${spec.max} for ${spec.name} (got ${point.value}).`);
       return { row: point.row, value: round(value, 6) };
-    }).sort((a, b) => a.row - b.row);
+    });
+    // A lane holds one point per row (the automation editor addresses points by row): the last one given wins.
+    const lastAt = new Map(parsed.map((point, k) => [point.row, k]));
+    const points = parsed.filter((point, k) => lastAt.get(point.row) === k).sort((a, b) => a.row - b.row);
     if (params.interpolation !== undefined && !['linear', 'step'].includes(params.interpolation)) fail('interpolation must be "linear" or "step".');
     if (channel.type === 'track') requireUnfrozen(p, [t]);
     const id = pat.id, target = params.target;
@@ -2083,7 +2118,7 @@
           steps.push(p => model.setFreeTime(p, seconds));
           continue;
         }
-        const spec = SPECS[group][key];
+        const spec = ownValue(SPECS[group], key);
         if (!spec) fail(`Unknown ${group} setting "${key}". ${group}: ${[...(group === 'delay' ? ['time'] : []), ...Object.keys(SPECS[group])].join(', ')}${group === 'delay'
             ? ` (time divisions: ${model.DIVISIONS.map(([label]) => label).join(', ')})`
             : ''}.`);
@@ -2315,43 +2350,41 @@
       + 'shows the mixer unless view is given) (no undo step).', ['view', 'pattern', 'track', 'row', 'column', 'instrument', 'select', 'channel'], params => {
     const s = st(), p = project();
     if (params.view !== undefined && !VIEWS.includes(params.view)) fail(`view must be one of ${VIEWS.join(', ')}.`);
-    if (params.pattern !== undefined) {
-      const pat = findPattern(p, params.pattern);
-      if (p.activePattern !== pat.id) {
-        p.activePattern = pat.id;
-        s.row = 0;
-        s.selection = null;
-        if (s.patternLoop && s.patternLoop.pattern !== pat.id) s.patternLoop = null;
-        S().syncEngine?.();
-      }
-    }
-    const pat = activePattern(p);
-    if (params.track !== undefined) { s.track = findTrack(p, params.track); s.instrument = p.tracks[s.track].instrument ?? 0; }
-    if (params.row !== undefined) {
-      if (!isInt(params.row) || params.row < 0 || params.row >= pat.length) fail(`row must be 0–${pat.length - 1}.`);
-      s.row = params.row;
-    }
+    // Validate the whole request before moving anything: a refused call leaves the cursor and pattern where they were.
+    const shown = params.pattern === undefined ? null : findPattern(p, params.pattern), pat = shown || activePattern(p);
+    const track = params.track === undefined ? null : findTrack(p, params.track);
+    if (params.row !== undefined && (!isInt(params.row) || params.row < 0 || params.row >= pat.length)) fail(`row must be 0–${pat.length - 1}.`);
+    let column = null;
     if (params.column !== undefined) {
-      const c = typeof params.column === 'number' ? params.column : COLUMNS.indexOf(params.column);
-      if (!isInt(c) || c < 0 || c > 4) fail(`column must be one of ${COLUMNS.join(', ')}.`);
-      s.column = c;
+      column = typeof params.column === 'number' ? params.column : COLUMNS.indexOf(params.column);
+      if (!isInt(column) || column < 0 || column > 4) fail(`column must be one of ${COLUMNS.join(', ')}.`);
     }
-    if (params.instrument !== undefined) s.instrument = findInstrument(p, params.instrument);
-    if (params.select !== undefined) {
-      if (params.select === null) s.selection = null;
-      else {
-        const sel = params.select,
-          t0 = findTrack(p, sel.fromTrack ?? s.track),
-          t1 = findTrack(p, sel.toTrack ?? t0),
-          [r0, r1] = rowRange(pat, sel.fromRow, sel.toRow);
-        s.selection = { track: t0, row: r0 }; s.track = t1; s.row = r1;
-      }
+    const instrument = params.instrument === undefined ? null : findInstrument(p, params.instrument);
+    let selection = null;
+    if (params.select !== undefined && params.select !== null) {
+      const sel = params.select;
+      if (typeof sel !== 'object' || Array.isArray(sel)) fail('select must be {fromTrack, toTrack, fromRow, toRow} or null.');
+      const t0 = findTrack(p, sel.fromTrack ?? track ?? s.track), t1 = findTrack(p, sel.toTrack ?? t0), [r0, r1] = rowRange(pat, sel.fromRow, sel.toRow);
+      selection = { t0, t1, r0, r1 };
     }
+    const channel = params.channel === undefined ? null : findChannel(p, params.channel);
+    if (channel && channel.type !== 'track') requireStandardRouting(p, `Showing ${channelLabel(channel)}`);
+    if (shown && p.activePattern !== shown.id) {
+      p.activePattern = shown.id;
+      s.row = 0;
+      s.selection = null;
+      if (s.patternLoop && s.patternLoop.pattern !== shown.id) s.patternLoop = null;
+      S().syncEngine?.();
+    }
+    if (track !== null) { s.track = track; s.instrument = p.tracks[track].instrument ?? 0; }
+    if (params.row !== undefined) s.row = params.row;
+    if (column !== null) s.column = column;
+    if (instrument !== null) s.instrument = instrument;
+    if (params.select === null) s.selection = null;
+    else if (selection) { s.selection = { track: selection.t0, row: selection.r0 }; s.track = selection.t1; s.row = selection.r1; }
     let view = params.view;
-    if (params.channel !== undefined) {
-      const ch = findChannel(p, params.channel);
-      if (ch.type !== 'track') requireStandardRouting(p, `Showing ${channelLabel(ch)}`);
-      if (window.STStudio?.selectOwner?.(ch.owner) === false) fail(`${channelLabel(ch)} cannot be selected in the mixer.`);
+    if (channel) {
+      if (window.STStudio?.selectOwner?.(channel.owner) === false) { refreshUI(); fail(`${channelLabel(channel)} cannot be selected in the mixer.`); }
       view ??= 'mixer';
     }
     if (view !== undefined && view !== s.view) S().setView(view); else refreshUI();
@@ -2382,14 +2415,14 @@
       try {
         if (!admitted
             || admission !== admissionGeneration) fail('The AI command was canceled because SuperTracker started quitting. Send it again after canceling Quit.');
-        const params = typeof paramsJSON === 'string' ? (paramsJSON ? JSON.parse(paramsJSON) : {}) : paramsJSON;
+        // Only this parse reads the caller's text: a SyntaxError from inside a method is an internal error, not bad params.
+        let params = paramsJSON;
+        if (typeof paramsJSON === 'string') { try { params = paramsJSON ? JSON.parse(paramsJSON) : {}; } catch (error) { fail(`params are not valid JSON: ${error.message}`); } }
         const result = await run(name, params);
         return JSON.stringify({ ok: true, result: result === undefined ? null : result, ...(notices.length ? { notices } : {}) });
       } catch (error) {
         const message = error instanceof AgentError
             ? error.message
-            : error?.name === 'SyntaxError' && !(error instanceof AgentError)
-            ? `params are not valid JSON: ${error.message}`
             : `Internal error in ${name}: ${error?.message || error}`;
         return JSON.stringify({ ok: false, error: message, ...(notices.length ? { notices } : {}) });
       } finally {

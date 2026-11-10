@@ -280,7 +280,6 @@
 
   function pressDisplay(i) {
     const page = currentPage(), def = page.buttons?.[i];
-    if (M.fileMenu) M.fileMenu.used = true;
     const chosen = M.shift && def?.shift ? def.shift : def;
     if (!chosen?.action) return;
     chosen.action();

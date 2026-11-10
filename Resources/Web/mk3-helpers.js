@@ -90,9 +90,6 @@
     const found = members.find(i => saved != null && (p.tracks[i] === saved || (p.tracks[i].routingID && p.tracks[i].routingID === saved)));
     return found ?? members[0];
   }
-  // Pads in PAD MODE: the cursor group's members, 16 per pad bank.
-  const padMembers = (group = groupOf()) => membersOf(group).slice(M.padBank.pad * 16, M.padBank.pad * 16 + 16);
-
   /* Home columns: app.patternColumns() (every track; a collapsed group is one column, index = first member). */
   function noteColumns() {
     const p = P(), list = app()?.patternColumns?.() || p.tracks.map((track, index) => ({ track, index, group: null }));
@@ -169,7 +166,9 @@
   }
   function ownerMixKnob(owner, kind, label) {
     const channel = channelOf(owner); if (!channel) return null;
-    const [name, min, max, format, target] = mk.MIX[kind], field = owner === 'master' && kind === 'volume' ? 'masterVolume' : kind;
+    const [name, min, trackMax, format, target] = mk.MIX[kind], field = owner === 'master' && kind === 'volume' ? 'masterVolume' : kind;
+    // A bus fader reaches gain 2 (+6 dB), as in the mixer; with the track range a louder bus dropped to 1.5 on the first turn.
+    const max = kind === 'volume' && owner.startsWith('bus:') ? 2 : trackMax;
     const fallback = kind === 'volume' ? (owner === 'master' ? .7 : owner.startsWith('bus:') ? 1 : .8) : 0;
     return mk.numKnob({ key: `ownerMix:${encodeURIComponent(owner)}:${field}`, label: label || name, name: `${label || owner} · ${name}`,
       read: project => Number(channelOf(owner, project)?.[field] ?? fallback),
@@ -184,6 +183,6 @@
     pattern, trackColor, playing, patternRow, flash, scheduleRefresh, withState, selectTrack, setCursor, homeColumns,
     selectColumn, toggleColumn, moveNoteLane, moveColumn, ensureView, perform, ensureStep, stepAt, patternIndex, AR,
     arRef, arRecording, G, app, groupOf, membersOf, busOf, entries, entryIndex, entryColor, entryName, entryFlags,
-    anySolo, toggleEntry, rememberMember, memberFor, padMembers, noteColumns, columnOf, channelOf, ownerMixKnob
+    anySolo, toggleEntry, rememberMember, memberFor, noteColumns, columnOf, channelOf, ownerMixKnob
   });
 })();

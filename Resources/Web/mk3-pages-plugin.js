@@ -233,6 +233,9 @@
     }, { shift: button('Remove now', removeNow), on: armed });
     return { bypass, remove };
   }
+  // Automation write gestures end 700 ms after the last turn: one timer per parameter, so turning a second
+  // knob does not leave the first one's gesture open (in Touch mode it kept writing for the rest of the pass).
+  const recTimers = new Map();
   /** Encoders for one plug-in parameter page (track or master slots): discrete detents, LOCK, automation writing. */
   function pluginParamKnobs(current, ctl, { arOwner, kind, slotIndex, lockable = true }) {
     return (current?.knobs || []).map((knob, i) => {
@@ -259,8 +262,9 @@
         const ref = knob.automatable ? arRef(arOwner, `plugin:${kind}:${slotIndex}:${knob.address}`, `${current.name} · ${knob.name}`) : null;
         if (arRecording(ref)) {
           let next = clamp01((knob.value ?? 0) + delta); if (discrete) next = Math.round(next * count) / count;
-          AR().value(ref, next, 'mk3'); M.pluginRec = ref; clearTimeout(M.pluginRecTimer); M.pluginRecTimer = setTimeout(() => { AR()?.end?.(ref); },
-              700); knob.value = next; return;
+          const recKey = `${arOwner}:${kind}:${slotIndex}:${knob.address}`;
+          AR().value(ref, next, 'mk3'); clearTimeout(recTimers.get(recKey));
+          recTimers.set(recKey, setTimeout(() => { recTimers.delete(recKey); AR()?.end?.(ref); }, 700)); knob.value = next; return;
         }
         ctl.adjust(i, delta);
       };

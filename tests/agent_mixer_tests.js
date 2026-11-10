@@ -355,6 +355,19 @@ test('setPluginParameters waits for a plug-in that applies writes on its next re
   assert.equal(h.calls.filter(c => c.command === 'plugin.parameter').length, 3, 'nothing was written twice');
 });
 
+test('track automation needs a target the mixer lists for that track', async () => {
+  const h = harness();
+  await h.ok('setAutomation', { track: 2, target: 'cutoff', points: [{ row: 0, value: '800 Hz' }] });
+  // Instrument settings that are not automation targets, and names from Object.prototype, make no lane.
+  for (const target of ['filterType', 'mode', 'lfoSync', 'rootNote']) await h.rejects('setAutomation', { track: 2, target, points: [{ row: 0, value: 1 }] }, /cannot be automated on track 2 "Keys"/);
+  for (const target of ['constructor', 'toString']) await h.rejects('setAutomation', { track: 2, target, points: [{ row: 0, value: 1 }] }, /Unknown automation target/);
+  await h.rejects('setAutomation', { track: 2, target: 'plugin:effect:0:1', points: [{ row: 0, value: .5 }] }, /Track 2 "Keys" has no plug-in/);
+  // A track that plays external MIDI has no sampler filter to automate (automationTargets does not list it either).
+  h.ST.state.project.instruments[0].type = 'midi';
+  await h.rejects('setAutomation', { track: 1, target: 'cutoff', points: [{ row: 0, value: '800 Hz' }] }, /"cutoff" cannot be automated on track 1/);
+  await h.ok('setAutomation', { track: 1, target: 'volume', points: [{ row: 0, value: '-6 dB' }] });
+});
+
 test('every MCP tool names an STAgent method, and the mixer tools take channel', async () => {
   const h = harness(), methods = new Set(h.window.STAgent.methods());
   const swift = fs.readFileSync(path.join(__dirname, '../Sources/SuperTracker/MCPServer.swift'), 'utf8');

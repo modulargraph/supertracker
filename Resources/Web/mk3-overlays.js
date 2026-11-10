@@ -326,7 +326,6 @@
     }
   }
   function overlayId() {
-    if (M.fileMenu) return 'file';
     if ([...M.pads.values()].some(pad => pad.stepRow != null) && M.padMode === 'step' && !active('events')) return 'stepEdit';
     for (const name of ['volume', 'swing', 'tempo', 'noteRepeat', 'events']) if (isHeld(name)) return name;
     if (isHeld('lock')) return 'lock';
@@ -400,12 +399,11 @@
     const read = p => JSON.stringify(p.patterns.find(item => item.id === patternId)?.steps?.[track] ?? []);
     const key = `events:nudge:${patternId}:${track}`;
     const steps = JSON.parse(bursts.get(key)?.value ?? read(P()));
-    const moving = rows.map(r => steps[r]), set = new Set(rows);
+    const moving = rows.map(r => steps[r]);
     for (const r of rows) steps[r] = null;
     rows.forEach((r, i) => { const target = (r + d + len) % len; if (moving[i]) steps[target] = moving[i]; });
     const shifted = rows.map(r => (r + d + len) % len);
     if (M.events.size) M.events = new Set(shifted);
-    void set;
     burstEdit(key, 'nudge steps', read, (p, value) => {
       const target = p.patterns.find(item => item.id === patternId);
       if (target) target.steps[track] = JSON.parse(value);

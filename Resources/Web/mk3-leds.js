@@ -29,7 +29,7 @@
     if (window.STRecording?.isRecording) set('sampling', pulse(400) ? 1 : .4);
     const scroll = page.id === 'channel' ? page.pages?.length > 1 : page.id === 'plugin' ? page.pages?.length > 1 : true;
     set('arrowLeft', isHeld('arrowLeft') ? 1 : scroll ? .45 : .1); set('arrowRight', isHeld('arrowRight') ? 1 : scroll ? .45 : .1);
-    set('file', M.fileMenu || M.overlay === 'file' ? 1 : state.dirty ? .6 : .2);
+    set('file', M.overlay === 'file' ? 1 : state.dirty ? .6 : .2);
     set('auto', AR()?.mode && AR().mode !== 'read' ? (AR().isRecording && pulse(300) ? .5 : 1) : .2);
     page.buttons?.forEach((def, i) => {
       const chosen = M.shift && def?.shift ? def.shift : def;

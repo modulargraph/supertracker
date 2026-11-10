@@ -273,4 +273,100 @@ test('addTrack has no fixed track limit; only the 1024-track sanity bound reject
   await h.rejects('addTrack', { name: 'One too many' }, /already has 1024 tracks/);
 });
 
+test('transform reports changed like every edit, takes each track once and keeps plug-in instruments on their own track', async () => {
+  const h = harness(), steps = () => copy(h.ST.pattern().steps[0].slice(0, 3).map(step => step?.note ?? null));
+  await h.ok('clearSteps', { tracks: [0] });
+  await h.ok('writeSteps', { steps: [{ track: 0, row: 0, note: 60 }, { track: 0, row: 1, note: 62 }] });
+  const first = await h.ok('transform', { tracks: [0], operation: 'velocity', set: 64 });
+  assert.equal(first.changed, true); assert.equal(first.affected, 2);
+  const undo = h.state.undo.length, again = await h.ok('transform', { tracks: [0], operation: 'velocity', set: 64 });
+  assert.equal(again.changed, false, 'a transform that changes nothing says so'); assert.equal(again.affected, 2); assert.equal(h.state.undo.length, undo);
+  // A track named twice is transposed and shifted once.
+  await h.ok('transform', { tracks: [0, 'Velvet bass', '0'], operation: 'transpose', amount: 1 }); assert.deepEqual(steps(), [61, 63, null]);
+  await h.ok('insertRows', { row: 0, count: 1, tracks: [0, 0] }); assert.deepEqual(steps(), [null, 61, 63]);
+  assert.equal((await h.ok('readPattern', { tracks: [0, 0] })).tracks.length, 1);
+  // writeSteps refuses a plug-in instrument of another track; transform {instrument} must as well.
+  h.state.project.instruments[2].type = 'au';
+  await h.rejects('transform', { tracks: [0], operation: 'instrument', set: 2 }, /plug-in that track 0 "Velvet bass" does not play/);
+  await h.rejects('transform', { operation: 'instrument', set: 2 }, /only play on their own track/);
+  await h.ok('writeSteps', { steps: [{ track: 2, row: 0, note: 60 }] });
+  assert.equal((await h.ok('transform', { tracks: [2], operation: 'instrument', set: 2 })).operation, 'instrument', 'its own track may use it');
+});
+
+test('writeSteps counts only notes and a cleared column does not grow the track', async () => {
+  const h = harness();
+  await h.ok('writeSteps', { steps: [{ track: 0, row: 0, note: 'C-4', fx1: 'probability 50%' }] });
+  const fxOnly = await h.ok('writeSteps', { steps: [{ track: 0, row: 0, note: null }, { track: 0, row: 1, note: 'OFF' }, { track: 0, row: 2, note: 'D-4' }] });
+  assert.equal(fxOnly.notes, 1, 'note:null and OFF are not notes');
+  const undo = h.state.undo.length;
+  const cleared = await h.ok('writeSteps', { steps: [{ track: 1, row: 3, column: 5, clear: true }, { track: 1, row: 4, column: 6, note: null }] });
+  assert.equal(cleared.changed, false); assert.equal(h.state.project.tracks[1].noteColumns, undefined, 'the track keeps its one note column'); assert.equal(h.state.undo.length, undo);
+  await h.ok('writeSteps', { steps: [{ track: 1, row: 3, column: 2, note: 'E-4' }] });
+  assert.equal(h.state.project.tracks[1].noteColumns, 3, 'a written column is added');
+});
+
+test('setAutomation keeps one point per row, needs real values and refuses unknown targets', async () => {
+  const h = harness();
+  const lane = await h.ok('setAutomation', { track: 0, target: 'volume', points: [{ row: 4, value: .2 }, { row: 0, value: .5 }, { row: 0, value: '0 dB' }] });
+  assert.equal(lane.lane.points, 2);
+  assert.deepEqual(copy(h.ST.pattern().automation.find(l => l.target === 'volume' && l.track === 0).points), [{ row: 0, value: 1 }, { row: 4, value: .2 }], 'the last point of a row wins');
+  for (const value of [null, true, '', [], {}]) await h.rejects('setAutomation', { track: 0, target: 'pan', points: [{ row: 0, value }] }, /points\[0\]\.value/);
+  for (const target of ['constructor', 'toString', '__proto__', 'filterType', 'lfoSync', 'nope']) await h.rejects('setAutomation', { track: 0, target, points: [{ row: 0, value: 1 }] }, /Unknown automation target/);
+  // A plug-in target names a plug-in the track holds.
+  await h.rejects('setAutomation', { track: 0, target: 'plugin:garbage', points: [{ row: 0, value: .5 }] }, /has no plug-in for "plugin:garbage"/);
+  await h.rejects('setAutomation', { track: 0, target: 'plugin:effect:3:7', points: [{ row: 0, value: .5 }] }, /has no plug-in/);
+  h.state.project.audioPlugins = [{ track: 0, kind: 'effect', slot: 3, instanceID: 'fx-3', component: 'aufx:test', name: 'Test FX' }];
+  assert.equal((await h.ok('setAutomation', { track: 0, target: 'plugin:effect:3:7', points: [{ row: 0, value: '50%' }] })).lane.points, 1);
+});
+
+test('show validates the whole request before it moves the pattern, cursor or selection', async () => {
+  const h = harness();
+  const two = await h.ok('createPattern', { name: 'Two', length: 4, select: false });
+  const view = () => copy([h.state.project.activePattern, h.state.track, h.state.row, h.state.column, h.state.instrument, h.state.selection]), before = view();
+  await h.rejects('show', { pattern: 'Two', track: 3, row: 7 }, /row must be 0–3/); assert.deepEqual(view(), before, 'the pattern and track did not move');
+  await h.rejects('show', { track: 5, column: 'zzz' }, /column must be one of/); assert.deepEqual(view(), before);
+  await h.rejects('show', { track: 2, instrument: 99 }, /instrument 99 does not exist/); assert.deepEqual(view(), before);
+  await h.rejects('show', { row: 3, select: { fromRow: 5, toRow: 2 } }, /must not be before/); assert.deepEqual(view(), before);
+  for (const select of [5, 'all', [0, 1]]) { await h.rejects('show', { select }, /select must be \{fromTrack, toTrack, fromRow, toRow\} or null/); assert.deepEqual(view(), before); }
+  const ui = await h.ok('show', { pattern: 'Two', track: 3, row: 2, select: { toTrack: 4, fromRow: 1, toRow: 3 } });
+  assert.equal(h.state.project.activePattern, two.pattern.id); assert.deepEqual(ui.selection, { tracks: [3, 4], rows: [1, 3] });
+});
+
+test('editInstrument validates its parameters before it retires a plug-in instrument', async () => {
+  const setup = () => {
+    const h = harness(), ran = [], perform = h.ST.perform;
+    h.state.project.instruments[2].type = 'au'; h.state.project.instruments[2].plugin = { name: 'Synth', component: 'aumu:x' };
+    // The app's own command removes the hosted plug-in (it needs the native host; here it simply succeeds).
+    h.ST.perform = command => { if (!/^instrumentType:/.test(command)) return perform(command); ran.push(command);
+      return h.ST.mutate('instrument type', p => { p.instruments[2].type = command.split(':')[1]; p.instruments[2].plugin = null; }); };
+    return { h, ran };
+  };
+  for (const [params, pattern] of [[{ cutof: 100 }, /Unknown instrument parameter "cutof"/], [{ cutoff: '100 kHz' }, /cutoff must be between/]]) {
+    const { h, ran } = setup();
+    await h.rejects('editInstrument', { instrument: 2, type: 'sample', params }, pattern);
+    assert.deepEqual(ran, [], 'a refused call does not run the type switch'); assert.equal(h.state.project.instruments[2].type, 'au');
+  }
+  const { h, ran } = setup(), done = await h.ok('editInstrument', { instrument: 2, type: 'sample', params: { cutoff: '1 kHz' } });
+  assert.deepEqual(ran, ['instrumentType:sample']); assert.equal(done.instrument.type, 'sample'); assert.equal(h.state.project.instruments[2].cutoff, 1000);
+});
+
+test('built-in sample references load, prototype names are not parameters, and song-model refusals are plain answers', async () => {
+  const loads = [], h = harness('pattern', { 'sample.load': payload => { loads.push(payload); return { path: payload.path, name: 'Vowels' }; } });
+  // createInstrument (and the create_instrument tool) send agents to loadSample with a builtin: table.
+  const loaded = await h.ok('loadSample', { path: 'builtin:wavetables/Morph/Vowels.wav', track: 1 });
+  assert.equal(loaded.sample, 'builtin:wavetables/Morph/Vowels.wav'); assert.equal(loads[0].path, 'builtin:wavetables/Morph/Vowels.wav');
+  await h.rejects('loadSample', { path: 'relative/kick.wav' }, /absolute file path, or a built-in sample/);
+  await h.rejects('loadSample', { path: 'builtin:' }, /absolute file path/);
+  await h.rejects('writeSteps', { steps: [{ track: 0, row: 0, note: 'C-4', fx1: { type: 'toString', value: 1 } }] }, /unknown effect type "toString"/);
+  await h.rejects('writeSteps', { steps: [{ track: 0, row: 0, note: 'C-4', fx1: 'constructor 3' }] }, /unknown effect "constructor 3"/);
+  await h.rejects('editInstrument', { instrument: 1, params: { constructor: 1 } }, /Unknown instrument parameter "constructor"/);
+  h.state.project.sequence = Array(1024).fill(0);
+  assert.doesNotMatch(await h.rejects('editSong', { action: 'insert', pattern: 0 }, /1024 sequence slots/), /Internal error/);
+  for (const [limit, offset] of [['10', 0], [0, 0], [10, -5], [10, '5']]) await h.rejects('pluginParameters', { track: 0, limit, offset }, /limit must be|offset must be/);
+  // Only the caller's own text is "not valid JSON"; a JSON failure inside a method is reported as internal.
+  assert.match(JSON.parse(await h.agent.dispatch('summary', '{"a":')).error, /^params are not valid JSON/);
+  delete h.state.project.reverb;
+  assert.match(JSON.parse(await h.agent.dispatch('summary', '{}')).error, /^Internal error in summary/);
+});
+
 (async () => { let failures = 0; for (const { name, run } of tests) { try { await run(); console.log('PASS ' + name); } catch (error) { failures++; console.error('FAIL ' + name + '\n' + error.stack); } } console.log(`Agent API: ${tests.length - failures}/${tests.length} groups passed.`); if (failures) process.exitCode = 1; })();

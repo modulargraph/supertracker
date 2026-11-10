@@ -200,7 +200,6 @@
     const handler = HANDLERS[name], held = M.held.get(name); M.held.delete(name);
     if (M.latched === name) M.latched = null;
     if (name === 'shift') { M.shift = false; M.shiftPads = []; }
-    if (name === 'file') M.fileMenu = null;
     if (name === 'auto') M.autoHold = null;
     if (name === 'encoderPush') window.STSampler?.stopAudition?.();
     if (name === 'variation') { M.variationHeld = null; M.variationUsed = false; }

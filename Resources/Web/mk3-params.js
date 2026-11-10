@@ -167,7 +167,8 @@
       if (!step) return;
       delete step.fx1;
       delete step.fx2;
-      if (step.note === -3) pattern().steps[track][row] = null;
+      // A row that only held locks goes; one that also carries extra note columns (app-note-columns.js) stays.
+      if (step.note === -3 && !step.columns) pattern().steps[track][row] = null;
     });
     flash('Step locks cleared');
   }
