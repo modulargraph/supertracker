@@ -102,6 +102,16 @@ const steps = track => ST.pattern().steps[track];
   const before = JSON.stringify(steps(0).slice(0, 9));
   tools.reverse(); assert.equal(JSON.stringify(steps(0).slice(0, 9).reverse()), before);
   await ST.perform('undo'); assert.equal(JSON.stringify(steps(0).slice(0, 9)), before);
+  // Time tools on a range without steps change nothing and add no Undo step.
+  {
+    const undo = state.undo.length, column = JSON.stringify(steps(0));
+    for (let row = 20; row <= 23; row++) steps(0)[row] = null;
+    const emptied = JSON.stringify(steps(0));
+    state.track = 0; state.selection = { track: 0, row: 20 }; state.row = 23;
+    tools.reverse(); tools.nudge(1); tools.stretch(2);
+    assert.equal(state.undo.length, undo, 'no Undo step for an empty range'); assert.equal(JSON.stringify(steps(0)), emptied);
+    ST.pattern().steps[0] = JSON.parse(column);
+  }
   state.selection = null; state.track = 3;
   const kicks = () => steps(3).map((s, i) => s ? i : -1).filter(i => i >= 0);
   same(kicks().slice(0, 2), [0, 8]);

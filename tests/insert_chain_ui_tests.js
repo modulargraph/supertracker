@@ -222,6 +222,19 @@ test('keyboard on tiles: arrows select, ⌥ arrows reorder, B bypasses, D duplic
   await h.undo(); same(h.chain(), ['Compressor', 'Multimode Filter', 'Beat Delay']);
 });
 
+test('duplicate stays one Undo step when the Undo history is full (it drops its oldest entry on every edit)', async () => {
+  const h = harness();
+  for (const id of ['stfx:compressor', 'stfx:filter']) await h.window.STInserts.add(h.owner, id);
+  await h.settle();
+  // A long session: 90 Undo steps, the most the history keeps.
+  for (let i = 0; h.ST.state.undo.length < 90; i++) h.ST.mutate('rename session', p => { p.name = 'Chain ' + i; });
+  await h.settle();
+  await h.window.STInserts.duplicate(h.owner, 0); await h.settle();
+  same(h.chain(), ['Compressor', 'Compressor', 'Multimode Filter'], 'the copy lands right after its source');
+  assert.equal(h.ST.state.undo.filter(entry => entry.label === 'Duplicate insert effect').length, 1, 'the add and the move are one Undo step');
+  await h.undo(); same(h.chain(), ['Compressor', 'Multimode Filter'], 'one Undo removes the copy');
+});
+
 test('Beat Delay shows Time with its Unit ("4 × 1/16") and follows Unit changes', async () => {
   const h = harness();
   await h.window.STInserts.add(h.owner, 'stfx:beatdelay'); await h.settle();

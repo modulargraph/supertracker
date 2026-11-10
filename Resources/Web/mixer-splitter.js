@@ -74,13 +74,19 @@
       splitter.classList.add('is-dragging'); document.body.classList.add('is-resizing-mixer');
       try { splitter.setPointerCapture?.(event.pointerId); } catch { /* synthetic events */ }
       const move = e => apply(start - (e.clientY - startY), p);
+      // The mixer can re-render during a drag (a host update): the replaced splitter never sees the release, the window does.
+      const release = () => {
+        window.removeEventListener?.('pointerup', release, true); window.removeEventListener?.('pointercancel', release, true);
+        document.body.classList.remove('is-resizing-mixer');
+      };
       const up = e => {
         splitter.removeEventListener('pointermove', move); splitter.removeEventListener('pointerup', up); splitter.removeEventListener('pointercancel', up);
-        splitter.classList.remove('is-dragging'); document.body.classList.remove('is-resizing-mixer');
+        splitter.classList.remove('is-dragging'); release();
         if (e.type === 'pointerup') save(apply(start - (e.clientY - startY), p));
         else apply(load(), p);
       };
       splitter.addEventListener('pointermove', move); splitter.addEventListener('pointerup', up); splitter.addEventListener('pointercancel', up);
+      window.addEventListener('pointerup', release, true); window.addEventListener('pointercancel', release, true);
     });
     splitter.addEventListener('dblclick', event => { event.preventDefault(); reset(); });
     splitter.addEventListener('keydown', event => {

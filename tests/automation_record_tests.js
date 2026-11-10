@@ -41,7 +41,7 @@ function harness({ lanes = [], length = 64, fine = false } = {}) {
   web.load(context, 'automation-record.js', { text: source });
   const R = window.STAutomationRecord;
   const h = {
-    R, state, mutations, syncs, toasts, listeners, window,
+    R, state, mutations, syncs, toasts, listeners, window, document,
     pattern: (id = 3) => state.project.patterns.find(p => p.id === id),
     advance(ms) { const end = clock + ms; for (;;) { const due = [...timers].filter(([, t]) => t.at <= end).sort((a, b) => a[1].at - b[1].at)[0]; if (!due) break; clock = Math.max(clock, due[1].at); timers.delete(due[0]); due[1].fn(); } clock = end; },
     status(position, { playing = true, pattern = 3, transportSeekRevision } = {}) {
@@ -287,6 +287,27 @@ test('MIDI learn maps a CC that then records a plug-in parameter', () => {
   const lane = h.lane('plugin:instrument:0:7');
   assert(lane.points.some(p => p.value === 1));
   assert(h.toasts.some(t => /CC 21/.test(t.m)));
+});
+
+test('two learned controllers moved together outside recording each commit their own edit', () => {
+  const h = harness();
+  const control = track => { const el = h.element({ value: .8, dataset: { track: String(track) } }); el.events = []; el.isConnected = true; el.dispatchEvent = event => el.events.push(event.type); return el; };
+  let bass = control(0), keys = control(1);
+  h.document.querySelectorAll = () => [bass, keys];
+  h.R.learn(h.ref('volume', 0)); h.R.event('midi.message', { status: 0xB0, data1: 20, data2: 0 });
+  h.R.learn(h.ref('volume', 1)); h.R.event('midi.message', { status: 0xB0, data1: 21, data2: 0 });
+  // Read mode, stopped: the knobs move the visible faders, whose own handlers preview (input) and commit (change).
+  h.R.event('midi.message', { status: 0xB0, data1: 20, data2: 127 }); h.advance(100);
+  h.R.event('midi.message', { status: 0xB0, data1: 21, data2: 64 });
+  assert.equal(bass.value, '1.5'); assert.deepEqual(bass.events, ['input']); assert.deepEqual(keys.events, ['input']);
+  h.advance(380); // Bass has been still for 450 ms: its edit is committed although Keys moved in between
+  assert.deepEqual(bass.events, ['input', 'change']); assert.deepEqual(keys.events, ['input']);
+  // That commit re-renders the mixer: the Keys fader is a new element showing the stored value again.
+  const stale = keys; stale.isConnected = false; keys = control(1); h.document.querySelectorAll = () => [bass, keys];
+  h.advance(200);
+  assert.deepEqual(stale.events, ['input'], 'nothing is sent to the replaced element');
+  assert.equal(Number(keys.value).toFixed(2), '0.76', 'the moved value is committed on the element that shows the parameter now');
+  assert.deepEqual(keys.events, ['change']);
 });
 
 test('context items expose arm, mode and MIDI learn for automatable controls', () => {

@@ -77,7 +77,9 @@
     if (opts.originals === 'mute') for (const t of sel.tracks) p.tracks[t].mute = true;
     else for (const t of sel.tracks) for (let r = sel.firstRow; r <= sel.lastRow; r++) pat.steps[t][r] = null;
     let track = sel.tracks[0];
-    if (opts.destination === 'new') {
+    // Kept originals are muted with their tracks, so the trigger cannot live on one of them: it would be silent
+    // and replace the note it was meant to keep.
+    if (opts.destination === 'new' || opts.originals === 'mute') {
       track = helpers.appendTrack(p, index, result.name);
       Object.assign(p.tracks[track], { volume: 1, pan: 0, mute: false, solo: false });
     }
@@ -120,6 +122,8 @@
     }
     const replace = get('rs-replace')?.checked;
     if (get('rs-replace-options')) get('rs-replace-options').hidden = !replace;
+    // Muted originals keep their tracks: the trigger then goes on a new track.
+    if (get('rs-destination') && get('rs-originals')?.value === 'mute') { get('rs-destination').value = 'new'; get('rs-destination').disabled = true; }
     if (get('rs-master-note')) get('rs-master-note').hidden = !(replace && get('rs-mode')?.value === 'master');
     if (get('rs-go')) { get('rs-go').disabled = busy; get('rs-go').textContent = busy ? 'Rendering…' : 'Render'; }
     if (get('rs-cancel')) get('rs-cancel').textContent = busy ? (job.cancelled ? 'Cancelling…' : 'Cancel render') : 'Close';
@@ -184,7 +188,7 @@
     if (opened === false || !get('rs-go')) return false;
     // Closing the dialog (Esc, ×, another dialog) cancels a running render.
     if (window.STApp) window.STApp.modalDismiss = () => cancel();
-    for (const id of ['rs-replace', 'rs-mode']) get(id).onchange = paint;
+    for (const id of ['rs-replace', 'rs-mode', 'rs-originals']) get(id).onchange = paint;
     get('rs-cancel').onclick = () => { if (job) cancel(); else a.closeModal(); };
     get('rs-go').onclick = () => run(sel);
     get('rs-name').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); run(sel); } });
@@ -202,6 +206,10 @@
     if (!chosen.name) { status.textContent = 'Name the sample.'; get('rs-name').focus(); return; }
     options = { ...options, ...chosen }; delete options.name;
     const owner = project();
+    // Edits change the project in place: a bounce in place belongs to these track and pattern objects, not to
+    // whatever has moved to their indices by the time the render returns.
+    const rendered = sel.tracks.map(t => owner.tracks[t]), renderedPattern = owner.patterns.find((item, position) => (item.id ?? position) === sel.pattern);
+    const placed = () => owner.patterns.includes(renderedPattern) && rendered.every((track, i) => track && owner.tracks[sel.tracks[i]] === track);
     job = { cancelled: false, phase: 'capturing', progress: 0 };
     paint();
     let result = null;
@@ -216,6 +224,7 @@
       const sample = await a.request('sample.load', { path: result.path, instrument: index });
       if (!sample?.path) throw new Error('The host could not load the rendered sample.');
       if (project() !== owner || owner.instruments.length !== index) throw new Error(`The project changed while loading. The sample was kept at ${result.path}.`);
+      if (chosen.replace && !placed()) throw new Error(`The selected tracks or pattern changed while rendering. The sample was kept at ${result.path}.`);
       let applied = null;
       const label = chosen.replace ? 'bounce selection in place' : 'render selection to sample';
       const done = a.mutate(label, p => {

@@ -58,3 +58,31 @@ function harness(points = [{row:0,value:.8},{row:16,value:.4}]) {
   const h=harness();h.depart('point-row-0','point-value-0',16);h.flush();assert.equal(h.state.project.patterns[0].automation[0].points.length,1);assert.equal(h.document.activeElement.id,'point-value-0');
   console.log('PASS merging a breakpoint into an occupied row keeps the surviving value editor focused');
 }
+{
+  // Rows are stored to 1/64 (recorded takes, a typed 9.5): the edited point keeps its selection and Tab's destination.
+  const h=harness([{row:0,value:.8},{row:16,value:.4},{row:24,value:.6}]);h.depart('point-row-2','point-value-2',9.5);
+  assert.deepEqual(Array.from(h.state.project.patterns[0].automation[0].points,p=>p.row),[0,9.5,16]);
+  h.flush();assert.equal(h.document.activeElement.id,'point-value-1','focus follows the point to its new place, not the point that took its old index');
+  const input=h.nodes.get('point-value-1');input.value='.3';input.fire('input');input.fire('change');h.flush();
+  assert.deepEqual(Array.from(h.state.project.patterns[0].automation[0].points,p=>p.value),[.8,.3,.4],'the value typed next edits the same point');
+  console.log('PASS a fractional row keeps focus and the next edit on the same point');
+}
+{
+  // An emptied field is no edit: it used to become row 0 (replacing the point there) or the lowest value.
+  const h=harness([{row:0,value:.8},{row:16,value:.4}]),before=JSON.stringify(h.state.project.patterns[0].automation[0].points);
+  h.depart('point-row-1','point-value-1','');h.flush();
+  assert.equal(JSON.stringify(h.state.project.patterns[0].automation[0].points),before);assert.equal(h.changes.length,0);
+  assert.equal(h.nodes.get('point-row-1').value,'16','the field shows the stored row again');
+  const value=h.nodes.get('point-value-1');value.focus();value.value='';value.fire('input');value.fire('change');h.flush();
+  assert.equal(JSON.stringify(h.state.project.patterns[0].automation[0].points),before);assert.equal(h.changes.length,0);
+  console.log('PASS an emptied row or value field leaves the point unchanged');
+}
+{
+  // A key that cannot change the lane (← on a point at row 0, → at the last row) adds no Undo step.
+  const h=harness([{row:0,value:.8},{row:63,value:.4}]),svg=h.nodes.get('automation-envelope'),rows=()=>Array.from(h.state.project.patterns[0].automation[0].points,p=>p.row);
+  const press=key=>svg.fire('keydown',{key,preventDefault(){},stopPropagation(){}});
+  press('Home');press('ArrowLeft');assert.deepEqual(rows(),[0,63]);assert.equal(h.changes.length,0,'no Undo step for a point already at the first row');
+  press('ArrowRight');assert.deepEqual(rows(),[1,63]);assert.equal(h.changes.length,1);
+  press('End');press('ArrowRight');assert.equal(h.changes.length,1,'no Undo step for a point already at the last row');
+  console.log('PASS envelope keys that change nothing add no Undo step');
+}

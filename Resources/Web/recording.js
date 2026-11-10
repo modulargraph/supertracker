@@ -121,8 +121,8 @@
         ? '● Retry recording · ⌘⇧R'
         : '● Start recording · ⌘⇧R';
     get('record-close').disabled = session.busy || session.recording;
-    if (session.inline) for (const id of ['recording-input-settings', 'recording-routing-configure', 'recording-studio-settings',
-        'recording-replace-sound']) if (get(id)) get(id).disabled = session.busy || session.recording || session.metering;
+    if (session.inline) for (const id of ['recording-input-settings', 'recording-routing-configure',
+        'recording-studio-settings']) if (get(id)) get(id).disabled = session.busy || session.recording || session.metering;
     get('record-playback').disabled = session.busy || !app().state.native;
     get('record-playback').textContent = app().state.playing ? 'Pause playback' : 'Play selection';
     if(get('record-advanced-summary'))get('record-advanced-summary').textContent=session.monitor&&session.source==='input'?'Monitor on':'Monitor off';
@@ -725,7 +725,6 @@
     return { instrument: session.instrument, track: session.track };
   }
   window.STRecording = {
-    supportsKitOwners: true,
     mountInline,
     leaveInline,
     rememberInline: () => {

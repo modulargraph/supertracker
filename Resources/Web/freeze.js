@@ -7,7 +7,6 @@
   'use strict';
   const app = () => window.ST, state = () => app().state, project = () => state().project;
   const MIX = new Set(['volume', 'pan', 'delay', 'reverb']);
-  const { clone } = window.STUtil;
   const esc = value => app()?.escapeHTML ? app().escapeHTML(String(value)) : String(value).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
   let busy = false, statusByID = new Map(), statusTimer = null, lastStatusKey = '', observer = null;
 
@@ -101,34 +100,6 @@
     const cancel = document.getElementById('st-freeze-explain-cancel'), go = document.getElementById('st-freeze-explain-unfreeze');
     if (cancel) cancel.onclick = () => a.closeModal();
     if (go) { go.onclick = () => { a.closeModal(); unfreeze(blocked.track); }; go.focus(); }
-  }
-
-  /* Guard edits that go through ST.mutate (modules). app.js's internal mutate()
-     needs the one-line hook listed in the integration notes for full coverage. */
-  function installMutateGuard() {
-    const a = app();
-    if (!a || a.mutate?.stFreezeGuard) return;
-    const original = a.mutate;
-    const guarded = function (label, fn, options = {}) {
-      const p = state()?.project;
-      if (options.freezeCommit || !p?.tracks?.some(track => track.frozen)) return original(label, fn, options);
-      let blocked = null;
-      const undoLength = state().undo.length;
-      const result = original(label, draft => {
-        const before = clone(draft);
-        fn(draft);
-        blocked = checkMutation(before, draft, label, options);
-        if (blocked) { for (const key of Object.keys(draft)) delete draft[key]; Object.assign(draft, before); }
-      }, options);
-      if (blocked) {
-        if (state().undo.length > undoLength) state().undo.pop();
-        a.refresh?.();
-        explain(blocked);
-      }
-      return result;
-    };
-    guarded.stFreezeGuard = true;
-    a.mutate = guarded;
   }
 
   // ---- Commands --------------------------------------------------------------------------
@@ -280,8 +251,6 @@
     go.focus();
   }
 
-  const toggle = (index = state().track) => isFrozen(index) ? unfreeze(index) : freeze(index);
-
   /** Patterns with printable content for the track (dialog summary). */
   function patternCount(index) {
     const p = project(), track = p?.tracks?.[index], owner = ownerOf(track);
@@ -389,22 +358,18 @@
       : [{ title: 'Freeze track…', enabled: !busy, action: () => freeze(index) }];
   }
 
-  const commands = [
-    ['freezeTrack', 'Freeze selected track…', '', ['print track', 'reduce processing', 'freeze', 'save cpu']],
-    ['unfreezeTrack', 'Unfreeze selected track…', '', ['unfreeze', 'restore plug-ins', 'edit frozen track']]
-  ];
-
   window.STFreeze = {
-    freeze, unfreeze, toggle, isFrozen, label, contextItems, checkMutation, explain, commands, refreshStatus: () => scheduleStatus(0),
+    freeze, unfreeze, isFrozen, label, contextItems, checkMutation, explain,
     blockAudition, auditionMessage, event,
     get isBusy() { return busy; }
   };
 
+  // Edits are checked by the app's mutate (app-history.js calls checkMutation and explain): a refused edit
+  // leaves the project, the Undo and Redo history and the saved state as they were.
   document.addEventListener('DOMContentLoaded', () => {
-    installMutateGuard();
     window.STContextMenu?.register(context => contextItems(context), 79);
     startObserver();
   });
   // ST.boot() renders after DOMContentLoaded handlers are registered; retry once rendered.
-  window.addEventListener('load', () => { installMutateGuard(); startObserver(); });
+  window.addEventListener('load', () => { startObserver(); });
 })();

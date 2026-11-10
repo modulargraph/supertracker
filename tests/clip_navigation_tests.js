@@ -238,5 +238,47 @@ test('invalid maps and out-of-domain inverse conversions reject before history o
  installTiming(h);h.clips.event('audio.clipLoaded',{path:'/end.wav',duration:2,peaks:[0,1]});const count=h.state.project.audioClips.length,result=await h.clips.addFile('/end.wav',{startBeat:999999,track:0});assert.equal(result,null);assert.equal(h.state.project.audioClips.length,count);assert.equal(h.changes.length,0);
 });
 
+// The app re-renders on every selection change and edit, and then gives focus back to the control that had it
+// (app-shell.js refresh). A clip that receives focus becomes the selection, so that restore must never undo a
+// selection that just moved to another clip.
+function rerenderRestoresFocus(h) {
+  const ST = h.context.window.ST, mutate = ST.mutate;
+  ST.refresh = () => { const focused = h.document.activeElement; if (focused) { h.document.activeElement = null; focused.focus(); } };
+  ST.mutate = (label, fn) => { mutate(label, fn); ST.refresh(); };
+}
+test('arrows, Home and End move the selection off a focused clip although the re-render restores focus', () => {
+  const h = harness(); rerenderRestoresFocus(h);
+  h.key('clip-a', 'ArrowDown'); assert.equal(h.state.clipSelected, 'b'); assert.equal(h.document.activeElement.id, 'clip-b');
+  h.key('clip-b', 'End'); assert.equal(h.state.clipSelected, 'c'); assert.equal(h.document.activeElement.id, 'clip-c'); assert.equal(h.state.track, 2);
+  h.key('clip-c', 'ArrowUp'); assert.equal(h.state.clipSelected, 'b');
+  h.key('clip-b', 'Home'); assert.equal(h.state.clipSelected, 'a'); assert.equal(h.document.activeElement.id, 'clip-a');
+  assert.equal(h.changes.length, 0);
+});
+test('duplicate and split select the new region although the re-render restores focus to the source clip', () => {
+  const h = harness(); rerenderRestoresFocus(h);
+  h.key('clip-b', 'd', { metaKey: true });
+  const duplicate = h.state.project.audioClips.at(-1);
+  assert.equal(duplicate.startBeat, 12); assert.equal(h.state.clipSelected, duplicate.id, 'the copy is selected, not the source again');
+  const other = harness(); rerenderRestoresFocus(other);
+  other.nodes.get('clips-cursor').value = 6; other.nodes.get('clips-cursor').fire('change');
+  other.key('clip-a', 's');
+  const right = other.state.project.audioClips.at(-1);
+  assert.equal(right.startBeat, 6); assert.equal(other.state.clipSelected, right.id, 'the region after the cut is selected');
+});
+test('keys that change nothing add no Undo step', () => {
+  const h = harness(); Object.assign(h.state.project.audioClips[0], { fadeIn: 0, fadeOut: 0 }); // as imported clips are stored
+  h.key('clip-a', 'ArrowUp', { altKey: true }); // already on the first track
+  h.key('clip-a', 'ArrowLeft', { altKey: true }); // source offset already 0
+  assert.equal(h.changes.length, 0); assert.equal(h.state.project.audioClips[0].track, 0);
+  h.key('clip-a', 'ArrowDown', { altKey: true }); assert.deepEqual(h.changes, ['move audio clip track']);
+});
+test('an emptied inspector field keeps the clip value instead of collapsing it to the minimum', () => {
+  const h = harness(), a = h.state.project.audioClips[0];
+  const field = h.node('clips-durationBeats', h.panel, 'INPUT', { clipsField: 'durationBeats' });
+  field.min = '.001'; field.max = '1000000'; h.clips.bind();
+  field.value = ''; field.fire('change'); assert.equal(a.durationBeats, 4); assert.equal(h.changes.length, 0);
+  field.value = '2'; field.fire('change'); assert.equal(a.durationBeats, 2); assert.deepEqual(h.changes, ['edit audio clip']);
+});
+
 (async()=>{for (const { name, fn } of tests) { await fn(); console.log('PASS ' + name); }
 console.log(`Clip navigation: ${tests.length} regression groups passed.`);})().catch(error=>{console.error(error);process.exitCode=1;});

@@ -91,4 +91,14 @@ test('mixer: a track deleted during the native input request never passes its ro
  assert.equal(await pending,false);assert.equal(h.undo.length,0);
  assert.equal(h.state.project.tracks[0].name,'Second');assert.equal(h.state.project.tracks[0].audioInput,undefined,'the shifted track keeps no input');
 });
+test('dialog: an emptied gain field is refused instead of silencing the live input with gain 0',async()=>{
+ const h=harness();await h.show();
+ h.get('line-input-enabled-0').checked=true;h.get('line-input-gain-0').value='';await h.apply();
+ assert.equal(h.calls.filter(c=>c.command==='audio.inputs').length,0,'nothing is sent to the audio host');
+ assert.equal(h.undo.length,0);assert.equal(h.state.modal,'line-inputs','the dialog stays open');
+ assert.match(h.get('line-input-status').textContent,/Input gain must be between 0 and 2/);
+ h.get('line-input-gain-0').value='0.5';await h.apply();
+ assert.equal(h.state.project.tracks[0].audioInput.gain,.5);assert.equal(h.undo.length,1);
+});
+
 (async()=>{for(const {name,fn}of tests){await fn();console.log('PASS '+name);}console.log(`Line inputs UI: ${tests.length} groups passed.`);})().catch(error=>{console.error(error);process.exitCode=1;});

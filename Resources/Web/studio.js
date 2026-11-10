@@ -414,7 +414,7 @@
           + `effect</button></div>
       ${effects.length
           ? effects.map(plugin => renderPlugin(plugin)).join('')
-          : '<div class="studio-empty"><p>No insert effects</p><small class="muted">Add a plug-in effect · ${INSERT_SLOTS} slots per track</small></div>'}
+          : `<div class="studio-empty"><p>No insert effects</p><small class="muted">Add a plug-in effect · ${INSERT_SLOTS} slots per track</small></div>`}
       ${ui.pluginPicker ? renderPluginPicker() : ''}`}${window.STRouting?.render(selectedOwner()) || ''}</section>
       <section class="panel studio-returns"><div class="panel-head"><div><h3>Send returns</h3></div></div><div class="studio-return-pair">`
           + `<div><h4>01 · Delay</h4>${range({ id: 'delay-time', label: 'Time', value: delay.time, min: .01, max: 2, step: .005, format: v => `${Math.round(v * 1000)} ms`, group: 'delay', property: 'time' })}${range({ id: 'delay-feedback', label: 'Feedback', value: delay.feedback, max: .95, group: 'delay', property: 'feedback' })}${range({ id: 'delay-mix', label: 'Return', value: delay.mix, group: 'delay', property: 'mix' })}</div>`
@@ -487,7 +487,7 @@
           + `<span>Output</span><strong>${esc(outputName)}</strong></button><button class="studio-send-summary" id="${channelControlId('sends',channel)}"`
           + ` tabindex="${tab}" data-route-sends="${esc(channel.owner)}" data-mixer-role="sends" ${window.STRouting?.canSend?.(channel.owner) ? '' : 'disabled'}>${sendCount ? `${sendCount} custom send${sendCount === 1 ? '' : 's'}` : '+ Custom send'}</button>`}
       ${channel.groupHead ? (() => { const count = window.STGroups.members(project(), group).length;
-          return `<button class="group-strip-expand" data-group-mixer-expand="${esc(group.id)}" tabindex="${tab}" aria-expanded="${!group.mixerCollapsed}">${group.mixerCollapsed ? 'Show' : 'Hide'} ${count} track${count === 1 ? '' : 's'}</button>`; })() : ''}
+          return `<button class="group-strip-expand" id="${channelControlId('expand', channel)}" data-group-mixer-expand="${esc(group.id)}" tabindex="${tab}" aria-expanded="${!group.mixerCollapsed}">${group.mixerCollapsed ? 'Show' : 'Hide'} ${count} track${count === 1 ? '' : 's'}</button>`; })() : ''}
       <button `
           + `class="studio-slot-summary" id="${channelControlId('slots',channel)}" tabindex="${tab}" data-select-owner="${esc(channel.owner)}"`
           + ` data-mixer-role="slots">${effectsFor(channel.owner).length
@@ -516,7 +516,7 @@
         + (window.STInsertChain ? rackWithChain(owner, effects) : `<div class="panel-head"><div><h3>${esc(channelTitle(owner))} / Inserts <span class="studio-slot-count">${effects.length}/${INSERT_SLOTS}</span>`
         + `</h3><span class="studio-reorder-hint" role="status">${ui.pluginMoving ? 'Moving effect…' : '⌥ ↑ / ↓ reorder'}</span>`
         + `</div><button class="btn" data-studio-action="add-plugin" ${effects.length >= INSERT_SLOTS || ui.pluginMoving ? 'disabled' : ''}>+ Add `
-        + `effect</button></div>${effects.length ? effects.map(renderPlugin).join('') : '<div class="studio-empty"><p>No insert effects</p><small class="muted">${INSERT_SLOTS} plug-in slots per channel</small>'
+        + `effect</button></div>${effects.length ? effects.map(renderPlugin).join('') : `<div class="studio-empty"><p>No insert effects</p><small class="muted">${INSERT_SLOTS} plug-in slots per channel</small>`
         + '</div>'}${ui.pluginPicker ? renderPluginPicker() : ''}`) + `</section>`
         + `<div class="studio-side"><section class="studio-routing-panel" aria-label="Selected channel routing">${window.STRouting?.render(owner) || ''}</section>
     <section class="panel studio-returns studio-fixed-returns"><div class="panel-head"><h3>Built-in returns</h3>`
@@ -870,14 +870,16 @@
     if (await S().captureNativeEdits?.() === false) return null;
     const snapshot = await S().request('plugin.state', { ...ownerPayload(track), kind: 'effect', slot, ...(source.instanceID ? { instanceID: source.instanceID } : {}) });
     if (snapshot?.stateError) throw new Error(String(snapshot.stateError));
-    const history = state().undo, before = history?.length ?? 0;
+    const history = state().undo, top = history?.at(-1);
     const copy = await addInsert(track, source.component, { bundlePath: source.bundlePath || '', state: snapshot?.state || source.state || '', name: source.name || '',
       bypass: !!source.bypass, label: 'Duplicate insert effect' });
     if (!copy) return null;
     const chain = effectsFor(track), at = chain.findIndex(item => item.slot === slot), next = chain[at + 1];
     if (next && next.slot !== copy.slot) {
-      const addEntry = history?.[before];
-      if (await moveInsert(track, copy.slot, next.slot, { label: 'Duplicate insert effect' }) && addEntry && history.length === before + 2 && history[before] === addEntry) history.pop();
+      // The add and the move are one Undo step: drop the move's entry when it sits right on the add's (by identity,
+      // not by position: a full history drops its oldest entry on every push).
+      const addEntry = history?.at(-1) !== top ? history.at(-1) : null;
+      if (await moveInsert(track, copy.slot, next.slot, { label: 'Duplicate insert effect' }) && addEntry && history.at(-1) !== addEntry && history.at(-2) === addEntry) history.pop();
     }
     return effectsFor(track).find(item => copy.instanceID && item.instanceID === copy.instanceID) || copy;
   }
@@ -898,6 +900,7 @@
       const group = window.STGroups?.byID(project(), button.dataset.groupMixerExpand);
       if (group) window.STApp?.setViewPreference?.(group.id, 'mixerCollapsed', !group.mixerCollapsed);
       S().refresh();
+      focusMixerControl(button.id); // the strip is re-rendered: keep the keyboard on Show / Hide
     });
     document.getElementById('mixer-workspace')?.addEventListener('focusin', event => updateMixerIdentity(event.target));
     window.STRouting?.bind(selectedOwner()); window.STRouting?.bindPluginSidechains(selectedOwner());
@@ -1592,6 +1595,8 @@
     const lane = selectedLane(); if (!lane) return;
     const values = normalizedPoints(next, targetInfo(lane));
     ui.point = clamp(ui.point, 0, Math.max(0, values.length - 1));
+    // An edit that changes nothing (a point already at the first or last row, a value at its limit) is not an Undo step.
+    if (JSON.stringify(values) === JSON.stringify(lane.points)) { updatePointSelection(); if (focus) focusId(focus); return; }
     mutate(label, () => { lane.points = values; }, focus);
   }
 
@@ -1751,11 +1756,14 @@
       input.addEventListener('blur', () => { fields.drafts.delete(input); if (fields.pending) paintPointFields(fields); });
       input.addEventListener('change', () => {
         if (!validPointFields(fields)) return;
+        // An emptied field is not a row or a value: the point stays as it is (the field shows it again).
+        if (!String(input.value).trim() || !Number.isFinite(Number(input.value))) { fields.drafts.delete(input); paintPointFields(fields); return; }
         if (!settleAutomationEdit()) return;
         const points = ordered(fields.lane.points), index = points.findIndex(point => point.row === binding.row); if (index < 0) return;
         const key = binding.role, info = targetInfo(fields.lane), oldRow = binding.row, point = points.splice(index,1)[0];
         point[key] = clamp(input.value,key === 'row' ? 0 : info.min,key === 'row' ? pattern().length - 1 : info.max); points.push(point);
-        const next = normalizedPoints(points,info), newRow = Math.round(point.row); ui.point = next.findIndex(point => point.row === newRow);
+        // The row as it is stored (1/64 row): a typed 9.5 or a recorded sub-row point keeps its selection and focus.
+        const next = normalizedPoints(points,info), newRow = Math.round(point.row * 64) / 64; ui.point = next.findIndex(point => point.row === newRow);
         S().mutate('Edit automation point', () => { fields.lane.points = next; }, {render:false});
         if (fields.lane.points === next) for (const value of fields.bindings.values()) if (value.row === oldRow) value.row = newRow;
         fields.drafts.delete(input); paintPointFields(fields);

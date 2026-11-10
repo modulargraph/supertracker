@@ -1541,7 +1541,7 @@
   });
   method('setPluginParameters', 'Set plug-in parameters by name or address on a track\'s instrument or an effect slot of a track, bus or master (channel). Values: "50%" '
       + 'or {normalized:0.5} = position 0–1; a plain number = the parameter\'s own value (min…max).', ['track', 'channel', 'kind', 'slot', 'values', 'label'], async params => {
-    const p = project(), ref = pluginRef(p, params), { channel, kind, slot } = ref, t = channel.track;
+    const p = project(), ref = pluginRef(p, params), { channel, kind } = ref, t = channel.track;
     if (!params.values
         || typeof params.values !== 'object'
         || Array.isArray(params.values)

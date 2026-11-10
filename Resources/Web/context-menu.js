@@ -28,7 +28,7 @@
     return result;
   }
 
-  function fallbackMenu(x, y, items, actions) {
+  function fallbackMenu(x, y, items, actions, restore) {
     document.querySelector('.context-menu')?.remove();
     const menu = document.createElement('div');
     menu.className = 'context-menu'; menu.setAttribute('role', 'menu');
@@ -42,15 +42,21 @@
       const button = document.createElement('button'); button.setAttribute('role', 'menuitem');
       button.textContent = item.title; button.disabled = !item.enabled; button.style.paddingLeft = `${9 + depth * 12}px`;
       if (item.key) { const kbd = document.createElement('kbd'); kbd.textContent = item.key; button.appendChild(kbd); }
-      button.onclick = () => { menu.remove(); run(item.id, actions); };
+      button.onclick = () => { menu.remove(); restore?.focus?.({ preventScroll: true }); run(item.id, actions); };
       menu.appendChild(button);
     });
     flat(items);
     document.body.appendChild(menu);
+    // Keep the whole menu inside the window (a long menu scrolls inside its own height).
+    const box = menu.getBoundingClientRect?.();
+    if (box?.width) {
+      menu.style.left = `${Math.max(8, Math.min(x, innerWidth - box.width - 8))}px`;
+      menu.style.top = `${Math.max(8, Math.min(y, innerHeight - box.height - 8))}px`;
+    }
     menu.querySelector('button:not(:disabled)')?.focus();
     menu.onkeydown = event => {
       const buttons = [...menu.querySelectorAll('button:not(:disabled)')], index = buttons.indexOf(document.activeElement);
-      if (event.key === 'Escape') { event.preventDefault(); menu.remove(); }
+      if (event.key === 'Escape') { event.preventDefault(); menu.remove(); restore?.focus?.({ preventScroll: true }); }
       else if (event.key === 'ArrowDown'
           || event.key === 'ArrowUp') { event.preventDefault(); buttons[(index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus(); }
     };
@@ -71,7 +77,7 @@
     const actions = new Map(), prepared = prepare(items, actions);
     if (!prepared.length) return;
     const restore = document.activeElement;
-    if (!S()?.state?.native) { fallbackMenu(x, y, prepared, actions); return; }
+    if (!S()?.state?.native) { fallbackMenu(x, y, prepared, actions, restore); return; }
     open = true;
     try {
       const result = await S().request('ui.contextMenu', { x, y, items: prepared });

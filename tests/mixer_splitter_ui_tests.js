@@ -41,14 +41,18 @@ function harness(height = 900) {
     getElementById: id => id === 'mixer-workspace' ? root : null,
     createElement: () => { const node = element(''); Object.defineProperty(node, 'offsetHeight', { get: () => 12 }); return node; }
   };
-  const window = { addEventListener: (type, fn) => { if (type === 'resize') resize.push(fn); } };
+  const windowHandlers = {};
+  const window = { addEventListener: (type, fn) => { if (type === 'resize') resize.push(fn); else (windowHandlers[type] ||= []).push(fn); },
+    removeEventListener: (type, fn) => { windowHandlers[type] = (windowHandlers[type] || []).filter(x => x !== fn); } };
   const context = vm.createContext({ window, document, console, Number, String, Math, Map, JSON, Object, Array,
     localStorage: { getItem: key => store.has(key) ? store.get(key) : null, setItem: (key, value) => store.set(key, String(value)), removeItem: key => store.delete(key) } });
   web.load(context, 'mixer-splitter.js');
   const S = window.STMixerSplitter;
   const splitter = () => root.children.find(child => child.classes.has('studio-splitter'));
   const detail = () => bottom.getBoundingClientRect().height;
-  return { S, root, bottom, store, layout, splitter, detail, resize: h => { layout.height = h; for (const fn of resize) fn(); } };
+  // A pointer release anywhere reaches the window (capture phase), also when its target was replaced by a re-render.
+  const release = (type = 'pointerup') => { for (const fn of [...(windowHandlers[type] || [])]) fn({ type }); };
+  return { S, root, bottom, store, layout, splitter, detail, document, release, resize: h => { layout.height = h; for (const fn of resize) fn(); } };
 }
 
 const tests = [], test = (name, fn) => tests.push({ name, fn });
@@ -103,6 +107,23 @@ test('the saved height returns after a re-render and is clamped (not overwritten
   assert.equal(h.store.get(h.S.KEY), '560', 'the preference survives the clamp');
   h.resize(900); assert.equal(h.detail(), 560, 'growing the window restores it');
   h.resize(300); assert.equal(h.detail(), h.S.MIN_DETAIL, 'a tiny window keeps the chain tiles');
+});
+
+test('a mixer re-render during a drag does not leave the resize cursor on the whole window', () => {
+  const h = harness(); h.S.bind();
+  const s = h.splitter();
+  s.fire('pointerdown', { clientY: 500 }); s.fire('pointermove', { clientY: 450 });
+  assert(h.document.body.classes.has('is-resizing-mixer'), 'the whole window shows the resize cursor while dragging');
+  // A host update re-renders the mixer: the dragged splitter is replaced and never receives the release.
+  h.root.children.splice(h.root.children.indexOf(s), 1); h.S.bind();
+  assert.notEqual(h.splitter(), s);
+  h.release('pointerup');
+  assert(!h.document.body.classes.has('is-resizing-mixer'), 'releasing the pointer ends the resize cursor');
+  assert.equal(h.store.get(h.S.KEY), undefined, 'the interrupted drag is not saved');
+  // A completed drag still cleans up after itself, and the next release has nothing left to do.
+  const next = h.splitter(), start = h.detail();
+  next.fire('pointerdown', { clientY: 500 }); next.fire('pointerup', { clientY: 460 }); h.release('pointerup');
+  assert(!h.document.body.classes.has('is-resizing-mixer')); assert.equal(h.store.get(h.S.KEY), String(start + 40));
 });
 
 (async () => {

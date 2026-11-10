@@ -382,4 +382,27 @@ test('changed, cleared and malformed routing issue reports update notices in pla
   assert.equal(h.refreshes,refreshes);assert.equal(h.document.activeElement,dom.draft);assert.equal(h.element(dom.draft.id),dom.draft);assert.equal(dom.draft.value,'0.');assert.equal(dom.draft.selectionStart,2);assert.equal(h.mutations.length,0);
 });
 
+test('an emptied send gain field keeps the stored gain; a typed gain is applied',async()=>{
+  const p=fixture();p.routing.sends=[{id:'send-1',source:'track:a',destination:'bus:r',gain:.5,tap:'postFader',enabled:true}];
+  const h=harness(p),panel=new Element('panel',h.document),row=new Element('row',h.document),field=new Element('routing-send-gain-send-1',h.document);
+  panel.dataset.routingOwner='track:a';row.dataset.routingSend='send-1';field.dataset.routingSendField='gain';field.value='0.5';
+  panel.querySelectorAll=selector=>selector==='[data-routing-send]'?[row]:[];row.querySelectorAll=selector=>selector==='[data-routing-send-field]'?[field]:[];
+  h.document.querySelectorAll=selector=>selector==='[data-routing-owner]'?[panel]:[];h.R.bind('track:a');
+  const before=h.requests.length;field.value='';field.dispatch('change');await drain();
+  assert.equal(h.state.project.routing.sends[0].gain,.5,'an empty field must not silence the send');assert.equal(h.mutations.length,0);
+  assert.equal(h.requests.length,before,'nothing is sent to the audio host');assert.equal(field.value,'0.5','the field shows the stored gain again');
+  field.value='1.25';field.dispatch('change');await waitUntil(()=>h.mutations.length===1);assert.equal(h.state.project.routing.sends[0].gain,1.25);
+});
+
+test('Remove bus on a track group\'s bus opens the group dialog instead of leaving the group without a bus',async()=>{
+  const p=fixture();p.groups=[{id:'kit',name:'Kit',busID:'g'}];p.routing.buses[0].groupID='kit';p.tracks[0].groupID='kit';p.routing.outputs['track:a']='bus:g';
+  const h=harness(p),asked=[];h.context.window.STApp={deleteGroup:id=>{asked.push(id);return Promise.resolve(false);}};
+  h.R.removeBus('bus:g');await drain();
+  assert.deepEqual(asked,['kit'],'the group decides: ungroup (bus removed, tracks to Master) or delete');
+  assert.equal(h.modals.length,0,'no bus-only removal is offered');assert.equal(h.mutations.length,0);
+  assert.deepEqual(copy(h.state.project.routing.buses.map(bus=>bus.id)),['g','r']);
+  h.R.removeBus('bus:r');assert.equal(h.modals.at(-1).title,'Remove bus','an ordinary return bus is still removed here');
+  assert.equal(h.document.activeElement?.id,'routing-delete-apply','the confirmation, not the close button, has focus');
+});
+
 (async()=>{for(const {name,run}of tests){await run();process.stdout.write(`PASS ${name}\n`);}process.stdout.write(`${tests.length} routing UI suites passed.\n`);})().catch(error=>{console.error(error);process.exitCode=1;});

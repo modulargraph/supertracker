@@ -237,6 +237,7 @@
     pass: null,
     learn: null,
     midi: new Map(),
+    midiChange: new Map(), // parameter → pending commit of a controller move outside recording
     tick: null,
     previewTimer: null,
     previewBusy: false,
@@ -801,10 +802,17 @@
     if (!el || el.dataset.instParam === 'tuneSemi' || el.dataset.instParam === 'tuneFine') return false;
     el.value = elementValue(el, v);
     el.dispatchEvent(new Event('input', { bubbles: true }));
-    clearTimeout(rec.midiChange);
-    rec.midiChange = setTimeout(() => {
-      if (el.isConnected) el.dispatchEvent(new Event('change', { bubbles: true }));
-    }, MIDI_IDLE_MS);
+    // One commit per controlled parameter: two knobs turned together each keep their own edit.
+    const mapped = refKey(ref);
+    clearTimeout(rec.midiChange.get(mapped));
+    rec.midiChange.set(mapped, setTimeout(() => {
+      rec.midiChange.delete(mapped);
+      // Another parameter's commit may have re-rendered the page: commit on the control that shows this one now.
+      const node = el.isConnected ? el : controlElement(ref);
+      if (!node) return;
+      if (node !== el) node.value = elementValue(node, v);
+      node.dispatchEvent(new Event('change', { bubbles: true }));
+    }, MIDI_IDLE_MS));
     return true;
   }
   function controlElement(ref) {
@@ -833,7 +841,8 @@
     if (type === 'project.loaded' || type === 'project.new') {
       if (rec.pass) abortPass();
       for (const gesture of rec.gestures.values()) clearTimeout(gesture.timer);
-      clearTimeout(rec.midiChange); rec.midiChange = null;
+      for (const timer of rec.midiChange.values()) clearTimeout(timer);
+      rec.midiChange.clear();
       rec.gestures.clear(); rec.recent.clear(); rec.armed.clear(); rec.warned.clear();
       rec.pointer = null; rec.seekRevision=undefined; rec.wasPlaying = false; rec.learn = null; paintStatus();
     }

@@ -18,6 +18,8 @@
   const key = value => String(value).replace(/[^a-zA-Z0-9_-]/g, '_');
   const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
   const gain = value => Math.max(0, Math.min(2, number(value, 1)));
+  // An emptied gain field is not a level (Number('') is 0, which would silence the send): the field shows the stored gain again.
+  const typedGain = value => String(value ?? '').trim() !== '' && Number.isFinite(Number(value));
   const uid = () => globalThis.crypto?.randomUUID?.() || S().uid();
   const stable = value => value === null || typeof value !== 'object'
       ? JSON.stringify(value)
@@ -457,12 +459,13 @@
       kind: 'routing-enable'
     });
     document.getElementById('routing-optin-cancel')?.addEventListener('click',()=>S().closeModal());
+    document.getElementById('routing-optin-apply')?.focus?.();
     document.getElementById('routing-optin-apply')?.addEventListener('click', () => {
       S().closeModal();
       if (project() !== original) return;
       perform(transaction('Enable standard routing', p => {
         p.routing.mixModel = 'standard';
-      }, { owner }).then(async () => {
+      }, { owner, focusID: `routing-output-${key(owner)}` }).then(async () => {
         if (project() !== original) return;
         if (!ui.capabilities) await refreshCapabilities();
         if (project() === original) continuation?.(track === undefined ? owner : endpoints().find(item => item.track === track)?.owner);
@@ -527,6 +530,14 @@
 
   function removeBus(owner) {
     const p=project(), bus=ownerEntity(owner,p);if(!bus||!owner.startsWith('bus:'))return;
+    // A track group's bus goes with its group (Ungroup or Delete group): removing only the bus would leave the
+    // group, its pattern header and its mute / solo without a channel.
+    const group=window.STGroups?.groupOfBus?.(p,owner);
+    if(group){
+      if(window.STApp?.deleteGroup)void window.STApp.deleteGroup(group.id);
+      else S().toast(`${bus.name} is the bus of the track group ${group.name}. Ungroup or delete the group to remove it.`);
+      return;
+    }
     const destination=activeOutput(owner,p), children=Object.entries(routing(p).outputs||{}).filter(([,to])=>to===owner).length;
     S().openModal('Remove bus', `<div class="routing-dialog"><p>Remove ${esc(bus.name)} and its insert effects?</p><p>${children} output connection${children === 1 ? '' : 's'}`
         + ` will move to ${esc(channelName(destination, p))}. Sends and sidechains connected to this bus will be removed.</p>`
@@ -534,6 +545,7 @@
       kind: 'routing-delete'
     });
     document.getElementById('routing-delete-cancel')?.addEventListener('click',()=>S().closeModal());
+    document.getElementById('routing-delete-apply')?.focus?.();
     document.getElementById('routing-delete-apply')?.addEventListener('click',()=>{S().closeModal();if(project()!==p)return;perform(transaction('Remove bus',draft=>{
       const r = draft.routing,
         replacement = activeOutput(owner, draft),
@@ -574,9 +586,12 @@
           send.destination = destination.owner;
         }, 'Change send destination', button.id), button.id);
       }));
-      row.querySelectorAll('[data-routing-send-field]').forEach(input => input.addEventListener('change', () => perform(editSend(owner, id, send => {
-        send[input.dataset.routingSendField] = input.dataset.routingSendField === 'gain' ? gain(input.value) : input.value;
-      }, 'Adjust send', input.id))));
+      row.querySelectorAll('[data-routing-send-field]').forEach(input => input.addEventListener('change', () => {
+        if (input.dataset.routingSendField === 'gain' && !typedGain(input.value)) { input.value = String(gain(routing().sends?.find(send => send.id === id)?.gain)); return; }
+        perform(editSend(owner, id, send => {
+          send[input.dataset.routingSendField] = input.dataset.routingSendField === 'gain' ? gain(input.value) : input.value;
+        }, 'Adjust send', input.id));
+      }));
     });
   }
 
@@ -676,12 +691,15 @@
             },button.id),button.id);
           }
         }));
-        row.querySelectorAll('[data-routing-key-field]').forEach(input=>input.addEventListener('change',()=>perform(edit('Adjust sidechain',(route,p)=>{
-          const field=input.dataset.routingKeyField;
-          if (field === 'tap'
-              && (!currentPlugin(p) || !routeTaps(route, currentPlugin(p), p).includes(input.value))) throw new Error('This tap is not available for the selected sidechain source.');
-          route[field]=field==='gain'?gain(input.value):input.value;
-        },input.id))));
+        row.querySelectorAll('[data-routing-key-field]').forEach(input=>input.addEventListener('change',()=>{
+          if(input.dataset.routingKeyField==='gain'&&!typedGain(input.value)){input.value=String(gain(routing().sidechains?.find(route=>route.id===id)?.gain));return;}
+          perform(edit('Adjust sidechain',(route,p)=>{
+            const field=input.dataset.routingKeyField;
+            if (field === 'tap'
+                && (!currentPlugin(p) || !routeTaps(route, currentPlugin(p), p).includes(input.value))) throw new Error('This tap is not available for the selected sidechain source.');
+            route[field]=field==='gain'?gain(input.value):input.value;
+          },input.id));
+        }));
       }
     }
   }

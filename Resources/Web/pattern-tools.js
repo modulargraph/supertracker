@@ -124,6 +124,10 @@
   // ---- Time operations -------------------------------------------------------------------
   function rows(label, transform) {
     const bounds = range();
+    // Nothing to move in an empty range: say so instead of adding an Undo step that changes nothing.
+    let filled = false;
+    forTracks(bounds, steps => { for (let r = bounds.r0; r <= bounds.r1 && !filled; r++) filled = !!steps?.[r]; });
+    if (!filled) return done('No steps in the ' + bounds.label + '.');
     S().mutate(label, () => forTracks(bounds, steps => {
       const slice = steps.slice(bounds.r0, bounds.r1 + 1), result = transform(slice);
       for (let i = 0; i < slice.length; i++) steps[bounds.r0 + i] = result[i] ?? null;

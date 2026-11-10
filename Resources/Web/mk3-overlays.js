@@ -117,7 +117,7 @@
         }, v, { commit: tempoCommit }))),
         knobs: [tempoKnob(), tempoKnob(true)] });
       case 'noteRepeat': {
-        const rates = R?.rates || [], modes = R?.modes || [];
+        const rates = R?.rates || [];
         return encoderMode(id, 'Note repeat', { title: 'NOTE REPEAT', target: R ? R.label() : 'Note repeat', value: R?.enabled ? 'On' : 'Off', hint: M.latched === 'noteRepeat'
             ? 'Latched · tap NOTE REPEAT to stop'
             : 'Hold and play pads · tap to latch' }, {

@@ -504,6 +504,9 @@
     view.point = selectRow === undefined
         ? clamp(view.point, 0, clean.length - 1)
         : clean.findIndex(point => Math.abs(point.row - quantize(selectRow)) < 1e-9);
+    // A key that changes nothing (a point already at the slot's first or last row, a value at its limit) is not an Undo step.
+    const stored = findLane(project(), patternById(project(), inst.pattern), ctx.ref.owner, ctx.ref.target);
+    if (stored && JSON.stringify(stored.points) === JSON.stringify(clean)) { refresh(ctx); focusEnvelope(); return; }
     S().mutate(label, p => {
       const pattern = patternById(p, inst.pattern); if (!pattern) return;
       ensureLane(p, pattern, ctx.ref.owner, ctx.ref.target, { uid: S().uid, name: ctx.ref.name }).points = clean;

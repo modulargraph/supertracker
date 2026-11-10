@@ -94,6 +94,14 @@ test('model: the applied edit (render only, bounce to a new track, to the first 
   h.model.apply(p, sel, result, { replace: true, destination: 'new', originals: 'mute' }, helpers);
   assert.equal(p.tracks[0].mute, true); assert.equal(p.tracks[1].mute, true); assert(!p.tracks[2].mute);
   assert.deepEqual(copy(p.patterns[0].steps[1][6]), copy(h.ST.state.project.patterns[0].steps[1][6]), 'kept notes');
+
+  // Kept (muted) originals with "first selected track": the trigger still goes on a new, audible track
+  // (on the muted first track it would be silent and replace the note it was meant to keep).
+  p = copy(h.ST.state.project);
+  applied = h.model.apply(p, sel, result, { replace: true, destination: 'track', originals: 'mute' }, helpers);
+  assert.equal(applied.track, 3); assert(!p.tracks[3].mute, 'the trigger track is audible');
+  assert.deepEqual(copy(p.patterns[0].steps[3][4]), { note: 60, instrument: 3, velocity: 127 });
+  assert.deepEqual(copy(p.patterns[0].steps[0]), copy(h.ST.state.project.patterns[0].steps[0]), 'every original note of the first track is kept');
 });
 
 test('command: palette entry with ⌥B, handled, in the help sheet and the selection context menu; ⌥B opens it', () => {
@@ -173,6 +181,24 @@ test('cancel and native refusals leave the project and history untouched', async
   h.fill({ 'rs-tail': '61' }); await h.node('rs-go').onclick();
   assert.match(h.node('rs-status').textContent, /between 0 and 60/);
   assert.deepEqual(copy(h.ST.state.project), before); assert.equal(h.ST.state.undo.length, 0);
+});
+
+test('a bounce in place whose tracks moved while it rendered is not applied to the tracks that took their place', async () => {
+  const h = harness();
+  h.ST.perform('renderSelection');
+  h.fill({ 'rs-name': 'Kit 04–07', 'rs-mode': 'track', 'rs-tail': '10', 'rs-rate': '48000', 'rs-channels': '2', 'rs-normalize': false,
+    'rs-replace': true, 'rs-destination': 'new', 'rs-originals': 'clear' });
+  let release; h.handlers.set('render.selection', payload => new Promise(resolve => { release = () => resolve({ path: '/support/Recordings/Kit.wav', name: payload.name,
+    frames: 48000, sampleRate: 48000, channels: 2, tailEnd: 'silence', peak: .5 }); }));
+  const running = h.node('rs-go').onclick(); await tick();
+  // Playback and control surfaces keep running during a render: the Kick track is deleted (an edit made in place).
+  const p = h.ST.state.project;
+  p.tracks.splice(0, 1); for (const pattern of p.patterns) pattern.steps.splice(0, 1);
+  const during = copy(p);
+  release(); await running; await tick();
+  assert.deepEqual(copy(h.ST.state.project), during, 'the Snare and Bass cells that moved into the rendered columns are not cleared');
+  assert.equal(h.ST.state.undo.length, 0); assert.equal(h.window.STRenderSelection.isBusy, false);
+  assert.match(h.node('rs-status').textContent, /changed while rendering.*kept at \/support\/Recordings\/Kit\.wav/);
 });
 
 test('a selection without notes explains instead of opening', () => {

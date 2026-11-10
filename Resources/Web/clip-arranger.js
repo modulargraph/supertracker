@@ -350,9 +350,6 @@
     catch (error) { app().toast(error.message, 'error'); }
     return null;
   }
-  async function addRecording(path, duration, track = state().track || 0, startBeat = sequenceBeat()) {
-    return addFile(path, { duration, track, startBeat });
-  }
   function bounceTrack() {
     if (local.busy) { app().toast('Finish the current audio operation first.', 'info'); return; }
     const destinationProject = project(), sourceIndex = Number(state().track || 0), sourceTrack = destinationProject.tracks[sourceIndex];
@@ -472,6 +469,8 @@
       if (window.STClipTakesProject && proposal.takeSet) window.STClipTakesProject.read(proposal);
       fn(proposal);
       if (window.STClipTakesProject && proposal.takeSet) Object.assign(proposal, window.STClipTakesProject.retainEdits(proposal));
+      // A key that changes nothing (⌥↑ on the first track, a trim at the end of the source) is not an Undo step.
+      if (JSON.stringify(proposal) === JSON.stringify(clip)) return;
       app().mutate(label, () => Object.assign(clip, proposal), options);
     } catch (error) { app().toast(error.message, 'error'); }
   }
@@ -494,6 +493,7 @@
     let copy;
     try { copy = { ...window.STUtil.clone(clip), id: uid() }; moveTo(copy, clip.startBeat + clip.durationBeats); constrain(copy); }
     catch (error) { app().toast(error.message, 'error'); return; }
+    releaseClipFocus();
     app().mutate('duplicate audio clip', value => { value.audioClips.push(copy); state().clipSelected = copy.id; });
     focusSelected();
   }
@@ -520,6 +520,7 @@
       }
       constrain(parts[0]); constrain(parts[1]);
     } catch (error) { app().toast(error.message, 'error'); return; }
+    releaseClipFocus();
     app().mutate('split audio clip', value => {
       Object.assign(clip, parts[0]); value.audioClips.push(parts[1]); state().clipSelected = parts[1].id;
     }); focusSelected();
@@ -539,10 +540,16 @@
     (node || document.getElementById('clips-timeline'))?.focus({ preventScroll: true });
     node?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
+  /* A re-render gives focus back to the control that had it, and a clip that receives focus becomes the selection
+     (bind). Before the selection moves to another clip, focus leaves the old one, or the re-render would select it again. */
+  function releaseClipFocus() {
+    if (document.activeElement?.closest?.('[data-clip-id]')) document.getElementById('clips-timeline')?.focus({ preventScroll: true });
+  }
   function select(id, focus = true) {
     state().clipSelected = id;
     const clip = selected();
     if (clip) state().track = clip.track;
+    if (focus) document.getElementById(`clip-${id}`)?.focus({ preventScroll: true });
     refresh();
     if (focus) focusSelected();
   }
@@ -599,6 +606,8 @@
     }));
     on('clips-track', 'change', event => commitField(event.target, 'move audio clip track', clip => { clip.track = Number(event.target.value); }));
     document.querySelectorAll('[data-clips-field]').forEach(input => input.addEventListener('change', () => commitField(input, 'edit audio clip', clip => {
+      // An emptied field is not a value: the clip keeps what it had (the field shows it again).
+      if (!String(input.value).trim() || !Number.isFinite(Number(input.value))) return;
       const value = clamp(input.value, Number(input.min), Number(input.max));
       if (input.dataset.clipsField === 'startBeat') {
         moveTo(clip, value);
@@ -717,5 +726,5 @@
       if (state().view === 'song') refresh();
     }
   }
-  window.STClips = { render, bind, key, event, importFile, addFile, addRecording, sequenceBeat, bounceTrack };
+  window.STClips = { render, bind, key, event, importFile, addFile, bounceTrack };
 })();
