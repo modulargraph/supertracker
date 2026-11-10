@@ -1,0 +1,11 @@
+[package]
+name = "stpc-client"
+description = "SuperTracker plug-in container: host-side client (supervisor, instance proxies, real-time process call)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+libc.workspace = true
+stpc-transport.workspace = true

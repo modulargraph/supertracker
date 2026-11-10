@@ -23,6 +23,14 @@ mod abi;
 mod cxx_math;
 mod long_double;
 pub mod timing_map;
+#[cfg(any(
+    all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        not(target_env = "msvc")
+    ),
+    test
+))]
+mod x87;
 
 #[cfg(test)]
 mod tests;
@@ -128,7 +136,7 @@ struct ClockData {
 }
 
 fn valid_rate(rate: f64) -> bool {
-    rate.is_finite() && rate >= 8000.0 && rate <= 384000.0
+    rate.is_finite() && (8000.0..=384000.0).contains(&rate)
 }
 
 fn valid_frame(frame: i64) -> bool {
@@ -136,15 +144,25 @@ fn valid_frame(frame: i64) -> bool {
 }
 
 fn valid_beat(beat: f64) -> bool {
-    beat.is_finite() && beat >= 0.0 && beat <= TimingMap::MAX_BEAT
+    beat.is_finite() && (0.0..=TimingMap::MAX_BEAT).contains(&beat)
 }
 
 impl ClockData {
-    fn new(rate: f64, tempos: &[TempoEvent], meters: &[MeterEvent], revision: u64) -> Result<Self, ClockError> {
+    fn new(
+        rate: f64,
+        tempos: &[TempoEvent],
+        meters: &[MeterEvent],
+        revision: u64,
+    ) -> Result<Self, ClockError> {
         let map = TimingMap::new(tempos, meters)?;
         let end_frame = (map.max_seconds() * rate).ceil() as i64;
-        let mut data =
-            Self { rate, revision, map, end_frame, boundaries: Vec::with_capacity(tempos.len() + meters.len()) };
+        let mut data = Self {
+            rate,
+            revision,
+            map,
+            end_frame,
+            boundaries: Vec::with_capacity(tempos.len() + meters.len()),
+        };
         // Merge both event lists by position. Same-position tempo+meter events are atomic.
         let (mut t, mut m) = (0, 0);
         while t < tempos.len() || m < meters.len() {
@@ -162,7 +180,11 @@ impl ClockData {
                 m += 1;
             }
             let frame = data.raw_frame_at_beat(beat);
-            if data.boundaries.last().is_some_and(|last| frame <= last.frame) {
+            if data
+                .boundaries
+                .last()
+                .is_some_and(|last| frame <= last.frame)
+            {
                 return Err(ClockError::BoundariesCollapse);
             }
             data.boundaries.push(Boundary { beat, frame, kinds });
@@ -173,7 +195,10 @@ impl ClockData {
     /// Tempo before the first sample: negative song time extrapolates the initial tempo.
     fn initial_bpm(&self) -> f64 {
         // A compiled map always has a first tempo.
-        self.map.tempos().first().map_or(TimingMap::MIN_BPM, |segment| segment.bpm)
+        self.map
+            .tempos()
+            .first()
+            .map_or(TimingMap::MIN_BPM, |segment| segment.bpm)
     }
 
     fn initial_frame_at_beat(&self, beat: f64) -> i64 {
@@ -195,7 +220,9 @@ impl ClockData {
     fn raw_frame_at_beat(&self, beat: f64) -> i64 {
         // Every caller passes a beat inside the closed domain (the C++ dereferences the optional
         // unchecked); zero is only a defined result for the impossible case.
-        self.map.seconds_at_beat(beat).map_or(0, |seconds| (seconds * self.rate).ceil() as i64)
+        self.map
+            .seconds_at_beat(beat)
+            .map_or(0, |seconds| (seconds * self.rate).ceil() as i64)
     }
 
     fn frame_at_beat(&self, beat: f64) -> i64 {
@@ -227,7 +254,10 @@ impl ClockData {
         // 60->180 BPM change), incorrectly delaying it in frameAtBeat's strict
         // neighboring comparison. FMA also retains fractional prefix samples.
         let segments = self.map.tempos();
-        let next_tempo = segments.partition_point(|segment| !((frame as f64) < (segment.seconds * self.rate).ceil()));
+        // `std::upper_bound` with the C++ comparator, kept in its own terms.
+        #[allow(clippy::neg_cmp_op_on_partial_ord)]
+        let next_tempo = segments
+            .partition_point(|segment| !((frame as f64) < (segment.seconds * self.rate).ceil()));
         // The first segment starts at sample zero, so one always precedes a non-negative frame.
         let Some(segment) = segments.get(next_tempo.saturating_sub(1)) else {
             return 0.0;
@@ -236,8 +266,13 @@ impl ClockData {
         let mut beat = delta_frames.mul_add(segment.bpm / (60.0 * self.rate), segment.beat);
         // Compiled sample boundaries are authoritative. These one-sided corrections
         // resolve only floating-point inverse rounding, never epsilon-snap input.
-        let next = self.boundaries.partition_point(|boundary| !(frame < boundary.frame));
-        if let Some(previous) = next.checked_sub(1).and_then(|index| self.boundaries.get(index)) {
+        let next = self
+            .boundaries
+            .partition_point(|boundary| !(frame < boundary.frame));
+        if let Some(previous) = next
+            .checked_sub(1)
+            .and_then(|index| self.boundaries.get(index))
+        {
             beat = cxx_math::max(beat, previous.beat);
         }
         if let Some(following) = self.boundaries.get(next) {
@@ -278,13 +313,24 @@ impl STClockMap {
         if !allowed.contains(&tempos.len()) || !allowed.contains(&meters.len()) {
             return Err(ClockError::EventCount);
         }
-        let tempos: Vec<TempoEvent> =
-            tempos.iter().map(|event| TempoEvent { beat: event.beat, bpm: event.bpm }).collect();
+        let tempos: Vec<TempoEvent> = tempos
+            .iter()
+            .map(|event| TempoEvent {
+                beat: event.beat,
+                bpm: event.bpm,
+            })
+            .collect();
         let meters: Vec<MeterEvent> = meters
             .iter()
-            .map(|event| MeterEvent { beat: event.beat, numerator: event.numerator, denominator: event.denominator })
+            .map(|event| MeterEvent {
+                beat: event.beat,
+                numerator: event.numerator,
+                denominator: event.denominator,
+            })
             .collect();
-        Ok(Self { data: Arc::new(ClockData::new(sample_rate, &tempos, &meters, revision)?) })
+        Ok(Self {
+            data: Arc::new(ClockData::new(sample_rate, &tempos, &meters, revision)?),
+        })
     }
 
     /// First sample not earlier than `beat`; `None` outside 0..1000000.
@@ -368,7 +414,13 @@ impl STClockTimeline {
         }
         origin.playing = (origin.playing != 0) as i32;
         origin.loop_enabled = (origin.loop_enabled != 0) as i32;
-        Ok(Self { data: Arc::clone(data), origin, start_frame, loop_start, loop_end })
+        Ok(Self {
+            data: Arc::clone(data),
+            origin,
+            start_frame,
+            loop_start,
+            loop_end,
+        })
     }
 
     /// Musical context at one graph frame.
@@ -378,7 +430,11 @@ impl STClockTimeline {
     /// Negative song time extrapolates initial tempo/meter and uses bar 0, then negative bar
     /// numbers. All next-boundary flags at one frame are combined. Queries do not render audio,
     /// consume events, apply pending commands, or access live status.
-    pub fn context(&self, graph_frame: i64, upstream_latency_frames: i64) -> Result<STClockContext, ClockQueryError> {
+    pub fn context(
+        &self,
+        graph_frame: i64,
+        upstream_latency_frames: i64,
+    ) -> Result<STClockContext, ClockQueryError> {
         let latency = upstream_latency_frames;
         if !(0..=LATENCY_LIMIT).contains(&latency) {
             return Err(ClockQueryError::Invalid);
@@ -400,7 +456,11 @@ impl STClockTimeline {
         };
         // All frames here are bounded: graph coordinates by 2^52, latency by 2^30 and song
         // frames by the map's last sample (about 2^40), so sums of a few of them fit easily.
-        let elapsed = if playing { c.content_graph_frame - origin.graph_origin_frame } else { 0 };
+        let elapsed = if playing {
+            c.content_graph_frame - origin.graph_origin_frame
+        } else {
+            0
+        };
         c.song_frame = self.start_frame + elapsed;
         if playing {
             c.flags |= ST_CLOCK_PLAYING;
@@ -453,7 +513,9 @@ impl STClockTimeline {
             }
         } else {
             // See the module documentation: empty only where the C++ behaviour is undefined.
-            let (Some(bpm), Some(bar)) = (data.map.tempo_at_beat(c.beat), data.map.bar_at_beat(c.beat)) else {
+            let (Some(bpm), Some(bar)) =
+                (data.map.tempo_at_beat(c.beat), data.map.bar_at_beat(c.beat))
+            else {
                 return Err(ClockQueryError::OutsideDomain);
             };
             c.bpm = bpm;
@@ -472,8 +534,13 @@ impl STClockTimeline {
             c.flags |= ST_CLOCK_DOMAIN_END;
         }
         let mut quarter = c.beat.floor();
-        let frame_for_quarter =
-            |beat: f64| if beat < 0.0 { data.initial_frame_at_beat(beat) } else { data.frame_at_beat(beat) };
+        let frame_for_quarter = |beat: f64| {
+            if beat < 0.0 {
+                data.initial_frame_at_beat(beat)
+            } else {
+                data.frame_at_beat(beat)
+            }
+        };
         let mut quarter_frame = frame_for_quarter(quarter);
         if quarter_frame < c.song_frame {
             quarter += 1.0;
@@ -485,8 +552,13 @@ impl STClockTimeline {
             c.next_quarter_grid_frame = graph_frame + quarter_frame - c.song_frame;
         }
         if playing {
-            let mut next = NextBoundary { delta: i64::MAX, kinds: 0 };
-            let following = data.boundaries.partition_point(|boundary| !(c.song_frame < boundary.frame));
+            let mut next = NextBoundary {
+                delta: i64::MAX,
+                kinds: 0,
+            };
+            let following = data
+                .boundaries
+                .partition_point(|boundary| !(c.song_frame < boundary.frame));
             if let Some(boundary) = data.boundaries.get(following) {
                 next.consider(boundary.frame - c.song_frame, boundary.kinds);
             }
@@ -516,8 +588,9 @@ impl STClockTimeline {
                 if first < origin.loop_end_beat {
                     let first_frame = frame_for_quarter(first);
                     if first_frame < self.loop_end {
-                        c.next_quarter_beat_frame =
-                            graph_frame + self.loop_end - c.song_frame + first_frame - self.loop_start;
+                        c.next_quarter_beat_frame = graph_frame + self.loop_end - c.song_frame
+                            + first_frame
+                            - self.loop_start;
                     }
                 }
             } else if quarter <= TimingMap::MAX_BEAT && quarter_frame >= c.song_frame {
@@ -550,7 +623,10 @@ impl STClockTimeline {
             count = count.min(context.next_boundary_frame - graph_frame);
         }
         // `count` is at most `requested_frames`.
-        Ok(STClockSpan { context, frames: count.max(0) as u32 })
+        Ok(STClockSpan {
+            context,
+            frames: count.max(0) as u32,
+        })
     }
 }
 
@@ -575,7 +651,11 @@ unsafe fn error_text(out: *mut c_char, capacity: u32, message: &str) {
 ///
 /// # Safety
 /// As for [`error_text`].
-unsafe fn into_handle<T>(result: Result<T, ClockError>, error: *mut c_char, capacity: u32) -> *mut T {
+unsafe fn into_handle<T>(
+    result: Result<T, ClockError>,
+    error: *mut c_char,
+    capacity: u32,
+) -> *mut T {
     match result {
         Ok(value) => Box::into_raw(Box::new(value)),
         Err(failure) => {
@@ -608,7 +688,10 @@ pub unsafe extern "C" fn st_clock_map_create(
     // Same order as the C++: the sample rate is checked before the event lists are looked at.
     let result = if !valid_rate(sample_rate) {
         Err(ClockError::SampleRate)
-    } else if tempos.is_null() || meters.is_null() || !allowed.contains(&tempo_count) || !allowed.contains(&meter_count)
+    } else if tempos.is_null()
+        || meters.is_null()
+        || !allowed.contains(&tempo_count)
+        || !allowed.contains(&meter_count)
     {
         Err(ClockError::EventCount)
     } else {
@@ -643,7 +726,11 @@ pub unsafe extern "C" fn st_clock_map_destroy(map: *mut STClockMap) {
 /// # Safety
 /// `map` is null or a live map; `frame` is null or valid for a write.
 #[no_mangle]
-pub unsafe extern "C" fn st_clock_frame_at_beat(map: *const STClockMap, beat: f64, frame: *mut i64) -> i32 {
+pub unsafe extern "C" fn st_clock_frame_at_beat(
+    map: *const STClockMap,
+    beat: f64,
+    frame: *mut i64,
+) -> i32 {
     // SAFETY: a non-null `map` is a live, immutable map by the caller's contract.
     let Some(map) = (unsafe { map.as_ref() }) else {
         return ST_CLOCK_INVALID;
@@ -662,7 +749,11 @@ pub unsafe extern "C" fn st_clock_frame_at_beat(map: *const STClockMap, beat: f6
 /// # Safety
 /// `map` is null or a live map; `beat` is null or valid for a write.
 #[no_mangle]
-pub unsafe extern "C" fn st_clock_beat_at_frame(map: *const STClockMap, frame: i64, beat: *mut f64) -> i32 {
+pub unsafe extern "C" fn st_clock_beat_at_frame(
+    map: *const STClockMap,
+    frame: i64,
+    beat: *mut f64,
+) -> i32 {
     // SAFETY: a non-null `map` is a live, immutable map by the caller's contract.
     let Some(map) = (unsafe { map.as_ref() }) else {
         return ST_CLOCK_INVALID;
@@ -681,7 +772,11 @@ pub unsafe extern "C" fn st_clock_beat_at_frame(map: *const STClockMap, frame: i
 /// # Safety
 /// `map` is null or a live map; `seconds` is null or valid for a write.
 #[no_mangle]
-pub unsafe extern "C" fn st_clock_seconds_at_beat(map: *const STClockMap, beat: f64, seconds: *mut f64) -> i32 {
+pub unsafe extern "C" fn st_clock_seconds_at_beat(
+    map: *const STClockMap,
+    beat: f64,
+    seconds: *mut f64,
+) -> i32 {
     // SAFETY: a non-null `map` is a live, immutable map by the caller's contract.
     let Some(map) = (unsafe { map.as_ref() }) else {
         return ST_CLOCK_INVALID;
@@ -700,7 +795,11 @@ pub unsafe extern "C" fn st_clock_seconds_at_beat(map: *const STClockMap, beat: 
 /// # Safety
 /// `map` is null or a live map; `beat` is null or valid for a write.
 #[no_mangle]
-pub unsafe extern "C" fn st_clock_beat_at_seconds(map: *const STClockMap, seconds: f64, beat: *mut f64) -> i32 {
+pub unsafe extern "C" fn st_clock_beat_at_seconds(
+    map: *const STClockMap,
+    seconds: f64,
+    beat: *mut f64,
+) -> i32 {
     // SAFETY: a non-null `map` is a live, immutable map by the caller's contract.
     let Some(map) = (unsafe { map.as_ref() }) else {
         return ST_CLOCK_INVALID;

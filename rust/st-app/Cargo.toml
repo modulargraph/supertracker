@@ -18,8 +18,7 @@ serde_json = "1"
 tao = { version = "0.37", default-features = false, features = ["rwh_06", "x11"] }
 wry = "0.57"
 muda = "0.21"
-# The headless bridge: a WebSocket on 127.0.0.1 (the HTTP side is a few lines of our own).
-tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
+# The access token of --serve. (Its HTTP and WebSocket server is src/serve.rs and src/websocket.rs.)
 getrandom = "0.4"
 
 # Native Open/Save dialogs. On Linux the window toolkit is GTK 3 (through tao), whose file chooser is used

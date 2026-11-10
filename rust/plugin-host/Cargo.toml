@@ -2,7 +2,7 @@
 # Its own workspace: rust/Cargo.toml excludes this directory. See docs/PLUGIN_CONTAINER.md.
 [workspace]
 resolver = "2"
-members = ["crates/transport"]
+members = ["crates/transport", "crates/runtime", "crates/client", "crates/container"]
 
 [workspace.package]
 version = "0.1.0"

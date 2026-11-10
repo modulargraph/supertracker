@@ -383,6 +383,20 @@ model! {
     }
 }
 
+/// `value` with the keys of every object in sorted order, whatever order `serde_json`'s map keeps
+/// (another crate of the workspace may switch it to insertion order).
+fn sorted(value: Value) -> Value {
+    match value {
+        Value::Array(items) => Value::Array(items.into_iter().map(sorted).collect()),
+        Value::Object(map) => {
+            let mut entries: Vec<(String, Value)> = map.into_iter().collect();
+            entries.sort_by(|left, right| left.0.cmp(&right.0));
+            Value::Object(entries.into_iter().map(|(key, value)| (key, sorted(value))).collect())
+        }
+        other => other,
+    }
+}
+
 impl Project {
     /// Reads a project from JSON text.
     ///
@@ -399,19 +413,20 @@ impl Project {
         <Project as Json>::from_json(value).map_err(|_| Error::invalid("The file is not a SuperTracker project."))
     }
 
-    /// The project as a JSON value. Object keys are sorted.
+    /// The project as a JSON value.
     pub fn to_value(&self) -> Value {
         <Project as Json>::to_json(self)
     }
 
-    /// The project as compact JSON text (for the bridge).
+    /// The project as compact JSON text (for the bridge). Object keys are sorted.
     pub fn to_json(&self) -> String {
-        self.to_value().to_string()
+        sorted(self.to_value()).to_string()
     }
 
     /// The project as indented JSON text with sorted keys (the form of project files).
     pub fn to_json_pretty(&self) -> String {
-        serde_json::to_string_pretty(&self.to_value()).unwrap_or_else(|_| self.to_json())
+        let value = sorted(self.to_value());
+        serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string())
     }
 
     /// The tracks, empty when absent.

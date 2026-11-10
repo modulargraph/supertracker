@@ -332,7 +332,7 @@ impl Bridge {
 
     /// True when an interface has sent `ready` and is still connected.
     pub fn has_ready_interface(&self) -> bool {
-        lock(&self.core.connections).iter().any(|connection| connection.ready.load(Ordering::SeqCst))
+        self.events().has_ready_interface()
     }
 
     /// Stops the bridge. Requests that arrive from now on, and requests whose handler has not
@@ -472,6 +472,11 @@ impl EventSink {
     /// this one replaces it instead of queueing behind it.
     pub fn emit_latest(&self, name: &str, payload: impl Serialize) {
         self.deliver(name, payload, true);
+    }
+
+    /// True when an interface has sent `ready` and is still connected: someone would receive an event.
+    pub fn has_ready_interface(&self) -> bool {
+        lock(&self.core.connections).iter().any(|connection| connection.ready.load(Ordering::SeqCst))
     }
 
     fn deliver(&self, name: &str, payload: impl Serialize, latest_only: bool) {

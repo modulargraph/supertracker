@@ -34,11 +34,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use crate::clock as clock_abi;
 // The cache needs only the clock's data types, so it also builds without the clock itself.
 #[cfg(not(feature = "clock"))]
-#[path = "clock/abi.rs"]
+#[path = "../clock/abi.rs"]
 #[allow(dead_code)]
 mod clock_abi;
 
 use clock_abi::{STClockContext, STClockSpan, ST_CLOCK_OK, ST_CLOCK_OUTSIDE_DOMAIN};
+
+#[cfg(test)]
+mod tests;
 
 // Cache-specific errors are separate from callback OSStatus values. A nonzero prepare/process
 // result is returned verbatim. A failed process result remains latched until reset; no later
@@ -63,10 +66,17 @@ pub const ST_UNIT_RANGE_SPAN_LIMIT: i32 = -74009;
 // Cached-only calls need none of these callbacks.
 
 /// `STUnitRangePrepareFn`
-pub type STUnitRangePrepareFn = Option<unsafe extern "C" fn(user: *mut c_void, graph_frame: i64, frames: u32) -> i32>;
+pub type STUnitRangePrepareFn =
+    Option<unsafe extern "C" fn(user: *mut c_void, graph_frame: i64, frames: u32) -> i32>;
 /// `STUnitRangeSpanFn`
-pub type STUnitRangeSpanFn =
-    Option<unsafe extern "C" fn(user: *mut c_void, graph_frame: i64, frames: u32, span: *mut STClockSpan) -> i32>;
+pub type STUnitRangeSpanFn = Option<
+    unsafe extern "C" fn(
+        user: *mut c_void,
+        graph_frame: i64,
+        frames: u32,
+        span: *mut STClockSpan,
+    ) -> i32,
+>;
 /// `STUnitRangeProcessFn`
 pub type STUnitRangeProcessFn = Option<
     unsafe extern "C" fn(
@@ -251,14 +261,24 @@ unsafe fn valid_output(cache: &STUnitRangeCache, output: *const *mut f32) -> boo
 /// `output` points to `channels` non-null pointers, each valid for writes of `frames` samples
 /// and not overlapping the cache. `[start, start + frames)` lies within the retained range, and
 /// `frames` is at most `maximum_request`.
-unsafe fn copy_cached(cache: &STUnitRangeCache, state: &State, start: i64, frames: u32, output: *const *mut f32) {
+unsafe fn copy_cached(
+    cache: &STUnitRangeCache,
+    state: &State,
+    start: i64,
+    frames: u32,
+    output: *const *mut f32,
+) {
     let history_frames = cache.history_frames;
     let offset = (start as u64).wrapping_sub(state.stats.retained_start_frame as u64);
-    let oldest = (state.write_position + history_frames - state.stats.retained_frames) % history_frames;
+    let oldest =
+        (state.write_position + history_frames - state.stats.retained_frames) % history_frames;
     let position = (u64::from(oldest).wrapping_add(offset) % u64::from(history_frames)) as u32;
     let first = frames.min(history_frames - position) as usize;
     let (position, frames) = (position as usize, frames as usize);
-    let channels = state.history.chunks_exact(history_frames as usize).take(cache.channels as usize);
+    let channels = state
+        .history
+        .chunks_exact(history_frames as usize)
+        .take(cache.channels as usize);
     for (channel, source) in channels.enumerate() {
         // SAFETY: `output[channel]` is writable for `frames` samples and disjoint from the ring.
         // `position < history_frames` and `first <= history_frames - position`, and the wrapped
@@ -266,9 +286,17 @@ unsafe fn copy_cached(cache: &STUnitRangeCache, state: &State, start: i64, frame
         // source ranges lie inside this channel's block.
         unsafe {
             let destination = *output.add(channel);
-            std::ptr::copy_nonoverlapping(source[position..position + first].as_ptr(), destination, first);
+            std::ptr::copy_nonoverlapping(
+                source[position..position + first].as_ptr(),
+                destination,
+                first,
+            );
             if first < frames {
-                std::ptr::copy_nonoverlapping(source[..frames - first].as_ptr(), destination.add(first), frames - first);
+                std::ptr::copy_nonoverlapping(
+                    source[..frames - first].as_ptr(),
+                    destination.add(first),
+                    frames - first,
+                );
             }
         }
     }
@@ -360,8 +388,10 @@ fn create(
     if !(1..=256).contains(&maximum_spans) {
         return Err("Unit span capacity must be 1..256.");
     }
-    if maximum_spans < (maximum_request_frames + maximum_child_frames - 1) / maximum_child_frames {
-        return Err("Unit span capacity cannot cover the maximum request at the child frame limit.");
+    if maximum_spans < maximum_request_frames.div_ceil(maximum_child_frames) {
+        return Err(
+            "Unit span capacity cannot cover the maximum request at the child frame limit.",
+        );
     }
     const OUT_OF_MEMORY: &str = "Could not allocate bounded unit render storage.";
     let channel_count = channels as usize;
@@ -371,7 +401,8 @@ fn create(
         sample_rate: 0.0,
         stats: STUnitRangeStats::default(),
         history: try_filled(channel_count * history_frames as usize).ok_or(OUT_OF_MEMORY)?,
-        scratch: try_filled(channel_count * maximum_request_frames as usize).ok_or(OUT_OF_MEMORY)?,
+        scratch: try_filled(channel_count * maximum_request_frames as usize)
+            .ok_or(OUT_OF_MEMORY)?,
         plan: try_filled(maximum_spans as usize).ok_or(OUT_OF_MEMORY)?,
     };
     try_box(STUnitRangeCache {
@@ -405,7 +436,13 @@ pub unsafe extern "C" fn st_unit_range_create(
 ) -> *mut STUnitRangeCache {
     // SAFETY: the caller's contract for `error`, here and below.
     unsafe { write_error(error, error_capacity, "") };
-    match create(channels, maximum_request_frames, history_frames, maximum_child_frames, maximum_spans) {
+    match create(
+        channels,
+        maximum_request_frames,
+        history_frames,
+        maximum_child_frames,
+        maximum_spans,
+    ) {
         Ok(cache) => Box::into_raw(cache),
         Err(message) => {
             unsafe { write_error(error, error_capacity, message) };
@@ -455,7 +492,10 @@ pub unsafe extern "C" fn st_unit_range_reset(cache: *mut STUnitRangeCache) -> i3
 /// # Safety
 /// `cache` is null or a live cache; `stats` is null or valid for a write.
 #[no_mangle]
-pub unsafe extern "C" fn st_unit_range_get_stats(cache: *mut STUnitRangeCache, stats: *mut STUnitRangeStats) -> i32 {
+pub unsafe extern "C" fn st_unit_range_get_stats(
+    cache: *mut STUnitRangeCache,
+    stats: *mut STUnitRangeStats,
+) -> i32 {
     // SAFETY: as in `st_unit_range_reset`.
     let Some(cache) = (unsafe { cache.as_ref() }) else {
         return ST_UNIT_RANGE_INVALID;
@@ -510,34 +550,40 @@ pub unsafe extern "C" fn st_unit_range_render(
         return ST_UNIT_RANGE_INVALID;
     };
     let Some(mut guard) = RenderGuard::acquire(cache) else {
-        // SAFETY: the caller's contract for `output`, as for every `silence`/`fail` below.
+        // SAFETY: the caller's contract for `output`.
         unsafe { silence(cache, frames, output) };
         return ST_UNIT_RANGE_BUSY;
     };
     let state = guard.state();
+    // Every rejection records the error and clears the caller's output.
+    macro_rules! fail {
+        ($error:expr) => {{
+            let error = $error;
+            // SAFETY: the caller's contract for `output`.
+            unsafe { fail(cache, &mut state.stats, error, frames, output) }
+        }};
+    }
     state.stats.requests = state.stats.requests.wrapping_add(1);
-    // SAFETY (all `fail` calls in this function): the caller's contract for `output`.
     if frames == 0 || !unsafe { valid_output(cache, output) } {
-        return unsafe { fail(cache, &mut state.stats, ST_UNIT_RANGE_INVALID, frames, output) };
+        return fail!(ST_UNIT_RANGE_INVALID);
     }
     if frames > cache.maximum_request {
-        return unsafe { fail(cache, &mut state.stats, ST_UNIT_RANGE_OVERSIZE, frames, output) };
+        return fail!(ST_UNIT_RANGE_OVERSIZE);
     }
     if graph_frame > i64::MAX - i64::from(frames) {
-        return unsafe { fail(cache, &mut state.stats, ST_UNIT_RANGE_OVERFLOW, frames, output) };
+        return fail!(ST_UNIT_RANGE_OVERFLOW);
     }
     if state.stats.latched_error != 0 {
-        let latched = state.stats.latched_error;
-        return unsafe { fail(cache, &mut state.stats, latched, frames, output) };
+        return fail!(state.stats.latched_error);
     }
     let end = graph_frame + i64::from(frames);
     let mut suffix_start = graph_frame;
     if state.stats.anchored != 0 {
         if graph_frame < state.stats.retained_start_frame {
-            return unsafe { fail(cache, &mut state.stats, ST_UNIT_RANGE_EXPIRED, frames, output) };
+            return fail!(ST_UNIT_RANGE_EXPIRED);
         }
         if graph_frame > state.stats.rendered_end_frame {
-            return unsafe { fail(cache, &mut state.stats, ST_UNIT_RANGE_GAP, frames, output) };
+            return fail!(ST_UNIT_RANGE_GAP);
         }
         if end <= state.stats.rendered_end_frame {
             // SAFETY: `output` was validated above, `frames <= maximum_request`, and the request
@@ -551,7 +597,7 @@ pub unsafe extern "C" fn st_unit_range_render(
         suffix_start = state.stats.rendered_end_frame;
     }
     let (Some(span), Some(process)) = (span, process) else {
-        return unsafe { fail(cache, &mut state.stats, ST_UNIT_RANGE_INVALID, frames, output) };
+        return fail!(ST_UNIT_RANGE_INVALID);
     };
     // graph_frame <= suffix_start < end, so this is 1..=frames.
     let suffix_frames = (end - suffix_start) as u32;
@@ -562,9 +608,12 @@ pub unsafe extern "C" fn st_unit_range_render(
         // SAFETY: the caller's callback, called as the header documents.
         let result = unsafe { prepare(user, suffix_start, suffix_frames) };
         if result != 0 {
-            return unsafe { fail(cache, &mut state.stats, result, frames, output) };
+            return fail!(result);
         }
-        state.stats.prepared_frames = state.stats.prepared_frames.wrapping_add(u64::from(suffix_frames));
+        state.stats.prepared_frames = state
+            .stats
+            .prepared_frames
+            .wrapping_add(u64::from(suffix_frames));
     }
 
     let mut span_count: usize = 0;
@@ -575,7 +624,7 @@ pub unsafe extern "C" fn st_unit_range_render(
     while planned < suffix_frames {
         // The plan holds exactly maximumSpans entries.
         let Some(part) = state.plan.get_mut(span_count) else {
-            return unsafe { fail(cache, &mut state.stats, ST_UNIT_RANGE_SPAN_LIMIT, frames, output) };
+            return fail!(ST_UNIT_RANGE_SPAN_LIMIT);
         };
         let cursor = suffix_start + i64::from(planned);
         let requested = (suffix_frames - planned).min(cache.maximum_child);
@@ -584,15 +633,18 @@ pub unsafe extern "C" fn st_unit_range_render(
         // until the callback has returned.
         let result = unsafe { span(user, cursor, requested, part) };
         if result != ST_CLOCK_OK {
-            let error =
-                if result == ST_CLOCK_OUTSIDE_DOMAIN { ST_UNIT_RANGE_DOMAIN_END } else { ST_UNIT_RANGE_CLOCK_ERROR };
-            return unsafe { fail(cache, &mut state.stats, error, frames, output) };
+            let error = if result == ST_CLOCK_OUTSIDE_DOMAIN {
+                ST_UNIT_RANGE_DOMAIN_END
+            } else {
+                ST_UNIT_RANGE_CLOCK_ERROR
+            };
+            return fail!(error);
         }
         if part.frames == 0 {
-            return unsafe { fail(cache, &mut state.stats, ST_UNIT_RANGE_DOMAIN_END, frames, output) };
+            return fail!(ST_UNIT_RANGE_DOMAIN_END);
         }
         if part.frames > requested {
-            return unsafe { fail(cache, &mut state.stats, ST_UNIT_RANGE_CONTEXT_MISMATCH, frames, output) };
+            return fail!(ST_UNIT_RANGE_CONTEXT_MISMATCH);
         }
         let context = &part.context;
         // cursor + part.frames <= end, which was checked against overflow above.
@@ -609,18 +661,18 @@ pub unsafe extern "C" fn st_unit_range_render(
             || context.numerator <= 0
             || !matches!(context.denominator, 2 | 4 | 8 | 16)
         {
-            return unsafe { fail(cache, &mut state.stats, ST_UNIT_RANGE_CONTEXT_MISMATCH, frames, output) };
+            return fail!(ST_UNIT_RANGE_CONTEXT_MISMATCH);
         }
         let offset = (context.graph_frame as u64).wrapping_sub(context.content_graph_frame as u64);
         if offset > 1 << 30 {
-            return unsafe { fail(cache, &mut state.stats, ST_UNIT_RANGE_CONTEXT_MISMATCH, frames, output) };
+            return fail!(ST_UNIT_RANGE_CONTEXT_MISMATCH);
         }
         if !have_format {
             sample_rate = context.sample_rate;
             content_offset = offset as i64;
             have_format = true;
         } else if context.sample_rate != sample_rate || offset as i64 != content_offset {
-            return unsafe { fail(cache, &mut state.stats, ST_UNIT_RANGE_CONTEXT_MISMATCH, frames, output) };
+            return fail!(ST_UNIT_RANGE_CONTEXT_MISMATCH);
         }
         planned += part.frames;
         span_count += 1;
@@ -629,7 +681,11 @@ pub unsafe extern "C" fn st_unit_range_render(
     // Cache publication is transactional. A child may already have advanced when
     // it reports failure, so its error is latched; scratch PCM is never committed.
     let maximum_request = cache.maximum_request as usize;
-    for channel in state.scratch.chunks_exact_mut(maximum_request).take(cache.channels as usize) {
+    for channel in state
+        .scratch
+        .chunks_exact_mut(maximum_request)
+        .take(cache.channels as usize)
+    {
         // suffix_frames <= frames <= maximum_request.
         channel[..suffix_frames as usize].fill(0.0);
     }
@@ -642,24 +698,50 @@ pub unsafe extern "C" fn st_unit_range_render(
         let buffers: [*mut f32; 2] = unsafe {
             [
                 scratch.add(processed as usize),
-                if cache.channels == 2 { scratch.add(maximum_request + processed as usize) } else { std::ptr::null_mut() },
+                if cache.channels == 2 {
+                    scratch.add(maximum_request + processed as usize)
+                } else {
+                    std::ptr::null_mut()
+                },
             ]
         };
         state.stats.process_calls = state.stats.process_calls.wrapping_add(1);
         // SAFETY: the caller's callback. It receives a read-only view of this span's context and
         // buffers with room for `part.frames` samples per channel. The scratch storage is not
         // accessed through `state` again until the callback has returned.
-        let result = unsafe { process(user, &part.context, part.context.graph_frame, part.frames, buffers.as_ptr()) };
+        let result = unsafe {
+            process(
+                user,
+                &part.context,
+                part.context.graph_frame,
+                part.frames,
+                buffers.as_ptr(),
+            )
+        };
         if result != 0 {
             state.stats.latched_error = result;
-            return unsafe { fail(cache, &mut state.stats, result, frames, output) };
+            return fail!(result);
         }
-        state.stats.processed_frames = state.stats.processed_frames.wrapping_add(u64::from(part.frames));
+        state.stats.processed_frames = state
+            .stats
+            .processed_frames
+            .wrapping_add(u64::from(part.frames));
         processed += part.frames;
     }
     // suffix_frames >= 1, so at least one span was planned.
-    let last = state.plan.get(span_count.saturating_sub(1)).map_or_else(STClockContext::default, |part| part.context);
-    commit(cache, state, end, suffix_frames, &last, sample_rate, content_offset);
+    let last = state
+        .plan
+        .get(span_count.saturating_sub(1))
+        .map_or_else(STClockContext::default, |part| part.context);
+    commit(
+        cache,
+        state,
+        end,
+        suffix_frames,
+        &last,
+        sample_rate,
+        content_offset,
+    );
     // SAFETY: `output` was validated above, `frames <= maximum_request`, and after the commit the
     // request lies within the retained range.
     unsafe { copy_cached(cache, state, graph_frame, frames, output) };

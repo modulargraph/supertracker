@@ -220,7 +220,7 @@ macro_rules! model {
         }
 
         impl $crate::json::Json for $name {
-            fn from_json(value: serde_json::Value) -> Result<Self, serde_json::Value> {
+            fn from_json(value: serde_json::Value) -> ::std::result::Result<Self, serde_json::Value> {
                 let mut map = match value {
                     serde_json::Value::Object(map) => map,
                     other => return Err(other),
@@ -253,7 +253,7 @@ macro_rules! string_enum {
         }
     ) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub enum $name {
             $( $(#[$variant_meta])* #[doc = concat!("`\"", $text, "\"`")] $variant, )*
         }
@@ -270,7 +270,7 @@ macro_rules! string_enum {
         }
 
         impl $crate::json::Json for $name {
-            fn from_json(value: serde_json::Value) -> Result<Self, serde_json::Value> {
+            fn from_json(value: serde_json::Value) -> ::std::result::Result<Self, serde_json::Value> {
                 match value.as_str().and_then($name::parse) {
                     Some(result) => Ok(result),
                     None => Err(value),
@@ -289,12 +289,12 @@ macro_rules! string_enum {
 macro_rules! serde_through_json {
     ($name:ident, $expected:literal) => {
         impl serde::Serialize for $name {
-            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error> {
                 serde::Serialize::serialize(&$crate::json::Json::to_json(self), serializer)
             }
         }
         impl<'de> serde::Deserialize<'de> for $name {
-            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> ::std::result::Result<Self, D::Error> {
                 let value = <serde_json::Value as serde::Deserialize>::deserialize(deserializer)?;
                 <$name as $crate::json::Json>::from_json(value)
                     .map_err(|_| <D::Error as serde::de::Error>::custom(concat!(stringify!($name), " must be ", $expected)))
