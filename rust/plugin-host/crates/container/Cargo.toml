@@ -17,10 +17,28 @@ path = "src/main.rs"
 [dependencies]
 libc.workspace = true
 clap-sys.workspace = true
+vst3.workspace = true
 stpc-runtime.workspace = true
+
+# macOS only: AppKit main loop, editor windows and the Audio Unit backend (src/macos, src/au).
+# objc2 and its framework crates are MIT OR Apache-2.0 / Zlib. The "exception" feature
+# compiles a small Objective-C shim in objc2's own helper crate (needs clang; when
+# type-checking from Linux: CC_aarch64_apple_darwin=clang).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6.5", features = ["exception"] }
+block2 = "0.6.2"
+objc2-foundation = "0.3.2"
+objc2-app-kit = "0.3.2"
+objc2-audio-toolbox = "0.3.2"
+objc2-avf-audio = "0.3.2"
+objc2-core-audio-kit = "0.3.2"
+objc2-core-audio-types = "0.3.2"
+objc2-core-foundation = "0.3.2"
 
 [dev-dependencies]
 # Built (as a cdylib) before the tests, which load it through the CLAP backend.
 stpc-clap-test-plugin = { path = "../clap-test-plugin" }
+# Likewise for the VST3 backend (the tests package the library as a .vst3 bundle).
+stpc-vst3-test-plugin = { path = "../vst3-test-plugin" }
 stpc-client.workspace = true
 stpc-transport.workspace = true

@@ -80,7 +80,7 @@ pub const PARAM_EDIT_TRIGGER: u32 = 121;
 pub const PARAM_METER: u32 = 200;
 /// Output parameter: 1 while blocks arrive with `kOffline`.
 pub const PARAM_OFFLINE: u32 = 201;
-/// Output parameters echoing the process context: state flags / 65536, tempo / 1000,
+/// Output parameters echoing the process context: state flags / 2^20, tempo / 1000,
 /// musical position / 1e6, sample position / 2^40, (numerator * 256 + denominator) /
 /// 65536, bar start / 1e6, cycle start / 1e6, cycle end / 1e6.
 pub const PARAM_CTX_STATE: u32 = 210;
@@ -720,7 +720,7 @@ impl IAudioProcessorTrait for GainProcessor {
             let offline = data.processMode == ProcessModes_::kOffline as i32 && self.offline.load(Ordering::Relaxed);
             self.send_output(out, PARAM_OFFLINE, offline as u8 as f64, 0);
             if let Some(context) = data.processContext.as_ref() {
-                self.send_output(out, PARAM_CTX_STATE, context.state as f64 / 65536.0, 0);
+                self.send_output(out, PARAM_CTX_STATE, context.state as f64 / (1u64 << 20) as f64, 0);
                 self.send_output(out, PARAM_CTX_TEMPO, context.tempo / 1000.0, 0);
                 self.send_output(out, PARAM_CTX_PPQ, context.projectTimeMusic / 1e6, 0);
                 self.send_output(out, PARAM_CTX_SAMPLES, context.projectTimeSamples as f64 / (1u64 << 40) as f64, 0);

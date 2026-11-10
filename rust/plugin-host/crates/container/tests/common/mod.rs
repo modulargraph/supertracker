@@ -258,3 +258,71 @@ pub fn assert_bits_eq(actual: &[f32], expected: &[f32], what: &str) {
         );
     }
 }
+
+// ---- plug-in files for the format backends and the scanner ---------------------------------
+
+/// A directory under the temporary directory, removed when dropped.
+pub struct Scratch {
+    pub dir: PathBuf,
+}
+
+static SCRATCH_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+impl Scratch {
+    pub fn new(tag: &str) -> Scratch {
+        let dir = std::env::temp_dir().join(format!(
+            "stpc-{tag}-{}-{}",
+            std::process::id(),
+            SCRATCH_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        Scratch { dir }
+    }
+
+    pub fn path(&self, name: &str) -> PathBuf {
+        self.dir.join(name)
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// A test plug-in library cargo built next to this test executable (`stpc_clap_test_plugin`,
+/// `stpc_vst3_test_plugin`).
+pub fn test_library(crate_name: &str) -> PathBuf {
+    let dir = std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
+    let extension = if cfg!(target_os = "macos") { "dylib" } else { "so" };
+    let path = dir.join(format!("lib{crate_name}.{extension}"));
+    assert!(path.is_file(), "{} was not built", path.display());
+    path
+}
+
+/// Packages the VST3 test plug-in as `<dir>/<name>.vst3`, the way an installed plug-in
+/// looks on this platform. The library is copied, so each bundle is a module of its own
+/// (and the test plug-in can tell by its file name how it is meant to misbehave).
+pub fn vst3_bundle(dir: &std::path::Path, name: &str) -> PathBuf {
+    let bundle = dir.join(format!("{name}.vst3"));
+    let library = test_library("stpc_vst3_test_plugin");
+    if cfg!(target_os = "macos") {
+        let binaries = bundle.join("Contents").join("MacOS");
+        std::fs::create_dir_all(&binaries).unwrap();
+        std::fs::copy(&library, binaries.join(name)).unwrap();
+        let plist = format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict>\n\
+             <key>CFBundleExecutable</key><string>{name}</string>\n\
+             <key>CFBundleIdentifier</key><string>org.supertracker.tests.{name}</string>\n\
+             <key>CFBundlePackageType</key><string>BNDL</string>\n\
+             <key>CFBundleShortVersionString</key><string>1.2.3</string>\n</dict></plist>\n"
+        );
+        std::fs::write(bundle.join("Contents").join("Info.plist"), plist).unwrap();
+    } else {
+        let binaries = bundle.join("Contents").join(format!("{}-linux", std::env::consts::ARCH));
+        std::fs::create_dir_all(&binaries).unwrap();
+        std::fs::copy(&library, binaries.join(format!("{name}.so"))).unwrap();
+    }
+    bundle
+}

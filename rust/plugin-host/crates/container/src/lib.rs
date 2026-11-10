@@ -5,9 +5,14 @@
 //!
 //! * [`clap_backend`]: format `"clap"`, CLAP plug-ins.
 //!
+//! * [`vst3`]: format `"vst3"`, VST3 plug-ins.
+//!
 //! Further formats (VST3, Audio Units on macOS) are added here as more
 //! [`stpc_runtime::PluginBackend`] implementations and registered in `main.rs`.
 
 pub mod au;
 pub mod clap_backend;
+#[cfg(target_os = "macos")]
+pub mod macos;
 pub mod test_backend;
+pub mod vst3;

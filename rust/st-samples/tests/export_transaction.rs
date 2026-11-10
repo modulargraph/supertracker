@@ -186,6 +186,28 @@ fn changed_targets_refuse_to_commit() {
         }
         tx.discard().unwrap();
     }
+    // A rewrite that keeps the size is still noticed (by its timestamps).
+    let target = folder.join("same-size.wav");
+    bytes("old", &target);
+    let mut tx = ExportTransaction::new(&target, ExportKind::File).unwrap();
+    let entry = tx.register("ready.wav").unwrap();
+    bytes("ours", &entry.delivery_path);
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    bytes("new", &target);
+    assert!(tx.publish().is_err(), "same-size rewrite");
+    assert_eq!(content(&target), "new");
+    tx.discard().unwrap();
+    // An untouched existing file is replaced.
+    let target = folder.join("untouched.wav");
+    bytes("old", &target);
+    let mut tx = ExportTransaction::new(&target, ExportKind::File).unwrap();
+    let entry = tx.register("ready.wav").unwrap();
+    bytes("ours", &entry.delivery_path);
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    assert_eq!(content(&target), "old");
+    tx.publish().unwrap();
+    assert_eq!(content(&target), "ours");
+
     let target = directory(&folder, "now-nonempty");
     let mut tx = ExportTransaction::new(&target, ExportKind::Stems).unwrap();
     let entry = tx.register("ready.wav").unwrap();

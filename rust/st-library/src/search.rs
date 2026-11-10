@@ -8,7 +8,8 @@
 use crate::api::{DurationCoverage, Facet, LibraryItem, NumericFilter, OfflineRoot, RootReport, SearchRequest, SearchResponse};
 use crate::index::{Field, Item, Kind, Root, Tables};
 use crate::infer::{key_slot, COLLECTION_NAMES};
-use crate::util::{bytes_contain, extension, file_name, fold, parent, volume_name};
+use crate::util::{extension, file_name, fold, parent, volume_name};
+use memchr::memmem::Finder;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
@@ -146,7 +147,9 @@ impl Selections {
 pub(crate) struct Population {
     key: String,
     revision: u64,
-    matching: Vec<(Arc<Item>, u32)>,
+    /// The snapshot `matching` indexes into.
+    items: Arc<Vec<Arc<Item>>>,
+    matching: Vec<Ranked>,
     facet_counts: Vec<HashMap<Arc<str>, usize>>,
     duration_known: usize,
     duration_unknown: usize,
@@ -171,8 +174,28 @@ pub(crate) struct Outcome {
     pub duration_candidates: Vec<String>,
 }
 
-fn ranks_before(left: &(Arc<Item>, u32), right: &(Arc<Item>, u32)) -> std::cmp::Ordering {
-    right.1.cmp(&left.1).then_with(|| left.0.folded_name().cmp(right.0.folded_name())).then_with(|| left.0.path.cmp(&right.0.path))
+/// A matching item: its position in the snapshot, its score, and the first sixteen bytes of
+/// its folded name so that most comparisons need not follow the pointer to the item.
+#[derive(Clone, Copy)]
+struct Ranked {
+    index: u32,
+    score: u32,
+    prefix: [u64; 2],
+}
+
+fn name_prefix(name: &[u8]) -> [u64; 2] {
+    let mut bytes = [0u8; 16];
+    let length = name.len().min(16);
+    bytes[..length].copy_from_slice(&name[..length]);
+    [u64::from_be_bytes(bytes[..8].try_into().unwrap_or([0; 8])), u64::from_be_bytes(bytes[8..].try_into().unwrap_or([0; 8]))]
+}
+
+/// Best score first, then by folded name, then by path.
+fn ranks_before(items: &[Arc<Item>], left: &Ranked, right: &Ranked) -> std::cmp::Ordering {
+    right.score.cmp(&left.score).then_with(|| left.prefix.cmp(&right.prefix)).then_with(|| {
+        let (a, b) = (&items[left.index as usize], &items[right.index as usize]);
+        a.folded_name().cmp(b.folded_name()).then_with(|| a.path.cmp(&b.path))
+    })
 }
 
 /// The row of `item` as the page receives it.
@@ -234,6 +257,7 @@ fn slots_containing(folded: &[Arc<str>], needle: &str) -> Vec<bool> {
 
 struct WordMatcher {
     bytes: Vec<u8>,
+    finder: Finder<'static>,
     categories: Vec<bool>,
     packs: Vec<bool>,
     tags: Vec<bool>,
@@ -287,6 +311,7 @@ pub(crate) fn search(request: &SearchRequest, snapshot: &Snapshot, tables: &Tabl
             .iter()
             .map(|word| WordMatcher {
                 bytes: word.as_bytes().to_vec(),
+                finder: Finder::new(word.as_bytes()).into_owned(),
                 categories: slots_containing(&categories, word),
                 packs: slots_containing(&packs, word),
                 tags: slots_containing(&tags, word),
@@ -333,7 +358,7 @@ pub(crate) fn search(request: &SearchRequest, snapshot: &Snapshot, tables: &Tabl
         let mut eligible_pending: HashSet<String> = HashSet::new();
         let mut duration_candidates: Vec<String> = Vec::new();
         let mut offline_matches: HashMap<u32, usize> = HashMap::new();
-        let mut matching: Vec<(Arc<Item>, u32)> = Vec::with_capacity(snapshot.items.len().min(4096));
+        let mut matching: Vec<Ranked> = Vec::with_capacity(snapshot.items.len().min(4096));
         let bump = |counts: &mut Vec<usize>, id: u32| {
             if counts.len() <= id as usize {
                 counts.resize(id as usize + 1, 0);
@@ -353,7 +378,7 @@ pub(crate) fn search(request: &SearchRequest, snapshot: &Snapshot, tables: &Tabl
                 continue;
             }
             let word_matches = words.iter().all(|word| {
-                bytes_contain(&item.folded, &word.bytes)
+                word.finder.find(&item.folded).is_some()
                     || hit(&word.categories, item.category)
                     || hit(&word.packs, item.pack)
                     || (item.has_key && hit(&word.keys, item.key))
@@ -450,8 +475,8 @@ pub(crate) fn search(request: &SearchRequest, snapshot: &Snapshot, tables: &Tabl
                 continue;
             }
             let name = item.folded_name();
-            let score = words.iter().map(|word| if name.starts_with(&word.bytes) { 2 } else if bytes_contain(name, &word.bytes) { 1 } else { 0 }).sum();
-            matching.push((item.clone(), score));
+            let score = words.iter().map(|word| if name.starts_with(&word.bytes) { 2 } else if word.finder.find(name).is_some() { 1 } else { 0 }).sum();
+            matching.push(Ranked { index: index as u32, score, prefix: name_prefix(name) });
         }
         if cancelled() {
             return None;
@@ -482,6 +507,7 @@ pub(crate) fn search(request: &SearchRequest, snapshot: &Snapshot, tables: &Tabl
         cache.population = Some(Population {
             key: population_key,
             revision: snapshot.revision,
+            items: snapshot.items.clone(),
             matching,
             facet_counts,
             duration_known,
@@ -495,21 +521,23 @@ pub(crate) fn search(request: &SearchRequest, snapshot: &Snapshot, tables: &Tabl
     let total = population.matching.len();
     let (start, end) = (offset.min(total), (offset.min(total) + limit).min(total));
     // Select the page in linear time; only the visible rows are sorted.
+    let items = population.items.clone();
+    let order = |left: &Ranked, right: &Ranked| ranks_before(&items, left, right);
     if end < total {
-        population.matching.select_nth_unstable_by(end, ranks_before);
+        population.matching.select_nth_unstable_by(end, order);
     }
     if start > 0 && start < end {
-        population.matching[..end].select_nth_unstable_by(start, ranks_before);
+        population.matching[..end].select_nth_unstable_by(start, order);
     }
-    let mut visible: Vec<(Arc<Item>, u32)> = population.matching[start..end].to_vec();
-    visible.sort_by(ranks_before);
+    let mut ranked: Vec<Ranked> = population.matching[start..end].to_vec();
+    ranked.sort_by(order);
+    let visible: Vec<&Arc<Item>> = ranked.iter().map(|ranked| &items[ranked.index as usize]).collect();
 
     let mut duration_candidates: Vec<String> = if duration_filter {
         population.duration_candidates.iter().filter(|path| !snapshot.queued_durations.contains(*path)).cloned().collect()
     } else {
         visible
             .iter()
-            .map(|(item, _)| item)
             .filter(|item| item.kind == Kind::Sample && !item.duration_checked && !snapshot.queued_durations.contains(&*item.path) && !offline_ids.contains(&item.root))
             .take(32)
             .map(|item| item.path.to_string())
@@ -518,9 +546,9 @@ pub(crate) fn search(request: &SearchRequest, snapshot: &Snapshot, tables: &Tabl
     duration_candidates.truncate(32);
     let duration_pending = population.eligible_pending.iter().filter(|path| snapshot.queued_durations.contains(*path)).count();
     let pending: HashSet<String> = snapshot.queued_durations.iter().cloned().chain(duration_candidates.iter().cloned()).collect();
-    let items: Vec<LibraryItem> = visible
+    let rows: Vec<LibraryItem> = visible
         .iter()
-        .map(|(item, _)| {
+        .map(|item| {
             let mut row = item_row(item, tables, &snapshot.favorites, &verified, &pending);
             if offline_ids.contains(&item.root) {
                 row.available = Some(false);
@@ -573,7 +601,7 @@ pub(crate) fn search(request: &SearchRequest, snapshot: &Snapshot, tables: &Tabl
         })
         .collect();
     let response = SearchResponse {
-        items,
+        items: rows,
         total,
         scanning: snapshot.scanning,
         cancelled: None,
