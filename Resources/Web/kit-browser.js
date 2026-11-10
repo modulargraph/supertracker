@@ -48,7 +48,9 @@
     const generation = ++local.generation, previous = current()?.path, key = resultsKey(), revision = local.lastRevision;
     local.searching = true; local.appending = append; local.refreshNeeded = false;
     let result;
-    try { result = await S().request('library.kits.browse', payload(append ? local.items.length : 0)); if (!result || typeof result !== 'object') throw new Error('Kit browsing returned no results. Retry the search.'); }
+    // A refresh of the results on screen reloads every page already shown, so the selection and scroll position stay.
+    const limit = !append && keep && local.resultsKey === key ? Math.min(1000, Math.max(LIMIT, local.items.length)) : LIMIT;
+    try { result = await S().request('library.kits.browse', { ...payload(append ? local.items.length : 0), limit }); if (!result || typeof result !== 'object') throw new Error('Kit browsing returned no results. Retry the search.'); }
     catch (error) {
       if (generation !== local.generation || key !== resultsKey()) return;
       local.searching = false; local.appending = false; local.resultsKey = null; local.error = error?.message || 'Could not browse kits.'; paint(); return;
@@ -653,7 +655,12 @@
     if (type === 'library.kits.progress') {
       local.status = { ...local.status, ...value };
       if (value.revision !== undefined && value.revision !== local.lastRevision) refreshSoon(value.reading ? 900 : 60);
-      else if (mounted()) { const node = document.querySelector?.('.kitb-status'); if (node?.querySelector) { node.outerHTML = renderStatus(); const on = (id, fn) => document.getElementById(id)?.addEventListener('click', fn); on('kitb-scan', rescan); on('kitb-add', addRoot); on('kitb-new', () => window.STKitGroups?.createKit?.()); } }
+      else if (mounted()) { const node = document.querySelector?.('.kitb-status'); if (node?.querySelector) {
+        // Replacing the row must not drop keyboard focus from one of its buttons.
+        const focus = node.contains?.(document.activeElement) ? document.activeElement.id : '';
+        node.outerHTML = renderStatus(); const on = (id, fn) => document.getElementById(id)?.addEventListener('click', fn); on('kitb-scan', rescan); on('kitb-add', addRoot); on('kitb-new', () => window.STKitGroups?.createKit?.());
+        if (focus) document.getElementById(focus)?.focus({ preventScroll: true });
+      } }
       return;
     }
     if (type === 'library.results' || type === 'library.metadata') { if (value.volumes || !value.scanning) local.metadata.clear(); refreshSoon(value.scanning ? 600 : 100); }

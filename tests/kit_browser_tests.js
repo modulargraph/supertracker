@@ -204,6 +204,19 @@ async function fresh() { const h = harness(); await h.browser.search(); h.render
   page.requestHandler = null; await page.run(); assert.equal(page.browser.controller.list().items[0].name, 'Cloud');
   console.log('PASS appended pages coalesce repeats and reject a page belonging to old filters');
 
+  // A background refresh after browsing past the first page reloads every page shown: the selection must not jump back.
+  const long = await fresh(), rows = Array.from({ length: 450 }, (_, index) => ({ path: `/long/${index}.mxgrp`, name: `Long ${index}` }));
+  long.requestHandler = (command, payload) => command === 'library.kits.browse' ? Promise.resolve({ items: rows.slice(payload.offset, payload.offset + payload.limit), total: rows.length }) : undefined;
+  await long.browser.search(); await long.run();
+  long.browser.controller.move(199); await long.run(); long.browser.controller.move(50); await long.run();
+  assert.equal(long.browser.controller.list().items.length, 400); assert.equal(long.browser.controller.list().selected, 249);
+  long.browser.event('library.results', { scanning: false }); await long.run();
+  assert.deepEqual([long.last('library.kits.browse').payload.offset, long.last('library.kits.browse').payload.limit], [0, 400], 'the refresh asks for the rows already shown');
+  assert.equal(long.browser.controller.list().items.length, 400); assert.equal(long.browser.controller.list().selected, 249, 'the selected kit stays selected');
+  long.browser.controller.choose('tags', 'Kits\u001fHip Hop'); await long.run();
+  assert.equal(long.last('library.kits.browse').payload.limit, 200, 'a new filter starts again from one page');
+  console.log('PASS a background refresh keeps appended pages and the selection');
+
   const failure = await fresh(); failure.requestHandler = command => command === 'library.kits.browse' ? Promise.reject(new Error('Drive read failed')) : undefined;
   await failure.browser.search(); const failures = failure.calls.length; failure.render(); await failure.run();
   assert.equal(failure.calls.length, failures, 'failed search does not spin on repaint'); assert.match(failure.markup, /Drive read failed/);

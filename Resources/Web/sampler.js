@@ -180,10 +180,9 @@
     return validAuditionOwner(job) && !!panel && panel.isConnected !== false && panel.contains(document.activeElement);
   }
   async function auditionSlice(index) {
-    const s = state(), inst = current();
+    const inst = current();
     if (!inst || inst.type !== 'sample' || !inst.samplePath || !Number.isInteger(index) || index < 0 || index >= slicePoints(inst).length) return;
     stopAudition(); selectSlice(index);
-    const track = s.track ?? 0;
     const job = {...destination(inst),generation:audition.generation,index,signature:auditionSignature(inst),sent:false};
     audition.job = job; audition.message = `Preparing slice ${index + 1}…`; updateSliceSelection();
     try {
@@ -314,11 +313,15 @@
     }
   }
   function beatSliceCount() { return slicing.beats * slicing.division / 4; }
-  function updateBeatEstimate() {
-    const count = beatSliceCount(), output = document.getElementById('sampler-beat-estimate');
-    if (output) output.textContent = Number.isInteger(count) && count >= 1 && count <= 128
+  function beatEstimate() {
+    const count = beatSliceCount();
+    return Number.isInteger(count) && count >= 1 && count <= 128
         ? `${count} equal slices across the playback region`
         : 'Choose a beat length and grid yielding 1–128 whole slices.';
+  }
+  function updateBeatEstimate() {
+    const output = document.getElementById('sampler-beat-estimate');
+    if (output) output.textContent = beatEstimate();
   }
   // Sampler sections as separate pieces, so the Instrument view can place them on pages
   // (Sample · Slices · Zones · Voice & Record). render() keeps the full stack in order.
@@ -383,9 +386,7 @@
           + `marker</button></div><div class="sampler-inline sampler-beat-grid"><label class="field"><span>Region length · beats</span>`
           + `<input id="sampler-region-beats" type="number" min=".25" max="128" step=".25" value="${slicing.beats}"></label>`
           + `<label class="field"><span>Beat grid</span><select id="sampler-beat-grid">${[4, 8, 16, 32].map(value => `<option value="${value}" ${slicing.division === value ? 'selected' : ''}>1/${value} notes</option>`).join('')}</select>`
-          + `</label><button id="sampler-apply-beat-grid">Chop by beats</button></div><p id="sampler-beat-estimate" class="sampler-help">${Number.isInteger(beatSliceCount()) && beatSliceCount() <= 128
-              ? `${beatSliceCount()} equal slices across the playback region`
-              : 'Choose a beat length and grid yielding 1–128 whole slices.'}</p></div>
+          + `</label><button id="sampler-apply-beat-grid">Chop by beats</button></div><p id="sampler-beat-estimate" class="sampler-help">${beatEstimate()}</p></div>
       <details id="sampler-slice-help" class="sampler-more"><summary>How slices play</summary><p class="sampler-help">Enter the region’s length `
           + `in quarter-note beats. This creates equal markers; it does not detect tempo or stretch audio.</p><p class="sampler-help">Slice starts are `
           + `percentages within the sample start/end range. Play ${note(inst.rootNote ?? 60)} upward to trigger successive slices. For independent pitch, `
@@ -436,7 +437,7 @@
         if (replace != null && inst.zones[replace]) { inst.zones[replace].samplePath = path; delete inst.zones[replace].path; }
         else if (inst.zones.length < 128) inst.zones.push({ samplePath: path, keyLow: 0, keyHigh: 127, velocityLow: 0, velocityHigh: 127, rootNote: inst.rootNote ?? 60, tune: 0, volume: 1 });
       });
-      ST().toast('Zone added. Audio loads in the background.');
+      ST().toast(`${replace == null ? 'Zone added' : 'Zone sample replaced'}. Audio loads in the background.`);
     } catch (error) { ST().toast(error.message, 'error'); }
   }
   function stretchDialog() {
@@ -1150,7 +1151,8 @@
     if (key === '+' || key === '=') { zoomEditor(inst, .5); return done(); }
     if (key === '-' || key === '_') { zoomEditor(inst, 2); return done(); }
     if (key === '0') { setEditorView(inst, 0, 1); drawEditor(); return done(); }
-    if (key === ',' || key === '.') { const [from, to] = s.view, shift = (to - from) * .25 * (key === '.' ? 1 : -1); setEditorView(inst,
+    // , and . are note keys too while the computer keyboard (⌘P) is on.
+    if ((key === ',' || key === '.') && !state().keyboardPlay) { const [from, to] = s.view, shift = (to - from) * .25 * (key === '.' ? 1 : -1); setEditorView(inst,
         from + shift, to + shift); drawEditor(); return done(); }
     if (key === ' ' || key === 'Enter') { if (!event.repeat) startEditorAudition(inst); return done(); }
     if (key === 'Escape' && stopEditorAudition()) { setEditorMessage('Audition stopped'); return done(); }
@@ -1271,6 +1273,8 @@
         drawEditor();
       });
       canvas.addEventListener('pointermove', event => {
+        // A repaint during the drag replaces the canvas that captured the pointer; a release outside it is then never seen.
+        if (editorDrag && event.buttons === 0) { editorDrag = null; scheduleEditorRefresh(); return; }
         if (editorDrag && editorDrag.inst === current()) commitEditorMarker(editorDrag.inst, editorDrag.key, editorPosition(event).position,
             editorDrag.label);
       });

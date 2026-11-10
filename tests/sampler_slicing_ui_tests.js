@@ -94,6 +94,9 @@ test('beat slicing computes explicit quarter-note subdivisions and refuses overs
  await h.click('sampler-apply-beat-grid');assert.equal(h.instrument.sliceCount,32);assert.equal(h.instrument.slicePoints[31],31/32);assert.equal(h.document.activeElement.id,'sampler-apply-beat-grid');
  await h.change('sampler-region-beats',128,'input');await h.change('sampler-beat-grid',32);await h.click('sampler-apply-beat-grid');assert.equal(h.mutations.length,1);
  await h.change('sampler-region-beats',.3,'input');await h.change('sampler-beat-grid',4);await h.click('sampler-apply-beat-grid');assert.equal(h.mutations.length,1);
+ // A cleared or negative length shows the same hint after a repaint as while typing (never "0 equal slices").
+ for(const value of ['',-4]){await h.change('sampler-region-beats',value,'input');assert.match(h.nodes.get('sampler-beat-estimate').textContent,/^Choose a beat length/);
+  assert.match(h.module.render(h.instrument),/id="sampler-beat-estimate"[^>]*>Choose a beat length/);}
 });
 test('manual markers retain ordering, protect first marker and keep keyboard focus',async()=>{
  const h=harness();await h.click('sampler-add-marker');assert.deepEqual(clone(h.instrument.slicePoints),[0,.25,.5]);assert.equal(h.document.activeElement.id,'sampler-marker-1');

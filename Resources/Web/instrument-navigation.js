@@ -57,6 +57,8 @@
       });
       const tab = $('inst-page-tab-' + id), page = $('inst-page-' + id);
       if (id === 'sample') window.STSampler?.redraw?.();
+      // Pages only toggle visibility (no render), so the waveform's live playheads start or stop here.
+      window.STSamplerPlayheads?.sync?.();
       let destination = null;
       if (focus === 'page' && page) {
         for (const selector of [...(PAGE_FOCUS[id] || []), 'input:not([type="range"]),select,button,[tabindex="0"]']) {

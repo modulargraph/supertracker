@@ -658,7 +658,7 @@
               + ` aria-disabled="${!current}" data-browser-item="${index}"><div class="browser-sound-name"><span class="browser-file-icon ${item.kind === 'nks' ? 'nks' : ''}">${icon(item.kind)}</span>`
               + `<div><strong>${html(item.name)}</strong><small>${item.available === false ? '<span class="browser-offline-badge">Offline</span> ' : ''}${html((item.tags || []).slice(0, 3).join(' · ') || item.extension?.toUpperCase() || item.kind)}</small>`
               + `</div></div><div class="browser-result-pack"><span>${html(item.pack || 'Local sounds')}</span><small>${html(item.category || '')}</small>`
-              + `</div><span class="browser-number">${item.bpm || '—'}</span><span class="browser-number">${html(item.key || '—')}</span>`
+              + `</div><span class="browser-number">${html(item.bpm || '—')}</span><span class="browser-number">${html(item.key || '—')}</span>`
               + `<button class="browser-star ${item.favorite ? 'is-favorite' : ''}" data-browser-star="${index}" aria-label="${item.favorite ? 'Remove from' : 'Add to'}`
               + ` favorites: ${html(item.name)}" tabindex="-1" ${current?'':'disabled'}>${item.favorite ? '★' : '☆'}</button>`
               + `</div>`).join('') : renderEmpty(lib)}
@@ -845,7 +845,6 @@
     const plugin = plugins[local.pluginSelected];
     const track = app().state.project?.tracks?.[app().state.track];
     const ownerName = track?.name || `Track ${Number(app().state.track || 0) + 1}`;
-    const instrument = app().state.project?.instruments?.[app().state.instrument];
     const effects = effectSlots();
     const slots = Math.min(INSERT_SLOTS, Math.max(1, effects.length + 1));
     local.slot = Math.max(0, Math.min(local.slot, slots - 1));

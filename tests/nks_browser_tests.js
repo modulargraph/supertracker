@@ -144,6 +144,18 @@ function harness() {
   assert.equal(paging.browser.controller.list().items.some(item => item.name === 'New revision'), false);
   console.log('PASS append coalescing and catalogue revision paging guard');
 
+  // A background refresh after browsing past the first page reloads every page shown: the selection must not jump back.
+  const long = await fresh(), rows = Array.from({ length: 450 }, (_, index) => ({ path: `/long/${index}.nksf`, name: `Long ${index}`, product: 'Long' }));
+  long.requestHandler = (command, payload) => command === 'library.nks.browse' ? Promise.resolve({ items: rows.slice(payload.offset, payload.offset + payload.limit), total: rows.length, status: { revision: 1 } }) : undefined;
+  await long.browser.search(); await tick();
+  long.browser.controller.move(199); await tick(); long.browser.controller.move(50); await tick();
+  assert.equal(long.browser.controller.list().items.length, 400); assert.equal(long.browser.controller.list().selected, 249);
+  await long.browser.search(); await tick();
+  const refresh = long.calls.filter(call => call.command === 'library.nks.browse').at(-1).payload;
+  assert.deepEqual([refresh.offset, refresh.limit], [0, 400], 'the refresh asks for the rows already shown');
+  assert.equal(long.browser.controller.list().items.length, 400); assert.equal(long.browser.controller.list().selected, 249, 'the selected preset stays selected');
+  console.log('PASS a background refresh keeps appended pages and the selection');
+
   const offline = await fresh();
   offline.browser._local.items[0].available = false;
   await offline.browser.controller.preview(); await offline.browser.controller.load();

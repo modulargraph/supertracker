@@ -174,6 +174,28 @@ test('instrument-view console: empty knobs of a curated built-in page are blank,
   assert.match(h.window.STPluginPages.render(h.ST.state.project.instruments[0], null), /Assign… <kbd>↵<\/kbd>/);
 });
 
+test('instrument-view console: your pages on a built-in effect come after its curated pages (pin, New page)', async () => {
+  const h = console_(), api = h.window.STPluginPages, inst = h.ST.state.project.instruments[0];
+  api.render(inst, null); await h.flush();
+  const node = dataset => ({ dataset, type: 'range', value: '.5', on: {}, addEventListener(type, fn) { this.on[type] = fn; } });
+  const knob = node({ ppKnob: '1', ppAddress: api.controller.view().knobs[1].address, ppName: 'Reso' }), create = node({ ppAction: 'new' }), listeners = {};
+  const root = { isConnected: true, dataset: {}, contains: () => true, querySelector: () => null, addEventListener(type, fn) { listeners[type] = fn; },
+    querySelectorAll: query => query === '[data-pp-action]' ? [create] : query === '[data-pp-address]' || query === '[data-pp-knob]' ? [knob] : [] };
+  api.bind({ querySelector: query => query === '[data-pp-root]' ? root : null });
+  // P pins the knob: the Pinned page is added after the four curated pages, so the open page does not move.
+  listeners.keydown({ key: 'p', target: knob, preventDefault() {}, stopPropagation() {} });
+  let view = api.controller.view();
+  same(view.pages, ['Main', 'LFO', 'Envelope', 'Sidechain', 'Pinned']); assert.equal(view.page, 0, 'pinning keeps the curated page open');
+  // New page opens the page it created, not a curated page with the same index among your pages.
+  create.on.click(); view = api.controller.view();
+  assert.equal(view.pages[view.page], 'My page 2', 'the new page is shown'); assert.equal(view.page, 5);
+  // On one of your pages, pinning into a new Pinned page still follows the page as it shifts by one.
+  h.ST.state.project.pluginPages['fx-filter'].pages.shift(); api.controller.setPage(4);
+  assert.equal(api.controller.view().pages[4], 'My page 2');
+  listeners.keydown({ key: 'p', target: knob, preventDefault() {}, stopPropagation() {} });
+  view = api.controller.view(); assert.equal(view.pages[view.page], 'My page 2'); assert.equal(view.page, 5);
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of tests) {

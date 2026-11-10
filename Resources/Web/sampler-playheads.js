@@ -116,6 +116,7 @@
     g.fillStyle = color; g.beginPath(); g.moveTo(at + d * 7, y); g.lineTo(at, y - 5); g.lineTo(at, y + 5); g.closePath(); g.fill();
   }
 
-  document.addEventListener?.('visibilitychange', () => { if (live.sent && live.sent !== 'off') sync(); });
+  // Hiding the window stops the poll; showing it again restarts it (no render happens then).
+  document.addEventListener?.('visibilitychange', () => sync());
   window.STSamplerPlayheads = { sync, receive, draw, visible, get voices() { return live.voices; }, get watching() { return live.watching; } };
 })();

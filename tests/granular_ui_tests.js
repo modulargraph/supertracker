@@ -32,7 +32,8 @@ function harness() {
     return nodes.get(id);
   }
   const document = { body: element('body'), activeElement: null, hidden: false, querySelector: element,
-    querySelectorAll: query => query === '[data-inst-param]' ? inputs : [], getElementById: element, addEventListener() {}, createElement: element };
+    querySelectorAll: query => query === '[data-inst-param]' ? inputs : [], getElementById: element, createElement: element,
+    listeners: {}, addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); } };
   const window = { addEventListener() {}, devicePixelRatio: 1, webkit: { messageHandlers: { supertracker: { postMessage(message) {
     calls.push(message); const handler = handlers.get(message.command);
     Promise.resolve().then(() => handler ? handler(message.payload) : {}).then(result => window.nativeReceive({ id: message.id, ok: true, result }),
@@ -173,6 +174,20 @@ test('playheads: the editor polls only while visible and draws each voice on the
   assert.deepEqual({ ...h.sent('sampler.playheads').at(-1).payload }, { enabled: false });
   window.nativeEvent({ type: 'sampler.playheads', payload: { instrument: 0, voices: [{ instrument: 0, mode: 1, position: 1, frames: 10, level: 1 }] } });
   assert.equal(window.STSamplerPlayheads.voices.length, 0, 'late events after hiding are ignored');
+});
+
+test('playheads: the poll stops while the window is hidden and restarts when it is shown again', async () => {
+  const h = harness(), { ST, document } = h, fire = () => { for (const fn of document.listeners.visibilitychange || []) fn(); };
+  ST.state.native = true; ST.setView('instrument'); await settle();
+  assert.deepEqual({ ...h.sent('sampler.playheads').at(-1).payload }, { enabled: true, instrument: 0 });
+  document.hidden = true; fire();
+  assert.deepEqual({ ...h.sent('sampler.playheads').at(-1).payload }, { enabled: false }, 'a hidden window stops the poll');
+  // Nothing renders when the window returns, so the visibility event itself must restart the poll.
+  document.hidden = false; fire();
+  assert.deepEqual({ ...h.sent('sampler.playheads').at(-1).payload }, { enabled: true, instrument: 0 }, 'showing the window restarts the poll');
+  assert.equal(h.window.STSamplerPlayheads.watching, 0);
+  const requests = h.sent('sampler.playheads').length; fire();
+  assert.equal(h.sent('sampler.playheads').length, requests, 'an unchanged visibility sends nothing');
 });
 
 test('MK3: Granular CHANNEL page with Position, Size, Density, Spray, Scan, Pitch, Reverse and Stereo knobs', async () => {

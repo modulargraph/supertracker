@@ -42,8 +42,8 @@ function harness(type = 'sample', mode = 'slice') {
   document = { body, activeElement: body, getElementById: id => body.querySelectorAll('[id]').find(node => node.id === id) || null, querySelectorAll: selector => body.querySelectorAll(selector) };
   const inst = { type, mode, slicePoints: [0, .25, .5, .75], zones: [{}, {}] };
   const state = { view: 'instrument', modal: null, instrument: 0, track: 0, project: { instruments: [inst] } };
-  let redraws = 0;
-  const window = { ST: { state, escapeHTML, toast() {} }, STSampler: { redraw: () => redraws++ }, getComputedStyle: () => ({}) };
+  let redraws = 0, playheadSyncs = 0;
+  const window = { ST: { state, escapeHTML, toast() {} }, STSampler: { redraw: () => redraws++ }, STSamplerPlayheads: { sync: () => playheadSyncs++ }, getComputedStyle: () => ({}) };
   web.runText('instrument-navigation.js', source, { window, document });
   const pages = window.STInstrumentPages;
   // Mount the bar and page containers as app.js would.
@@ -65,7 +65,7 @@ function harness(type = 'sample', mode = 'slice') {
     scroller.append(n('div', attrs, contents[id]));
   }
   const key = (target, init) => { const event = { target, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {}, ...init }; return pages.key(event) && event.defaultPrevented; };
-  return { pages, document, state, inst, scroller, key, get: id => document.getElementById(id), shown: () => Array.from(document.querySelectorAll('[data-inst-page]').filter(page => !page.hidden), page => page.getAttribute('data-inst-page')), get redraws() { return redraws; } };
+  return { pages, document, state, inst, scroller, key, get: id => document.getElementById(id), shown: () => Array.from(document.querySelectorAll('[data-inst-page]').filter(page => !page.hidden), page => page.getAttribute('data-inst-page')), get redraws() { return redraws; }, get playheadSyncs() { return playheadSyncs; } };
 }
 
 const tests = [], test = (name, run) => tests.push([name, run]);
@@ -100,6 +100,12 @@ test('⌥1–5 open pages and focus their primary control; ⌃Tab cycles; the pa
   h.pages.show('zones', { focus: false }); assert.equal(h.pages.current(), 'zones');
   assert.doesNotMatch(h.pages.attributes(h.inst, 'zones'), /hidden/); assert.match(h.pages.attributes(h.inst, 'sample'), /hidden/);
 });
+test('switching pages restarts or stops the waveform playhead poll (pages toggle visibility without a render)', () => {
+  const h = harness(); let syncs = h.playheadSyncs;
+  h.pages.show('slices'); assert.equal(h.playheadSyncs, syncs + 1, 'leaving the Sample page'); syncs = h.playheadSyncs;
+  h.pages.show('sample'); assert.equal(h.playheadSyncs, syncs + 1, 'returning to the Sample page');
+});
+
 test('page tabs: arrows move and activate, ↓ enters the page; modals and other views are left alone', () => {
   const h = harness(), tab = h.get('inst-page-tab-sample'); tab.focus();
   assert(h.key(tab, { key: 'ArrowRight' })); assert.deepEqual(h.shown(), ['slices']); assert.equal(h.document.activeElement.id, 'inst-page-tab-slices');

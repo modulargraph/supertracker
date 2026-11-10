@@ -306,6 +306,8 @@
       if (!record.pages.length) delete project.pluginPages[plugin.instanceID];
     });
   }
+  /** Where the user's pages start: a built-in effect's curated pages come first, generated pages come last. */
+  const userPageOffset = view => view.pages.filter(page => page.kind === 'builtin').length;
   function assign(view, knobIndex, address) {
     const { plugin, pages, page } = view, current = pages[page];
     if (current?.kind === 'user') editPages(plugin, 'Assign control', list => { list[current.index].addresses[knobIndex] = address; });
@@ -315,7 +317,7 @@
       addresses[knobIndex] = address;
       let index = 0;
       editPages(plugin, 'Assign control', list => { index = list.length; list.push({ name: `My page ${list.length + 1}`, addresses }); });
-      local.page.set(plugin.instanceID, index);
+      local.page.set(plugin.instanceID, userPageOffset(view) + index);
     }
     refreshKeepingFocus(knobIndex);
   }
@@ -327,7 +329,7 @@
     if (pageIndex >= 0 && slot < 0) { S().toast('The Pinned page is full. Clear a knob on it first.', 'info'); return; }
     editPages(plugin, 'Pin control', list => {
       let target = list.findIndex(page => page.name === 'Pinned');
-      if (target < 0) { list.unshift({ name: 'Pinned', addresses: Array.from({ length: 8 }, () => null) }); target = 0; local.page.set(plugin.instanceID, view.page + 1); }
+      if (target < 0) { list.unshift({ name: 'Pinned', addresses: Array.from({ length: 8 }, () => null) }); target = 0; if (view.page >= userPageOffset(view)) local.page.set(plugin.instanceID, view.page + 1); }
       list[target].addresses[list[target].addresses.findIndex(value => value == null)] = address;
     });
     S().toast(`Pinned ${view.entry.params.find(parameter => parameter.address === String(address))?.name || 'parameter'} to the Pinned page`);
@@ -345,7 +347,7 @@
     if (action === 'new') {
       let index = 0;
       editPages(plugin, 'Add control page', list => { index = list.length; list.push({ name: `My page ${list.length + 1}`, addresses: Array.from({ length: 8 }, () => null) }); });
-      local.page.set(plugin.instanceID, index); refreshKeepingFocus(0); return;
+      local.page.set(plugin.instanceID, userPageOffset(view) + index); refreshKeepingFocus(0); return;
     }
     if (current?.kind !== 'user') return;
     if (action === 'rename') return S().textPrompt('Page name', current.name, name => { if (name?.trim()) editPages(plugin, 'Rename control page', list => { list[current.index].name = name.trim().slice(0, 60); }); });
@@ -518,7 +520,7 @@
         pages: pages.map(item => item.name), page, loaded: entry.loaded, error: entry.error,
         knobs: (pages[page]?.slots || Array(8).fill(null)).map(slot => { const value = slot?.address ? entry.values.get(slot.address) : null; return slot ? { name: slot.name, id: slot.id || '', fullName: slot.fullName || slot.name, defaultValue: slot.defaultValue, section: slot.section || '', address: slot.address, value: value ? value.value : null, display: value ? value.display : slot.address ? (entry.loaded || entry.error ? 'Unavailable' : 'Loading…') : '', writable: !!value && value.writable !== false, automatable: !!value && value.automatable !== false, stepCount:value?.stepCount ?? (slot.stepCount || undefined), normalizedStep:value?.normalizedStep ?? (slot.stepCount ? 1 / slot.stepCount : undefined) } : null; }) };
     },
-    selectSlot(key) { const view = resolve(); if (!view) return false; finishAdjust(); local.slotKey.set(view.track, key); const selected=view.slots.find(item=>slotKey(item)===key); if(selected) choose?.(selected.instanceID); const index=view.slots.findIndex(item=>slotKey(item)===key); if (S().state.view === 'instrument') S().refresh(); return true; },
+    selectSlot(key) { const view = resolve(); if (!view) return false; finishAdjust(); local.slotKey.set(view.track, key); const selected=view.slots.find(item=>slotKey(item)===key); if(selected) choose?.(selected.instanceID); if (S().state.view === 'instrument') S().refresh(); return true; },
     setPage(index) { const view = resolve(); if (!view) return false; finishAdjust(); local.page.set(view.plugin.instanceID, Math.max(0, Math.min(view.pages.length - 1, index))); if (S().state.view === 'instrument') S().refresh(); return true; },
     adjust(knob, delta) {
       const view = resolve(), slot = view?.pages[view.page]?.slots[knob]; if (!slot?.address) return null;

@@ -39,7 +39,9 @@
     const generation = ++local.generation, kind = local.kind, previous = current()?.path, key = resultsKey(), revision = local.lastRevision;
     local.searching = true; local.appending = append; local.refreshNeeded = false;
     let result;
-    try { result = await S().request('library.nks.browse', payload(append ? local.items.length : 0)); }
+    // A refresh of the results on screen reloads every page already shown, so the selection and scroll position stay.
+    const limit = !append && keep && local.resultsKey === key ? Math.min(1000, Math.max(LIMIT, local.items.length)) : LIMIT;
+    try { result = await S().request('library.nks.browse', { ...payload(append ? local.items.length : 0), limit }); }
     catch (error) { if (generation === local.generation) { local.searching = false; local.appending = false; local.resultsKey = null; local.error = error?.message || String(error); paint(); } return; }
     if (generation !== local.generation || kind !== local.kind || key !== resultsKey()) return;
     local.searching = false; local.appending = false;
@@ -618,8 +620,11 @@
         local.refreshTimer = setTimeout(() => { local.refreshTimer = null; if (mounted()) search({ keep: true }); }, value.indexing ? 900 : 60);
       } else if (!revisionChanged) {
         const status = document.querySelector('.nksb-status');
+        // Replacing the row must not drop keyboard focus from its rescan button or issue details.
+        const focus = status?.contains?.(document.activeElement) ? document.activeElement.id : '';
         if (status) status.outerHTML = renderStatus();
         document.getElementById('nksb-rescan')?.addEventListener('click', rescan);
+        if (focus) document.getElementById(focus)?.focus({ preventScroll: true });
       }
       return;
     }

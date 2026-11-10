@@ -188,11 +188,26 @@ test('slices: add at selected marker, nudge between neighbours, remove, then bui
   h.state.track = 1; h.key('p'); assert.match(h.notices.at(-1).message, /Assign this instrument/);
 });
 
+test('a marker drag ends when the pointer returns with no button held (release missed after a repaint)', () => {
+  const h = harness(), fire = (type, event) => { for (const fn of h.canvas().listeners.get(type) || []) fn({ button: 0, pointerId: 1, clientY: 50, ...event }); };
+  // Start is at 10% of a 1000 px wide view: press on it and drag.
+  fire('pointerdown', { clientX: 100, buttons: 1 }); fire('pointermove', { clientX: 200, buttons: 1 });
+  assert.equal(h.instrument.start, .2, 'dragging moves the marker');
+  // The view repaints mid-drag (a host event), so the new canvas never receives the pointerup that happens outside it.
+  h.ST.refresh();
+  fire('pointermove', { clientX: 600, buttons: 0 });
+  assert.equal(h.instrument.start, .2, 'hovering without a button does not move the marker');
+  fire('pointermove', { clientX: 700, buttons: 1 });
+  assert.equal(h.instrument.start, .2, 'the stale drag is over');
+});
+
 test('play mode keys, keyboard-play passthrough, audition hold and Escape', () => {
   const h = harness(); h.canvas().focus();
   h.key('m'); assert.equal(h.instrument.mode, 'reverse');
   h.key('M', { shiftKey: true }); assert.equal(h.instrument.mode, 'forward');
-  h.state.keyboardPlay = true; assert.equal(h.key('t'), false, 'letters play notes while ⌘P keyboard is on'); h.state.keyboardPlay = false;
+  h.state.keyboardPlay = true; assert.equal(h.key('t'), false, 'letters play notes while ⌘P keyboard is on');
+  assert.equal(h.key(','), false, 'the , note key is not taken for scrolling'); assert.equal(h.key('.'), false, 'the . note key is not taken for scrolling');
+  h.state.keyboardPlay = false; assert.equal(h.key('.'), true, 'without the keyboard, . scrolls the waveform');
   assert.equal(h.key(' '), true); assert.deepEqual(h.notes, [{ on: 60, key: 'sampler-editor', record: false }]);
   assert.equal(h.key(' ', { repeat: true }), true); assert.equal(h.notes.length, 1, 'key repeat does not retrigger');
   assert.equal(h.key('Escape'), true); assert.deepEqual(h.notes.at(-1), { off: 'sampler-editor' });
