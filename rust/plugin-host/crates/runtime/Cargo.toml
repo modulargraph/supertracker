@@ -1,0 +1,11 @@
+[package]
+name = "stpc-runtime"
+description = "SuperTracker plug-in container: the runtime inside the container process (plug-in backend traits, control loop, real-time threads)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+libc.workspace = true
+stpc-transport.workspace = true

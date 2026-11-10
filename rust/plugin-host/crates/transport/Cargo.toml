@@ -1,0 +1,10 @@
+[package]
+name = "stpc-transport"
+description = "SuperTracker plug-in container: shared-memory audio transport, wake-up primitive and control protocol."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+libc.workspace = true

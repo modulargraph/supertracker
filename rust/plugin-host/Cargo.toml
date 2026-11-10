@@ -1,0 +1,21 @@
+# SuperTracker out-of-process plug-in hosting ("plug-in container").
+# Its own workspace: rust/Cargo.toml excludes this directory. See docs/PLUGIN_CONTAINER.md.
+[workspace]
+resolver = "2"
+members = ["crates/transport"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+publish = false
+
+[workspace.dependencies]
+libc = "0.2"
+stpc-transport = { path = "crates/transport" }
+stpc-client = { path = "crates/client" }
+stpc-runtime = { path = "crates/runtime" }
+
+[profile.release]
+opt-level = 3
+debug = 1
