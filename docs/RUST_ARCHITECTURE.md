@@ -28,7 +28,8 @@ One cargo workspace (`rust/` for now, the repository root once the Swift tree is
 |---|---|---|
 | `tracker-engine` | Sequencer, sampler/synth voices, clock and timing map, built-in effects and drum models. Pure DSP and timing, no I/O. | std |
 | `st-project` | The project document: typed model of the JSON the interface publishes, validation, project files and their media folder, autosave and recovery files, Standard MIDI File import/export. | serde |
-| `st-audio` | The mixer graph around the engine (strips, inserts, sends, buses, sidechains, delay compensation, automation of mix parameters, meters), audio device I/O, offline rendering and export, recording, sample decoding/preview/editing. | `tracker-engine`, `st-project`, plug-in client |
+| `st-samples` | Audio files: decoding to float PCM, resampling, sample edits (trim, fades, normalize, reverse, gain, time stretch), transient detection and slicing, wavetable files, waveform peaks, encoding for export. No devices, no engine. | |
+| `st-audio` | The mixer graph around the engine (strips, inserts, sends, buses, sidechains, delay compensation, automation of mix parameters, meters), audio device I/O, offline rendering and export, recording, sample preview. | `tracker-engine`, `st-project`, `st-samples`, plug-in client |
 | `st-plugin-*` (`rust/plugin-host`) | Shared-memory transport, host-side client and supervisor, the container binary and its format backends (CLAP, VST3, Audio Units on macOS). | libc |
 | `st-library` | Sound library index and search, NKS metadata and presets, kits. | `st-project` |
 | `st-midi` | MIDI device I/O and clock output. | |

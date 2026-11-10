@@ -1,0 +1,9 @@
+[package]
+name = "st-library"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "SuperTracker's sound library: index and search, NKS metadata and presets, kits, Maschine group import."
+publish = false
+
+[dependencies]

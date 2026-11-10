@@ -1941,6 +1941,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "st-agent"
+version = "0.1.0"
+
+[[package]]
 name = "st-app"
 version = "0.1.0"
 dependencies = [
@@ -1956,12 +1960,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "st-audio"
+version = "0.1.0"
+
+[[package]]
 name = "st-host"
 version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "st-library"
+version = "0.1.0"
+
+[[package]]
+name = "st-midi"
+version = "0.1.0"
+
+[[package]]
+name = "st-mk3"
+version = "0.1.0"
 
 [[package]]
 name = "st-project"
@@ -1971,6 +1991,10 @@ dependencies = [
  "serde_json",
  "sha2",
 ]
+
+[[package]]
+name = "st-samples"
+version = "0.1.0"
 
 [[package]]
 name = "stable_deref_trait"

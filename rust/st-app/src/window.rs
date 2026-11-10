@@ -24,7 +24,9 @@ mod desktop {
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
     use std::rc::Rc;
-    use std::sync::{mpsc, Arc, Mutex};
+    #[cfg(target_os = "linux")]
+    use std::sync::mpsc;
+    use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
 
     use muda::accelerator::Accelerator;

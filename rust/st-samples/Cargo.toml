@@ -1,0 +1,9 @@
+[package]
+name = "st-samples"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Audio files for SuperTracker: decoding, resampling, sample editing, time stretch, slicing, wavetables, encoding."
+publish = false
+
+[dependencies]
