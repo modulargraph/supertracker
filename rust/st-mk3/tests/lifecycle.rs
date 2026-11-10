@@ -166,6 +166,9 @@ fn shutdown_interrupts_a_takeover_with_another_one_queued() {
 fn shutdown_during_a_release_restores_once() {
     let f = fixture();
     assert!(f.driver.connect(true).screens);
+    // Something is on a screen, so that releasing has to blank it.
+    assert!(f.driver.set_screens(&serde_json::json!({"left": [{"op": "clear", "color": "#ffffff"}]})));
+    wait_for("the frame", || f.screens.packets().len() == 3);
     // The release hangs while it blanks the screens.
     f.screens.write_gate.close();
     let releasing = f.spawn(|driver| driver.disconnect());
