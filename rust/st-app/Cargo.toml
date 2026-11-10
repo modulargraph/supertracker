@@ -1,0 +1,14 @@
+[package]
+name = "st-app"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "The SuperTracker executable: window, web view, menus, and a headless WebSocket bridge."
+publish = false
+
+[[bin]]
+name = "supertracker"
+path = "src/main.rs"
+
+[dependencies]
+st-host = { path = "../st-host" }

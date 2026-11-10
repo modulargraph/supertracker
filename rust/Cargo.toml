@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
-members = ["tracker-engine"]
+members = ["tracker-engine", "st-project", "st-host", "st-app"]
+# A plain `cargo build` in this directory builds the engine only; name the other crates with -p.
+default-members = ["tracker-engine"]
 # The plug-in container has its own workspace (different dependencies and binaries).
 exclude = ["plugin-host"]
 
