@@ -189,19 +189,42 @@ fn clean_sample(x: f32) -> f32 {
     }
 }
 
-/// `clean_sample` over a block in place; returns the largest |sample| after clean-up.
+/// `clean_sample` on four lanes; `peak` accumulates the largest |result| per lane. The lanes
+/// are independent, so the compiler turns this into packed compares, blends and a packed max.
+#[inline(always)]
+fn clean_lanes(x: [f32; 4], peak: &mut [f32; 4]) -> [f32; 4] {
+    let mut y = [0.0f32; 4];
+    for j in 0..4 {
+        y[j] = clean_sample(x[j]);
+        let a = y[j].abs();
+        peak[j] = if a > peak[j] { a } else { peak[j] };
+    }
+    y
+}
+
+/// The largest of the four lane peaks (all are non-negative and never NaN).
+#[inline(always)]
+fn lane_peak(peak: [f32; 4]) -> f32 {
+    peak[0].max(peak[1]).max(peak[2].max(peak[3]))
+}
+
+/// `clean_sample` over a block in place, four lanes at a time (the same per-sample
+/// operations, so the results are identical to a scalar loop); returns the largest |sample|
+/// after clean-up.
 #[inline(always)]
 fn clean_block(block: &mut [f32]) -> f32 {
-    let mut peak = 0.0f32;
-    for sample in block.iter_mut() {
-        let y = clean_sample(*sample);
-        *sample = y;
-        let a = y.abs();
-        if a > peak {
-            peak = a;
-        }
+    let mut peak = [0.0f32; 4];
+    let mut lanes = block.chunks_exact_mut(4);
+    for chunk in &mut lanes {
+        let y = clean_lanes([chunk[0], chunk[1], chunk[2], chunk[3]], &mut peak);
+        chunk.copy_from_slice(&y);
     }
-    peak
+    let mut result = lane_peak(peak);
+    for sample in lanes.into_remainder() {
+        *sample = clean_sample(*sample);
+        result = result.max(sample.abs());
+    }
+    result
 }
 
 /// `dst[i] = clean_sample(src[i])`; returns the largest |dst[i]|.
@@ -212,17 +235,24 @@ fn clean_block(block: &mut [f32]) -> f32 {
 /// not overlap `dst`.
 #[inline(always)]
 unsafe fn clean_block_from(src: *const f32, dst: &mut [f32]) -> f32 {
-    let mut peak = 0.0f32;
-    for (i, out) in dst.iter_mut().enumerate() {
-        // SAFETY: i < dst.len() and the caller guarantees src covers that many floats.
-        let y = clean_sample(unsafe { src.add(i).read() });
-        *out = y;
-        let a = y.abs();
-        if a > peak {
-            peak = a;
-        }
+    let mut peak = [0.0f32; 4];
+    let mut offset = 0usize;
+    let mut lanes = dst.chunks_exact_mut(4);
+    for chunk in &mut lanes {
+        // SAFETY: offset + 4 <= dst.len() and the caller guarantees src covers that many
+        // floats; an unaligned read of four f32 has no further requirements.
+        let x = unsafe { src.add(offset).cast::<[f32; 4]>().read_unaligned() };
+        chunk.copy_from_slice(&clean_lanes(x, &mut peak));
+        offset += 4;
     }
-    peak
+    let mut result = lane_peak(peak);
+    for out in lanes.into_remainder() {
+        // SAFETY: offset < dst.len() and the caller guarantees src covers that many floats.
+        *out = clean_sample(unsafe { src.add(offset).read() });
+        result = result.max(out.abs());
+        offset += 1;
+    }
+    result
 }
 
 /// Silence gating threshold: -120 dBFS.
