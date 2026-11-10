@@ -121,7 +121,7 @@
         s ? String(s.instrument ?? t.instrument ?? 0).padStart(2, '0') : '··',
         s ? String(s.velocity ?? 100).padStart(3, '0') : '···', fxText(s?.fx1), fxText(s?.fx2)].map((v, c) => `<span data-column="${c}"${c >= 3 && s?.['fx' + (c - 2)] && app.fxTitle
             ? ` title="${esc(app.fxTitle(s['fx' + (c - 2)]))}"` : ''} class="${s ? c === 0 ? 'has-note' : c === 1 ? 'has-instrument' : c === 2 ? 'has-velocity' : 'has-fx' : ''}`
-        + ` ${active && state.column === c ? 'active-column' : ''}">${v}</span>`).join('')}${app.gateColumnShown() ? `<span `
+        + ` ${active && state.column === c ? 'active-column' : ''}">${esc(v)}</span>`).join('')}${app.gateColumnShown() ? `<span `
         + `class="pattern-gate ${app.stepGate(s) !== null ? 'has-gate' : ''}" data-gate-inspector title="Gate: ${s && s.note >= 0
             ? (app.stepGate(s) === null ? 'none, plays until the next note, OFF or CUT' : patternGateText(s) + ' pattern rows') + ' · click to edit'
             : 'select this row and edit Gate below'}">${patternGateText(s)}</span>` : ''}`;
@@ -132,7 +132,7 @@
   function renderNoteColumnsContent(s, t, i, active) {
     const count = app.noteColumnCount(i), here = active ? app.cursorNoteColumn(i) : -1, gate = app.gateColumnShown();
     const span = (n, c, text, cls, extra = '') => `<span data-column="${c}"${n ? ` data-note-column="${n}"` : ''}${extra} class="${cls}`
-        + `${n ? ' note-column-cell' : ''} ${here === n && state.column === c ? 'active-column' : ''}">${text}</span>`;
+        + `${n ? ' note-column-cell' : ''} ${here === n && state.column === c ? 'active-column' : ''}">${esc(text)}</span>`;
     let html = '';
     for (let n = 0; n < count; n++) {
       const cell = n ? app.noteCell(s, n) : app.isColumnHolder(s) ? null : s, pitched = n ? cell?.note >= 0 : !!cell;
@@ -195,12 +195,12 @@
       cell = n ? app.noteCell(s, n) && { ...app.noteCell(s, n), gate: app.noteCell(s, n).gate ?? 0 } : app.isColumnHolder?.(s) ? null : s;
     return `<div class="step-editor"><span class="step-heading">STEP ${String(state.row).padStart(2, '0')}${n ? ` · N${n + 1}` : ''}</span><label>Note `
         + `<input id="step-note" type="number" min="-3" max="127" title="MIDI note, -1 off, -2 cut, -3 ${n ? 'empty' : 'effects only'}"`
-        + ` value="${cell?.note ?? 60}"></label><label>Ins <input id="step-instrument" type="text" list="step-instrument-list" autocomplete="off"`
+        + ` value="${esc(cell?.note ?? 60)}"></label><label>Ins <input id="step-instrument" type="text" list="step-instrument-list" autocomplete="off"`
         + ` spellcheck="false" size="10" aria-label="Step instrument: type its number or the start of its name"`
         + ` title="Type the instrument number (03) or the start of its name; Enter confirms, Esc cancels"`
         + ` value="${esc(app.instrumentText(cell?.instrument ?? state.instrument))}">${app.instrumentDatalist()}`
         + `</label><label>Vel `
-        + `<input id="step-velocity" type="number" min="1" max="127" value="${cell?.velocity ?? 100}">`
+        + `<input id="step-velocity" type="number" min="1" max="127" value="${esc(cell?.velocity ?? 100)}">`
         + `</label>${renderGateField(cell)}${app.codeDatalist()}${[1, 2].map(n => app.renderCodeField(n, s?.['fx' + n]) + (window.STStepFX ? window.STStepFX.renderField(n, s?.['fx' + n]) : `<label>FX ${n}<select id="step-fx${n}"><option value="">None</option>${Object.keys(FX).map(f => `<option value="${f}" ${s?.['fx' + n]?.type === f ? 'selected' : ''}>${f}</option>`).join('')}</select>`
         + `<input id="step-fx${n}-value" aria-label="Effect ${n} value" type="number" step="any" value="${s?.['fx' + n]?.value ?? .5}">`
         + `</label>`)).join('')}<button class="quiet" id="step-off" title="Note off: the track's notes release `
@@ -248,6 +248,7 @@
       if (state.follow && tr) tr.scrollIntoView({ block: 'nearest' });
     }
     app.paintAutomationPanelPlayhead(s);
+    app.paintMatrixPlayhead(s);
     updateTransport();
   }
 

@@ -4,7 +4,7 @@
   'use strict';
 
   const app = window.STApp;
-  const { clone, state, toast, request, stableJSON } = app;
+  const { state, toast, request, stableJSON } = app;
   let syncTimer;
   let lastMIDIRoute = '';
   let syncGeneration = 0;

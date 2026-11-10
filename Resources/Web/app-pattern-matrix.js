@@ -93,6 +93,7 @@
   function songAction(name) {
     const actions = Song()?.actions;
     if (!actions) return false;
+    const shown = state.project.activePattern;
     // The matrix selects one block: drop a range the arranger kept (e.g. after a duplicate).
     Song().selectBlock(currentBlock(), { focus: false });
     const result = name === 'add' ? actions.insertNew()
@@ -108,11 +109,15 @@
         : name === 'play' ? actions.playFrom()
         : false;
     const block = blocks()[currentBlock()];
-    if (block && block.pattern !== state.project.activePattern && state.project.patterns.some(x => x.id === block.pattern)) {
+    const follow = block && block.pattern !== state.project.activePattern && state.project.patterns.some(x => x.id === block.pattern);
+    if (follow) {
       state.project.activePattern = block.pattern;
       state.row = 0;
-      refresh();
     }
+    // The grid shows another pattern now (the action may have switched it itself): the selection stays behind.
+    const stale = state.project.activePattern !== shown && !!state.selection;
+    if (stale) state.selection = null;
+    if (follow || stale) refresh();
     return result;
   }
 
@@ -187,7 +192,8 @@
       node.ondblclick = () => { choose(index()); $('#tracker')?.focus({ preventScroll: true }); };
     }
     const list = $('#pattern-matrix');
-    if (list) list.onkeydown = listKey;
+    // An on-handler that returns false cancels the event: keys the list does not use must reach the global handler.
+    if (list) list.onkeydown = event => { listKey(event); };
   }
 
   /** The song block playing now, painted without a refresh (transport ticks). */

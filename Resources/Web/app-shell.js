@@ -169,7 +169,11 @@
     $('#metronome').onclick = () => app.perform('metronome');
     $('#stop').onclick = app.stop;
     $('#record').onclick = toggleNoteRecordingFromUI;
-    bindScalarField($('#tempo'), 'tempo', (p, e) => p.bpm = clamp(Number(e.target.value) || 120, 20, 400));
+    bindScalarField($('#tempo'), 'tempo', (p, e) => {
+      p.bpm = clamp(Number(e.target.value) || 120, 20, 400);
+      // A project that still carries a tempo map shows (and plays) the map's first tempo.
+      if (p.timing?.tempos?.[0]) p.timing.tempos[0].bpm = p.bpm;
+    });
     $('#save').onclick = () => app.perform('save');
     $('#palette').onclick = app.openPalette;
     $('#help').onclick = app.showHelp;

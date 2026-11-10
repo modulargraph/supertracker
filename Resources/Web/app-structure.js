@@ -19,6 +19,8 @@
       p.patterns.push(pat);
       p.activePattern = id;
       state.row = 0;
+      // The selection belonged to the pattern that was shown before.
+      state.selection = null;
     });
   }
 
@@ -78,6 +80,8 @@
     if (state.project.tracks.length >= TRACK_SANITY_LIMIT) return toast(trackLimitMessage(), 'error');
     mutate('add track', p => {
       state.track = appendInstrumentTrack(p, state.instrument);
+      // The cursor jumps to the new track: a kept anchor would stretch the selection across every track between.
+      state.selection = null;
     });
   }
 

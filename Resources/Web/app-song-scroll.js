@@ -182,7 +182,6 @@
   app.defineCommands({ songScroll: () => { if (state.view !== 'pattern') app.setView('pattern'); return setSongScroll(); } });
 
   Object.assign(app, {
-    songScrollOn, songScrollRows, songScrollStep, songScrollSlot, songScrollFollow, setSongScroll, bindSongScroll, songScrollButton,
-    songScrollSlots: slots
+    songScrollOn, songScrollRows, songScrollStep, songScrollSlot, songScrollFollow, setSongScroll, bindSongScroll, songScrollButton
   });
 })();

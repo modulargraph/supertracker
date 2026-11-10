@@ -5,7 +5,7 @@
   'use strict';
 
   const app = window.STApp;
-  const { $, $$, clamp, state, toast, mutate, refresh, updateTransport } = app;
+  const { $, $$, state, toast, mutate, refresh, updateTransport } = app;
   const G = () => window.STGroups;
 
   state.padKeys = (() => {
@@ -95,6 +95,8 @@
     return mutate('ungroup track', p => {
       const map = G().removeTrack(p, index);
       state.track = map[index];
+      // Tracks may have changed places: the anchor's index no longer names its track.
+      state.selection = null;
     });
   }
 
@@ -104,18 +106,18 @@
   }
 
   function moveTrack(delta) {
-    const from = state.track, before = state.project.tracks[from]?.groupID;
-    if (!state.project.tracks[from]) return false;
-    const project = state.project, snapshot = JSON.stringify([project.tracks.map(t => t.routingID + ':' + (t.groupID || ''))]);
-    let moved = false;
-    mutate('move track', p => {
+    const from = state.track, project = state.project;
+    if (!project.tracks[from]) return false;
+    const signature = p => JSON.stringify(p.tracks.map(t => t.routingID + ':' + (t.groupID || '')));
+    // Try the move on a copy first: one that changes nothing (a track already at the edge) is not an edit.
+    const trial = app.clone({ tracks: project.tracks, groups: project.groups, routing: project.routing, patterns: [] });
+    G().moveTrack(trial, from, delta);
+    if (signature(trial) === signature(project)) return false;
+    return mutate('move track', p => {
       const map = G().moveTrack(p, from, delta);
       state.track = map[from];
       state.selection = null;
-      moved = JSON.stringify([p.tracks.map(t => t.routingID + ':' + (t.groupID || ''))]) !== snapshot || p.tracks[state.track]?.groupID !== before;
-      if (!moved) throw new Error('unchanged');
     });
-    return moved;
   }
 
   // A new empty sampler track at the end of the cursor's group (a new pad).

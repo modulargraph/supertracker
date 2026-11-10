@@ -5,7 +5,7 @@
   const app = window.STApp;
   const {
     $, state, receiveSampleMetadata, toast, acceptProject, refresh, receiveNoteRecordingStatus,
-    updateTransport, receiveCountInStatus, updatePlayhead, pianoHighlight, loadSample, projectAction,
+    updateTransport, receiveCountInStatus, updatePlayhead, pianoHighlight, projectAction,
     perform, latencyNote, receiveAcknowledgedMIDI, endRecordTake, liveRecordGroups, recordIncomingMIDI
   } = app;
   // Native menu items arrive here only when the web keyboard handler left the key alone (or from a mouse pick).
@@ -71,8 +71,6 @@
       } else {
         perform(name);
       }
-    } else if (type === 'audio.recorded') {
-      if (payload.path) loadSample(payload.path);
     } else if (type === 'sample.loaded') {
       receiveSampleMetadata(payload.instrument, payload.sample);
     } else if (type === 'sample.error') {

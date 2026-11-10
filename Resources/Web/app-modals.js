@@ -92,6 +92,15 @@
     dismiss?.();
   }
 
+  /* Enter in a text prompt accepts it. Accepting closes the dialog and returns focus to the control that opened it;
+     the key is cancelled so its keypress does not press that button and open the prompt again. An Enter that
+     confirms an input-method composition belongs to the text. */
+  function acceptPromptOnEnter(e) {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    e.preventDefault();
+    $('#prompt-accept').click();
+  }
+
   // Promise dialogs for module flows: resolve with the entered text (or null) / true when accepted; closing the dialog any other way resolves null / false.
   function askText(title, value, accept = 'Save') {
     return new Promise(resolve => {
@@ -119,9 +128,7 @@
         const text = $('#text-prompt').value.trim();
         if (text) finish(text);
       };
-      $('#text-prompt').onkeydown = e => {
-        if (e.key === 'Enter') $('#prompt-accept').click();
-      };
+      $('#text-prompt').onkeydown = e => acceptPromptOnEnter(e);
       setTimeout(() => {
         $('#text-prompt')?.focus();
         $('#text-prompt')?.select?.();
@@ -168,9 +175,7 @@
         callback(value);
       }
     };
-    $('#text-prompt').onkeydown = e => {
-      if (e.key === 'Enter') $('#prompt-accept').click();
-    };
+    $('#text-prompt').onkeydown = e => acceptPromptOnEnter(e);
     setTimeout(() => {
       $('#text-prompt').focus();
       $('#text-prompt').select();

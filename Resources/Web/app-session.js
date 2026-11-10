@@ -35,6 +35,9 @@
     state.row = 0;
     state.column = 0;
     state.noteColumn = 0;
+    // The selection anchor and the pattern loop belong to the session that was replaced.
+    state.selection = null;
+    state.patternLoop = null;
     state.undo = [];
     state.redo = [];
     state.dirty = false;

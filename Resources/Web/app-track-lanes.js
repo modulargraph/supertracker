@@ -195,7 +195,7 @@
   function slimHeader({ track: t, index: i, group }) {
     return `<th class="track-head track-slim ${group ? 'group-member' : ''} ${i === state.track ? 'selected-track' : ''}`
         + ` ${app.trackSilenced(state.project, i) ? 'track-silenced' : ''}" data-track="${i}" data-track-slim`
-        + ` style="--lane:${t.color || app.colors[i % 8]}${group ? `;--group:${esc(group.color)}` : ''}"`
+        + ` style="--lane:${esc(t.color || app.colors[i % 8])}${group ? `;--group:${esc(group.color)}` : ''}"`
         + ` title="${esc(t.name)} · collapsed · double-click or ⌥⇧J to expand"><div class="track-slim-top">`
         + `<span class="track-num">${String(i + 1).padStart(2, '0')}</span><button class="lane-action" data-track-collapse="${i}"`
         + ` id="track-${i}-collapse" tabindex="${i === state.track ? 0 : -1}" aria-expanded="false" aria-label="Expand ${esc(t.name)}">▸</button></div>`

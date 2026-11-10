@@ -102,8 +102,7 @@
 
   function renderInstrument() {
     const inst = currentInstrument(),
-      p = state.project,
-      meta = state.samples[inst.id];
+      p = state.project;
     const plugin = p.tracks[state.track].instrument === state.instrument
         ? p.audioPlugins.find(x => x.track === state.track && x.kind === 'instrument')
         : null;

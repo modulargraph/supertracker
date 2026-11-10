@@ -115,7 +115,8 @@
       state.octave = Number(e.target.value);
       refresh();
     };
-    $('#instrument-chord').onchange = e => state.chord = e.target.value;
+    // As the Pattern view's Chord control: saved with the song, leaves a chord set, updates the MIDI keyboard map.
+    $('#instrument-chord').onchange = e => app.setPerformance({ chord: e.target.value, chordSet: '' }, false);
     for (const el of $$('[data-piano]')) {
       el.onpointerdown = e => {
         e.preventDefault();

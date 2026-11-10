@@ -61,7 +61,7 @@
       // Stable ids keep keyboard focus on a button when it re-renders the grid (refresh restores focus by id).
       tab = i === state.track ? 0 : -1;
     return `<th class="track-head ${group ? 'group-member' : ''} ${i === state.track ? 'selected-track' : ''} ${trackSilenced(p, i) ? 'track-silenced' : ''}"`
-        + ` data-track="${i}" style="--lane:${t.color || colors[i % 8]}${group ? `;--group:${esc(group.color)}` : ''}"><div class="track-title">`
+        + ` data-track="${i}" style="--lane:${esc(t.color || colors[i % 8])}${group ? `;--group:${esc(group.color)}` : ''}"><div class="track-title">`
         + `<span class="track-num" aria-label="Track ${i + 1}">${num}</span><span class="track-name grow"`
         + ` title="${esc(t.name)} · double-click to rename">${esc(t.name)}</span><span class="track-ms-pair">`
         + `<button class="track-ms ${t.mute ? 'on mute' : ''}" data-track-toggle="mute" data-toggle-index="${i}"`
@@ -201,7 +201,7 @@
       const track = p.tracks[m], played = app.playedCells?.(step) || [], note = played[0]?.cell.note ?? step.note,
         pitch = (note < 0 || note !== (track.padNote ?? 60) ? ' ' + noteText(note) : '') + (played.length > 1 ? '+' : '');
       return `<button class="group-hit ${active && state.track === m ? 'is-selected' : ''}" data-member-track="${m}" tabindex="-1"`
-          + ` style="--lane:${esc(track.color || colors[m % 8])}" title="${esc(track.name)} · ${noteText(step.note)} · v${step.velocity ?? 100} · click to edit">`
+          + ` style="--lane:${esc(track.color || colors[m % 8])}" title="${esc(track.name)} · ${noteText(step.note)} · v${esc(step.velocity ?? 100)} · click to edit">`
           + `${esc(track.name)}${pitch}</button>`;
     }).join('');
     return `<td data-cell="${index}:${r}" class="group-overview-cell ${active ? 'selected' : ''} ${isSel ? 'selection' : ''}`

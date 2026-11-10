@@ -9,7 +9,6 @@
   'use strict';
 
   const app = window.STApp;
-  const { commands } = app;
   const busy = window.STBusy;
 
   const handlers = new Map(), prefixes = [];
@@ -35,8 +34,6 @@
   }
 
   const hasCommand = command => !!commandHandler(command);
-  /** Palette metadata for a command: [id, label, shortcut, aliases]. */
-  const commandInfo = command => commands.find(entry => entry[0] === command) || null;
 
   function perform(command) {
     // Stop always runs; everything else waits for operations that own the session.
@@ -48,5 +45,5 @@
     return handler ? handler(command) : undefined;
   }
 
-  Object.assign(app, { defineCommand, defineCommands, definePrefixCommand, commandHandler, hasCommand, commandInfo, perform });
+  Object.assign(app, { defineCommand, defineCommands, definePrefixCommand, commandHandler, hasCommand, perform });
 })();

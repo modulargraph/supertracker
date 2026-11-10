@@ -322,7 +322,8 @@
     const area = $('#auto-panel-envelope'), svg = area?.querySelector?.('svg'), ref = currentRef();
     if (!area || !svg || !ref) return;
     const info = laneInfo(ref), px = Number(area.dataset.px) || 1;
-    area.onkeydown = event => panelKey(event, ref, info);
+    // Block body: returning panelKey's false from an on-handler would cancel keys the panel does not use (F6, ⌘1…).
+    area.onkeydown = event => { panelKey(event, ref, info); };
     const locate = event => {
       const box = svg.getBoundingClientRect(), list = slots(ref, info), at = hit(list, event.clientX - box.left, px);
       const unit = 1 - clamp((event.clientY - box.top - TOP) / (BOTTOM - TOP), 0, 1);

@@ -5,11 +5,10 @@
   const app = window.STApp;
   const {
     $, $$, clamp, views, state, pattern, mutate, setView, refresh, toggleNoteRecordingFromUI,
-    togglePlay, stop, stepInstrument, copySelection, pasteSelection, clearSelection, shiftPatternRows,
+    togglePlay, stop, copySelection, pasteSelection, clearSelection, shiftPatternRows,
     fillSelection, auditionStep, transpose, moveGrid, keyNotes, keyboardNote, cycleChordSet, noteOn,
     PARAM_ARROWS, endParamBurst, moveSequence, removeSequence, closeModal, showHelp, openPalette, perform,
-    patternTool, showExport, automate, queueStoppedGridKey, preservedStepFX,
-    automateValue
+    showExport, automate, queueStoppedGridKey, automateValue
   } = app;
 
   function isTextInput(el) {

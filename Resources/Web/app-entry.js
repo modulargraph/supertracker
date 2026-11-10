@@ -8,7 +8,7 @@
   'use strict';
 
   const app = window.STApp;
-  const { $, clamp, esc, state, pattern, toast, mutate, refresh, openModal } = app;
+  const { $, clamp, esc, state, pattern, mutate, refresh, openModal } = app;
 
   /* One code table for every step effect. unit: how the value is typed and shown.
        percent  0–100 (pan −100–100) of the stored 0–1 value · semis  whole semitones · hz  cutoff in Hz

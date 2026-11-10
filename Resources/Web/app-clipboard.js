@@ -88,6 +88,16 @@
     });
   }
 
+  // Steps from the system clipboard are text from anywhere: every value must have its type before it is pasted.
+  const optionalNumber = value => value == null || typeof value === 'number' && Number.isFinite(value);
+  const pastedFXValid = fx => fx == null || typeof fx === 'object' && typeof fx.type === 'string' && optionalNumber(fx.value);
+  const pastedCellValid = cell => cell === null || typeof cell === 'object' && !Array.isArray(cell)
+      && Number.isFinite(cell.note) && cell.note >= -3 && cell.note <= 127
+      && optionalNumber(cell.instrument) && optionalNumber(cell.velocity) && optionalNumber(cell.gate);
+  const pastedStepValid = step => pastedCellValid(step) && (step === null || pastedFXValid(step.fx1) && pastedFXValid(step.fx2)
+      && (step.chord == null || Array.isArray(step.chord) && step.chord.every(Number.isFinite))
+      && (step.columns == null || Array.isArray(step.columns) && step.columns.length < 8 && step.columns.every(pastedCellValid)));
+
   function clipboardEvent(event) {
     if (state.view !== 'pattern'
         || state.modal
@@ -103,10 +113,7 @@
           if (parsed.supertracker === 1
               && Array.isArray(parsed.steps)
               && parsed.steps.length <= TRACK_SANITY_LIMIT
-              && parsed.steps.every(t => Array.isArray(t)
-                  && t.length <= 256
-                  && t.every(s => s === null
-                      || typeof s === 'object' && Number.isFinite(s.note) && s.note >= -3 && s.note <= 127))) {
+              && parsed.steps.every(t => Array.isArray(t) && t.length <= 256 && t.every(pastedStepValid))) {
             if (stableJSON(parsed.steps) !== stableJSON(state.clipboard)) state.clipboardInstruments = null;
             state.clipboard = parsed.steps;
           } else {

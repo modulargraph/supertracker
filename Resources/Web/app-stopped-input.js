@@ -6,7 +6,7 @@
   const app = window.STApp;
   const {
     clamp, state, pattern, toast, mutate, paintRecordedCell, stepInstrument, transpose, moveGrid,
-    pendingInputEdges, stoppedGridScopes, inputDomain, warnInputCapture, MIDI_CHORD_MS, captureCursor
+    pendingInputEdges, stoppedGridScopes, inputDomain, MIDI_CHORD_MS, captureCursor
   } = app;
 
   function stoppedGridCurrent(scope) {

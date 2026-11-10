@@ -5,7 +5,7 @@
 
   const app = window.STApp;
   const {
-    $, $$, clamp, FX, state, pattern, toast, mutate, bindScalarField, refresh, updateTransport, bindSidebar,
+    $, $$, clamp, FX, state, pattern, mutate, bindScalarField, refresh, updateTransport, bindSidebar,
     addPattern, setPerfToolbarOpen, bindPatternViewport, addTrack, updatePlayhead
   } = app;
 

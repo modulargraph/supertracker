@@ -124,7 +124,8 @@ test('Current song keys follow the arranger: I, + and −, ⌥↓, and letters y
   assert.equal(h.state.sequence, 1, '↓ chooses the next block');
   h.state.keyboardPlay = true;
   const typed = key('i');
-  assert.equal(list.onkeydown(typed), false);
+  // An on-handler that returned false would cancel the key before the piano (the global handler) sees it.
+  assert.notEqual(list.onkeydown(typed), false); assert.notEqual(typed.prevented, true);
   assert.deepEqual(plain(p().sequence), [1, 0, 0], 'I plays a note while the keyboard piano is on');
 });
 
@@ -293,6 +294,70 @@ test('The panel lane edits from the keyboard at the grid cursor row', () => {
   assert.deepEqual(plain(lane().points.map(x => x.row)), [0]);
   area.onkeydown(key('Escape'));
   assert.equal(h.document.activeElement, h.element('#tracker'), 'Esc returns to the grid');
+});
+
+test('A song edit in the matrix that shows another pattern leaves the grid selection behind', () => {
+  const h = harness();
+  Object.assign(h.state, { track: 2, row: 12, selection: { track: 2, row: 10 } });
+  h.ST.patternMatrixAction('add');   // inserts a new empty pattern after the block and shows it
+  assert.notEqual(h.p().activePattern, 0);
+  assert.equal(h.ST.selectedBounds(), null, 'rows 10–12 of the previous pattern are not selected in the new one');
+  // An edit that keeps the pattern keeps the selection.
+  Object.assign(h.state, { selection: { track: 2, row: 1 }, row: 3 });
+  h.ST.patternMatrixAction('more');
+  assert.deepEqual(plain(h.state.selection), { track: 2, row: 1 });
+});
+
+test('Keys the matrix list and the panel lane do not use are left to the global key handler', () => {
+  // An on-handler that returns false cancels the event, and the global handler ignores cancelled keys (F6, ⌘1…).
+  const h = harness(), p = h.p;
+  p().patterns[0].automation = [{ id: 'a', track: 0, target: 'cutoff', name: 'Cutoff', interpolation: 'linear', points: [{ row: 0, value: .5 }] }];
+  h.ST.setAutomationPanel('pattern');
+  const list = h.element('#pattern-matrix'), area = h.element('#auto-panel-envelope'), svg = h.element('svg');
+  area.dataset.px = '10';
+  area.querySelector = selector => selector === 'svg' ? svg : null;
+  h.app.bindPatternMatrix();
+  h.app.bindAutomationPanel();
+  for (const node of [list, area]) for (const unused of [key('F6'), key('2', { metaKey: true }), key('Tab'), key('k', { metaKey: true })]) {
+    assert.notEqual(node.onkeydown(unused), false);
+    assert.notEqual(unused.prevented, true);
+  }
+  const used = key('ArrowRight');
+  area.onkeydown(used);
+  assert.equal(used.prevented, true, 'keys the lane uses are still taken');
+});
+
+test('The playing song block is marked in the pattern matrix on transport ticks', () => {
+  const h = harness();
+  const blocks = [0, 1].map(index => Object.assign(h.element('#matrix-block-' + index), { dataset: { matrixBlock: String(index) } }));
+  h.lists.set('[data-matrix-block]', blocks);
+  h.state.follow = false;
+  h.state.playing = true;
+  h.app.updatePlayhead({ playing: true, songMode: true, sequence: 2, pattern: 1, row: 3 });   // sequence [0, 0, 1]: slot 2 is block 1
+  assert.deepEqual(blocks.map(node => node.classes.has('playing')), [false, true]);
+  h.app.updatePlayhead({ playing: true, songMode: false, sequence: 2, pattern: 1, row: 3 });
+  assert.deepEqual(blocks.map(node => node.classes.has('playing')), [false, false], 'Pattern playback marks no song block');
+});
+
+test('Names, modes and colours from a project file cannot add markup to the Pattern view', () => {
+  const h = harness(), p = h.p(), bad = name => `"><img src=x onerror="${name}()">`;
+  Object.assign(p.tracks[0], { routingID: 'r0', color: bad('trackColour') });
+  Object.assign(p.tracks[1], { routingID: 'r1', color: bad('slimColour') });
+  p.viewState = { collapsedTracks: ['r1'] };
+  Object.assign(p.instruments[0], { samplePath: '/a.wav', mode: bad('mode') });
+  Object.assign(p.instruments[1], { type: 'au', plugin: { format: bad('format') } });
+  p.patterns[0].color = bad('patternColour');
+  for (const scope of [null, 'song']) {
+    h.ST.setAutomationPanel(scope);
+    h.ST.setSongScroll(scope === 'song');
+    const html = h.html();
+    assert.equal(/<img/.test(html), false, 'no injected element');
+    assert.match(html, /data-track-slim/);
+  }
+  const M = h.context.window.STSongModel;
+  assert.equal(M.patternColor(p, 0), M.COLORS[0], 'a colour that is not a hex colour falls back to the pattern’s default');
+  p.patterns[0].color = '#AbC123';
+  assert.equal(M.patternColor(p, 0), '#AbC123');
 });
 
 // ---- Automation view: lane stack -----------------------------------------------------------

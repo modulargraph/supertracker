@@ -88,7 +88,10 @@
       toast('Interface preview: open the macOS app for audio playback.');
       return {};
     }
+    // Seek precedes every Play (which explains the preview); a step audition is silent like a released note.
     if (command === 'transport.stop'
+        || command === 'transport.seek'
+        || command === 'step.preview'
         || command === 'engine.panic'
         || command === 'note.off'
         || command === 'sample.stopPreview') return {};

@@ -165,9 +165,10 @@
     pattern.color = COLORS[((index < 0 ? (delta > 0 ? -1 : 0) : index) + delta + COLORS.length) % COLORS.length];
     return pattern.color;
   }
+  // Callers write the colour into style attributes: only a hex colour (what cycleColor stores) is taken from the file.
   function patternColor(project, id) {
     const pattern = (project.patterns || []).find(item => item.id === id);
-    if (pattern?.color) return pattern.color;
+    if (/^#[0-9a-f]{3,8}$/i.test(pattern?.color || '')) return pattern.color;
     const number = patternNumber(project, id);
     return COLORS[(Math.max(1, number) - 1) % COLORS.length];
   }

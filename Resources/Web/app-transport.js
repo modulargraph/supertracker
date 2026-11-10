@@ -221,7 +221,7 @@
         + ' · '
         + noteText(state.lastInputNote);
     if ($('#project-name')) $('#project-name').textContent = p.name + (state.dirty ? ' · edited' : '');
-    if ($('#position')) $('#position').textContent = String((state.status.sequence ?? state.sequence) + 1).padStart(2,
+    if ($('#position')) $('#position').textContent = String((state.playing ? state.status.sequence ?? state.sequence : state.sequence) + 1).padStart(2,
         '0')
         + ' : '
         + String(state.playing ? state.status.row ?? 0 : state.row).padStart(2, '0');
@@ -297,6 +297,8 @@
       if (stopping.panic) {
         state.status.row = 0;
         state.row = 0;
+        // The cursor leaves the selection's rows: a kept anchor would stretch the selection up to row 0.
+        state.selection = null;
         refresh();
         app.updatePlayhead({ playing: false, row: -1 });
       }
