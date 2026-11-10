@@ -40,7 +40,7 @@
 //! the control thread.
 
 use super::automation::{EventQueue, Segment, PARAM_GAIN, PARAM_PAN, PARAM_VOLUME};
-use super::insert::{InsertFactory, InsertProcessor, PassThrough, ProcessContext};
+use super::insert::{BlockInfo, InsertFactory, InsertProcessor, PassThrough, ProcessContext};
 use super::meters::{block_peak, MeterBank};
 use super::pdc::{self, DelayLine};
 use super::sends::{DelayReturn, ReverbReturn};
@@ -50,7 +50,7 @@ use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
-use tracker_engine::engine::abi::{STEvent, ST_EVENT_HOST_PARAMETER, ST_EVENT_PARAMETER, ST_TARGET_DELAY, ST_TARGET_PAN, ST_TARGET_PLUGIN, ST_TARGET_REVERB, ST_TARGET_VOLUME};
+use tracker_engine::engine::abi::{STEvent, ST_EVENT_ALL_NOTES_OFF, ST_EVENT_HOST_PARAMETER, ST_EVENT_NOTE_OFF, ST_EVENT_NOTE_ON, ST_EVENT_PARAMETER, ST_TARGET_DELAY, ST_TARGET_PAN, ST_TARGET_PLUGIN, ST_TARGET_REVERB, ST_TARGET_VOLUME};
 use tracker_engine::engine::host::BlockView;
 
 /// State owned by the render side but allocated and freed by the control thread.
@@ -204,6 +204,8 @@ struct TrackTargets {
     reverb_send: u32,
     /// The track's own inserts by slot.
     inserts: [u32; INSERT_SLOTS],
+    /// Index (in the plan's inserts) of the track's instrument plug-in, or `u32::MAX`.
+    instrument: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -240,6 +242,7 @@ pub struct Plan {
     reverb: Arc<RtCell<ReverbReturn>>,
     effects: SendEffectsSpec,
     bpm: f64,
+    block: BlockInfo,
 }
 
 /// Events a plan can hold per block and waiting for later blocks.
@@ -299,6 +302,18 @@ impl Compiler {
     /// The serial of the plan compiled last.
     pub fn serial(&self) -> u64 {
         self.serial
+    }
+
+    /// Replaces the factory (the plug-in integration installs its own once it exists).
+    /// Processors already made stay as they are.
+    pub fn set_factory(&mut self, factory: Arc<dyn InsertFactory>) {
+        self.factory = factory;
+    }
+
+    /// Forgets the processor kept for an insert, so that the next compile asks the factory
+    /// again: the insert's latency, sidechain input or availability changed.
+    pub fn invalidate_insert(&mut self, key: &str) {
+        self.inserts.remove(key);
     }
 
     /// Remembers a parameter value set outside the project (a knob being turned) so that later
@@ -655,7 +670,7 @@ impl Compiler {
 
         // Where engine events land.
         let track_count = spec.strips.iter().filter_map(|strip| if let StripKind::Track(track) = strip.kind { Some(track + 1) } else { None }).max().unwrap_or(0);
-        let mut track_targets = vec![TrackTargets { strip: NO_TARGET, delay_send: NO_TARGET, reverb_send: NO_TARGET, inserts: [NO_TARGET; INSERT_SLOTS] }; track_count];
+        let mut track_targets = vec![TrackTargets { strip: NO_TARGET, delay_send: NO_TARGET, reverb_send: NO_TARGET, inserts: [NO_TARGET; INSERT_SLOTS], instrument: NO_TARGET }; track_count];
         for (index, strip) in spec.strips.iter().enumerate() {
             let StripKind::Track(track) = strip.kind else { continue };
             let targets = &mut track_targets[track];
@@ -663,7 +678,9 @@ impl Compiler {
             targets.delay_send = builtin_targets[index][0];
             targets.reverb_send = builtin_targets[index][1];
             for (insert, description) in strip_inserts[index].clone().zip(&strip.inserts) {
-                if !description.instrument_chain && description.slot < INSERT_SLOTS {
+                if description.instrument.is_some() {
+                    targets.instrument = insert as u32;
+                } else if !description.instrument_chain && description.slot < INSERT_SLOTS {
                     targets.inserts[description.slot] = inserts[insert].target;
                 }
             }
@@ -710,6 +727,7 @@ impl Compiler {
             reverb: self.reverb.clone(),
             effects: spec.effects,
             bpm: spec.bpm,
+            block: BlockInfo::default(),
         }))
     }
 }
@@ -838,7 +856,7 @@ impl Plan {
             let processor = unsafe { insert.cell.processor.get() };
             processor.set_bypass(insert.bypass);
             for (address, value) in &insert.base {
-                processor.parameter(*address, *value);
+                processor.base_parameter(*address, *value);
             }
         }
     }
@@ -904,6 +922,11 @@ impl Plan {
         self.events.begin_block(start, frames);
     }
 
+    /// The transport and render cycle of the block about to be processed (for plug-ins).
+    pub fn set_block(&mut self, block: BlockInfo) {
+        self.block = block;
+    }
+
     /// Files one engine event of the block that starts at `start`. Events numbered for another
     /// destination map are ignored (the engine re-sends its lanes once it has the project that
     /// matches this plan).
@@ -915,6 +938,18 @@ impl Plan {
             }
         };
         match event.type_ {
+            // Notes of a track whose instrument is a plug-in go to that plug-in, at their frame.
+            ST_EVENT_NOTE_ON | ST_EVENT_NOTE_OFF | ST_EVENT_ALL_NOTES_OFF => {
+                let Some(insert) = self.track_targets.get(event.track.max(0) as usize).filter(|_| event.track >= 0).and_then(|targets| self.inserts.get(targets.instrument as usize)) else { return };
+                let (note, velocity) = (event.note.clamp(0, 127) as u8, event.velocity.clamp(0, 127) as u8);
+                let bytes = match event.type_ {
+                    ST_EVENT_NOTE_ON if velocity > 0 => [0x90, note, velocity],
+                    ST_EVENT_ALL_NOTES_OFF => [0xB0, 123, 0],
+                    _ => [0x80, note, 0],
+                };
+                // SAFETY: render owner; no other reference to this processor exists here.
+                unsafe { insert.cell.processor.get() }.midi(event.frame_offset.max(0) as u32, bytes, event.slot != 0);
+            }
             ST_EVENT_PARAMETER => {
                 let Some(targets) = self.track_targets.get(event.track.max(0) as usize).filter(|_| event.track >= 0) else { return };
                 match event.target {
@@ -942,7 +977,7 @@ impl Plan {
     /// Renders `frames` frames (at most `max_frames`) from the engine block into `out`.
     pub fn process(&mut self, engine: &BlockView<'_>, frames: usize, out_l: &mut [f32], out_r: &mut [f32]) {
         let frames = frames.min(self.max_frames).min(out_l.len()).min(out_r.len());
-        let context = ProcessContext { sample_rate: self.sample_rate, tempo: self.bpm };
+        let context = ProcessContext { sample_rate: self.sample_rate, tempo: self.bpm, block: self.block };
         let Plan { ops, edges, strips, inserts, buffers, scratch, events, meters, delay, reverb, effects, bpm, master_buffer, .. } = self;
         for op in ops.iter() {
             match op {
@@ -1029,6 +1064,21 @@ impl Plan {
                         work.left[..frames].fill(0.0);
                         work.right[..frames].fill(0.0);
                         work.silent = false;
+                    }
+                    if processor.timed_parameters() {
+                        // One call per block; the processor places the changes itself.
+                        let mut at = 0u32;
+                        for segment in events.segments(slot.target, frames) {
+                            match segment {
+                                Segment::Event(event) => processor.parameter_at(event.param as u64, event.value as f64, at),
+                                Segment::Run(_, to) => at = to as u32,
+                            }
+                        }
+                        if !skip {
+                            processor.process(&mut work.left[..frames], &mut work.right[..frames], key, &context);
+                        }
+                        buffers[*buffer] = work;
+                        continue;
                     }
                     for segment in events.segments(slot.target, frames) {
                         match segment {

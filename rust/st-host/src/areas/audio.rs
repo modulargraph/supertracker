@@ -18,16 +18,16 @@
 //! Events: `status` (20 Hz), `audio.devices` (the output changed by itself: a device was lost
 //! or came back), `sample.error` (a sample of the published project could not be loaded).
 //!
-//! Samples come from `st-samples` through a small synchronous adapter ([`FileSamples`]); the
-//! sample commands (`sample.load` and the rest), with decoding on a worker, are a later step.
+//! Samples come from `st-samples` through [`st_audio::DecodedSamples`], which decodes on its own
+//! worker threads; the sample commands and the events of finished decodes are in
+//! [`crate::areas::samples`].
 
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use serde::Deserialize;
 use serde_json::{json, Value};
 use st_audio::graph::insert::{builtin_effects_metadata, BuiltinFactory};
-use st_audio::{AudioEngine, DeviceChoice, DeviceRequest, EngineOptions, InputEdge, PlayOptions, SampleLookup, SamplePcm, SampleSource};
+use st_audio::{AudioEngine, DecodedSamples, DeviceChoice, DeviceRequest, EngineOptions, InputEdge, PlayOptions};
 use st_project::model::Step;
 use st_project::Project;
 
@@ -72,31 +72,11 @@ struct DeviceSettings {
 
 const SETTINGS_SECTION: &str = "audio.devices";
 
-/// Decoded samples by project reference, through `st-samples`: files and `builtin:` wavetables.
-/// Decoding happens on the calling thread, once per reference.
-#[derive(Default)]
-pub struct FileSamples {
-    cache: Mutex<HashMap<String, std::result::Result<Arc<SamplePcm>, String>>>,
-}
-
-impl SampleSource for FileSamples {
-    fn sample(&self, path: &str) -> SampleLookup {
-        let mut cache = self.cache.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        let entry = cache.entry(path.to_string()).or_insert_with(|| {
-            st_samples::load_sample(path, None, &mut st_samples::Operation::new())
-                .map(|decoded| Arc::new(SamplePcm { left: decoded.left, right: decoded.right, sample_rate: decoded.sample_rate, cycle_frames: decoded.cycle_frames }))
-                .map_err(|error| error.to_string())
-        });
-        match entry {
-            Ok(pcm) => SampleLookup::Ready(pcm.clone()),
-            Err(error) => SampleLookup::Missing(error.clone()),
-        }
-    }
-}
-
 /// The audio service of the host.
 pub struct Audio {
     engine: Arc<AudioEngine>,
+    /// Where the engine's samples come from (decoded on worker threads).
+    samples: Arc<DecodedSamples>,
     events: EventSink,
     settings: Arc<Settings>,
     /// Sustain pedal of the interface's keyboard: down, and the notes whose release it holds.
@@ -108,13 +88,8 @@ pub struct Audio {
 impl ProjectAudio for Audio {
     fn prepare(&self, project: &Project, _options: &PublishOptions) -> Result<Value> {
         let report = self.engine.publish(project).map_err(Error::new)?;
-        let mut reported = self.reported.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        for problem in &report.problems {
-            if let (Some(error), false) = (&problem.error, reported.contains(problem)) {
-                self.events.emit("sample.error", json!({ "instrument": problem.instrument, "path": problem.path, "error": error }));
-            }
-        }
-        *reported = report.problems;
+        self.report_samples(report);
+        crate::areas::samples::retain_for(&self.samples, project);
         Ok(self.engine.status())
     }
 }
@@ -214,6 +189,34 @@ impl Audio {
     /// The engine, for other areas of the host (samples, export, plug-ins).
     pub fn engine(&self) -> &Arc<AudioEngine> {
         &self.engine
+    }
+
+    /// The sample cache the engine reads from.
+    pub fn samples(&self) -> &Arc<DecodedSamples> {
+        &self.samples
+    }
+
+    /// Tells the interface about samples that cannot be loaded, each once: `sample.error` for an
+    /// instrument's sample or zone, `audio.clipError` for a timeline clip's file.
+    fn report_samples(&self, report: st_audio::ApplyReport) {
+        let mut reported = self.reported.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        for problem in &report.problems {
+            if let (Some(error), false) = (&problem.error, reported.contains(problem)) {
+                match problem.instrument {
+                    Some(instrument) => self.events.emit("sample.error", json!({ "instrument": instrument, "path": problem.path, "error": error })),
+                    None => self.events.emit("audio.clipError", json!({ "path": problem.path, "error": error })),
+                }
+            }
+        }
+        *reported = report.problems;
+    }
+
+    /// Decoded samples arrived (or changed on disk): installs them in the engine and reports
+    /// the ones that failed.
+    pub fn samples_changed(&self) -> Result<()> {
+        let report = self.engine.samples_changed().map_err(Error::new)?;
+        self.report_samples(report);
+        Ok(())
     }
 
     fn play(&self, payload: PlayPayload) -> Result<Value> {
@@ -412,15 +415,16 @@ pub fn install(commands: &mut Commands, session: &crate::Session, settings: &Arc
         (AudioOutput::System, Some(uid)) => DeviceChoice::Named(uid.to_string()),
         (AudioOutput::System, None) => DeviceChoice::SystemDefault,
     };
+    let samples = Arc::new(DecodedSamples::for_host());
     let engine = AudioEngine::new(EngineOptions {
         sample_rate: saved.sample_rate.filter(|rate| (8_000.0..=384_000.0).contains(rate)).unwrap_or(48_000.0),
         buffer_size: saved.buffer_size.unwrap_or(512),
-        samples: Arc::new(FileSamples::default()),
+        samples: samples.clone(),
         inserts: Arc::new(BuiltinFactory),
         device,
     })
     .map_err(Error::new)?;
-    let audio = Arc::new(Audio { engine, events: events.clone(), settings: settings.clone(), sustain: Mutex::default(), reported: Mutex::default() });
+    let audio = Arc::new(Audio { engine, samples, events: events.clone(), settings: settings.clone(), sustain: Mutex::default(), reported: Mutex::default() });
     session.attach_audio(audio.clone());
     commands
         .with(&audio)

@@ -228,6 +228,8 @@ pub struct Renderer {
     seen_epoch: u64,
     external: Option<Box<dyn ExternalEvents>>,
     sample_rate: f64,
+    /// MIDI output: the hook and its block state (see [`crate::midi`]).
+    midi: crate::midi::RenderMidi,
 }
 
 impl Renderer {
@@ -237,7 +239,12 @@ impl Renderer {
         shared.adopted_serial.store(plan.serial, Ordering::Relaxed);
         shared.latency_frames.store(plan.latency_frames, Ordering::Relaxed);
         let sample_rate = engine.sample_rate();
-        Renderer { engine, status, shared, plan, time: 0, seen_epoch: 0, external: None, sample_rate }
+        Renderer { engine, status, shared, plan, time: 0, seen_epoch: 0, external: None, sample_rate, midi: Default::default() }
+    }
+
+    /// The MIDI output hook of this renderer (set, suspend for offline work).
+    pub fn midi(&mut self) -> &mut crate::midi::RenderMidi {
+        &mut self.midi
     }
 
     /// Where the engine's note events for external instruments go (plug-in instruments, MIDI
@@ -299,6 +306,7 @@ impl Renderer {
             }
             if self.shared.clear_tails.swap(false, Ordering::AcqRel) {
                 self.plan.reset_signal();
+                self.midi.silence();
             }
             let wanted = (frames - at).min(self.plan.max_frames());
             let count = self.engine.render_block(self.time, wanted as u32) as usize;
@@ -308,6 +316,7 @@ impl Renderer {
                 break;
             }
             self.plan.begin_block(self.time, count);
+            self.midi.begin_block(&self.status, self.time, count, self.sample_rate);
             while let Some(message) = self.shared.messages.pop() {
                 if message.serial == self.plan.serial {
                     self.plan.live_parameter(message.target, message.address, message.value, self.time);
@@ -315,6 +324,7 @@ impl Renderer {
             }
             while let Some(event) = self.engine.pop_event() {
                 self.plan.engine_event(&event, self.time);
+                self.midi.event(&event);
                 if let Some(external) = self.external.as_mut() {
                     external.event(&event, self.time);
                 }

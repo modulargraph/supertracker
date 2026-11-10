@@ -2527,6 +2527,7 @@ dependencies = [
  "serde",
  "serde_json",
  "st-project",
+ "st-samples",
  "tracker-engine",
 ]
 

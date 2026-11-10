@@ -24,6 +24,33 @@ pub struct ProcessContext {
     pub sample_rate: f64,
     /// Project tempo in BPM.
     pub tempo: f64,
+    /// The transport and the render cycle of the block (for plug-ins).
+    pub block: BlockInfo,
+}
+
+/// The transport at the start of a block, and how long the render call it belongs to may take.
+/// The renderer fills it in once per block ([`crate::graph::plan::Plan::set_block`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct BlockInfo {
+    pub playing: bool,
+    pub recording: bool,
+    /// Tempo of the engine's clock (BPM); 0 when unknown.
+    pub bpm: f64,
+    pub numerator: u16,
+    pub denominator: u16,
+    /// Song position of the block's first frame, in frames and in quarter notes.
+    pub sample_position: i64,
+    pub beat: f64,
+    pub bar_start_beat: f64,
+    /// When the render call that contains this block should be finished, in nanoseconds on
+    /// the clock of [`monotonic_ns`]; 0 when the caller has no cycle (no deadline).
+    pub cycle_end_ns: u64,
+}
+
+/// Nanoseconds since the first call in this process (a monotonic clock; no allocation).
+pub fn monotonic_ns() -> u64 {
+    static ORIGIN: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    ORIGIN.get_or_init(std::time::Instant::now).elapsed().as_nanos() as u64 + 1
 }
 
 /// One insert effect instance.
@@ -55,6 +82,27 @@ pub trait InsertProcessor: Send {
     fn is_idle(&self) -> bool {
         false
     }
+    /// True for a processor that takes parameter changes with their frame offset
+    /// ([`InsertProcessor::parameter_at`]) and renders each block in one `process` call: a
+    /// plug-in in a container, where every call is a round trip. The graph then does not
+    /// split its blocks at automation points.
+    fn timed_parameters(&self) -> bool {
+        false
+    }
+    /// A normalized value that applies `offset` frames into the next `process` call. Only
+    /// called when [`InsertProcessor::timed_parameters`] is true.
+    fn parameter_at(&mut self, address: u64, normalized: f64, _offset: u32) {
+        self.parameter(address, normalized);
+    }
+    /// A base value given when a plan is adopted or automation ends (the insert's saved or
+    /// live value). A plug-in keeps its own values and only undoes what automation moved.
+    fn base_parameter(&mut self, address: u64, normalized: f64) {
+        self.parameter(address, normalized);
+    }
+    /// A note or controller for an instrument, `offset` frames into the next `process` call
+    /// (the engine's note events for a track whose instrument is a plug-in). `sequenced`
+    /// tells a note of the pattern from a live one.
+    fn midi(&mut self, _offset: u32, _bytes: [u8; 3], _sequenced: bool) {}
 }
 
 /// Makes processors for insert slots. Control thread only.
@@ -469,7 +517,7 @@ mod tests {
     use super::*;
 
     fn insert(component: &str, state: Option<String>) -> InsertSpec {
-        InsertSpec { key: "k".into(), instance_id: "k".into(), slot: 0, instrument_chain: false, component: component.into(), name: String::new(), bypass: false, state }
+        InsertSpec { key: "k".into(), instance_id: "k".into(), slot: 0, instrument_chain: false, component: component.into(), name: String::new(), bypass: false, state, instrument: None }
     }
 
     #[test]
@@ -484,7 +532,7 @@ mod tests {
 
     #[test]
     fn every_built_in_effect_can_be_created_and_renders_finite_audio() {
-        let context = ProcessContext { sample_rate: 48_000.0, tempo: 120.0 };
+        let context = ProcessContext { sample_rate: 48_000.0, tempo: 120.0, block: BlockInfo::default() };
         let mut count = 0;
         for descriptor in effects::catalogue() {
             let id = descriptor.info.id().to_string_lossy().into_owned();

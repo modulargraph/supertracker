@@ -43,6 +43,17 @@ pub struct InsertSpec {
     pub bypass: bool,
     /// The descriptor's saved state.
     pub state: Option<String>,
+    /// Set for a track's instrument plug-in: the first processor of the strip, which adds its
+    /// output (times `volume`, balanced by `pan`: the instrument's own) to the strip's input
+    /// instead of processing it. `slot` is 0 and names no insert slot.
+    pub instrument: Option<InstrumentMix>,
+}
+
+/// How a plug-in instrument enters its track strip: the instrument's volume (0..2) and pan.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct InstrumentMix {
+    pub volume: f32,
+    pub pan: f32,
 }
 
 impl InsertSpec {
@@ -185,7 +196,28 @@ impl GraphSpec {
                 name: descriptor.name.clone().unwrap_or_default(),
                 bypass: descriptor.bypass(),
                 state: descriptor.state.clone(),
+                instrument: None,
             }
+        };
+        // A track's instrument plug-in (`kind: "instrument"`, owned by the track).
+        let instruments = project.instrument_list();
+        let instrument_plugin = |owner: &str, instrument: i64| -> Option<InsertSpec> {
+            let descriptor = project.plugin_list().iter().find(|descriptor| {
+                descriptor.kind() == PluginKind::Instrument && descriptor.owner.as_deref() == Some(owner) && descriptor.component.as_deref().is_some_and(|component| !component.is_empty())
+            })?;
+            let item = instruments.get(instrument.max(0) as usize);
+            let instance_id = descriptor.instance_id.clone().unwrap_or_default();
+            Some(InsertSpec {
+                key: if instance_id.is_empty() { format!("{owner}/instrument") } else { instance_id.clone() },
+                instance_id,
+                slot: 0,
+                instrument_chain: false,
+                component: descriptor.component.clone().unwrap_or_default(),
+                name: descriptor.name.clone().unwrap_or_default(),
+                bypass: descriptor.bypass(),
+                state: descriptor.state.clone(),
+                instrument: Some(InstrumentMix { volume: clamp(item.map_or(0.7, |item| item.volume()), 0.0, 2.0, 0.7), pan: clamp(item.map_or(0.0, |item| item.pan()), -1.0, 1.0, 0.0) }),
+            })
         };
         let own_inserts =
             |owner: &str| -> Vec<InsertSpec> { by_owner.get(owner).into_iter().flatten().map(|descriptor| insert(descriptor, owner, None)).collect() };
@@ -196,8 +228,8 @@ impl GraphSpec {
             // The assigned instrument's chain runs first, one instance per track.
             let instrument_owner = Owner::Instrument(track.instrument().max(0) as usize).text();
             let suffix = id.strip_prefix("track:").unwrap_or(&id).to_string();
-            let mut inserts: Vec<InsertSpec> =
-                by_owner.get(&instrument_owner).into_iter().flatten().map(|descriptor| insert(descriptor, &instrument_owner, Some(&suffix))).collect();
+            let mut inserts: Vec<InsertSpec> = instrument_plugin(&id, track.instrument()).into_iter().collect();
+            inserts.extend(by_owner.get(&instrument_owner).into_iter().flatten().map(|descriptor| insert(descriptor, &instrument_owner, Some(&suffix))));
             inserts.extend(own_inserts(&id));
             strips.push(StripSpec {
                 name: track.display_name(index),
@@ -327,11 +359,22 @@ impl GraphSpec {
                     _ => Vec::new(),
                 }
             }
+            // The instrument plug-in of the owner track, or of every track that plays the
+            // owner instrument.
+            Some(AutomationTarget::Plugin { instrument: true, address, .. }) => {
+                let instrument_lane = matches!(Owner::parse(owner), Some(Owner::Instrument(_)));
+                self.strips
+                    .iter()
+                    .filter(|strip| if instrument_lane { self.chain_owner(strip) == owner } else { strip.id == owner })
+                    .flat_map(|strip| strip.inserts.iter().filter(|insert| insert.instrument.is_some()))
+                    .map(|insert| (Destination::Insert(insert.key.clone()), address))
+                    .collect()
+            }
             Some(AutomationTarget::Plugin { instrument: false, slot, address }) => {
                 let instrument_lane = matches!(Owner::parse(owner), Some(Owner::Instrument(_)));
                 let mut found = Vec::new();
                 for strip in &self.strips {
-                    for insert in &strip.inserts {
+                    for insert in strip.inserts.iter().filter(|insert| insert.instrument.is_none()) {
                         let matches = insert.slot as i64 == slot
                             && if instrument_lane { insert.instrument_chain && self.chain_owner(strip) == owner } else { !insert.instrument_chain && strip.id == owner };
                         if matches {

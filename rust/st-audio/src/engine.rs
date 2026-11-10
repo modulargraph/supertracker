@@ -24,6 +24,9 @@ use tracker_engine::engine::abi::*;
 use tracker_engine::engine::host::{self, ControlHalf, StatusHandle};
 use tracker_engine::engine::tables::MAX_BLOCK;
 
+mod hooks;
+mod midi;
+
 /// Which output the engine renders to.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeviceChoice {
@@ -156,6 +159,8 @@ pub struct AudioEngine {
     samples: Mutex<Arc<dyn SampleSource>>,
     inserts: Arc<dyn InsertFactory>,
     service_stop: Arc<std::sync::atomic::AtomicBool>,
+    /// MIDI output for the renderers of this engine (`engine/midi.rs`).
+    midi: crate::midi::SharedMidiOutput,
 }
 
 /// What `audio.devices` answers.
@@ -231,6 +236,7 @@ impl AudioEngine {
             samples: Mutex::new(options.samples),
             inserts: options.inserts,
             service_stop: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            midi: Default::default(),
         });
         engine.open_device(&mut engine.lock())?;
         Ok(engine)
@@ -712,6 +718,7 @@ impl AudioEngine {
         // The old renderer (and with it the old engine's render half) is dropped here, on the
         // control thread; no device thread exists at this point.
         *self.renderer.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = renderer;
+        self.attach_midi();
         state.core = core;
         state.display.reset();
         state.pending_inputs.clear();
@@ -864,12 +871,15 @@ impl AudioEngine {
         let (mut left, mut right) = (vec![0.0f32; frames], vec![0.0f32; frames]);
         let mut renderer = self.renderer.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let block = block.max(1);
+        // An offline render plays no external MIDI instrument and sends no clock.
+        let midi_was_suspended = renderer.midi().suspend(true);
         let mut at = 0;
         while at < frames {
             let end = (at + block).min(frames);
             renderer.render(&mut left[at..end], &mut right[at..end]);
             at = end;
         }
+        renderer.midi().suspend(midi_was_suspended);
         (left, right)
     }
 

@@ -59,6 +59,7 @@ pub fn install(bridge: &mut BridgeBuilder, options: HostOptions) -> Result<Host>
 
     let events = bridge.events();
     let audio_events = bridge.events();
+    let sample_events = bridge.events();
     let commands = bridge.commands();
     session.register(commands);
     MediaRelink::register(session.clone(), events, commands);
@@ -70,6 +71,9 @@ pub fn install(bridge: &mut BridgeBuilder, options: HostOptions) -> Result<Host>
         Some(audio) => Some(crate::areas::audio::install(commands, &session, &settings, audio_events, audio)?),
         None => None,
     };
+    if let Some(audio) = &audio {
+        crate::areas::samples::install(commands, audio, &options.support, sample_events);
+    }
 
     if let Some(interval) = options.autosave_every {
         session.start_autosave_timer(interval);

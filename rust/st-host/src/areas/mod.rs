@@ -2,3 +2,4 @@
 //! (`docs/RUST_PORT_STATUS.md` lists them) and delegates to it.
 
 pub mod audio;
+pub mod samples;

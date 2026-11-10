@@ -18,6 +18,7 @@
 //! | [`samples`] | [`SampleSource`]: where decoded PCM comes from (the seam to `st-samples`) |
 //! | [`graph`] | the mixer: spec, compiler and render plan, delay compensation, automation, inserts, send effects, meters, the renderer |
 //! | [`device`] | outputs: `cpal` devices and the null device |
+//! | [`midi`] | the MIDI seam: what the render thread tells MIDI output (external instruments, clock) |
 //!
 //! # Real-time rules
 //!
@@ -48,9 +49,12 @@
 pub mod device;
 pub mod engine;
 pub mod graph;
+pub mod midi;
 pub mod project_sync;
 pub mod samples;
+pub mod samples_async;
 
 pub use engine::{AudioEngine, DeviceChoice, DeviceRequest, DevicesStatus, EngineOptions, InputEdge, PlayOptions};
 pub use project_sync::{ApplyReport, SampleProblem};
 pub use samples::{MemorySamples, NoSamples, SampleLookup, SamplePcm, SampleSource};
+pub use samples_async::{DecodedSamples, LoadEvent};

@@ -9,6 +9,8 @@ publish = false
 [dependencies]
 tracker-engine = { path = "../tracker-engine" }
 st-project = { path = "../st-project" }
+# Audio files: decoding for the sample source and previews, encoding for export and recording.
+st-samples = { path = "../st-samples" }
 # Status and device descriptions cross the bridge as JSON (st-host serializes them).
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
