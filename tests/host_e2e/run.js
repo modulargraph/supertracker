@@ -242,7 +242,7 @@ async function main() {
 
     // ---- An unimplemented command fails with its name, and the page carries on ---------------
     // (Whichever of these the host does not implement yet.)
-    const unimplemented = ['freeze.track', 'audio.record', 'routing.apply', 'audio.renderDiagnostics', 'plugin.captureBasePatch', 'plugin.load'].find(command => !boot.commands.includes(command));
+    const unimplemented = ['audio.renderDiagnostics', 'plugin.captureBasePatch', 'audio.inputs'].find(command => !boot.commands.includes(command));
     if (unimplemented) {
       const refused = await request(page, unimplemented, { track: 0, kind: 'instrument' });
       assert.match(refused.error, new RegExp('^`' + unimplemented.replace('.', '\\.') + '` is not implemented yet \\(it belongs to st-[a-z*-]+\\)\\.$'));
@@ -448,6 +448,32 @@ async function main() {
     assert.ok(await loudest(page, trackPeak, track) > 0.001, 'the track is back at half gain');
     await page.evaluate(() => ST.perform('stop'));
     pass('a parameter of the plug-in changes what is heard: gain zero silences its track, half gain brings it back');
+
+    // ---- Routing: a return bus and a send made in the mixer reach the host's mixer ---------------
+    await page.waitForSelector('[data-studio-action="new-return"]', { timeout: 10000 })
+      .catch(async error => { throw new Error('The mixer does not offer + Return (routing.capabilities): ' + await toasts(page) + '\n' + error.message); });
+    await page.click('[data-studio-action="new-return"]');
+    await page.fill('#routing-bus-name', 'Room');
+    await page.click('#routing-bus-create');
+    await page.waitForFunction(() => (ST.state.project.routing?.buses || []).some(bus => bus.name === 'Room' && bus.type === 'return'), null, { timeout: 10000 })
+      .catch(async error => { throw new Error('The return bus was not created: ' + await toasts(page) + '\n' + error.message); });
+    const room = await page.evaluate(() => ST.state.project.routing.buses.find(bus => bus.name === 'Room'));
+    const source = await page.evaluate(index => 'track:' + ST.state.project.tracks[index].routingID, track);
+    const sent = await page.evaluate(([from, to]) => STRouting.transaction('Add send', draft => {
+      draft.routing.sends.push({ id: 'e2e-send', source: from, destination: to, tap: 'postFader', gain: 1, enabled: true });
+    }).then(() => 'applied', error => String(error.message || error)), [source, 'bus:' + room.id]);
+    assert.equal(sent, 'applied');
+    await page.waitForFunction(() => (ST.state.project.routing.sends || []).some(send => send.id === 'e2e-send'), null, { timeout: 10000 })
+      .catch(async error => { throw new Error('The send was not applied: ' + await toasts(page) + '\n' + error.message); });
+    const mixer = (await request(page, 'routing.status')).ok;
+    assert.ok(mixer.strips.includes('bus:' + room.id), 'the host mixes the new bus: ' + JSON.stringify(mixer.strips));
+    const offered = (await request(page, 'routing.capabilities')).ok;
+    assert.ok(offered.exportTargets.some(item => item.owner === 'bus:' + room.id && item.kind === 'return' && item.name === 'Room'), 'the bus can be exported as a stem');
+    await page.evaluate(() => ST.perform('play'));
+    await page.waitForFunction(owner => Math.max(...(ST.state.status.busPeaks?.[owner] || [0])) > 0.001, 'bus:' + room.id, { timeout: 15000 })
+      .catch(async error => { throw new Error('Nothing arrives on the return bus: ' + JSON.stringify(await page.evaluate(() => ST.state.status.busPeaks)) + '\n' + error.message); });
+    await page.evaluate(() => ST.perform('stop'));
+    pass('+ Return in the mixer creates a bus, a send feeds it, and the host meters signal on it');
 
     // Saved with its state (captured by the host at save), and restored when the file is opened again.
     const pluginSong = path.join(folder, 'Plug-in Song.supertracker');

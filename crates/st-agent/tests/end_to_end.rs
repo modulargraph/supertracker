@@ -136,7 +136,7 @@ fn mcp_process_to_control_socket_to_page() {
     let initialize = mcp.request("initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "e2e", "version": "1"}}));
     assert_eq!(initialize["result"]["serverInfo"]["name"], "supertracker");
     writeln!(mcp.stdin, "{}", json!({"jsonrpc": "2.0", "method": "notifications/initialized"})).unwrap();
-    assert_eq!(mcp.request("tools/list", json!({}))["result"]["tools"].as_array().unwrap().len(), 51);
+    assert_eq!(mcp.request("tools/list", json!({}))["result"]["tools"].as_array().unwrap().len(), 50);
     assert_eq!(host.agent.current_status().clients, 0, "listing tools does not need the application");
 
     let song = mcp.tool("get_song", json!({}));

@@ -27,11 +27,12 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
 - **Plug-in and built-in effect states saved by 0.1 are not read.** Plug-ins are identified as `clap:…`, `vst3:…`
   and `au:type:subtype:manufacturer`.
 - **VST2 hosting.** NKS presets made for a VST2 plug-in load into the vendor's VST2-compatible VST3 when installed.
-- The second ("legacy") mixer, the in-app self-test modes and the keyboard QA build.
+- The second ("legacy") mix model: every song uses the routed mixer (buses, sends, sidechains, Master inserts).
+- The in-app self-test modes and the keyboard QA build.
 
 ### Not implemented yet in the new host
 
-Live line inputs into track strips, freeze by recording, routing checks before a change, kit preview rendering,
+Live line inputs into track strips, freeze by recording, kit preview rendering,
 controllers beyond pitch bend, mod wheel and sustain to plug-in instruments, base patch capture, screenshots for AI
 clients. [docs/FEATURE_STATUS.md](docs/FEATURE_STATUS.md) and [docs/HOST.md](docs/HOST.md) have the details.
 

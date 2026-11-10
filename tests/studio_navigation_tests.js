@@ -12,24 +12,24 @@ function harness(count = 4) {
   let renders = 0;
   const document = { body: {}, activeElement: null, getElementById: id => nodes.get(id) || null, querySelectorAll: selector => groups.get(selector) || [], querySelector: selector => (groups.get(selector) || [])[0] || null };
   function node(id, dataset = {}, type = '', tag = 'BUTTON') {
-    const item = { id, dataset, type, tagName: tag, handlers: {}, value: '.8', scrolls: 0, disabled: false, style: {}, classList: { toggle() {} }, setAttribute() {}, addEventListener(event, callback) { (this.handlers[event] ||= []).push(callback); }, focus() { document.activeElement = this; }, scrollIntoView(options) { this.scrolls++; this.scrollOptions = options; }, closest(selector) { if (selector === '[data-mixer-channel]') return this.channel || null; if (selector === '.studio-plugin > summary') return this.isSummary ? this : null; return null; }, fire(event, extra = {}) { const e = { key: '', target: this, preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }, ...extra }; for (const fn of this.handlers[event] || []) fn(e); return e; } };
+    const item = { id, dataset, type, tagName: tag, handlers: {}, value: '.8', scrolls: 0, disabled: false, style: {}, classList: { toggle() {} }, setAttribute() {}, addEventListener(event, callback) { (this.handlers[event] ||= []).push(callback); }, focus() { document.activeElement = this; }, scrollIntoView(options) { this.scrolls++; this.scrollOptions = options; }, closest(selector) { if (selector === '[data-mixer-channel]' || selector === '[data-mixer-owner]') return this.channel || null; if (selector === '.studio-plugin > summary') return this.isSummary ? this : null; return null; }, fire(event, extra = {}) { const e = { key: '', target: this, preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }, ...extra }; for (const fn of this.handlers[event] || []) fn(e); return e; } };
     nodes.set(id, item); return item;
   }
   const state = { view: 'mixer', track: 0, instrument: 0, keyboardPlay: true, selectedLane: 0, row: 0, project: { activePattern: 1, masterVolume: .7, tracks: Array.from({ length: count }, (_, i) => ({ name: `Track ${i + 1}`, instrument: i, volume: .8, pan: 0, delaySend: .1, reverbSend: .2 })), instruments: Array.from({ length: count }, () => ({ type: 'synth' })), audioPlugins: [], patterns: [{ id: 1, name: 'Pattern', length: 64, automation: [{ track: 0, target: 'volume', name: 'Volume', points: [{ row: 0, value: .8 }] }, { track: 1, target: 'pan', name: 'Pan', points: [{ row: 0, value: 0 }] }] }] } };
   const properties = [], toggles = [], selectButtons = [];
   for (let i = 0; i < count; i++) {
-    const channel = node(`channel-${i}`, { mixerChannel: String(i) });
+    const channel = node(`channel-${i}`, { mixerChannel: String(i), mixerOwner: `track:${i}` });
     for (const role of ['track', 'mute', 'solo', 'vol', 'pan', 'delay', 'reverb', 'slots']) {
       const prop = { vol: 'volume', pan: 'pan', delay: 'delaySend', reverb: 'reverbSend' }[role];
-      const dataset = prop ? { studioProperty: prop, studioTrack: String(i) } : ['mute', 'solo'].includes(role) ? { toggleTrack: role, studioTrack: String(i) } : { selectTrack: String(i) };
+      const dataset = prop ? { studioProperty: prop, studioOwner: `track:${i}`, mixerRole: role } : ['mute', 'solo'].includes(role) ? { toggleOwner: `track:${i}`, toggleProperty: role, mixerRole: role } : { selectOwner: `track:${i}`, mixerRole: role };
       const control = node(`mix-${role}-${i}`, dataset, prop ? 'range' : '', prop ? 'INPUT' : 'BUTTON'); control.channel = channel;
       if (prop) { properties.push(control); node(control.id + '-out'); }
       else if (role === 'mute' || role === 'solo') toggles.push(control); else selectButtons.push(control);
     }
   }
-  const master = node('mix-master', { studioProperty: 'masterVolume' }, 'range', 'INPUT'); master.channel = node('master-channel', { mixerChannel: 'master' }); node('mix-master-out'); properties.push(master);
+  const master = node('mix-master', { studioProperty: 'masterVolume', studioOwner: 'master', mixerRole: 'vol' }, 'range', 'INPUT'); master.channel = node('master-channel', { mixerChannel: 'master', mixerOwner: 'master' }); node('mix-master-out'); properties.push(master); const masterTitle = node('mix-track-master', { selectOwner: 'master' }); masterTitle.channel = master.channel;
   node('mixer-channels'); node('mixer-workspace'); node('mixer-current-channel'); node('automation-envelope'); node('automation-search', {}, 'search', 'INPUT');
-  groups.set('[data-studio-property]', properties); groups.set('[data-toggle-track]', toggles); groups.set('[data-select-track]', selectButtons);
+  groups.set('[data-studio-property]', properties); groups.set('[data-toggle-owner]', toggles); groups.set('[data-select-owner]', selectButtons);
   const laneButtons = [node('automation-lane-0', { selectLane: '0' }), node('automation-lane-1', { selectLane: '1' })]; groups.set('[data-select-lane]', laneButtons);
   const targets = [node('automation-target-volume', { chooseTarget: 'volume', targetName: 'Volume' }), node('automation-target-pan', { chooseTarget: 'pan', targetName: 'Pan' })]; groups.set('[data-choose-target]', targets);
   const ST = { state, escapeHTML: value => String(value), refresh() { renders++; }, toast() {}, mutate(label, callback) { changes.push({ label, before: copy(state.project) }); callback(state.project); }, request(command, payload) { requests.push({ command, payload }); return Promise.resolve([]); }, automate() { throw new Error('Navigation must not create an automation lane'); } };
@@ -105,13 +105,13 @@ test('selected strip and body arrows work immediately while keyboard piano is en
   h.key(h.document.body, 'ArrowLeft'); assert.equal(h.state.track, 1); assert.equal(h.document.activeElement.id, 'mix-track-1');
 });
 
-test('bounds clamp, Home/End reach edge tracks, and Master returns to the previous control role', () => {
+test('bounds clamp, Home/End reach the edge channels, and Master takes the matching control or its header', () => {
   const h = harness(); h.key('mix-track-0', 'ArrowLeft'); assert.equal(h.state.track, 0);
-  h.key('mix-track-0', 'End'); assert.equal(h.state.track, 3); assert.equal(h.document.activeElement.id, 'mix-track-3');
-  h.key('mix-pan-3', 'ArrowRight'); assert.equal(h.document.activeElement.id, 'mix-master'); assert.equal(h.state.track, 3);
+  h.key('mix-track-0', 'End'); assert.equal(h.document.activeElement.id, 'mix-track-master'); assert.equal(h.state.track, 0, 'Master is not a note destination');
+  h.key('mix-pan-3', 'ArrowRight'); assert.equal(h.document.activeElement.id, 'mix-track-master', 'Master has no pan: focus goes to its header');
   h.key('mix-master', 'ArrowRight'); assert.equal(h.document.activeElement.id, 'mix-master');
-  h.key('mix-master', 'ArrowLeft'); assert.equal(h.document.activeElement.id, 'mix-pan-3');
-  h.key('mix-track-3', 'Home'); assert.equal(h.state.track, 0);
+  h.key('mix-master', 'ArrowLeft'); assert.equal(h.document.activeElement.id, 'mix-vol-3'); assert.equal(h.state.track, 3);
+  h.key('mix-track-3', 'Home'); assert.equal(h.state.track, 0); assert.equal(h.document.activeElement.id, 'mix-track-0');
 });
 
 test('persistent mixer identity follows Pan/send arrows and Master without altering track state', () => {
@@ -161,7 +161,7 @@ test('Tab enters only selected channel controls while Enter/Space retain button 
   for (const role of ['track', 'mute', 'solo', 'vol', 'slots']) {
     assert(html.includes(`id="mix-${role}-2" tabindex="0"`)); assert(html.includes(`id="mix-${role}-0" tabindex="-1"`));
   }
-  assert(html.includes('data-studio-track="2" tabindex="0"')); assert(html.includes('data-studio-track="0" tabindex="-1"'));
+  assert(/id="mix-pan-2"[^>]*tabindex="0"/.test(html)); assert(/id="mix-pan-0"[^>]*tabindex="-1"/.test(html));
   assert(!h.key('mix-mute-0', 'Enter').handled); assert(!h.key('mix-solo-0', ' ').handled); assert(!h.key('mix-pan-0', 'Tab').handled);
   h.nodes.get('mix-mute-0').fire('click'); assert.equal(h.state.project.tracks[0].mute, true);
 });
@@ -238,7 +238,7 @@ test('deleting an automation lane selects and focuses a surviving lane at its ne
     assert.equal(h.state.project.patterns[0].automation.length, 2); assert(!h.state.project.patterns[0].automation.some(lane => lane.name === `Lane ${selected}`)); assert.equal(h.changes.length, 1);
     const ownerTrack = h.state.project.patterns[0].automation[next].track;
     assert.equal(h.studio.selectedOwner(), `track:${ownerTrack}`); assert.equal(h.state.track, ownerTrack); assert.equal(h.state.instrument, ownerTrack);
-    assert(h.studio.renderAutomation().includes(`value="${ownerTrack}" selected`), 'Channel selector must match the surviving visible lane');
+    assert(h.studio.renderAutomation().includes(`value="track:${ownerTrack}" selected`), 'Channel selector must match the surviving visible lane');
   }
 });
 

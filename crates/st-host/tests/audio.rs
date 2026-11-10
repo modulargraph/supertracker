@@ -230,3 +230,60 @@ fn a_sample_that_cannot_be_loaded_is_reported_once() {
     assert_eq!((errors[0]["instrument"].clone(), errors[0]["path"].clone()), (json!(0), json!("/no/such/file.wav")));
     assert!(errors[0]["error"].is_string());
 }
+
+#[test]
+fn routing_changes_are_validated_applied_and_reported() {
+    let fixture = start(TempDir::new("audio-routing"));
+    let host = &fixture.host;
+    let mut project = demo();
+    for (index, track) in project["tracks"].as_array_mut().unwrap().iter_mut().enumerate() {
+        track["routingID"] = json!(format!("t{index}"));
+    }
+    project["routing"] = json!({ "version": 1, "mixModel": "standard", "buses": [], "outputs": {}, "sends": [], "sidechains": [] });
+    project["audioPlugins"] = json!([{ "owner": "track:t0", "kind": "effect", "slot": 0, "instanceID": "comp", "component": "stfx:compressor", "name": "Compressor" }]);
+    host.request("engine.project", json!({ "project": project })).unwrap();
+
+    // What the mixer offers: one mix model, every channel as a stem, the compressor's key input.
+    let capabilities = host.request("routing.capabilities", json!({})).unwrap();
+    assert_eq!((capabilities["supported"].clone(), capabilities["mixModels"].clone(), capabilities["fullGraphStems"].clone()), (json!(true), json!(["standard"]), json!(true)));
+    let targets = capabilities["exportTargets"].as_array().unwrap();
+    let tracks = project["tracks"].as_array().unwrap().len();
+    assert_eq!(targets.len(), tracks + 1, "every track and Master: {targets:?}");
+    assert_eq!(targets[0], json!({ "owner": "track:t0", "name": project["tracks"][0]["name"], "kind": "track", "boundary": "postFaderPreParent", "available": true }));
+    assert_eq!(targets.last().unwrap()["owner"], "master");
+    assert_eq!(targets.last().unwrap()["boundary"], "masterOutput");
+    let inputs = capabilities["sidechains"]["inputs"].as_array().unwrap();
+    assert_eq!(inputs.len(), 1);
+    assert_eq!((inputs[0]["instanceID"].clone(), inputs[0]["owner"].clone(), inputs[0]["pluginName"].clone(), inputs[0]["inputBus"].clone()), (json!("comp"), json!("track:t0"), json!("Compressor"), json!(1)));
+    assert_eq!(inputs[0]["layoutSignature"], json!({ "name": "Sidechain", "channels": 2 }));
+    assert_eq!((capabilities["audioExport"]["container"].clone(), capabilities["audioExport"]["defaultEncoding"].clone()), (json!("wav"), json!("pcm24")));
+    assert!(capabilities["audioExport"]["sampleRates"].as_array().unwrap().contains(&json!(96000)));
+
+    // A proposal the project format refuses is answered, not thrown, and changes nothing.
+    let mut broken = project.clone();
+    broken["routing"]["sends"] = json!([{ "id": "s1", "source": "track:t0", "destination": "bus:nowhere", "tap": "postFader", "gain": 1.0, "enabled": true }]);
+    let verdict = host.request("routing.validate", json!({ "project": broken })).unwrap();
+    assert_eq!(verdict["valid"], false);
+    assert!(!verdict["error"].as_str().unwrap().is_empty());
+    assert!(host.request("routing.apply", json!({ "project": broken })).is_err(), "an invalid project is not applied");
+    assert_eq!(host.request("routing.capabilities", json!({})).unwrap()["exportTargets"].as_array().unwrap().len(), tracks + 1);
+
+    // A return bus, a send to it and the kick keying the compressor.
+    let mut routed = project.clone();
+    routed["routing"]["buses"] = json!([{ "id": "room", "name": "Room", "type": "return", "volume": 1.0, "pan": 0.0 }]);
+    routed["routing"]["sends"] = json!([{ "id": "s1", "source": "track:t1", "destination": "bus:room", "tap": "postFader", "gain": 0.5, "enabled": true }]);
+    routed["routing"]["sidechains"] = json!([{
+        "id": "k1", "source": "track:t3", "tap": "preFader", "gain": 1.0, "enabled": true,
+        "destination": { "instanceID": "comp", "inputBus": 1, "layoutSignature": { "name": "Sidechain", "channels": 2 } },
+    }]);
+    assert_eq!(host.request("routing.validate", json!({ "project": routed })).unwrap(), json!({ "valid": true }));
+    let applied = host.request("routing.apply", json!({ "project": routed })).unwrap();
+    assert_eq!(applied["project"]["routing"]["buses"][0]["id"], "room");
+    assert_eq!(applied["project"]["routing"]["sends"][0]["destination"], "bus:room");
+    let after = applied["capabilities"]["exportTargets"].as_array().unwrap();
+    assert!(after.iter().any(|target| target["owner"] == "bus:room" && target["kind"] == "return" && target["name"] == "Room"), "{after:?}");
+    assert_eq!(applied["status"]["unavailableSidechains"], json!([]), "the sidechain is connected");
+    assert!(applied["status"]["strips"].as_array().unwrap().contains(&json!("bus:room")));
+    // The session holds what was applied.
+    assert_eq!(host.request("engine.snapshot", json!({})).unwrap()["routing"]["sidechains"][0]["id"], "k1");
+}

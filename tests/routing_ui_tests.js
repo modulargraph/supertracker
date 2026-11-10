@@ -25,7 +25,7 @@ class Element {
 }
 
 function fixture(){return {name:'Routing test',masterVolume:.7,tracks:[{routingID:'a',name:'Bass',volume:.8},{routingID:'b',name:'Keys',volume:.6}],patterns:[{id:0,automation:[]}],audioPlugins:[{instanceID:'plug-b',owner:'track:b',track:1,kind:'effect',slot:0,name:'Detector'}],routing:{version:1,mixModel:'standard',buses:[{id:'g',name:'Group',type:'group',volume:1,pan:0,mute:false,solo:false},{id:'r',name:'Return',type:'return',volume:1,pan:0,mute:false,solo:false}],outputs:{'track:a':'master','track:b':'master','bus:g':'master','bus:r':'master'},sends:[],sidechains:[]}};}
-function capabilities(){return {supported:true,mixModels:['legacy','standard'],outputs:true,buses:{group:true,return:true,max:16},sends:{enabled:true,taps:['preFader','postFader'],max:128},sidechains:{enabled:true,taps:['preInserts','preFader','postFader'],inputs:[{instanceID:'plug-b',owner:'track:b',pluginName:'Detector',inputBus:2,layoutSignature:{name:'External detector',channels:2},available:true}]}};}
+function capabilities(){return {supported:true,mixModels:['standard'],outputs:true,buses:{group:true,return:true,max:16},sends:{enabled:true,taps:['preFader','postFader'],max:128},sidechains:{enabled:true,taps:['preInserts','preFader','postFader'],inputs:[{instanceID:'plug-b',owner:'track:b',pluginName:'Detector',inputBus:2,layoutSignature:{name:'External detector',channels:2},available:true}]}};}
 
 function harness(p=fixture()){
   const document={elements:new Map(),activeElement:null,getElementById(id){return this.elements.get(id)||null;},querySelectorAll(){return [];}};
@@ -73,10 +73,10 @@ function statusNodes(h){
   return {errors,issues,draft,writes,count:()=>writes.text+writes.hidden};
 }
 
-test('pure endpoints retain legacy tracks and stable owner identity without mutating project',()=>{
+test('pure endpoints list tracks and Master for a project without a routing table, without mutating it',()=>{
   const p=fixture();delete p.tracks[0].routingID;delete p.routing;const before=copy(p),h=harness(p),list=h.R.endpoints(p);
   assert.deepEqual(copy(list.map(item=>[item.owner,item.type,item.track])),[['track:0','track',0],['track:b','track',1],['master','master',undefined]].map(copy));
-  assert(list[0].legacyIdentity);assert.equal(h.R.ownerEntity('track:0'),p.tracks[0]);assert.equal(h.R.channelName(null),'No output');assert.equal(h.R.channelName('bus:missing'),'Unavailable channel');assert.deepEqual(p,before);
+  assert.equal(h.R.ownerEntity('track:0'),p.tracks[0]);assert.equal(h.R.channelName(null),'No output');assert.equal(h.R.channelName('bus:missing'),'Unavailable channel');assert.deepEqual(p,before);
 });
 
 test('master stays a sink and routing choices exclude known feedback paths',()=>{
@@ -87,7 +87,7 @@ test('master stays a sink and routing choices exclude known feedback paths',()=>
 });
 
 test('capability flags hide unsupported actions while retaining saved state summaries',()=>{
-  const h=harness();h.R.event('routing.capabilities',{supported:false,mixModels:['legacy'],buses:{},sends:{},sidechains:{}});
+  const h=harness();h.R.event('routing.capabilities',{supported:false,mixModels:[],buses:{},sends:{},sidechains:{}});
   const html=h.R.render('track:a');assert(html.includes('not supported'));assert(!html.includes('data-routing-action="output"'));assert(!html.includes('data-routing-action="add-send"'));assert(html.includes('<fieldset disabled>'));
   assert(!h.R.available());assert(!h.R.canOutput('track:a'));const exported=h.R.capabilities;exported.supported=true;assert(!h.R.available(),'Capability getter must not expose mutable internal state');
 });
@@ -233,10 +233,11 @@ test('plug-in capture occurs before the routing gate and active rack edits block
   h.context.window.STStudio.isEditingPlugin=true;await assert.rejects(h.R.transaction('Blocked',()=>{}),/Finish the plug-in rack/);assert.equal(h.mutations.length,1);
 });
 
-test('legacy opt-in is explicit and supplies new stable IDs without altering original before success',async()=>{
+test('a project without a routing table gets one, with stable track IDs, on its first routing change',async()=>{
   const p=fixture();delete p.routing;delete p.tracks[0].routingID;const h=harness(p),before=copy(p);
-  await h.R.showOutput('track:0');assert.equal(h.state.modal,'routing-enable');assert.deepEqual(h.state.project,before);assert.equal(h.requests.length,0);
-  assert(h.modals[0].body.includes('after insert effects'));h.element('routing-optin-apply').dispatch('click');await drain();assert.equal(h.state.project.routing.mixModel,'standard');assert(h.state.project.tracks[0].routingID);assert.equal(h.mutations.length,1);
+  await h.R.createBus('return',{assignOwner:'track:0'});assert.equal(h.state.modal,'routing-bus','no opt-in dialog: there is one mix model');assert.deepEqual(h.state.project,before);
+  h.element('routing-bus-name').value='Room';h.element('routing-bus-create').dispatch('click');await drain();
+  assert.equal(h.state.project.routing.mixModel,'standard');assert(h.state.project.tracks[0].routingID);assert(h.state.project.routing.buses.some(bus=>bus.type==='return'&&bus.name==='Room'));assert.equal(h.mutations.length,1);
 });
 
 test('send gain exposes owner automation metadata and sidechain layouts are never retargeted silently',()=>{
@@ -279,12 +280,11 @@ test('routing editors opened across a capability wait reject replaced projects o
   }
 });
 
-test('legacy return creation continues after opt-in and never offers dry-output assignment',async()=>{
-  const p=fixture();delete p.routing;const h=harness(p);await h.R.createBus('return',{assignOwner:'track:a'});
-  assert.equal(h.state.modal,'routing-enable');assert(h.modals[0].footer.includes('Enable and continue'));assert(h.modals[0].body.includes('Feed it from a channel send'));
-  h.element('routing-optin-apply').dispatch('click');await waitUntil(()=>h.state.modal==='routing-bus');assert.equal(h.modals.at(-1).title,'Create return bus');assert(!h.modals.at(-1).body.includes('routing-bus-assign'));
+test('return creation never offers dry-output assignment',async()=>{
+  const p=fixture(),output=p.routing.outputs['track:a'];const h=harness(p);await h.R.createBus('return',{assignOwner:'track:a'});
+  assert.equal(h.state.modal,'routing-bus');assert.equal(h.modals.at(-1).title,'Create return bus');assert(!h.modals.at(-1).body.includes('routing-bus-assign'));
   h.element('routing-bus-name').value='Tape return';h.element('routing-bus-create').dispatch('click');await drain();
-  assert(h.state.project.routing.buses.some(bus=>bus.type==='return'&&bus.name==='Tape return'));assert.equal(h.state.project.routing.outputs['track:a'],undefined,'Missing explicit output still means Master');assert.equal(h.mutations.length,2,'Opt-in and named bus creation each form a deliberate undo step');
+  assert(h.state.project.routing.buses.some(bus=>bus.type==='return'&&bus.name==='Tape return'));assert.equal(h.state.project.routing.outputs['track:a'],output,'The dry output is not moved to a return');assert.equal(h.mutations.length,1);
 });
 
 test('the routing command renders the selected owner before focusing its output control',()=>{

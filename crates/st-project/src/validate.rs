@@ -274,7 +274,7 @@ fn validate_routing(project: &Project, tracks: &[Track]) -> Result<Owners> {
     if !routed {
         return Ok(Owners { routed: false, standard: false, channels, routes: BTreeMap::new() });
     }
-    let version_message = "Routing requires version 1 and a legacy or standard mixModel.";
+    let version_message = "Routing requires version 1 and the standard mixModel.";
     let Some(routing) = &project.routing else { return fail(version_message) };
     let (Some(1), Some(model)) = (routing.version, routing.mix_model) else { return fail(version_message) };
     if routing.extra.contains_key("buses") {
@@ -316,7 +316,6 @@ fn validate_routing(project: &Project, tracks: &[Track]) -> Result<Owners> {
             None => outputs.insert(source.as_str(), None),
         };
     }
-    let custom_outputs = outputs.values().any(|destination| *destination != Some("master"));
     for (source, destination) in &outputs {
         if let Some(destination) = destination {
             edges.push((source.to_string(), destination.to_string()));
@@ -384,9 +383,6 @@ fn validate_routing(project: &Project, tracks: &[Track]) -> Result<Owners> {
         if !signature.channels.is_some_and(|count| (1..=64).contains(&count)) {
             return fail("Sidechain input channels must be a whole number from 1 to 64.");
         }
-    }
-    if model == MixModel::Legacy && (!buses.is_empty() || !sends.is_empty() || !sidechains.is_empty() || custom_outputs) {
-        return fail("Enable standard routing to use buses, custom sends or sidechains.");
     }
     if let Some(cycle) = find_cycle(&edges) {
         return fail(format!("Routing feedback is unsupported. Cycle includes: {}.", cycle.join(", ")));

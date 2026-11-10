@@ -400,6 +400,45 @@ impl Audio {
         Ok(status)
     }
 
+    /// `routing.capabilities`: what the mixer can route and export. The limits are the project
+    /// format's; the export targets and sidechain inputs are those of the mixer in use.
+    fn routing_capabilities(&self, _: NoPayload) -> Result<Value> {
+        let targets = self.engine.routing_targets();
+        let list = |key: &str| targets.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
+        let export_targets: Vec<Value> = list("strips")
+            .into_iter()
+            .map(|strip| {
+                let master = strip["kind"] == "master";
+                json!({
+                    "owner": strip["owner"], "name": strip["name"], "kind": strip["kind"],
+                    "boundary": if master { "masterOutput" } else { "postFaderPreParent" }, "available": true,
+                })
+            })
+            .collect();
+        // An insert has one stereo sidechain input (bus 1 beside its main input).
+        let sidechain_inputs: Vec<Value> = list("sidechainInputs")
+            .into_iter()
+            .map(|input| {
+                json!({
+                    "instanceID": input["instanceID"], "owner": input["owner"], "slot": input["slot"], "pluginName": input["pluginName"],
+                    "inputBus": 1, "layoutSignature": { "name": "Sidechain", "channels": 2 }, "available": true,
+                })
+            })
+            .collect();
+        Ok(json!({
+            "supported": true,
+            "mixModels": ["standard"],
+            "outputs": true,
+            "buses": { "group": true, "return": true, "max": st_project::validate::MAX_BUSES },
+            "sends": { "enabled": true, "taps": ["preFader", "postFader"], "max": st_project::validate::MAX_ROUTES },
+            "sidechains": { "enabled": true, "taps": ["preInserts", "preFader", "postFader"], "max": st_project::validate::MAX_ROUTES, "inputs": sidechain_inputs },
+            "projectUnavailable": false,
+            "fullGraphStems": true,
+            "exportTargets": export_targets,
+            "audioExport": st_samples::export::format::capabilities(),
+        }))
+    }
+
     fn effects(&self, _: NoPayload) -> Result<Value> {
         Ok(builtin_effects_metadata())
     }
@@ -491,6 +530,7 @@ pub fn install(commands: &mut Commands, session: &crate::Session, settings: &Arc
         .register("midi.expression", Audio::expression)
         .register("engine.snapshot", Audio::snapshot)
         .register("routing.status", Audio::routing_status)
+        .register("routing.capabilities", Audio::routing_capabilities)
         .register("builtin.effects", Audio::effects)
         .register_blocking("audio.devices", Audio::devices)
         .register_blocking("audio.configure", Audio::configure);

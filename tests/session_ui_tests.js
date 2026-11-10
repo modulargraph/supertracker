@@ -53,7 +53,7 @@ async function run(){
       else{h.ST.state.dirty=false;h.handlers.set('project.open',()=>({project:saved}));await h.ST.projectAction('open','/tmp/existing.supertracker');}
       const project=h.ST.state.project;assert.equal(project.name,'Existing dimensions');assert.equal(project.tracks.length,3);
       assert.equal(project.patterns.length,2);assert.ok(project.patterns.every(p=>p.length===23&&p.steps.length===3));
-      assert.equal(JSON.stringify(project.patterns.map(p=>p.steps)),expected);assert.equal(project.routing,undefined,'Opening legacy sessions must not silently change their routing model');
+      assert.equal(JSON.stringify(project.patterns.map(p=>p.steps)),expected);assert.deepEqual(JSON.parse(JSON.stringify(project.routing)),{version:1,mixModel:'standard',buses:[],outputs:{},sends:[],sidechains:[]},'A session without a routing table gets the empty one: there is one mix model');
     }
     console.log('PASS startup recovery and Open preserve saved lane counts, pattern lengths, and notes');
   }

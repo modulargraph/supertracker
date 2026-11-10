@@ -2,7 +2,6 @@
 (() => {
   'use strict';
   const ui = {
-    mixerRole: 'vol',
     pluginMoving: false,
     effectMoveDone: null,
     pluginEditing: 0,
@@ -45,7 +44,6 @@
   const pattern = () => project().patterns.find(item => item.id === project().activePattern) || project().patterns[0];
   const lanes = () => pattern().automation || [];
   const selectedLane = () => lanes()[clamp(state().selectedLane, 0, Math.max(0, lanes().length - 1))];
-  const standardRouting = (p = project()) => p.routing?.mixModel === 'standard';
   const trackOwner = (index, p = project()) => `track:${p.tracks[index]?.routingID ?? index}`;
   const normalizeOwner = (owner, p = project()) => typeof owner === 'number' || /^\d+$/.test(String(owner))
       ? trackOwner(Number(owner), p)
@@ -53,13 +51,13 @@
   // Tracks in track order; a track group shows its bus strip followed by its member strips
   // (hidden while the group is collapsed in the mixer). Other buses and Master follow.
   function channels(p = project()) {
-    const groups = standardRouting(p) ? window.STGroups?.list(p) || [] : [],
+    const groups = window.STGroups?.list(p) || [],
       groupBuses = new Set(groups.map(group => group.busID)),
       result = [];
     p.tracks.forEach((track, index) => {
       const group = groups.length ? window.STGroups.ofTrack(p, index) : null;
       if (group && window.STGroups.members(p, group)[0] === index) {
-        const bus = p.routing.buses?.find(item => item.id === group.busID);
+        const bus = p.routing?.buses?.find(item => item.id === group.busID);
         if (bus) result.push({ owner: `bus:${bus.id}`, type: 'group', name: bus.name, entity: bus, token: `bus-${bus.id}`, group, groupHead: true });
       }
       result.push({
@@ -73,7 +71,7 @@
         hiddenByGroup: !!group?.mixerCollapsed
       });
     });
-    if (standardRouting(p)) for (const type of ['group', 'return']) for (const bus of p.routing.buses || []) if (bus.type === type && !groupBuses.has(bus.id)) result.push({
+    for (const type of ['group', 'return']) for (const bus of p.routing?.buses || []) if (bus.type === type && !groupBuses.has(bus.id)) result.push({
       owner: `bus:${bus.id}`,
       type,
       name: bus.name,
@@ -96,12 +94,11 @@
     const selected = channelFor(state().mixerOwner);
     if (selected
         && selected.type !== 'instrument'
-        && (standardRouting() || selected.type === 'track')
         && (selected.type !== 'track' || selected.track === trackIndex())) return selected.owner;
     return trackOwner(trackIndex());
   }
   function selectOwner(owner) {
-    const channel = channelFor(owner); if (!channel || channel.type === 'instrument' || (!standardRouting() && channel.type !== 'track')) return false;
+    const channel = channelFor(owner); if (!channel || channel.type === 'instrument') return false;
     state().mixerOwner = channel.owner;
     if (channel.type === 'track') selectTrack(channel.track);
     return true;
@@ -127,10 +124,7 @@
   const mixerHeading = () => `<h2>Mixer<output id="mixer-current-channel" aria-label="Current mixer channel" title="${esc(mixerIdentity())}">${esc(mixerIdentity())}</output></h2>`;
   const ownerForPlugin = (plugin, p = project()) => normalizeOwner(plugin.owner ?? plugin.track, p);
   const ownerForLane = lane => normalizeOwner(lane.owner ?? lane.track);
-  const ownerPayload = owner => {
-    const channel = channelFor(owner);
-    return channel?.type === 'track' && !standardRouting() ? { track: channel.track } : { owner: normalizeOwner(owner) };
-  };
+  const ownerPayload = owner => ({ owner: normalizeOwner(owner) });
   const pluginKey = (owner, slot, kind = 'effect') => `${normalizeOwner(owner)}:${kind}:${slot}`;
   const pluginsFor = owner => (project().audioPlugins || []).filter(plugin => ownerForPlugin(plugin) === normalizeOwner(owner));
   const effectsFor = owner => pluginsFor(owner).filter(plugin => plugin.kind === 'effect').sort((a, b) => a.slot - b.slot);
@@ -275,7 +269,7 @@
 
   function allTargets(track) {
     const results = builtInTargets(track);
-    if (standardRouting()) for (const send of project().routing.sends || []) if (normalizeOwner(send.source) === normalizeOwner(track)) results.push({
+    for (const send of project().routing?.sends || []) if (normalizeOwner(send.source) === normalizeOwner(track)) results.push({
       target: `send:${send.id}`,
       name: `Send to ${channelTitle(send.destination)}`,
       group: send.tap === 'preFader' ? 'Pre-fader sends' : 'Post-fader sends',
@@ -368,60 +362,7 @@
       });
     }, { passive: true });
   }
-  function renderMixer() {
-    if (standardRouting()) return renderRoutedMixer();
-    const p = project();
-    const active = trackIndex();
-    const effects = effectsFor(active);
-    const delay = Object.assign({ time: .375, feedback: .35, mix: .3 }, p.delay);
-    const reverb = Object.assign({ size: .7, damping: .4, mix: .25 }, p.reverb);
-    return `<div class="studio-mixer" id="mixer-workspace" data-scroll="mixer-workspace">
-      <div class="panel-head"><div>${mixerHeading()}<p class="muted">← → channel · ↑ ↓ adjust · Tab controls · ⌥A automate</p>`
-          + `</div><button class="btn" data-studio-action="panic">Silence all</button></div>
-      <div class="studio-channels${mixerVirtual(p.tracks.length) ? ' is-virtual' : ''}" id="mixer-channels" data-scroll="mixer-channels"`
-          + ` tabindex="0" aria-label="Track mixer. Left and right select channels. Tab moves between controls.">${mixerStrips(p.tracks.length, active, i => { const t = p.tracks[i]; return `<section class="studio-channel ${i === active ? 'is-selected' : ''}" style="--track-color:${/^#[0-9a-f]{3,8}$/i.test(t.color || '') ? t.color : '#7edac4'}"`
-          + ` data-mixer-channel="${i}" aria-label="${esc(t.name)} mixer">
-        <button class="studio-channel-title" id="mix-track-${i}" tabindex="${i === active ? 0 : -1}" data-select-track="${i}" aria-pressed="${i === active}">`
-            + `<span class="studio-channel-number">${String(i + 1).padStart(2, '0')}</span><strong>${esc(t.name)}</strong></button>${window.STTrackLanes?.stripDeleteButton(String(i), t.name, 'track', i === active ? 0 : -1) || ''}
-        <div class="studio-track-state"><button class="btn studio-small ${t.mute ? 'is-active' : ''}" id="mix-mute-${i}" tabindex="${i === active ? 0 : -1}"`
-            + ` data-toggle-track="mute" data-studio-track="${i}" aria-pressed="${!!t.mute}" aria-label="Mute ${esc(t.name)}">M</button>`
-            + `<button class="btn studio-small ${t.solo ? 'is-active' : ''}" id="mix-solo-${i}" tabindex="${i === active ? 0 : -1}" data-toggle-track="solo"`
-            + ` data-studio-track="${i}" aria-pressed="${!!t.solo}" aria-label="Solo ${esc(t.name)}">S</button><span class="studio-track-type">${esc(p.instruments[t.instrument || 0]?.type || 'sample')}</span></div>
-        <div class="studio-fader-well"><div class="studio-meter" aria-hidden="true"><div data-track-meter="${i}" style="transform:scaleY(${clamp(ui.peaks[i], 0, 1)})">`
-            + `</div></div><label for="mix-vol-${i}" class="studio-volume"><output id="mix-vol-${i}-out">${db(number(t.volume, .8))}</output>`
-            + `<input id="mix-vol-${i}" tabindex="${i === active ? 0 : -1}" type="range" min="0" max="1.5" step=".01" value="${number(t.volume, .8)}"`
-            + ` data-studio-property="volume" data-studio-track="${i}" ${automateAttributes(i, 'volume', 'Track volume')} aria-label="${esc(t.name)} volume"`
-            + ` aria-valuetext="${db(number(t.volume, .8))}"></label></div>
-        ${range({ id: `mix-pan-${i}`, label: 'Pan', value: number(t.pan), min: -1, format: pan, track: i, target: 'pan', property: 'pan' })}
-        <div class="studio-send-label">Sends</div>
-        ${range({ id: `mix-delay-${i}`, label: 'Delay', value: number(t.delaySend), track: i, target: 'delay', property: 'delaySend' })}
-        ${range({ id: `mix-reverb-${i}`, label: 'Reverb', value: number(t.reverbSend), track: i, target: 'reverb', property: 'reverbSend' })}
-        <button class="studio-slot-summary" id="mix-slots-${i}" tabindex="${i === active ? 0 : -1}" data-select-track="${i}" title="Show track `
-            + `plug-ins">${effectsFor(i).length ? `${effectsFor(i).length} plug-in${effectsFor(i).length === 1 ? '' : 's'}` : '+ plug-in FX'}</button>
-      </section>`; })}
-      <section class="studio-channel studio-master" data-mixer-channel="master" aria-label="Master output"><div class="studio-channel-title">`
-          + `<span class="studio-channel-number">OUT</span><strong>Master</strong></div><div class="studio-master-badge">STEREO</div>`
-          + `<div class="studio-fader-well"><div class="studio-meter" aria-hidden="true"><div data-master-meter style="transform:scaleY(${ui.peak})">`
-          + `</div></div><label for="mix-master" class="studio-volume"><output id="mix-master-out">${db(number(p.masterVolume, .7))}</output>`
-          + `<input id="mix-master" type="range" min="0" max="1.5" step=".01" value="${number(p.masterVolume, .7)}" data-studio-property="masterVolume"`
-          + ` aria-label="Master volume"></label></div><p class="studio-hint">Stereo output<br>Post-fader level</p></section></div>
-      <div class="studio-bottom"><section class="panel studio-rack ${effects.length > 8 ? 'is-long' : ''}">${window.STInsertChain
-          ? rackWithChain(selectedOwner(), effects)
-          : `<div class="panel-head">`
-          + `<div><h3>${esc(p.tracks[active]?.name || 'Track')} / Inserts <span class="studio-slot-count">${effects.length}/${INSERT_SLOTS}</span>`
-          + `</h3><span class="studio-reorder-hint" role="status">${ui.pluginMoving ? 'Moving effect…' : '⌥ ↑ / ↓ reorder'}</span>`
-          + `</div><button class="btn" data-studio-action="add-plugin" ${effects.length >= INSERT_SLOTS || ui.pluginMoving ? 'disabled' : ''}>+ Add `
-          + `effect</button></div>
-      ${effects.length
-          ? effects.map(plugin => renderPlugin(plugin)).join('')
-          : `<div class="studio-empty"><p>No insert effects</p><small class="muted">Add a plug-in effect · ${INSERT_SLOTS} slots per track</small></div>`}
-      ${ui.pluginPicker ? renderPluginPicker() : ''}`}${window.STRouting?.render(selectedOwner()) || ''}</section>
-      <section class="panel studio-returns"><div class="panel-head"><div><h3>Send returns</h3></div></div><div class="studio-return-pair">`
-          + `<div><h4>01 · Delay</h4>${range({ id: 'delay-time', label: 'Time', value: delay.time, min: .01, max: 2, step: .005, format: v => `${Math.round(v * 1000)} ms`, group: 'delay', property: 'time' })}${range({ id: 'delay-feedback', label: 'Feedback', value: delay.feedback, max: .95, group: 'delay', property: 'feedback' })}${range({ id: 'delay-mix', label: 'Return', value: delay.mix, group: 'delay', property: 'mix' })}</div>`
-          + `<div><h4>02 · Reverb</h4>${range({ id: 'reverb-size', label: 'Room size', value: reverb.size, group: 'reverb', property: 'size' })}${range({ id: 'reverb-damping', label: 'Damping', value: reverb.damping, group: 'reverb', property: 'damping' })}${range({ id: 'reverb-mix', label: 'Return', value: reverb.mix, group: 'reverb', property: 'mix' })}</div>`
-          + `</div></section></div>
-    </div>`;
-  }
+  const renderMixer = () => renderRoutedMixer();
 
   function routedRange(channel, role, label, value, property, max = 1, min = 0, format = gain) {
     const id = channelControlId(role, channel);
@@ -437,8 +378,8 @@
       entity = channel.entity;
     const level = master ? number(project().masterVolume, .7) : number(entity.volume, track ? .8 : 1);
     const peak = master ? ui.peak : track ? number(ui.peaks[channel.track]) : Math.max(...(ui.busPeaks[channel.owner] || [0]));
-    const sendCount = (project().routing.sends || []).filter(send => send.source === channel.owner).length;
-    const output = project().routing.outputs?.[channel.owner], outputName = output === null ? 'No output' : channelTitle(output || 'master');
+    const sendCount = (project().routing?.sends || []).filter(send => send.source === channel.owner).length;
+    const output = project().routing?.outputs?.[channel.owner], outputName = output === null ? 'No output' : channelTitle(output || 'master');
     const tab = selected ? 0 : -1,
       prefix = track
           ? String(channel.track + 1).padStart(2, '0')
@@ -932,18 +873,6 @@
     document.querySelectorAll('.studio-plugin').forEach(details => details.addEventListener('toggle', () => {
       ui.openPlugins.set(pluginKey(details.dataset.pluginOwner || Number(details.dataset.pluginTrack), Number(details.dataset.pluginSlot)),
           details.open);
-    }));
-    document.querySelectorAll('[data-select-track]').forEach(button => button.addEventListener('click', () => {
-      selectTrack(button.dataset.selectTrack);
-      S().refresh();
-      focusMixerControl(button.id);
-    }));
-    document.querySelectorAll('[data-toggle-track]').forEach(button => button.addEventListener('click', () => {
-      const index = Number(button.dataset.studioTrack);
-      const key = button.dataset.toggleTrack;
-      mutate(`${key === 'mute' ? 'Mute' : 'Solo'} track`, p => {
-        p.tracks[index][key] = !p.tracks[index][key];
-      });
     }));
     document.querySelectorAll('[data-studio-property]').forEach(input => {
       input.addEventListener('input', () => {
@@ -1481,7 +1410,7 @@
         + `</div><span class="chip">${existing.length} lane${existing.length === 1 ? '' : 's'}</span></div>
       ${patternBar(ref, lane)}
       <div class="studio-automation-layout"><aside class="panel studio-target-panel"><label class="studio-control-label" for="automation-track">Channel</label>`
-          + `<select class="field" id="automation-track">${channels().filter(channel => standardRouting() || channel.type === 'track').map(channel => `<option value="${esc(standardRouting() ? channel.owner : channel.track)}" ${channel.owner === track ? 'selected' : ''}>${channel.type === 'track'
+          + `<select class="field" id="automation-track">${channels().map(channel => `<option value="${esc(channel.owner)}" ${channel.owner === track ? 'selected' : ''}>${channel.type === 'track'
               ? String(channel.track + 1).padStart(2, '0')
               : channel.type === 'master'
               ? 'Out'
@@ -1922,7 +1851,7 @@
             || event.key === 'ArrowRight') { event.preventDefault(); summary.parentElement.open = event.key === 'ArrowRight'; return true; }
         if (focusAdjacent(event, '.studio-plugin > summary')) return true;
       }
-      if (standardRouting()) {
+      {
         const channelNode = target?.closest?.('[data-mixer-owner]'),
           role = target?.dataset?.mixerRole
               || /^mix-(track|mute|solo|vol|pan|delay|reverb|slots|output|sends)-/.exec(target?.id || '')?.[1]
@@ -1941,28 +1870,6 @@
               ? desired
               : channelControlId('track',list[next])); return true;
         }
-      }
-      const role = /^mix-(track|mute|solo|vol|pan|delay|reverb|slots)-(\d+)$/.exec(target?.id || '');
-      const master = target?.id === 'mix-master';
-      const strip = target?.id === 'mixer-channels' || target?.id === 'mixer-workspace' || target?.id === 'main' || target === document.body;
-      const channel = target?.closest?.('[data-mixer-channel]');
-      const horizontal = event.key === 'ArrowLeft' || event.key === 'ArrowRight';
-      const edge = ['Home', 'End'].includes(event.key) && target?.type !== 'range';
-      if ((role || master || strip || channel) && (horizontal || edge)) {
-        const count = project().tracks.length; if (!count) return false;
-        event.preventDefault();
-        const source = master
-            ? count
-            : role
-            ? Number(role[2])
-            : channel?.dataset.mixerChannel === 'master'
-            ? count
-            : Number(channel?.dataset.mixerChannel ?? trackIndex());
-        const next = event.key === 'Home' ? 0 : event.key === 'End' ? count - 1 : clamp(source + (event.key === 'ArrowRight' ? 1 : -1), 0, count);
-        const control = role?.[1] || (master ? ui.mixerRole : 'track');
-        ui.mixerRole = control;
-        if (next === count) { focusMixerControl('mix-master'); return true; }
-        selectTrack(next); S().refresh(); focusMixerControl(`mix-${control}-${next}`); return true;
       }
     }
     if (state().view === 'automation') {

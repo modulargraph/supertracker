@@ -39,7 +39,7 @@ function fixture() {
     sequence: [0]
   };
 }
-const capabilities = () => ({ supported: true, mixModels: ['legacy', 'standard'], outputs: true, buses: { group: true, return: true, max: 64 },
+const capabilities = () => ({ supported: true, mixModels: ['standard'], outputs: true, buses: { group: true, return: true, max: 64 },
   sends: { enabled: true, taps: ['preFader', 'postFader'], max: 128 }, sidechains: { enabled: false, taps: [], inputs: [] } });
 
 function harness(project = fixture(), { duringLoad, dropWrite, queueWrites, applyAfterReads = 1 } = {}) {
@@ -158,7 +158,7 @@ const tests = [], test = (name, fn) => tests.push({ name, fn });
 test('mixer describes master, buses and tracks; channels resolve by name, "bus:<id>" and "master"', async () => {
   const h = harness();
   const mixer = await h.ok('mixer');
-  assert.equal(mixer.mixModel, 'standard');
+  assert.equal(mixer.mixModel, undefined, 'there is one mix model: it is not reported');
   assert.deepEqual(mixer.master.inserts.map(x => x.name), ['Peak Limiter']);
   const kit = mixer.buses[0];
   assert.equal(kit.channel, 'bus:kit'); assert.equal(kit.type, 'group'); assert.equal(kit.output, 'master');
@@ -241,7 +241,7 @@ test('channel levels, mute and names are plain edits; outputs go through the rou
   await h.undo(); assert.equal(h.ST.state.project.routing.outputs['track:keys'], 'master');
 });
 
-test('buses and custom sends: create with inputs, send, edit, remove, remove bus; legacy songs explain enableStandardRouting', async () => {
+test('buses and custom sends: create with inputs, send, edit, remove, remove bus; a song without a routing table gets one', async () => {
   const h = harness();
   let undo = h.ST.state.undo.length;
   const bus = await h.ok('createBus', { name: 'Space', type: 'return', volume: '-3 dB' });
@@ -267,13 +267,9 @@ test('buses and custom sends: create with inputs, send, edit, remove, remove bus
   assert.equal(effects.sendEffects.reverb.predelay, '20 ms'); assert.equal(h.ST.state.undo.length, ++undo);
   await h.rejects('setSendEffects', { delay: { wobble: 1 } }, /Unknown delay setting "wobble". delay: time, feedback, tone, mix/);
 
-  const legacy = fixture(); legacy.routing = { version: 1, mixModel: 'legacy', buses: [], outputs: {}, sends: [], sidechains: [] }; legacy.audioPlugins = [];
-  const l = harness(legacy);
-  await l.rejects('createBus', { name: 'Drums' }, /A bus needs standard routing.*enableStandardRouting/);
-  await l.rejects('loadPlugin', { channel: 'master', plugin: 'Compressor' }, /Master inserts needs standard routing/);
-  const legacyMixer = await l.ok('mixer'); assert.equal(legacyMixer.mixModel, 'legacy'); assert.match(legacyMixer.note, /enableStandardRouting/);
-  const enabled = await l.ok('enableStandardRouting'); assert.equal(enabled.mixModel, 'standard'); assert.equal(l.ST.state.undo.at(-1).label, 'AI: enable standard routing');
-  await l.ok('createBus', { name: 'Drums', inputs: [0, 1] }); assert.equal(l.ST.state.project.routing.buses[0].name, 'Drums');
+  const bare = fixture(); delete bare.routing; bare.audioPlugins = [];
+  const l = harness(bare);
+  await l.ok('createBus', { name: 'Drums', inputs: [0, 1] }); assert.equal(l.ST.state.project.routing.mixModel, 'standard'); assert.equal(l.ST.state.project.routing.buses[0].name, 'Drums');
 });
 
 test('bus and master automation are owner lanes in units; track send lanes are owner lanes too', async () => {

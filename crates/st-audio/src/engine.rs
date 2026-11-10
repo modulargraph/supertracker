@@ -689,6 +689,46 @@ impl AudioEngine {
         routing
     }
 
+    /// What the mixer in use offers to route and export: `strips` (`{owner, name, kind}` in mixer
+    /// order; kind is `track`, `group`, `return` or `master`) and `sidechainInputs`, the inserts
+    /// that read a sidechain (`{instanceID, owner, slot, pluginName}`).
+    pub fn routing_targets(&self) -> Value {
+        let state = self.lock();
+        let strips: Vec<Value> = state
+            .core
+            .spec
+            .strips
+            .iter()
+            .map(|strip| {
+                let kind = match strip.kind {
+                    StripKind::Track(_) => "track",
+                    StripKind::Group => "group",
+                    StripKind::Return => "return",
+                    StripKind::Master => "master",
+                };
+                json!({ "owner": strip.id, "name": strip.name, "kind": kind })
+            })
+            .collect();
+        let descriptors = state.project.as_ref().map(|project| project.plugin_list()).unwrap_or_default();
+        let inputs: Vec<Value> = state
+            .core
+            .compiler
+            .insert_report()
+            .iter()
+            .filter(|insert| insert.sidechain && insert.available && !insert.instrument && !insert.instance_id.is_empty())
+            .map(|insert| {
+                let name = descriptors
+                    .iter()
+                    .find(|descriptor| descriptor.instance_id.as_deref() == Some(insert.instance_id.as_str()))
+                    .and_then(|descriptor| descriptor.name.clone())
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or_else(|| insert.component.clone());
+                json!({ "instanceID": insert.instance_id, "owner": insert.owner, "slot": insert.slot, "pluginName": name })
+            })
+            .collect();
+        json!({ "strips": strips, "sidechainInputs": inputs })
+    }
+
     /// The inserts of the mixer in use.
     pub fn inserts(&self) -> Vec<InsertStatus> {
         self.lock().core.compiler.insert_report().to_vec()

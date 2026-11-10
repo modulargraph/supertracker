@@ -6,11 +6,9 @@ use crate::json::{model, string_enum};
 use std::collections::BTreeMap;
 
 string_enum! {
-    /// How track and master faders are applied.
+    /// How the project is mixed. There is one model.
     pub enum MixModel {
-        /// The engine applies track and master mix itself; no buses, custom sends or sidechains.
-        Legacy = "legacy",
-        /// Every channel is a mixer strip in the host; what new projects use.
+        /// Every channel is a mixer strip in the host.
         Standard = "standard",
     }
 }

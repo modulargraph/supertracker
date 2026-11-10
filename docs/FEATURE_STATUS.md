@@ -29,13 +29,12 @@ feature is twice: does the interface do it, and does the new host carry it.
 
 ## What the host does not do yet
 
-[HOST.md](HOST.md) has the full command table (108 of 120 commands implemented, 4 more in part). Missing:
+[HOST.md](HOST.md) has the full command table (111 of 120 commands implemented, 4 more in part). Missing:
 
 | Feature | State |
 |---|---|
 | Live line inputs routed into track strips (`audio.inputs`, `audio.inputs.configure`) | Not implemented. Recording an input to a file works. |
 | Freeze by recording (for tracks whose sound comes from outside the computer) | Not implemented; offline freeze works. |
-| Routing checks before a change is made (`routing.capabilities`, `routing.validate`, `routing.apply`) | Not implemented; the mixer is rebuilt from each published project and reports what it could not connect in `routing.status`. |
 | Audio preview file for a saved kit (`audio.kitPreview`) | Not implemented; kits save without a preview. |
 | Controllers other than pitch bend, mod wheel and sustain, and aftertouch, to plug-in and external instruments (`midi.expression`) | Not implemented. |
 | Base patch capture for plug-in parameter locks (`plugin.captureBasePatch`) | Not implemented. |
@@ -47,7 +46,7 @@ feature is twice: does the interface do it, and does the new host carry it.
 - VST2 hosting. NKS presets and Maschine groups that name a VST2 plug-in are still read: a preset loads into the
   vendor's VST2-compatible VST3 when that is installed; a group keeps the plug-in's state and says so.
 - Opening projects, kits, built-in effect states and plug-in states saved by 0.1. Nothing is migrated.
-- The second mixer ("legacy" routing). Every project uses the routed mixer.
+- The second mixer ("legacy" mix) and the dialog that switched a song to standard routing. Every project uses the routed mixer; `mixModel: "legacy"` is refused.
 - The in-app self-test modes and the hidden script runner. The host tests and the browser test take their place.
 
 ## Features of the interface
@@ -63,7 +62,7 @@ how far the Rust host has been checked.
 | Instruments | Synth, sampler (1-shot, loops, slice, wavetable, granular), six drum models, multisample zones, filter envelope, two LFOs, plug-in and external MIDI instruments. | Engine tests per mode; plug-in instrument playing a pattern in host tests. |
 | Sample editor | Zoom, markers, zero-crossing snap, trim, fades, normalize, reverse, gain, slicing (equal, beat, transient), time stretch; edits write new files. | `st-samples` tests; `sample.*` commands in host tests. |
 | Built-in effects | 34 effects as inserts on tracks, instruments, buses and Master. | Engine tests per effect; inserts in the graph in host tests. |
-| Mixer | Tracks, groups, returns, Master, sends, sidechains, sixteen inserts per channel, plug-in delay compensation, meters. | Offline renders against the mixer's rules; delay compensation following a plug-in's latency change. |
+| Mixer | Tracks, groups, returns, Master, sends, sidechains, sixteen inserts per channel, plug-in delay compensation, meters. | Offline renders against the mixer's rules; delay compensation following a plug-in's latency change; in the browser test a return bus and a send made in the mixer carry signal. |
 | Automation | Lanes per pattern and across the song, linear and step, Read/Touch/Latch/Write recording, MIDI CC learn. | Engine tests; mix and plug-in automation at their frames in host tests. |
 | Song | Arranger with repeats, section loop, song scroll, audio clips and takes. | Engine tests for song order and loops; clip loading in host tests. |
 | Browsers | Samples, NKS presets, kits and plug-ins with search, filters, favorites and previews. | Library through the bridge on generated files; a folder scanned and searched in the browser test. Not run on a real library. |

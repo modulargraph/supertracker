@@ -276,6 +276,8 @@
           ? Number(p.timeSignature.denominator)
           : 4
     };
+    // One mix model: every project is routed (a project without buses is the same mixer without them).
+    if (!p.routing || typeof p.routing !== 'object') p.routing = { version: 1, mixModel: 'standard', buses: [], outputs: {}, sends: [], sidechains: [] };
     p.metronome = !!p.metronome;
     p.metronomeVolume = p.metronomeVolume ?? .4;
     p.masterVolume = p.masterVolume ?? .7;

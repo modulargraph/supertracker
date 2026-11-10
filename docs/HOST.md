@@ -14,7 +14,7 @@ run and test it, and every bridge command with the crate that owns it and its st
 | Window: tao + wry + muda, menus, native context menus, file choosers, quit handshake | `st-app` | runs on Linux (GTK/WebKitGTK, checked in a virtual display); macOS code type-checks, **not yet run on a Mac** |
 | Audio playback core: project to engine, the mixer graph (strips, inserts with built-in effects, sends, sidechains, buses, master, delay compensation, automation, meters), transport, live notes, devices (cpal and the null device), offline render | `st-audio` on `tracker-engine`, registered in `st-host` (`areas/audio.rs`) | done, tested on Linux (offline renders, allocation-free render path, null device, Chromium end to end); CoreAudio only type-checked |
 | Plug-ins: instances in container processes as inserts and instruments of the mixer (latency into delay compensation, sidechains, automation and step locks with frame offsets, notes of plug-in instruments, state in the project), the catalogue (scanned by container processes, blocklist), crash recovery (`plugin.*`, `plugins.*`) | `st-audio` (`plugins`) on the container client (`crates/plugin-host`), registered in `st-host` (`areas/plugins.rs`) | done, tested on Linux with the CLAP and VST3 test plug-ins and the real container process (offline renders compared bit for bit, allocation-free render path with plug-ins, the bridge on the null device, Chromium end to end). Audio Units, editor windows of VST3 and Audio Units, and yielding activation to a container before its editor is focused are macOS only: type-checked, **not yet run on a Mac**. No third-party plug-in has been loaded yet |
-| Samples (decoding on worker threads, edits, slices, sampler playheads), browser previews, export / bounce / render selection / Track Freeze on a private offline engine, recording of the master output or an input | `st-audio` (with `st-samples`), registered in `st-host` (`areas/samples.rs`, `areas/export.rs`, `areas/recording.rs`) | done, tested on Linux (offline renders, the null device and the null input, Chromium end to end for sample loading and export); `cpal` input streams only type-checked for macOS and never opened on a real device. Not implemented: live line inputs into track strips (`audio.inputs`), freeze by recording, `routing.capabilities` (the export dialog's encodings and stem picker), `audio.kitPreview` |
+| Samples (decoding on worker threads, edits, slices, sampler playheads), browser previews, export / bounce / render selection / Track Freeze on a private offline engine, recording of the master output or an input | `st-audio` (with `st-samples`), registered in `st-host` (`areas/samples.rs`, `areas/export.rs`, `areas/recording.rs`) | done, tested on Linux (offline renders, the null device and the null input, Chromium end to end for sample loading and export); `cpal` input streams only type-checked for macOS and never opened on a real device. Not implemented: live line inputs into track strips (`audio.inputs`), freeze by recording, `audio.kitPreview` |
 | Sound library: folders, index and search, favorites and labels, NKS catalogue, kits (`library.*`, `kit.*`) | `st-library`, registered in `st-host` (`areas/library.rs`) | done, tested on Linux (bridge tests on generated audio files; the Browser workspace in Chromium end to end). The standard content folders and NKS registrations of macOS are named in code that has not run on a Mac |
 | MIDI: devices with hot-plug, input to the engine (with recording captures), output of external-MIDI instruments from the render thread, MIDI clock and transport out (`midi.*`) | `st-midi`, connected to `st-audio` in `st-host` (`areas/midi.rs`; the audio side's seam is `st_audio::midi`) | done, tested on Linux with in-memory ports (note times, clock against tempo, input acknowledgements). **No real MIDI device has been opened** (ALSA sequencer, CoreMIDI) |
 | Maschine MK3 (`mk3.*`), off unless turned on in Settings; `--mk3-probe` | `st-mk3`, registered in `st-host` (`areas/mk3.rs`) | commands tested through the bridge against the in-memory controller; **never run with a controller** (see `cargo doc -p st-mk3`) |
@@ -179,16 +179,16 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the hand
 <!-- commands:begin (generated from crates/st-host/src/catalog_table.rs; see crates/st-host/tests/host_doc.rs) -->
 | Crate | Commands | Implemented | Partial | Not yet |
 |---|---:|---:|---:|---:|
-| `st-host` | 15 | 15 | 0 | 0 |
+| `st-host` | 16 | 16 | 0 | 0 |
 | `st-app` | 2 | 2 | 0 | 0 |
-| `st-project` | 9 | 9 | 0 | 0 |
-| `st-audio` | 56 | 45 | 3 | 8 |
+| `st-project` | 10 | 10 | 0 | 0 |
+| `st-audio` | 54 | 46 | 3 | 5 |
 | `st-plugin-*` | 4 | 4 | 0 | 0 |
 | `st-library` | 21 | 20 | 1 | 0 |
 | `st-midi` | 4 | 4 | 0 | 0 |
 | `st-mk3` | 6 | 6 | 0 | 0 |
 | `st-agent` | 3 | 3 | 0 | 0 |
-| **all** | **120** | **108** | **4** | **8** |
+| **all** | **120** | **111** | **4** | **5** |
 
 ### `st-host`
 
@@ -207,6 +207,7 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the hand
 | `project.save` | `{project?, path?, collectSamples?}` | {project, path, saved: true, recoveryWarning?} or {cancelled: true} | implemented | The document and its media folder. Plug-in state is captured through engine.snapshot first; a plug-in whose state cannot be read fails the save with its name. |
 | `project.saveAs` | `{project?, path?, collectSamples?}` | as project.save | implemented | Always asks where unless a path is given. |
 | `ready` | `{}` | {version, commands, project, dirty, path, roots, plugins, audio, midi, pluginRecovery?, warning?, audioError?, openPath?} | implemented | The handshake. roots, plugins, audio, midi and pluginRecovery come from library.roots, plugins.list, audio.devices, midi.devices and plugins.recovery when those are registered, and are empty until then. |
+| `routing.apply` | `{project}` | {project, capabilities?, status?} | implemented | Publishes the project like engine.project (the mixer is rebuilt from it; an invalid project is refused and nothing changes) and answers with the project as the session holds it, routing.capabilities and routing.status of the rebuilt mixer. |
 | `settings.get` | `{key?}` | {value} or {values: {…}} | implemented | interface preferences in settings.json (section `interface`). Not used by the page yet. |
 | `settings.set` | `{key, value} (null removes)` | {} | implemented | See settings.get. |
 
@@ -230,6 +231,7 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the hand
 | `project.templates.list` | `{}` | {templates: [{id, name, path}], defaultID} \| | implemented |  |
 | `project.templates.save` | `{project?, name, id?}` | {id, name, path} | implemented | Does not touch the open session. |
 | `project.templates.setDefault` | `{id: string or null}` | {defaultID} | implemented | The id field must be present. |
+| `routing.validate` | `{project}` | {valid: true} or {valid: false, error} | implemented | st_project::validate on the proposed project; nothing is changed. |
 
 ### `st-audio`
 
@@ -269,10 +271,8 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the hand
 | `plugin.state` | `{} for all, or a target, or a target + {state: string} to restore` | [descriptors with state] or one descriptor (stateError when capture failed) | implemented | The page rejects a reply whose result has stateError. Only the targeted plug-in is asked for its state. |
 | `render.cancelSelection` | `{}` | {cancelled: bool} | implemented | Cancels the running render.selection, which then fails with "The render was cancelled." |
 | `render.selection` | `{pattern, tracks: [index], firstRow, lastRow, mode?: "master" or "track", tail? (maximum, 0..60 s, default 10), thresholdDB?, holdSeconds?, sampleRate?, channels?, normalize?, name?, path?}` | {path, name, frames, sampleRate, channels, musicalFrames, renderedFrames, tailFrames, tailEnd: "silence" or "maximum", peak, normalizeGain, mode, latencyFrames, plugins, rootNote, warnings?}; progress in render.selectionProgress {job, phase, progress} events | implemented | Long: sent with ST.longRequest. st_audio::render_selection on a private engine while the live one plays; the sample is a 32-bit float WAV in Recordings of the support folder (or path). |
-| `routing.apply` | `{project}` | {project, routing, status} | not yet | Validates and applies a routing change with the complete project. |
-| `routing.capabilities` | `{}` | {maxBuses, sidechain support, …, audioExport: formats} \| | not yet |  |
+| `routing.capabilities` | `{}` | {supported, mixModels: ["standard"], outputs, buses: {group, return, max}, sends: {enabled, taps, max}, sidechains: {enabled, taps, max, inputs: [{instanceID, owner, slot, pluginName, inputBus, layoutSignature, available}]}, projectUnavailable, fullGraphStems, exportTargets: [{owner, name, kind, boundary, available}], audioExport} | implemented | The limits are the project format's. exportTargets are the channels of the mixer in use (stems are taken after the fader, before the parent bus; master is the complete mix). sidechains.inputs are the inserts that read a sidechain: built-in effects with a key input and plug-ins with a second input bus. audioExport is st_samples::export::format::capabilities. |
 | `routing.status` | `{}` | {projectUnavailable?: bool, failure?, strips…} | partial | The compiled mixer: {standard, strips, inserts: [{owner, slot, instanceID, component, available, reason?, latencyFrames, instrument?, format?, lost?}], unavailableSidechains, latencyFrames, pluginsRestoring}. An insert whose plug-in could not be loaded, is held back or was lost while running is unavailable with the reason and passes its signal through. A project the mixer cannot render is refused at publication, so projectUnavailable is always false and failure null. |
-| `routing.validate` | `{project}` | validation report {valid, errors, latency…} \| | not yet |  |
 | `sample.analyzeSlices` | `{instrument, path?, sensitivity?, minimumGapSeconds?, maximumSlices?, start?, end?}` | {method, slicePoints, slices, sliceCount, …} | implemented | Transient detection (st-samples analyze_slices) on the command's worker thread. |
 | `sample.edit` | `{instrument, path?, operation, start, end, peak?, decibels?, curve?, ratio?, sourceBPM?, targetBPM?, outputDirectory?}` | sample info of the edited sample (its path is the new file) | implemented | st-samples edit_to_file: a new 24-bit WAV in Edits of the support folder; the source file is never modified. The result is in the sample cache at once. |
 | `sample.info` | `{instrument, path}` | sample info, or {available: false} | implemented | Answers from the cache when the published instrument plays that path; never decodes. |

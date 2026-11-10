@@ -1679,18 +1679,6 @@
    ]
   },
   {
-   "name": "enable_standard_routing",
-   "method": "enableStandardRouting",
-   "description": "Switch a legacy-mix song to standard routing so it can have buses, track outputs, custom sends and master inserts (one undo step). It changes the gain order (track faders after inserts, master gain after the routing graph): ask the user first.",
-   "properties": {
-    "label": {
-     "type": "string",
-     "description": "Optional undo label (shown as \"AI: <label>\" in Edit › Undo)."
-    }
-   },
-   "required": []
-  },
-  {
    "name": "set_performance",
    "method": "setPerformance",
    "description": "Keyboard performance settings used when the user plays the computer keyboard / MIDI: scale, root, chord, chordSet (\"\" = off), scaleMode (snap/degrees), octave. Call with no arguments to list the options.",

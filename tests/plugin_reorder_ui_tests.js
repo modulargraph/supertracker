@@ -1,6 +1,8 @@
 'use strict';
 // Drive the real mixer module. Native fixtures model the plugin.move response contract.
 const assert = require('node:assert/strict');
+// The mixer addresses a channel by owner; these fixtures' tracks have no routingID, so the owner is `track:<index>`.
+const trackOf = payload => payload.track ?? Number(String(payload.owner).split(':')[1]);
 const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const fs = require('node:fs');
@@ -28,7 +30,7 @@ function harness(slots) {
     const item = { id, dataset, tagName, type: tagName === 'INPUT' ? 'range' : '', handlers: {}, value: '.5', disabled: false, style: {}, classList: { toggle() {} }, setAttribute() {}, addEventListener(type, fn) { (this.handlers[type] ||= []).push(fn); }, focus() { document.activeElement = this; }, scrollIntoView() { this.scrolled = true; }, closest(selector) { return selector === '.studio-plugin > summary' && this.tagName === 'SUMMARY' ? this : null; }, async fire(type, extra = {}) { for (const fn of this.handlers[type] || []) await fn({ target: this, ...extra }); } }; nodes.set(id, item); return item;
   }
   const state = { project: fixture(slots), track: 0, instrument: 0, view: 'mixer', selectedLane: 0, plugins: [] };
-  let native = (command, payload) => command === 'plugin.move' ? response(state.project, payload.track, payload.fromSlot, payload.toSlot) : command === 'plugin.parameters' ? { parameters: state.project.audioPlugins.find(p => p.track === payload.track && p.kind === payload.kind && p.slot === payload.slot)?.parameters || [] } : command === 'plugin.state' ? state.project.audioPlugins.find(p => p.track === payload.track && p.kind === payload.kind && p.slot === payload.slot) : {};
+  let native = (command, payload) => command === 'plugin.move' ? response(state.project, trackOf(payload), payload.fromSlot, payload.toSlot) : command === 'plugin.parameters' ? { parameters: state.project.audioPlugins.find(p => p.track === trackOf(payload) && p.kind === payload.kind && p.slot === payload.slot)?.parameters || [] } : command === 'plugin.state' ? state.project.audioPlugins.find(p => p.track === trackOf(payload) && p.kind === payload.kind && p.slot === payload.slot) : {};
   const ST = { state, escapeHTML: value => String(value), toast(message, kind) { errors.push({ message, kind }); }, captureNativeEdits: async () => { calls.push({ command: 'capture' }); return true; }, syncEngine: async () => { calls.push({ command: 'sync' }); }, request(command, payload = {}) { calls.push({ command, payload: clone(payload) }); return Promise.resolve().then(() => native(command, payload)); }, mutate(label, fn) { mutations.push({ label, before: clone(state.project) }); fn(state.project); this.refresh(); }, refresh() { refreshes++; mount(); } };
   ST.syncEngineProject=async(makeProject,options={})=>{const project=makeProject();return project?ST.request('engine.project',{project,awaitPlugins:true,...(options.replace?{replace:true}:{})}):false;};
   const context = vm.createContext({ window: { ST }, document, setTimeout(fn) { const id = ++timerID; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); }, requestAnimationFrame: fn => fn() }); web.load(context, 'studio.js', { text: source }); const studio = context.window.STStudio;
@@ -62,7 +64,7 @@ function integratedHarness() {
   const window={addEventListener(){},STHostTransport:hostStub({post(message){
     const request=clone(message);calls.push(request);
     Promise.resolve().then(async()=>{
-      if(request.command==='plugin.move'){const result=response(nativeProject,request.payload.track,request.payload.fromSlot,request.payload.toSlot);await moveGate.promise;nativeProject.audioPlugins=[...nativeProject.audioPlugins.filter(p=>p.kind!=='effect'||p.track!==0),...clone(result.plugins)];return result;}
+      if(request.command==='plugin.move'){const result=response(nativeProject,trackOf(request.payload),request.payload.fromSlot,request.payload.toSlot);await moveGate.promise;nativeProject.audioPlugins=[...nativeProject.audioPlugins.filter(p=>p.kind!=='effect'||p.track!==0),...clone(result.plugins)];return result;}
       if(request.command==='engine.project'){nativeProject=clone(request.payload.project);return {};}
       if(request.command==='engine.snapshot')return {audioPlugins:clone(nativeProject.audioPlugins)};
       if(request.command==='project.save')return {saved:true,project:request.payload.project,path:'/tmp/session.supertracker'};
@@ -103,7 +105,7 @@ test('sparse reorder preserves slots, native states and bypass; all pattern effe
 
 test('host refreshing opaque plug-in state during the pre-move sync does not cancel the move', async () => {
   // plugins.changed replaces the descriptors (same instances, new state blobs, other key order), as Ozone 12 on Master did.
-  const h = harness(); await tick(); const base = (command, payload) => command === 'plugin.move' ? response(h.state.project, payload.track, payload.fromSlot, payload.toSlot) : { parameters: [] };
+  const h = harness(); await tick(); const base = (command, payload) => command === 'plugin.move' ? response(h.state.project, trackOf(payload), payload.fromSlot, payload.toSlot) : { parameters: [] };
   h.native = (command, payload) => {
     if (command === 'engine.project') h.state.project.audioPlugins = h.state.project.audioPlugins.map((p, i) => ({ state: `refreshed-${i}`, ...p, state: `refreshed-${i}` }));
     return base(command, payload);
@@ -115,7 +117,7 @@ test('host refreshing opaque plug-in state during the pre-move sync does not can
 
 test('Move down button uses adjacent occupied slot and follows the moved header', async () => {
   const h = harness([0,1,2]); await tick(); const button = h.nodes.get('plugin-move-down-0'); button.focus(); await button.fire('click'); await h.finish();
-  assert.deepEqual(h.calls.find(x => x.command === 'plugin.move').payload, { track:0,fromSlot:0,toSlot:1 }); assert.equal(h.document.activeElement.id, 'plugin-header-1');
+  assert.deepEqual(h.calls.find(x => x.command === 'plugin.move').payload, { owner:'track:0',fromSlot:0,toSlot:1 }); assert.equal(h.document.activeElement.id, 'plugin-header-1');
 });
 
 test('pending move suppresses duplicate moves, slot edits and preview timers; exposes completion gate', async () => {
@@ -168,7 +170,7 @@ test('late responses never attach to a replaced project, replaced track or edite
 
 test('malformed host order is rejected and authoritative current project is restored', async () => {
   for (const corrupt of [r=>r.track=1,r=>r.plugins[1].slot=r.plugins[0].slot,r=>r.slotMap.pop(),r=>r.slotMap[0].instanceID='wrong',r=>{r.plugins[0].component=r.previousPlugins[0].component='substitute';},r=>r.plugins[0].instanceID='wrong']) {
-    const h=harness(); await tick(); const original=clone(h.state.project); h.native=(command,payload)=>{if(command!=='plugin.move')return {parameters:[]};const r=response(h.state.project,payload.track,payload.fromSlot,payload.toSlot);corrupt(r);return r;};
+    const h=harness(); await tick(); const original=clone(h.state.project); h.native=(command,payload)=>{if(command!=='plugin.move')return {parameters:[]};const r=response(h.state.project,trackOf(payload),payload.fromSlot,payload.toSlot);corrupt(r);return r;};
     h.key(3,'ArrowUp'); await h.finish(); assert.deepEqual(h.state.project,original); assert.equal(h.mutations.length,0); assert(h.errors.some(x=>x.message.includes('mismatched'))); assert(h.calls.some(x=>x.command==='engine.project'));
   }
 });

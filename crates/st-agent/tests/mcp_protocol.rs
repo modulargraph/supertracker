@@ -109,7 +109,7 @@ fn the_catalogue_is_the_ported_table() {
             "edit_instrument", "search_library", "load_sample", "list_plugins", "load_plugin", "get_plugin_parameters",
             "set_plugin_parameters", "search_nks", "load_nks", "list_automation_targets", "set_automation", "delete_automation",
             "get_mixer", "edit_channel", "create_bus", "remove_bus", "set_send", "set_send_effects", "edit_insert",
-            "enable_standard_routing", "set_performance", "transport", "undo", "redo", "get_history", "save_project", "export_audio",
+            "set_performance", "transport", "undo", "redo", "get_history", "save_project", "export_audio",
             "list_commands", "run_command", "show_in_app", "call_api",
         ]
     );

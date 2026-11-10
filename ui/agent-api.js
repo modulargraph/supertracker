@@ -354,7 +354,6 @@
   /* Mixer channels, as the mixer (studio.js) and routing (routing.js) address them: {type: 'track' | 'group' |
      'return' | 'master', owner: 'track:<routingID>' | 'bus:<id>' | 'master', name, track?, bus?}. Callers name
      them "master", by bus name or "bus:<id>", or like tracks (index or name). */
-  const standardRouting = p => p.routing?.version === 1 && p.routing.mixModel === 'standard';
   const trackChannel = (p, t) => ({ type: 'track', owner: `track:${p.tracks[t].routingID || t}`, name: p.tracks[t].name, track: t });
   const busChannel = bus => ({ type: bus.type === 'return' ? 'return' : 'group', owner: `bus:${bus.id}`, name: bus.name || 'Bus', bus: bus.id });
   const MASTER = Object.freeze({ type: 'master', owner: 'master', name: 'Master' });
@@ -411,10 +410,6 @@
     if (params.channel !== undefined) return findChannel(p, params.channel);
     if (params.track === undefined && required) fail('Give channel ("master", a bus name or "bus:<id>", or a track) or track.');
     return trackChannel(p, params.track === undefined ? st().track : findTrack(p, params.track));
-  }
-  function requireStandardRouting(p, what) {
-    if (!standardRouting(p)) fail(`${what} needs standard routing, and this song uses the legacy mix. enableStandardRouting turns it on (it changes `
-        + 'the gain order: track faders after inserts, master gain after the routing graph); ask the user first.');
   }
 
   // ---------------------------------------------------------------- editing core
@@ -580,7 +575,6 @@
       sendEffects: { delay: clone(p.delay), reverb: clone(p.reverb) },
       // Buses and the master channel in brief; mixer() has outputs, sends, levels and insert details.
       mixer: {
-        mixModel: standardRouting(p) ? 'standard' : 'legacy',
         masterEffects: channelEffects(p, MASTER).map(plugin => plugin.nks?.name || plugin.name),
         buses: (p.routing?.buses || []).map(bus => ({ channel: `bus:${bus.id}`, name: bus.name, type: busChannel(bus).type,
           effects: channelEffects(p, busChannel(bus)).map(plugin => plugin.nks?.name || plugin.name) }))
@@ -1351,8 +1345,8 @@
     }
     const owner = p,
       trackObject = p.tracks[track],
-      // Routed projects address track plug-ins by owner, as the mixer does (studio.js ownerPayload).
-      routed = standardRouting(p) && !!trackObject.routingID,
+      // Track plug-ins are addressed by owner, as the mixer does (studio.js ownerPayload).
+      routed = !!trackObject.routingID,
       target = { track, ...(routed ? { owner: trackChannel(p, track).owner } : {}), kind, slot, component: plugin.id, ...(plugin.bundlePath ? { bundlePath: plugin.bundlePath } : {}) };
     const stillValid = () => st().project === owner && owner.tracks[track] === trackObject;
     // The slot holds this load's instance: in a routed project the snapshot names the owner, else the track.
@@ -1400,7 +1394,6 @@
   });
   /* A bus or master insert loads through the mixer's insert API (STInserts in studio.js), like the mixer's own + button. */
   async function loadChannelInsert(p, channel, plugin, slot) {
-    requireStandardRouting(p, `${channelLabel(channel)} inserts`);
     const inserts = window.STInserts; if (!inserts) fail('The mixer insert interface is unavailable.');
     const chain = channelEffects(p, channel);
     if (slot !== undefined) {
@@ -1788,7 +1781,6 @@
   function automationChannel(p, params, target) {
     const channel = pluginChannel(p, params, { required: true });
     const ownerLane = channel.type !== 'track' || String(target || '').startsWith('send:');
-    if (channel.type !== 'track') requireStandardRouting(p, `Automation on ${channelLabel(channel)}`);
     return { channel, ownerLane };
   }
   const laneMatches = (lane, channel, ownerLane, target) => lane.target === target && (ownerLane ? lane.owner === channel.owner : !lane.owner && lane.track === channel.track);
@@ -1796,7 +1788,6 @@
       'channel', 'query'], async params => {
     const p = project(), channel = pluginChannel(p, params), t = channel.type === 'track' ? channel.track : channel.owner;
     if (!window.STStudio?.automationChoices) fail('Automation is unavailable.');
-    if (channel.type !== 'track') requireStandardRouting(p, `Automation on ${channelLabel(channel)}`);
     try { await window.STStudio.loadAutomationParameters?.(t); } catch { /* plug-in parameters stay unlisted */ }
     const words = String(params.query || '').toLowerCase().split(/\s+/).filter(Boolean);
     const choices = window.STStudio.automationChoices(t).filter(item => words.every(word => `${item.name} ${item.group} ${item.target} ${item.search || ''}`.toLowerCase().includes(word)));
@@ -1880,12 +1871,12 @@
       tap: send.tap, gain: formatValue('db', send.gain ?? 0), enabled: send.enabled !== false, automationTarget: `send:${send.id}` };
   }
   function describeChannel(p, ch) {
-    const entity = channelEntity(p, ch), standard = standardRouting(p), out = { channel: ch.owner, name: ch.name, type: ch.type };
+    const entity = channelEntity(p, ch), out = { channel: ch.owner, name: ch.name, type: ch.type };
     if (ch.type === 'track') out.index = ch.track;
     if (ch.type === 'master') out.volume = formatValue('db', p.masterVolume ?? .7);
     else {
       Object.assign(out, { volume: formatValue('db', entity.volume ?? (ch.type === 'track' ? .8 : 1)), pan: formatValue('pan', entity.pan ?? 0), mute: !!entity.mute, solo: !!entity.solo });
-      const output = standard ? outputOf(p, ch.owner) : 'master';
+      const output = outputOf(p, ch.owner);
       Object.assign(out, { output, outputName: output === null ? 'No output' : channelOf(p, output)?.name || output });
     }
     if (ch.type === 'track') Object.assign(out, { delaySend: formatValue('pct', entity.delaySend ?? 0), reverbSend: formatValue('pct', entity.reverbSend ?? 0), ...(entity.frozen
@@ -1905,16 +1896,13 @@
     const model = window.STSends, read = group => Object.fromEntries((model?.RETURNS?.[group] || []).filter(spec => spec.kind !== 'choice').map(spec => [spec.key, spec.text(p)]));
     return model ? { delay: read('delay'), reverb: read('reverb') } : { delay: clone(p.delay), reverb: clone(p.reverb) };
   }
-  method('mixer', 'Describe the mixer: mix model, master (volume, inserts), buses (type, level, output, inputs, sends, inserts), tracks (level, output, sends, '
+  method('mixer', 'Describe the mixer: master (volume, inserts), buses (type, level, output, inputs, sends, inserts), tracks (level, output, sends, '
       + 'inserts), sidechains and the built-in delay/reverb send effects. channel limits it to one channel.', ['channel'], async params => {
-    const p = project(), standard = standardRouting(p);
+    const p = project();
     if (params.channel !== undefined) return describeChannel(p, findChannel(p, params.channel));
-    if (standard && window.STRouting && !window.STRouting.capabilities) { try { await window.STRouting.refreshCapabilities(); } catch { /* capabilities stay unlisted */ } }
+    if (window.STRouting && !window.STRouting.capabilities) { try { await window.STRouting.refreshCapabilities(); } catch { /* capabilities stay unlisted */ } }
     const caps = window.STRouting?.capabilities, q = project();
     return {
-      mixModel: standard ? 'standard' : 'legacy',
-      ...(standard ? {} : { note: 'Legacy mix: every track goes to Master and only the built-in delay/reverb sends exist. Buses, outputs, custom sends and master inserts '
-          + 'need enableStandardRouting (ask the user first: it changes the gain order).' }),
       master: describeChannel(q, MASTER),
       buses: (q.routing?.buses || []).map(bus => describeChannel(q, busChannel(bus))),
       tracks: q.tracks.map((_, t) => describeChannel(q, trackChannel(q, t))),
@@ -1928,13 +1916,6 @@
       ...(caps ? { capabilities: { outputs: caps.outputs === true, groupBuses: caps.buses?.group === true, returnBuses: caps.buses?.return === true, sends: caps.sends?.enabled === true,
         sendTaps: caps.sends?.taps || [] } } : {})
     };
-  });
-  method('enableStandardRouting', 'Switch the song from the legacy mix to standard routing (buses, track outputs, custom sends, master inserts). It changes the gain '
-      + 'order (track faders after inserts, master gain after the routing graph), so ask the user first. One undo step.', ['label'], async params => {
-    if (standardRouting(project())) return { changed: false, mixModel: 'standard' };
-    const caps = await routingCapabilities();
-    if (!(caps.mixModels || []).includes('standard')) fail('The current audio host does not offer standard routing.');
-    return { ...await routingCommit(params.label || 'enable standard routing', draft => { draft.routing.mixModel = 'standard'; }), mixModel: standardRouting(project()) ? 'standard' : 'legacy' };
   });
   /* An output destination: a group/return bus or Master that adds no feedback loop (routing.js decides), or null = disconnected. */
   function outputDestination(p, sources, value) {
@@ -1971,7 +1952,6 @@
     });
     let output;
     if (params.output !== undefined) {
-      requireStandardRouting(p, 'Changing a channel output');
       if ((await routingCapabilities()).outputs !== true) fail('Output routing is not available from the current audio host.');
       if (project() !== p) fail('The project changed while routing was being prepared. Try again.');
       output = outputDestination(p, channels, params.output);
@@ -1997,7 +1977,6 @@
   });
   method('createBus', 'Create a group or return bus (standard routing) as one undo step: name, type ("group" default, or "return"), inputs (tracks/buses whose output '
       + 'moves to the new bus), output (default "master"), volume, pan.', ['name', 'type', 'inputs', 'output', 'volume', 'pan', 'label'], async params => {
-    requireStandardRouting(project(), 'A bus');
     const type = params.type === undefined ? 'group' : params.type;
     if (!['group', 'return'].includes(type)) fail('type must be "group" or "return".');
     const caps = await routingCapabilities(), q = project();
@@ -2049,7 +2028,6 @@
   method('setSend', 'Add, change or remove a custom send (standard routing) from a track or bus (from) to a bus or Master (to): gain ("-6 dB" or 0–2; new sends '
       + '0 dB), tap ("postFader" default, "preFader"), enabled, remove:true. id picks an existing send (see mixer).', ['from', 'to', 'id', 'gain', 'tap', 'enabled',
           'remove', 'label'], async params => {
-    requireStandardRouting(project(), 'A custom send (the built-in delay/reverb sends are editTrack delaySend/reverbSend)');
     const caps = await routingCapabilities(), q = project(), sends = q.routing?.sends || [];
     if (caps.sends?.enabled !== true) fail('Custom sends are not available from the current audio host.');
     const taps = (caps.sends?.taps || []).filter(tap => ['preFader', 'postFader'].includes(tap));
@@ -2138,7 +2116,7 @@
     const actions = ['bypass', 'remove', 'moveTo'].filter(key => params[key] !== undefined);
     if (actions.length !== 1) fail('Give exactly one of bypass (true/false), remove (true) or moveTo (a slot, "first" or "last").');
     const action = actions[0];
-    if (ch.type !== 'track') requireStandardRouting(p, `${channelLabel(ch)} inserts`); else requireUnfrozen(p, [ch.track]);
+    if (ch.type === 'track') requireUnfrozen(p, [ch.track]);
     const chain = channelEffects(p, ch), plugin = chain.find(item => (item.slot ?? 0) === params.slot);
     if (!plugin) fail(`${channelLabel(ch)} has no insert in slot ${params.slot}. Inserts: ${chain.map(item => `${item.slot ?? 0} ${item.name}`).join(', ') || 'none'}.`);
     if (action === 'bypass' && typeof params.bypass !== 'boolean') fail('bypass must be true or false.');
@@ -2368,7 +2346,6 @@
       selection = { t0, t1, r0, r1 };
     }
     const channel = params.channel === undefined ? null : findChannel(p, params.channel);
-    if (channel && channel.type !== 'track') requireStandardRouting(p, `Showing ${channelLabel(channel)}`);
     if (shown && p.activePattern !== shown.id) {
       p.activePattern = shown.id;
       s.row = 0;

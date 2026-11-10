@@ -77,17 +77,13 @@
   function groupTracks(indices = selectedTracks(), options = {}) {
     const p = state.project;
     if (!indices.length) return false;
-    const legacy = p.routing && p.routing.mixModel !== 'standard';
     const commit = () => mutate('group tracks', q => {
       const { group, map } = G().create(q, indices, { name: options.name || `Group ${G().list(q).length + 1}`, makeID: app.uid });
       state.track = map[state.track] ?? state.track;
       state.selection = null;
       state.lastGroup = group.id;
     });
-    if (!legacy) return commit();
-    return app.confirmChoice('Enable standard routing?',
-        'Group buses use standard routing: track faders follow their insert effects and the master gain follows the routing graph. Undo restores the current mix.',
-        'Enable and group').then(ok => ok && state.project === p ? commit() : false);
+    return commit();
   }
 
   function ungroupTrack(index = state.track) {

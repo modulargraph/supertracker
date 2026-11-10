@@ -95,7 +95,6 @@ Prints the JSON result; exits 1 with the error message on failure.
 | `edit_channel` | Name, volume, pan, mute, solo and output of tracks, buses and Master (one or several channels) |
 | `create_bus`, `remove_bus`, `set_send` | Group/return buses, track outputs into a bus, custom sends |
 | `set_send_effects` | Built-in delay (time or tempo division, feedback, tone, level) and reverb settings |
-| `enable_standard_routing` | Switch a legacy-mix song to standard routing (changes the gain order: ask first) |
 | `search_nks`, `load_nks` | NKS presets |
 | `list_automation_targets`, `set_automation`, `delete_automation` | Automation lanes of tracks, buses and Master (`channel`) |
 | `set_performance` | Scale, root, chord, chord set, keyboard octave |
@@ -111,9 +110,7 @@ undo steps.
 
 ### Mixer and routing
 
-Buses, track outputs, custom sends and Master inserts need **standard routing** (`mixModel: "standard"`);
-in a legacy-mix song those calls explain that `enable_standard_routing` turns it on. The tools reuse the
-mixer's own paths, so the mixer updates live and every call is one undo step:
+The tools reuse the mixer's own paths, so the mixer updates live and every call is one undo step:
 
 - Outputs, buses and sends go through the routing panel's transaction (`STRouting.transaction` in
   `routing.js`): the audio host validates and applies the change, and the committed project is the undo step.

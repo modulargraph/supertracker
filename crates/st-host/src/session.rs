@@ -184,6 +184,8 @@ impl Session {
         commands
             .with(self)
             .register_blocking("engine.project", Session::publish)
+            .register("routing.validate", Session::validate_routing)
+            .register_blocking("routing.apply", Session::apply_routing)
             .register_blocking("project.new", Session::new_project)
             .register_blocking("project.open", Session::open)
             .register_blocking("project.save", |session: &Session, payload| session.save(payload, false))
@@ -349,6 +351,39 @@ impl Session {
         let result = self.prepare_audio(&project, options)?;
         self.document().update(project, true)?;
         Ok(result.unwrap_or_else(|| json!({ "audio": false })))
+    }
+
+    /// `routing.validate`: whether the host would accept this project. The interface asks before
+    /// it commits a change to buses, outputs, sends or sidechains.
+    pub fn validate_routing(&self, payload: PublishPayload) -> Result<Value> {
+        let Some(project) = payload.project else {
+            return Err(Error::new("`routing.validate` needs the project to check."));
+        };
+        let problem = match Project::from_value(project) {
+            Ok(project) => st_project::validate::validate(&project).err().map(|error| error.to_string()),
+            Err(error) => Some(error.to_string()),
+        };
+        Ok(match problem {
+            None => json!({ "valid": true }),
+            Some(error) => json!({ "valid": false, "error": error }),
+        })
+    }
+
+    /// `routing.apply`: publishes a project whose routing changed and answers with the project
+    /// as the session holds it, what the rebuilt mixer offers and what it could not connect.
+    pub fn apply_routing(&self, payload: PublishPayload) -> Result<Value> {
+        self.publish(payload)?;
+        let Some(project) = self.project() else {
+            return Err(Error::new("The session has no project."));
+        };
+        let mut result = json!({ "project": project.to_value() });
+        if let Some(capabilities) = self.call_if_present("routing.capabilities", json!({}))? {
+            result["capabilities"] = capabilities;
+        }
+        if let Some(status) = self.call_if_present("routing.status", json!({}))? {
+            result["status"] = status;
+        }
+        Ok(result)
     }
 
     /// `project.new`: replaces the session with an untitled one, from a template (the given one,

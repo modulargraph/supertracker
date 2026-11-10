@@ -27,8 +27,7 @@
       ? `[${value.map(stable).join(',')}]`
       : `{${Object.keys(value).sort().map(name => `${JSON.stringify(name)}:${stable(value[name])}`).join(',')}}`;
   const currentOwner = () => S().state.mixerOwner || endpoints(project()).find(item => item.track === S().state.track)?.owner || 'master';
-  const routing = (p = project()) => p.routing || { version: 1, mixModel: 'legacy', buses: [], outputs: {}, sends: [], sidechains: [] };
-  const standard = (p = project()) => p.routing?.version === 1 && p.routing.mixModel === 'standard';
+  const routing = (p = project()) => p.routing || { version: 1, mixModel: 'standard', buses: [], outputs: {}, sends: [], sidechains: [] };
   const available = () => ui.capabilities?.supported === true;
   const unavailableHint = () => ui.status?.projectUnavailable === true
       || ui.capabilities?.projectUnavailable === true
@@ -54,8 +53,7 @@
       name: entity.name || `Track ${track + 1}`,
       type: 'track',
       track,
-      entity,
-      legacyIdentity: !entity.routingID
+      entity
     }));
     for (const entity of p.routing?.buses || []) result.push({
       owner: `bus:${entity.id}`,
@@ -155,7 +153,7 @@
     for (const [index, track] of (p.tracks || []).entries()) if (!track.routingID) {
       const before = `track:${index}`; track.routingID = uid(); remap.set(before, `track:${track.routingID}`);
     }
-    p.routing ||= { version: 1, mixModel: 'legacy', buses: [], outputs: {}, sends: [], sidechains: [] };
+    p.routing ||= { version: 1, mixModel: 'standard', buses: [], outputs: {}, sends: [], sidechains: [] };
     const r = p.routing;
     if (r.version !== 1) throw new Error(`Routing version ${r.version} is not supported by this editor.`);
     r.buses ||= []; r.outputs ||= {}; r.sends ||= []; r.sidechains ||= [];
@@ -334,12 +332,6 @@
         : !available()
         ? 'Advanced routing is not supported by the current audio host.'
         : '';
-    if (!standard(p)) return `<section class="routing-panel" data-routing-owner="${esc(owner)}"><div class="routing-heading"><h3>Routing</h3>`
-        + `<span>Legacy mix</span></div>${routingErrorNotice()}<p class="routing-description">${owner === 'master'
-            ? 'Stereo master output.'
-            : 'Output to Master. Existing delay and reverb sends retain their current behavior.'}</p>${status ? `<p class="routing-description">${esc(status)}</p>` : ''}${available() && caps.mixModels?.includes('standard')
-            ? `<button id="routing-enable-${token}" data-routing-action="enable" ${pending ? 'disabled' : ''}>Enable standard routing…</button>`
-            : ''}</section>`;
     const sends = (routing(p).sends || []).filter(send => send.source === owner);
     const canSend = owner !== 'master' && caps?.sends?.enabled === true && taps().length;
     return `<section class="routing-panel" data-routing-owner="${esc(owner)}" aria-busy="${pending}"><div class="routing-heading">`
@@ -450,29 +442,6 @@
     }, { owner, focusID }), focusID);
   }
 
-  function enableStandard(owner, continuation, nextLabel) {
-    const original=project(), track=endpoints(original).find(item=>item.owner===owner)?.track;
-    S().openModal('Enable standard routing', `<div class="routing-dialog"><p>Add group buses, custom returns, and plug-in sidechain connections to this project.</p>`
-        + `<p>Standard routing places track faders after insert effects and master gain after the complete routing graph. This changes gain order `
-        + `from the legacy mix and can change how level-sensitive effects sound.</p><p>Existing delay and reverb sends remain active alongside `
-        + `custom sends. Existing channel settings are retained. You can undo this change.</p>${nextLabel ? `<p>${esc(nextLabel)}</p>` : ''}</div>`, `<button id="routing-optin-cancel">Cancel</button><button id="routing-optin-apply" class="primary">${continuation ? 'Enable and continue' : 'Enable standard routing'}</button>`, {
-      kind: 'routing-enable'
-    });
-    document.getElementById('routing-optin-cancel')?.addEventListener('click',()=>S().closeModal());
-    document.getElementById('routing-optin-apply')?.focus?.();
-    document.getElementById('routing-optin-apply')?.addEventListener('click', () => {
-      S().closeModal();
-      if (project() !== original) return;
-      perform(transaction('Enable standard routing', p => {
-        p.routing.mixModel = 'standard';
-      }, { owner, focusID: `routing-output-${key(owner)}` }).then(async () => {
-        if (project() !== original) return;
-        if (!ui.capabilities) await refreshCapabilities();
-        if (project() === original) continuation?.(track === undefined ? owner : endpoints().find(item => item.track === track)?.owner);
-      }));
-    });
-  }
-
   async function createBus(kind, options = {}) {
     const openingProject=project(),owner=options.assignOwner||currentOwner(),openingEntity=ownerEntity(owner,openingProject);
     if(!openingEntity)return S().toast('This channel is no longer available.');
@@ -482,10 +451,6 @@
         ||!['group','return'].includes(kind)
         || ui.capabilities?.buses?.[kind]!==true)return S().toast('This bus type is not available from the current audio host.');
     const p=project();
-    if(!standard(p))return enableStandard(owner,nextOwner=>createBus(kind,{...options,assignOwner:nextOwner}),
-        kind==='group'
-            ?'Next, name the new group bus. You can optionally route the selected track into it.'
-            :'Next, name the new return bus. Feed it from a channel send.');
     if((routing(p).buses||[]).length>=Math.min(window.TRACK_SANITY_LIMIT??Infinity,
         number(ui.capabilities.buses.max,window.TRACK_SANITY_LIMIT??Infinity)))return S().toast('This project has reached its bus limit.');
     const selected=endpoints(p).find(item=>item.owner===owner), canAssign=kind==='group'&&selected?.type==='track';
@@ -568,7 +533,7 @@
     if(panel.dataset.routingBound==='true')return;panel.dataset.routingBound='true';
     panel.querySelectorAll('[data-routing-action]').forEach(button=>button.addEventListener('click',()=>{
       const action=button.dataset.routingAction;
-      if(action==='enable')enableStandard(owner);if(action==='output')setOutput(owner,button.id);if(action==='add-send')addSend(owner,button.id);
+      if(action==='output')setOutput(owner,button.id);if(action==='add-send')addSend(owner,button.id);
       if (action === 'new-group' || action === 'new-return') createBus(action === 'new-group' ? 'group' : 'return', { assignOwner: owner });
       if (action === 'remove-bus') removeBus(owner);
     }));
@@ -596,7 +561,7 @@
   }
 
   function renderPluginSidechain(plugin) {
-    if(!standard()||!plugin?.instanceID)return '';
+    if(!plugin?.instanceID)return '';
     const inputs = inputMetadata(plugin.instanceID),
       saved = (routing().sidechains || []).filter(route => route.destination?.instanceID === plugin.instanceID),
       supported = available() && ui.capabilities?.sidechains?.enabled === true;
@@ -741,7 +706,6 @@
     if(!available()||ui.capabilities.outputs!==true)return S().toast('Output routing is not available from the current audio host.');
     if(owner==='master')return S().toast('Master is the final audio destination.');
     if(!ownerEntity(owner))return S().toast('This channel is no longer available.');
-    if(!standard())return enableStandard(owner,nextOwner=>showOutput(nextOwner,focusID),'Next, choose the channel output.');
     setOutput(owner,focusID||`routing-output-${key(owner)}`);
   }
 
@@ -754,7 +718,6 @@
         ||!taps().length)return S().toast('Custom sends are not available from the current audio host.');
     if(owner==='master')return S().toast('Master cannot feed a send.');
     if(!ownerEntity(owner))return S().toast('This channel is no longer available.');
-    if(!standard())return enableStandard(owner,nextOwner=>showAddSend(nextOwner,focusID),'Next, choose the custom send destination.');
     addSend(owner,focusID||`routing-add-send-${key(owner)}`);
   }
 

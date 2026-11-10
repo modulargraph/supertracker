@@ -127,6 +127,9 @@ pub struct InsertStatus {
     /// The track's instrument plug-in rather than an insert effect.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub instrument: bool,
+    /// The insert reads a sidechain input when one is routed to it.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub sidechain: bool,
 }
 
 #[derive(Default)]
@@ -416,6 +419,7 @@ impl Compiler {
                     reason: cell.unavailable.clone(),
                     latency_frames: cell.latency,
                     instrument: insert.instrument.is_some(),
+                    sidechain: cell.sidechain,
                 });
                 inserts.push(PlanInsert { cell, bypass: insert.bypass, base, target: NO_TARGET, bypass_delay: None });
             }

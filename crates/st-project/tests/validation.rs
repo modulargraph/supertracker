@@ -144,7 +144,7 @@ fn routing_identities_and_mix_ranges() {
     assert_eq!(rejected(|p| p["tracks"][0]["pan"] = json!(-1.01)), "Track 1 pan must be between -1 and 1.");
     assert_eq!(rejected(|p| p["tracks"][0]["mute"] = json!(1)), "Track 1 mute must be true or false.");
     assert_eq!(rejected(|p| p["masterVolume"] = json!(3)), "Master volume must be between 0 and 2.");
-    let version = "Routing requires version 1 and a legacy or standard mixModel.";
+    let version = "Routing requires version 1 and the standard mixModel.";
     assert_eq!(rejected(|p| p["routing"]["version"] = json!(2)), version);
     assert_eq!(rejected(|p| p["routing"]["mixModel"] = json!("future")), version);
     assert_eq!(rejected(|p| p["routing"] = json!("on")), version);
@@ -202,14 +202,8 @@ fn feedback_and_the_legacy_mix_model() {
     // A disabled send is not a connection.
     accepted(|p| { p["routing"]["outputs"]["bus:r"] = json!("bus:g"); p["routing"]["sends"] = json!([send("s", "bus:g", "bus:r", false)]); });
 
-    let legacy = "Enable standard routing to use buses, custom sends or sidechains.";
-    assert_eq!(rejected(|p| p["routing"]["mixModel"] = json!("legacy")), legacy);
-    accepted(|p| p["routing"] = json!({ "version": 1, "mixModel": "legacy", "buses": [], "outputs": { "track:t0": "master" }, "sends": [], "sidechains": [] }));
-    assert_eq!(rejected(|p| p["routing"] = json!({ "version": 1, "mixModel": "legacy", "outputs": { "track:t0": null } })), legacy);
-    assert_eq!(
-        rejected(|p| { p["routing"] = json!({ "version": 1, "mixModel": "legacy" }); p["audioPlugins"] = json!([insert("master", 0)]); }),
-        "Enable standard routing to use master inserts."
-    );
+    // There is one mix model: the retired "legacy" mix is refused like any unknown one.
+    assert_eq!(rejected(|p| p["routing"]["mixModel"] = json!("legacy")), "Routing requires version 1 and the standard mixModel.");
 }
 
 #[test]
