@@ -563,19 +563,6 @@ impl Compiler {
             }
         }
         let mut delays: HashMap<String, Arc<DelayCell>> = HashMap::new();
-        let mut delay_for = |index: usize| -> Option<Arc<DelayCell>> {
-            let frames = latency.edge_delays[index] as usize;
-            if frames == 0 {
-                return None;
-            }
-            let name = &names[index];
-            let cell = match self.delays.get(name) {
-                Some(cell) if cell.frames == frames => cell.clone(),
-                _ => Arc::new(DelayCell::new(frames)),
-            };
-            delays.insert(name.clone(), cell.clone());
-            Some(cell)
-        };
         for (strip, range) in strip_inserts.iter().enumerate() {
             for (insert, description) in range.clone().zip(&spec.strips[strip].inserts) {
                 let frames = inserts[insert].cell.latency as usize;
@@ -590,6 +577,19 @@ impl Compiler {
                 }
             }
         }
+        let mut delay_for = |index: usize| -> Option<Arc<DelayCell>> {
+            let frames = latency.edge_delays[index] as usize;
+            if frames == 0 {
+                return None;
+            }
+            let name = &names[index];
+            let cell = match self.delays.get(name) {
+                Some(cell) if cell.frames == frames => cell.clone(),
+                _ => Arc::new(DelayCell::new(frames)),
+            };
+            delays.insert(name.clone(), cell.clone());
+            Some(cell)
+        };
         let mut ops: Vec<Op> = Vec::new();
         let mut edges: Vec<Edge> = Vec::new();
         let mut route_targets: HashMap<&str, u32> = HashMap::new();
