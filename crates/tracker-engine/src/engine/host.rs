@@ -61,7 +61,7 @@
 //! stopped graph. Calling them between blocks is memory-safe (they need the render half, like
 //! rendering) but changes what plays.
 
-use super::abi::{ClockSpan, STEvent, STFreezeSpan, STInputAck, STStatus, STTransportState, STVoicePosition};
+use super::abi::{ClockSpan, STEvent, STInputAck, STStatus, STTransportState, STVoicePosition};
 use super::control::Control;
 use super::render_cache::SpanError;
 use super::state::{Render, EngineCore, Shared};
@@ -253,12 +253,6 @@ impl RenderHalf {
         render.clock_span(shared, graph_frame, requested, latency)
     }
 
-    /// See [`Render::freeze_span`].
-    pub fn freeze_span(&mut self, graph_frame: i64, requested: u32, latency: i64) -> Result<STFreezeSpan, SpanError> {
-        let (render, shared) = self.parts();
-        render.freeze_span(shared, graph_frame, requested, latency)
-    }
-
     /// A checkpoint of the transport and of everything that sounds (stopped graph).
     pub fn capture_transport(&mut self) -> STTransportState {
         let (render, shared) = self.parts();
@@ -361,9 +355,6 @@ impl Render {
         if !self.cache_valid || time != self.cache_end {
             self.cache_generation = self.cache_generation.wrapping_add(1);
             self.release_clock_origin();
-            if !self.freeze_transition_pending || self.freeze_natural_tail {
-                self.freeze_transition(super::abi::ST_FREEZE_CAUSE_GRAPH_RESET, true, false);
-            }
             self.timing_epoch = self.timing_epoch.wrapping_add(1);
             self.cache_end = time;
             self.clock_begin = time;

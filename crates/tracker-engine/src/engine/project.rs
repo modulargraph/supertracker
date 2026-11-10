@@ -1,7 +1,7 @@
 //! The immutable project snapshot: C++ `Sample`, `Zone`, `Instrument`, `Step`, `Lane`, `Column`,
 //! `Pattern`, the clip structures and `Project` from `TrackerEngine.cpp`, plus the project-only
 //! arithmetic the control and render threads share (`patternRows`, `beatForRow`, song duration,
-//! `compileTiming`, frozen-extent validation).
+//! `compileTiming`).
 //!
 //! A project is edited as a draft on the control thread, deep-copied at commit (pattern columns
 //! and lane lists are shared copy-on-write) and handed to the render thread, which only reads it.
@@ -392,9 +392,6 @@ impl Default for TrackVoice {
 
 #[derive(Clone)]
 pub struct Project {
-    pub frozen_song_policy: bool,
-    pub frozen_publication_id: u64,
-    pub frozen_song_frames: i64,
     pub timing: Option<Arc<EngineTiming>>,
     pub pattern_origin_beat: f64,
     pub occurrence_beats: Vec<f64>,
@@ -467,9 +464,6 @@ impl Default for Project {
 impl Project {
     pub fn new() -> Project {
         Project {
-            frozen_song_policy: false,
-            frozen_publication_id: 0,
-            frozen_song_frames: 0,
             timing: None,
             pattern_origin_beat: 0.0,
             occurrence_beats: Vec::new(),
@@ -621,82 +615,10 @@ impl Project {
         seconds
     }
 
-    /// `songDuration`
-    pub fn song_duration(&self, sample_rate: f64) -> f64 {
-        if self.frozen_song_policy && self.frozen_song_frames != 0 {
-            self.frozen_song_frames as f64 / sample_rate
-        } else {
-            self.projected_song_duration(sample_rate)
-        }
-    }
-
-    /// `effectiveSongFrames`. Preserve the old no-override arithmetic exactly. Explicit printed
-    /// extents must never roundtrip via seconds: 6007/48000*48000 is greater than 6007.
+    /// The song's length in frames: the seconds of [`Project::projected_song_duration`] times the
+    /// rate (that product, in that order, is what the transport compares against).
     pub fn effective_song_frames(&self, sample_rate: f64) -> f64 {
-        if self.frozen_song_policy && self.frozen_song_frames != 0 {
-            self.frozen_song_frames as f64
-        } else {
-            self.projected_song_duration(sample_rate) * sample_rate
-        }
-    }
-
-    /// `projectedEndFits`
-    fn projected_end_fits(&self, sample_rate: f64, frames: i64) -> bool {
-        if self.timing.is_some() {
-            return self.mapped_song_frames() <= frames;
-        }
-        // Compare the integer boundary in sampled musical/source coordinates, just as the
-        // immutable clock does. No epsilon and no source-length -> seconds -> frames roundtrip:
-        // an exact 6007-frame asset ends at 6007.
-        let beat = frames as f64 * self.bpm / (60.0 * sample_rate);
-        let mut rows = 0.0f64;
-        for &index in &self.sequence {
-            rows += self.pattern_rows(index);
-        }
-        if beat < rows / self.lpb as f64 {
-            return false;
-        }
-        for clip in &self.audio_clips {
-            if clip.muted {
-                continue;
-            }
-            if beat < clip.start_beat {
-                return false;
-            }
-            if clip.duration_beats > 0.0 && beat - clip.start_beat >= clip.duration_beats {
-                continue;
-            }
-            let Some(sample) = self.asset_sample(clip.asset) else { continue };
-            let elapsed_frames = (-clip.start_beat).mul_add((60.0 * sample_rate) / self.bpm, frames as f64);
-            let source_frame = elapsed_frames.mul_add(sample.rate / sample_rate, clip.source_offset * sample.rate);
-            if source_frame < sample.l.len() as f64 {
-                return false;
-            }
-        }
-        true
-    }
-
-    /// `validateFrozenExtent`
-    pub fn validate_frozen_extent(&self, sample_rate: f64) -> Result<(), String> {
-        if self.frozen_song_frames == 0 {
-            return Ok(());
-        }
-        if !self.frozen_song_policy
-            || self.frozen_publication_id == 0
-            || self.frozen_song_frames < 1
-            || self.frozen_song_frames > 100000000
-        {
-            return Err("Frozen song extent requires a matching enabled publication and1..100000000 frames.".into());
-        }
-        if !self.projected_end_fits(sample_rate, self.frozen_song_frames) {
-            return Err("Frozen song extent is shorter than the projected live arrangement. Refresh or Unfreeze before changing the song end.".into());
-        }
-        if let Some(timing) = &self.timing {
-            if self.frozen_song_frames > timing.frame(1000000.0) {
-                return Err("Frozen song extent exceeds the timing map domain.".into());
-            }
-        }
-        Ok(())
+        self.projected_song_duration(sample_rate) * sample_rate
     }
 
     /// `compileTiming`: resolve occurrence, pattern and clip bounds against the timing map.
@@ -741,32 +663,7 @@ impl Project {
                 Some(sample) => cmax(0.0, sample.l.len() as f64 / sample.rate - clip.source_offset),
                 None => 0.0,
             };
-            let mut source_end = clip.mapped_start as f64 + (available * sample_rate).ceil();
-            if let Some(sample) = sample {
-                if self.frozen_song_policy && self.frozen_song_frames != 0 && available > 0.0 {
-                    // Exact-extent publications admit source-limited clip endpoints in sampled
-                    // coordinates, avoiding 6007/rate*rate -> 6008.
-                    let mut candidate = source_end as i64;
-                    let reached = |at: i64| -> bool {
-                        ((at - clip.mapped_start) as f64)
-                            .mul_add(sample.rate / sample_rate, clip.source_offset * sample.rate)
-                            >= sample.l.len() as f64
-                    };
-                    for _ in 0..4 {
-                        if candidate > clip.mapped_start && reached(candidate - 1) {
-                            candidate -= 1;
-                        } else if !reached(candidate) {
-                            candidate += 1;
-                        } else {
-                            break;
-                        }
-                    }
-                    if !reached(candidate) || (candidate > clip.mapped_start && reached(candidate - 1)) {
-                        return Err("Frozen clip source end cannot be resolved to an exact output sample.".into());
-                    }
-                    source_end = candidate as f64;
-                }
-            }
+            let source_end = clip.mapped_start as f64 + (available * sample_rate).ceil();
             let limit = if clip.duration_beats > 0.0 {
                 timing.frame(clip.start_beat + clip.duration_beats) as f64
             } else {

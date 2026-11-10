@@ -1,7 +1,7 @@
 //! Transport and command handling (ported from the C++ engine's `TrackerEngine.cpp`): project adoption and the
 //! command queue (`refresh`), Play/Stop/Seek/count-in, the musical clock (`updateClock`), timeline
 //! resolution, row advance with song/pattern loops and queued jumps, input acknowledgements,
-//! freeze transitions, status publication and the quiescent flush used by transport checkpoints.
+//! status publication and the quiescent flush used by transport checkpoints.
 
 use super::abi::*;
 use super::timing::fixed_clock_context;
@@ -32,24 +32,6 @@ impl Render {
         }
         self.cache_origin_timing = std::ptr::null();
         self.cache_origin_valid = false;
-        self.cache_origin_freeze_valid = false;
-    }
-
-    /// Freeze metadata is independent of the musical input run. Looping starts a new print
-    /// playback, while recording distance continues through that loop.
-    pub fn freeze_transition(&mut self, cause: STFreezeCause, new_playback: bool, natural_tail: bool) {
-        if self.freeze_transition_id != 0 {
-            self.freeze_transition_id =
-                if self.freeze_transition_id == u64::MAX { 0 } else { self.freeze_transition_id + 1 };
-        }
-        if new_playback && self.freeze_playback_id != 0 {
-            self.freeze_playback_id = if self.freeze_playback_id == u64::MAX { 0 } else { self.freeze_playback_id + 1 };
-        }
-        self.freeze_cause = cause;
-        self.freeze_natural_tail = natural_tail;
-        self.freeze_transition_pending = true;
-        self.freeze_transition_graph = i64::MIN;
-        self.freeze_transition_project = 0;
     }
 
     pub fn reset_input_run(&mut self) {
@@ -275,9 +257,6 @@ impl Render {
         if input_timeline_changed {
             self.reset_input_run();
         }
-        let freeze_changed = old.frozen_song_policy != next.frozen_song_policy
-            || old.frozen_publication_id != next.frozen_publication_id
-            || (next.frozen_song_policy && input_timeline_changed);
         // Mixer default refreshes and pattern transitions must not erase tracker repeat memory;
         // tables only change with the track count.
         let next_tb = match &next.tables {
@@ -355,10 +334,6 @@ impl Render {
                 }
             } else if rt.e.playing && rt.e.song_mode && rt.e.sequence_finished {
                 rt.resolve_timeline();
-            }
-            if freeze_changed {
-                rt.align_frozen_origin();
-                rt.freeze_transition(ST_FREEZE_CAUSE_REPLACEMENT, true, false);
             }
         }
         // Retire the previous project on the lock-free list; `old` must not be used from here on.
@@ -507,7 +482,6 @@ impl<'a> Rt<'a> {
                     self.e.count_in_total = 0;
                     self.reset_pattern_clips();
                     self.e.reset_input_run();
-                    self.freeze_transition(ST_FREEZE_CAUSE_STOP, true, false);
                     self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
                     self.e.playing = false;
                     self.clear_plugin_locks();
@@ -535,8 +509,6 @@ impl<'a> Rt<'a> {
                     self.e.sequence_finished = false;
                     self.reset_track_state(true);
                     self.e.transport_frames = self.seek_frames();
-                    self.align_frozen_origin();
-                    self.freeze_transition(ST_FREEZE_CAUSE_SEEK, true, false);
                     self.e.click_beat = -1;
                     self.clear_scheduled();
                 }
@@ -554,7 +526,6 @@ impl<'a> Rt<'a> {
                     self.forget_early_inputs();
                     self.reset_pattern_clips();
                     self.e.reset_input_run();
-                    self.freeze_transition(ST_FREEZE_CAUSE_PANIC, true, false);
                     self.clear_plugin_locks();
                     self.reset_automation_events();
                     self.all_off(true, false);
@@ -682,43 +653,6 @@ impl<'a> Rt<'a> {
         }
     }
 
-    #[inline]
-    pub fn freeze_transition(&mut self, cause: STFreezeCause, new_playback: bool, natural_tail: bool) {
-        self.e.freeze_transition(cause, new_playback, natural_tail);
-    }
-
-    pub fn align_frozen_origin(&mut self) {
-        let p = self.p;
-        let limit = (1u64 << 52) as f64;
-        if !p.frozen_song_policy
-            || !self.e.song_mode
-            || !self.e.transport_frames.is_finite()
-            || self.e.transport_frames < 0.0
-            || self.e.transport_frames > limit
-        {
-            return;
-        }
-        let aligned = self.e.transport_frames.ceil();
-        let delta = aligned - self.e.transport_frames;
-        // Negative remainder at an unstarted row carries its original fractional boundary into
-        // triggerRow; a started row retains no-retrigger semantics.
-        self.e.transport_frames = aligned;
-        self.e.row_remaining -= delta;
-        // An explicit projected extent is an admission boundary, not evidence that a
-        // replacement/restored cursor naturally played through its end.
-        if p.frozen_song_frames != 0 && self.e.transport_frames >= p.frozen_song_frames as f64 {
-            self.e.transport_frames = p.frozen_song_frames as f64;
-            self.e.playing = false;
-            self.e.sequence_finished = true;
-            self.e.sequence = p.sequence.len() as i32 - 1;
-            self.e.pattern = self.valid_pattern(self.sequence_pattern(self.e.sequence));
-            self.e.row = p.pattern_length(self.e.pattern) - 1;
-            self.e.row_remaining = 1e100;
-            self.clear_scheduled();
-            self.all_off(false, true);
-        }
-    }
-
     /// `current->sequence[index]` (the sequence is never empty and `index` is kept in range).
     #[inline]
     pub fn sequence_pattern(&self, index: i32) -> i32 {
@@ -797,8 +731,6 @@ impl<'a> Rt<'a> {
         self.e.sequence_finished = false;
         self.reset_track_state(true);
         self.e.transport_frames = self.seek_frames();
-        self.align_frozen_origin();
-        self.freeze_transition(ST_FREEZE_CAUSE_PLAY, true, false);
         self.e.click_beat = -1;
         self.clear_scheduled();
         self.clear_queued();
@@ -862,7 +794,6 @@ impl<'a> Rt<'a> {
         let p = self.p;
         self.e.song_mode
             && p.loop_song
-            && !p.frozen_song_policy
             && p.song_loop_start >= 0
             && p.song_loop_end >= p.song_loop_start
             && p.song_loop_start < p.sequence.len() as i32
@@ -901,7 +832,6 @@ impl<'a> Rt<'a> {
     fn loop_song_section(&mut self, from_index: i32, exact: bool, target: i32) {
         let start = if target >= 0 { target } else { self.p.song_loop_start };
         let beats = self.occurrence_beat(from_index) - self.occurrence_beat(start);
-        self.freeze_transition(ST_FREEZE_CAUSE_LOOP, true, false);
         self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
         self.e.clock_loop_iteration = self.e.clock_loop_iteration.wrapping_add(1);
         self.e.input_loop_beats += beats;
@@ -1192,11 +1122,6 @@ impl<'a> Rt<'a> {
             self.loop_song_section(p.sequence.len() as i32, true, -1);
             return;
         }
-        self.freeze_transition(
-            if p.loop_song { ST_FREEZE_CAUSE_LOOP } else { ST_FREEZE_CAUSE_NATURAL_END },
-            p.loop_song,
-            !p.loop_song,
-        );
         self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
         if p.loop_song {
             self.e.clock_loop_iteration = self.e.clock_loop_iteration.wrapping_add(1);
@@ -1317,8 +1242,6 @@ impl<'a> Rt<'a> {
         self.e.sequence_finished = false;
         self.reset_track_state(true);
         self.e.transport_frames = self.seek_frames();
-        self.align_frozen_origin();
-        self.freeze_transition(ST_FREEZE_CAUSE_SEEK, true, false);
         self.e.click_beat = -1;
         true
     }
@@ -1342,15 +1265,11 @@ impl<'a> Rt<'a> {
                 return false;
             }
             self.loop_song_section(self.e.sequence + 1, false, index);
-            if p.frozen_song_policy {
-                self.align_frozen_origin();
-            }
             return true;
         }
         self.e.pattern = self.valid_pattern(target);
         let start = if self.pattern_loop_active() { self.e.loop_start_row } else { 0 };
         let to = p.beat_for_row(start);
-        self.freeze_transition(ST_FREEZE_CAUSE_LOOP, true, false);
         if let Some(timing) = &p.timing {
             self.e.loop_beat_offset += from_beat - to;
             self.e.input_loop_beats += from_beat - to;
@@ -1375,7 +1294,6 @@ impl<'a> Rt<'a> {
             let from = p.beat_for_row(self.e.row + 1);
             let to = p.beat_for_row(self.e.loop_start_row);
             self.e.row = self.e.loop_start_row;
-            self.freeze_transition(ST_FREEZE_CAUSE_LOOP, true, false);
             if let Some(timing) = &p.timing {
                 self.e.loop_beat_offset += from - to;
                 self.e.input_loop_beats += from - to;
@@ -1399,7 +1317,6 @@ impl<'a> Rt<'a> {
             return;
         }
         if !self.e.song_mode {
-            self.freeze_transition(ST_FREEZE_CAUSE_LOOP, true, false);
             if let Some(timing) = &p.timing {
                 let width = p.pattern_rows(self.e.pattern) / p.lpb as f64;
                 self.e.loop_beat_offset += width;
@@ -1414,12 +1331,7 @@ impl<'a> Rt<'a> {
         self.e.sequence += 1;
         if self.e.sequence >= p.sequence.len() as i32 {
             self.e.sequence = p.sequence.len() as i32 - 1;
-            let before_end = if p.frozen_song_policy {
-                self.e.transport_frames < self.e.song_end_frames.ceil()
-            } else {
-                self.e.transport_frames + 1e-6 < self.e.song_end_frames
-            };
-            if before_end {
+            if self.e.transport_frames + 1e-6 < self.e.song_end_frames {
                 self.e.sequence_finished = true;
                 self.clear_plugin_locks();
                 self.e.row = p.pattern_length(self.e.pattern) - 1;
@@ -1495,8 +1407,6 @@ impl<'a> Rt<'a> {
             1e100
         } else if self.e.row_has_started {
             clamp(finite64(state.row_remaining, 0.0), -1.0, self.e.row_duration)
-        } else if p.frozen_song_policy && self.e.song_mode {
-            clamp(finite64(state.row_remaining, 0.0), -1.0, 0.0)
         } else {
             0.0
         };
@@ -1536,8 +1446,6 @@ impl<'a> Rt<'a> {
                 );
             }
         }
-        self.align_frozen_origin();
-        self.freeze_transition(ST_FREEZE_CAUSE_RESTORE, true, false);
         self.restore_pattern_clips(state);
         self.reset_track_state(false);
         self.e.out.suppress_events = false;

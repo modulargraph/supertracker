@@ -7,10 +7,9 @@
 //! the control thread (hence `&mut self` on the producers).
 
 use super::abi::*;
-use super::control::{Control, BAD_ALLOC};
+use super::control::Control;
 use super::project::*;
 use super::state::*;
-use super::tables::FreezeHistory;
 use super::timing::EngineTiming;
 use super::util::{clamp, cmin, finite, finite64};
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -160,47 +159,6 @@ impl Control {
         p.lpb = clamp(lines_per_beat, 1, 32);
         p.swing = clamp(finite(swing, 0.0), 0.0, 0.95);
         p.master = clamp(finite(master_volume, 0.7), 0.0, 2.0);
-    }
-
-    /// Errors leave the policy unchanged.
-    pub fn set_frozen_song_policy(&mut self, sh: &Shared, enabled: i32, publication_id: u64) -> Result<(), String> {
-        if (enabled != 0 && enabled != 1) || (enabled != 0 && publication_id == 0) {
-            return Err(
-                "Frozen song policy requires a valid engine, boolean enable flag and nonzero publication ID.".into()
-            );
-        }
-        if !self.owns(sh) {
-            return Err(super::control::FOREIGN_ENGINE.into());
-        }
-        // Allocate on control before publishing the policy. Storage lives until quiescent engine
-        // destruction, including rejected/discarded drafts.
-        if enabled != 0 && sh.freeze_history.load(Ordering::Acquire).is_null() {
-            let history = FreezeHistory::try_new().ok_or(BAD_ALLOC)?;
-            sh.freeze_history.store(Box::into_raw(history), Ordering::Release);
-        }
-        let p = self.try_edit()?;
-        if enabled == 0 || !p.frozen_song_policy || p.frozen_publication_id != publication_id {
-            p.frozen_song_frames = 0;
-        }
-        p.frozen_song_policy = enabled != 0;
-        p.frozen_publication_id = if enabled != 0 { publication_id } else { 0 };
-        Ok(())
-    }
-
-    /// The exact musical length, in frames, of the frozen publication `publication_id`. Errors leave the extent unchanged.
-    pub fn set_frozen_song_extent(&mut self, publication_id: u64, musical_frames: i64) -> Result<(), String> {
-        if publication_id == 0 || musical_frames < 1 || musical_frames > 100000000 {
-            return Err("Frozen song extent requires a valid engine, nonzero publication and1..100000000 frames.".into());
-        }
-        let previous = self.view();
-        if !previous.frozen_song_policy || previous.frozen_publication_id != publication_id {
-            return Err("Frozen song extent must match the enabled publication ID.".into());
-        }
-        if previous.frozen_song_frames != 0 && previous.frozen_song_frames != musical_frames {
-            return Err("A frozen publication cannot change its exact song extent; create a new publication.".into());
-        }
-        self.try_edit()?.frozen_song_frames = musical_frames;
-        Ok(())
     }
 
     /// Failure leaves the draft map unchanged.
@@ -965,7 +923,7 @@ impl Control {
     pub fn duration(&self, sample_rate: f64, song_mode: bool) -> f64 {
         let p = &self.control;
         if song_mode {
-            return p.song_duration(sample_rate);
+            return p.projected_song_duration(sample_rate);
         }
         if p.timing.is_some() {
             p.mapped_pattern_end.wrapping_sub(p.mapped_pattern_start) as f64 / sample_rate

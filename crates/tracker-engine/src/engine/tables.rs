@@ -1,5 +1,5 @@
 //! Per-channel render tables and retained bus history: C++ `TrackState`, `RatchetState`,
-//! `LaneEventState`, `PluginRowLock`, `BusRing`, `PeakStore`, `FreezeHistory` and `ChannelTables`
+//! `LaneEventState`, `PluginRowLock`, `BusRing`, `PeakStore` and `ChannelTables`
 //! from `TrackerEngine.cpp`.
 //!
 //! Everything here is allocated on the control thread (at commit or engine creation) and then
@@ -7,7 +7,7 @@
 
 use super::abi::*;
 use super::project::PluginStepFX;
-use super::util::{try_box_with, FloatBlock};
+use super::util::FloatBlock;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -179,22 +179,6 @@ impl PeakStore {
         if let Some(slot) = self.values.get(index) {
             slot.store(value.to_bits(), Ordering::Relaxed);
         }
-    }
-}
-
-/// Retained per-frame freeze metadata, indexed by graph frame modulo the clock capacity.
-pub struct FreezeHistory {
-    pub frames: Box<[STFreezeContext]>,
-}
-
-impl FreezeHistory {
-    /// Control thread. `None` when memory is exhausted (C++ `std::bad_alloc`).
-    pub fn try_new() -> Option<Box<FreezeHistory>> {
-        let blank = STFreezeContext { content_graph_frame: i64::MIN, ..STFreezeContext::default() };
-        let mut frames = Vec::new();
-        frames.try_reserve_exact(CLOCK_CAPACITY).ok()?;
-        frames.resize(CLOCK_CAPACITY, blank);
-        try_box_with(|| FreezeHistory { frames: frames.into_boxed_slice() })
     }
 }
 

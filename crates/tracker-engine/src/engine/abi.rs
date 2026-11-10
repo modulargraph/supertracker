@@ -148,31 +148,6 @@ pub const ST_INPUT_CLOCK_PLAYING: i32 = 1;
 pub const ST_INPUT_CLOCK_MAPPED: i32 = 2;
 pub const ST_INPUT_CLOCK_RECORDING: i32 = 4;
 
-/// `STFreezePhase` (a C enum: 32 bits).
-pub type STFreezePhase = u32;
-pub const ST_FREEZE_DISABLED: STFreezePhase = 0;
-pub const ST_FREEZE_SONG: STFreezePhase = 1;
-pub const ST_FREEZE_NATURAL_TAIL: STFreezePhase = 2;
-pub const ST_FREEZE_STOPPED: STFreezePhase = 3;
-pub const ST_FREEZE_UNSUPPORTED: STFreezePhase = 4;
-pub const ST_FREEZE_INVALID_POSITION: STFreezePhase = 5;
-
-/// `STFreezeCause` (a C enum: 32 bits).
-pub type STFreezeCause = u32;
-pub const ST_FREEZE_CAUSE_NONE: STFreezeCause = 0;
-pub const ST_FREEZE_CAUSE_PLAY: STFreezeCause = 1;
-pub const ST_FREEZE_CAUSE_SEEK: STFreezeCause = 2;
-pub const ST_FREEZE_CAUSE_STOP: STFreezeCause = 3;
-pub const ST_FREEZE_CAUSE_LOOP: STFreezeCause = 4;
-pub const ST_FREEZE_CAUSE_NATURAL_END: STFreezeCause = 5;
-pub const ST_FREEZE_CAUSE_REPLACEMENT: STFreezeCause = 6;
-pub const ST_FREEZE_CAUSE_RESTORE: STFreezeCause = 7;
-pub const ST_FREEZE_CAUSE_PANIC: STFreezeCause = 8;
-pub const ST_FREEZE_CAUSE_GRAPH_RESET: STFreezeCause = 9;
-
-pub const ST_FREEZE_PREROLL: u32 = 1;
-pub const ST_FREEZE_NOT_CONFIGURED: i32 = -4;
-
 pub const ST_ENGINE_CLOCK_NOT_PREPARED: i32 = -2;
 pub const ST_ENGINE_CLOCK_NOT_RETAINED: i32 = -3;
 pub const ST_ENGINE_CLOCK_HISTORY_FRAMES: usize = 262144;
@@ -396,28 +371,6 @@ pub struct STInputAck {
     pub row: i32,
     pub sequence: i32,
     pub early: i32,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct STFreezeContext {
-    pub publication_id: u64,
-    pub playback_id: u64,
-    pub transition_id: u64,
-    pub graph_frame: i64,
-    pub content_graph_frame: i64,
-    pub project_frame: i64,
-    pub transition_content_graph_frame: i64,
-    pub transition_project_frame: i64,
-    pub sample_rate: f64,
-    pub phase: STFreezePhase,
-    pub cause: STFreezeCause,
-    pub flags: u32,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct STFreezeSpan {
-    pub context: STFreezeContext,
-    pub frames: u32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

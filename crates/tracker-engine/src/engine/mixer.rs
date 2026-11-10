@@ -510,13 +510,6 @@ impl<'a> Rt<'a> {
             if self.e.count_in_total > 0 {
                 self.step_count_in();
             }
-            if p.frozen_song_policy
-                && self.e.playing
-                && self.e.song_mode
-                && self.e.transport_frames >= self.e.song_end_frames.ceil()
-            {
-                self.finish_song();
-            }
             if self.e.playing
                 && self.e.song_mode
                 && self.e.sequence_finished

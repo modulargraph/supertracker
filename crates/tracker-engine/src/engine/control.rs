@@ -11,7 +11,7 @@ use super::project::{Project, Sample};
 use super::state::{Command, Render, Rt, EngineCore, Shared};
 use super::tables::{BusRing, ChannelTables, PeakStore};
 use super::abi::default_track;
-use super::util::{cmax, try_box_with};
+use super::util::cmax;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -70,17 +70,6 @@ impl Control {
     pub(crate) fn edit(&mut self) -> &mut Project {
         let control = &self.control;
         self.draft.get_or_insert_with(|| Box::new((**control).clone()))
-    }
-
-    /// `edit()` for the setters that report an allocation failure instead of dying (the C++
-    /// functions with a `catch`): the draft's storage is reserved first, so a failed allocation
-    /// leaves the engine unchanged.
-    pub(crate) fn try_edit(&mut self) -> Result<&mut Project, String> {
-        if self.draft.is_none() {
-            let control = &self.control;
-            self.draft = Some(try_box_with(|| (**control).clone()).ok_or(BAD_ALLOC)?);
-        }
-        Ok(self.edit())
     }
 
     /// The project control-thread edits apply to, without creating a draft.
@@ -199,7 +188,6 @@ impl Control {
     fn prepare(&mut self, sh: &Shared, sample_rate: f64, draft: &mut Project) -> Result<(), String> {
         Self::normalize(draft);
         draft.compile_timing(sample_rate)?;
-        draft.validate_frozen_extent(sample_rate)?;
         // Only lane lists edited in this draft can be unsorted; shared ones were sorted when
         // first published (and cannot be mutated here).
         for pattern in &mut draft.patterns {
@@ -269,12 +257,6 @@ impl Drop for EngineCore {
     fn drop(&mut self) {
         let EngineCore { shared, render, control, .. } = self;
         let render = render.get_mut();
-        let history = shared.freeze_history.swap(std::ptr::null_mut(), Ordering::AcqRel);
-        if !history.is_null() {
-            // SAFETY: the history was leaked from a Box by `set_frozen_song_policy`
-            // and is freed only here.
-            drop(unsafe { Box::from_raw(history) });
-        }
         render.release_clock_origin();
         // SAFETY: no render call overlaps destruction (API contract), so this thread stands in
         // for the render thread; no adoption happens while the view exists.

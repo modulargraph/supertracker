@@ -91,7 +91,6 @@ fn rejects_invalid_engines_and_foreign_shared_state() {
     edit.play(foreign, 1);
     assert!(!edit.input_note(foreign, 1, ST_INPUT_NOTE_ON, 0, 0, 60, 100, 1));
     assert!(!edit.set_instrument_parameter(foreign, 0, ST_TARGET_CUTOFF, 0.5));
-    assert!(edit.set_frozen_song_policy(foreign, 1, 7).is_err());
     assert_eq!(other_status.status().transport_pending, 0, "the other engine received no command");
     assert_eq!(status.status().transport_pending, 0);
     let (render_state, _) = render_half.parts();
@@ -217,7 +216,6 @@ fn bus_history_is_not_rendered_twice() {
     let span = audio.clock_span(1000, 100, 0).expect("rendered time has a clock");
     assert_eq!((span.frames, span.context.graph_frame, span.context.bpm), (100, 1000, 120.0));
     assert_eq!(audio.clock_span(5000, 100, 0), Err(SpanError::NotPrepared));
-    assert_eq!(audio.freeze_span(1000, 100, 0), Err(SpanError::NotConfigured));
     assert_eq!(SpanError::NotPrepared.status(), ST_ENGINE_CLOCK_NOT_PREPARED);
     // The argument rules: silence and no rendering for what the history cannot hold.
     let mut refused = vec![5.0f32; 64];
@@ -252,11 +250,6 @@ fn checked_commit_reports_problems_and_keeps_the_published_project() {
     let meters = [ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
     assert!(edit.set_timing_map(rate, &tempos, &meters, 1).is_err_and(|problem| !problem.is_empty()));
     assert!(edit.set_timing_map(rate, &[], &meters, 1).is_err(), "an empty event list is rejected");
-    assert!(edit.set_frozen_song_policy(shared, 1, 0).is_err());
-    assert!(edit.set_frozen_song_policy(shared, 1, 7).is_ok());
-    // An extent shorter than the song is rejected at commit; the draft stays editable.
-    assert!(edit.set_frozen_song_extent(7, 1000).is_ok());
-    assert!(edit.commit(shared, rate).is_err_and(|problem| !problem.is_empty()));
     assert_eq!(edit.duration(rate, true), duration);
     edit.cancel_update();
     let epoch = edit.pattern_epoch();

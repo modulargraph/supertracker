@@ -1,7 +1,6 @@
 //! Timestamped bus history (ported from the C++ engine's `TrackerEngine.cpp`): `renderCached` (render_bus/render_channel),
-//! the per-bus rings (`writeRing`, `zeroRing`, `silenceRing`), retained clock and freeze metadata
-//! (`retainClock`, `retainFreeze`) and the queries over them (`prerollClock`,
-//! `clock_span`, `freeze_span`).
+//! the per-bus rings (`writeRing`, `zeroRing`, `silenceRing`), retained clock metadata
+//! (`retainClock`) and the queries over it (`prerollClock`, `clock_span`).
 //!
 //! Serialized graph pulls may overlap and use different frame counts; only an uncached suffix
 //! advances the sequencer and DSP, existing ranges are copied without advancing music twice.
@@ -68,7 +67,7 @@ fn silence(buffer: &mut Option<&mut [f32]>) {
     }
 }
 
-/// Why [`Render::clock_span`] or [`Render::freeze_span`] has no span to give.
+/// Why [`Render::clock_span`] has no span to give.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SpanError {
     /// An argument is out of range.
@@ -79,21 +78,17 @@ pub enum SpanError {
     NotPrepared,
     /// The frame is older than the retained history.
     NotRetained,
-    /// Freeze spans only: the project has no frozen-song policy.
-    NotConfigured,
 }
 
 impl SpanError {
     /// The numeric code of this error (`CLOCK_INVALID`, `CLOCK_OUTSIDE_DOMAIN`,
-    /// `ST_ENGINE_CLOCK_NOT_PREPARED`, `ST_ENGINE_CLOCK_NOT_RETAINED`,
-    /// `ST_FREEZE_NOT_CONFIGURED`); success is `CLOCK_OK`.
+    /// `ST_ENGINE_CLOCK_NOT_PREPARED`, `ST_ENGINE_CLOCK_NOT_RETAINED`); success is `CLOCK_OK`.
     pub const fn status(self) -> i32 {
         match self {
             SpanError::Invalid => CLOCK_INVALID,
             SpanError::OutsideDomain => CLOCK_OUTSIDE_DOMAIN,
             SpanError::NotPrepared => ST_ENGINE_CLOCK_NOT_PREPARED,
             SpanError::NotRetained => ST_ENGINE_CLOCK_NOT_RETAINED,
-            SpanError::NotConfigured => ST_FREEZE_NOT_CONFIGURED,
         }
     }
 
@@ -104,7 +99,6 @@ impl SpanError {
             CLOCK_OUTSIDE_DOMAIN => Some(SpanError::OutsideDomain),
             ST_ENGINE_CLOCK_NOT_PREPARED => Some(SpanError::NotPrepared),
             ST_ENGINE_CLOCK_NOT_RETAINED => Some(SpanError::NotRetained),
-            ST_FREEZE_NOT_CONFIGURED => Some(SpanError::NotConfigured),
             _ => Some(SpanError::Invalid),
         }
     }
@@ -117,7 +111,6 @@ impl std::fmt::Display for SpanError {
             SpanError::OutsideDomain => "The frame lies outside the timing map.",
             SpanError::NotPrepared => "The frame has not been rendered yet.",
             SpanError::NotRetained => "The frame is older than the retained history.",
-            SpanError::NotConfigured => "The project has no frozen-song policy.",
         })
     }
 }
@@ -218,9 +211,6 @@ impl Render {
         if !self.cache_valid {
             self.cache_generation = self.cache_generation.wrapping_add(1);
             self.release_clock_origin();
-            if !self.freeze_transition_pending || self.freeze_natural_tail {
-                self.freeze_transition(ST_FREEZE_CAUSE_GRAPH_RESET, true, false);
-            }
             self.timing_epoch = self.timing_epoch.wrapping_add(1);
             self.cache_begin = time;
             self.cache_end = time;
@@ -393,19 +383,6 @@ impl Render {
         }
     }
 
-    /// The freeze metadata of rendered graph time, with the arguments of
-    /// [`Render::clock_span`]. Needs a frozen-song policy (`Control::set_frozen_song_policy`).
-    pub fn freeze_span(&self, sh: &Shared, graph_frame: i64, requested: u32, latency: i64) -> Result<STFreezeSpan, SpanError> {
-        if self.engine_id != sh.engine_id {
-            return Err(SpanError::Invalid);
-        }
-        let mut span = STFreezeSpan::default();
-        match SpanError::from_status(self.freeze_span_status(sh, graph_frame, requested, latency, &mut span)) {
-            None => Ok(span),
-            Some(error) => Err(error),
-        }
-    }
-
     /// `clock_span` with its result as a status code; `out` is written only for `CLOCK_OK`.
     fn clock_span_status(&self, sh: &Shared, graph_frame: i64, requested: u32, latency: i64, out: &mut ClockSpan) -> i32 {
         if requested < 1
@@ -464,147 +441,9 @@ impl Render {
         CLOCK_OK
     }
 
-    /// `freeze_span` with its result as a status code; `out` is written only for `CLOCK_OK`.
-    fn freeze_span_status(&self, sh: &Shared, graph_frame: i64, requested: u32, latency: i64, out: &mut STFreezeSpan) -> i32 {
-        if requested < 1
-            || requested > CLOCK_MAX_SPAN
-            || latency < 0
-            || latency > LIMIT_30
-            || graph_frame < -LIMIT_52
-            || graph_frame > LIMIT_52
-        {
-            return CLOCK_INVALID;
-        }
-        let history = sh.freeze_history.load(Ordering::Acquire);
-        if history.is_null() {
-            return ST_FREEZE_NOT_CONFIGURED;
-        }
-        // SAFETY: the history is allocated once by the control thread and freed only when the
-        // engine is destroyed; this query is serialized with render_bus (API contract), the
-        // history's only writer.
-        let history = unsafe { &*history };
-        if !self.cache_valid || self.observed_cache_epoch != sh.cache_epoch.load(Ordering::Acquire) {
-            return ST_ENGINE_CLOCK_NOT_PREPARED;
-        }
-        let content = graph_frame - latency;
-        let mut result = STFreezeSpan::default();
-        let origin_graph = self.cache_origin_graph as i64;
-        if self.cache_origin_valid && content < origin_graph {
-            if !self.cache_origin_freeze_valid || origin_graph.wrapping_sub(content) > LIMIT_30 {
-                return ST_ENGINE_CLOCK_NOT_RETAINED;
-            }
-            result.context = self.cache_origin_freeze;
-            result.context.phase = ST_FREEZE_STOPPED;
-            result.context.flags |= ST_FREEZE_PREROLL;
-            result.frames =
-                cmin(requested as i64, cmin(origin_graph.wrapping_sub(content), LIMIT_52 - graph_frame + 1)) as u32;
-        } else {
-            if content < 0 || (content as u64) < self.clock_begin {
-                return ST_ENGINE_CLOCK_NOT_RETAINED;
-            }
-            let content_frame = content as u64;
-            if content_frame >= self.cache_end {
-                return ST_ENGINE_CLOCK_NOT_PREPARED;
-            }
-            let at = |frame: u64| history.frames[(frame % CLOCK_CAPACITY as u64) as usize];
-            let first = at(content_frame);
-            if first.content_graph_frame != content {
-                return ST_ENGINE_CLOCK_NOT_RETAINED;
-            }
-            result.context = first;
-            result.frames =
-                cmin(requested as u64, cmin(self.cache_end - content_frame, (LIMIT_52 - graph_frame + 1) as u64)) as u32;
-            let advancing = first.phase == ST_FREEZE_SONG || first.phase == ST_FREEZE_NATURAL_TAIL;
-            for n in 1..result.frames {
-                let next = at(content_frame + n as u64);
-                if next.content_graph_frame != content + n as i64
-                    || next.publication_id != first.publication_id
-                    || next.playback_id != first.playback_id
-                    || next.transition_id != first.transition_id
-                    || next.phase != first.phase
-                    || next.cause != first.cause
-                    || next.flags != first.flags
-                    || next.project_frame != first.project_frame.wrapping_add(if advancing { n as i64 } else { 0 })
-                {
-                    result.frames = n;
-                    break;
-                }
-            }
-        }
-        result.context.graph_frame = graph_frame;
-        result.context.content_graph_frame = content;
-        *out = result;
-        CLOCK_OK
-    }
 }
 
 impl<'a> Rt<'a> {
-    fn freeze_position_valid(frame: f64) -> bool {
-        frame.is_finite() && frame >= 0.0 && frame <= LIMIT_52 as f64 && frame == frame.floor()
-    }
-
-    /// Record the freeze metadata of one graph frame (and of the cache origin).
-    fn retain_freeze(&mut self, graph_frame: u64, origin: bool) {
-        let history = self.sh.freeze_history.load(Ordering::Acquire);
-        if history.is_null() {
-            return;
-        }
-        let p = self.p;
-        let e = &mut *self.e;
-        let mut c = STFreezeContext {
-            publication_id: if p.frozen_song_policy { p.frozen_publication_id } else { 0 },
-            playback_id: e.freeze_playback_id,
-            transition_id: e.freeze_transition_id,
-            graph_frame: graph_frame as i64,
-            content_graph_frame: graph_frame as i64,
-            sample_rate: e.sample_rate,
-            cause: e.freeze_cause,
-            ..STFreezeContext::default()
-        };
-        let valid = Self::freeze_position_valid(e.transport_frames) && e.freeze_playback_id != 0 && e.freeze_transition_id != 0;
-        if e.freeze_transition_pending {
-            e.freeze_transition_graph = c.content_graph_frame;
-            e.freeze_transition_project = if valid { e.transport_frames as i64 } else { 0 };
-            e.freeze_transition_pending = false;
-        }
-        c.transition_content_graph_frame = e.freeze_transition_graph;
-        c.transition_project_frame = e.freeze_transition_project;
-        c.project_frame = if valid { e.transport_frames as i64 } else { 0 };
-        if !p.frozen_song_policy {
-            c.phase = ST_FREEZE_DISABLED;
-        } else if !e.song_mode {
-            c.phase = ST_FREEZE_UNSUPPORTED;
-        } else if !valid {
-            c.phase = ST_FREEZE_INVALID_POSITION;
-        } else if e.playing {
-            c.phase = ST_FREEZE_SONG;
-        } else if e.freeze_natural_tail
-            && e.freeze_cause == ST_FREEZE_CAUSE_NATURAL_END
-            && e.freeze_transition_graph != i64::MIN
-        {
-            let elapsed = c.content_graph_frame.wrapping_sub(e.freeze_transition_graph);
-            if elapsed < 0 || elapsed > LIMIT_52 - e.freeze_transition_project {
-                c.phase = ST_FREEZE_INVALID_POSITION;
-            } else {
-                c.phase = ST_FREEZE_NATURAL_TAIL;
-                c.project_frame = e.freeze_transition_project + elapsed;
-            }
-        } else {
-            c.phase = ST_FREEZE_STOPPED;
-        }
-        // SAFETY: the history is allocated by the control thread before the policy that uses it
-        // is published and lives until the engine is destroyed; the render thread is its only
-        // writer, and readers (`freeze_span`) are serialized with rendering.
-        let history = unsafe { &mut *history };
-        if let Some(slot) = history.frames.get_mut((graph_frame % CLOCK_CAPACITY as u64) as usize) {
-            *slot = c;
-        }
-        if origin {
-            e.cache_origin_freeze = c;
-            e.cache_origin_freeze_valid = true;
-        }
-    }
-
     /// Record the clock context of one newly rendered graph frame.
     pub fn retain_clock(&mut self, graph_frame: u64) {
         let slot = (graph_frame % CLOCK_CAPACITY as u64) as usize;
@@ -686,7 +525,6 @@ impl<'a> Rt<'a> {
             c.flags &= !CLOCK_GRID_PROJECTION;
         }
         let origin = !self.e.cache_origin_valid;
-        self.retain_freeze(graph_frame, origin);
         let e = &mut *self.e;
         if origin {
             e.cache_origin_clock = c;

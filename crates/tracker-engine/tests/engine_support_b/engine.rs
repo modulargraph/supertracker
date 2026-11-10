@@ -80,15 +80,6 @@ impl Engine {
         self.control().0.set_timing(bpm, lines_per_beat, swing, master_volume);
     }
 
-    pub fn set_frozen_song_policy(&mut self, enabled: i32, publication_id: u64) -> Result<(), String> {
-        let (c, sh, _) = self.control();
-        c.set_frozen_song_policy(sh, enabled, publication_id)
-    }
-
-    pub fn set_frozen_song_extent(&mut self, publication_id: u64, musical_frames: i64) -> Result<(), String> {
-        self.control().0.set_frozen_song_extent(publication_id, musical_frames)
-    }
-
     pub fn set_timing_map(
         &mut self,
         tempos: &[ClockTempoEvent],
@@ -471,17 +462,6 @@ impl Engine {
     /// The clock span as a status; `out` is written only for `CLOCK_OK`.
     pub fn clock_span(&mut self, graph_frame: i64, requested: u32, latency: i64, out: &mut ClockSpan) -> i32 {
         match self.e.render().clock_span(graph_frame, requested, latency) {
-            Ok(span) => {
-                *out = span;
-                CLOCK_OK
-            }
-            Err(error) => error.status(),
-        }
-    }
-
-    /// The freeze span as a status; `out` is written only for `CLOCK_OK`.
-    pub fn freeze_span(&mut self, graph_frame: i64, requested: u32, latency: i64, out: &mut STFreezeSpan) -> i32 {
-        match self.e.render().freeze_span(graph_frame, requested, latency) {
             Ok(span) => {
                 *out = span;
                 CLOCK_OK
