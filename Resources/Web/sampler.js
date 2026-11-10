@@ -961,7 +961,7 @@
   }
   function startEditorAudition(inst) {
     if (editorHeld || !inst.samplePath || window.STFreeze?.blockAudition?.(state().track)) return;
-    const s = state(), marker = selectedMarker(inst), root = Math.round(limit(inst.rootNote ?? 60, 0, 127));
+    const marker = selectedMarker(inst), root = Math.round(limit(inst.rootNote ?? 60, 0, 127));
     stopAudition();
     const job = {...destination(inst),signature:auditionSignature(inst),marker:marker.key,slice:inst.mode === 'slice',sent:false};
     if (!job.slice) {
@@ -1012,7 +1012,7 @@
     return true;
   }
   async function editRegion(operation, extra = {}) {
-    const s = state(), id = s.instrument, project = s.project, inst = current(), label = EDIT_LABELS[operation] || operation;
+    const s = state(), id = s.instrument, inst = current(), label = EDIT_LABELS[operation] || operation;
     if (!inst?.samplePath) { ST().toast('Load a sample first.'); return; }
     if (editorJob.current) { ST().toast('Wait for the current sample edit to finish.'); return; }
     const transaction = window.STInstrumentEdits;
