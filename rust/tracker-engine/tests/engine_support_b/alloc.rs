@@ -21,9 +21,6 @@ thread_local! {
     static FAIL_NEXT: Cell<bool> = const { Cell::new(false) };
 }
 
-// With the crate's `cxx-alloc` feature the library installs its own global allocator (C++
-// operator new); a second one cannot be declared, and the C++ programs do the counting then.
-#[cfg(not(feature = "cxx-alloc"))]
 mod allocator {
     use super::{ALLOCATIONS, DEALLOCATIONS, FAIL_NEXT, REALTIME};
     use std::alloc::{GlobalAlloc, Layout, System};
@@ -127,7 +124,7 @@ pub fn cancel_allocation_failure() {
 /// Runs in every test binary that includes this module: the "zero render allocations"
 /// assertions and the injected allocation failures mean something only if this allocator is the
 /// one in use and behaves as described.
-#[cfg(all(test, not(feature = "cxx-alloc")))]
+#[cfg(test)]
 mod self_check {
     use super::*;
     use std::hint::black_box;

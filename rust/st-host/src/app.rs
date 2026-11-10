@@ -28,12 +28,17 @@ pub struct HostOptions {
     pub autosave_every: Option<Duration>,
     /// The audio engine; `None` for a host without one (tests of the host's own commands).
     pub audio: Option<crate::areas::audio::AudioOptions>,
+    /// Plug-in hosting ([`crate::areas::plugins`]), on a host with an audio engine; `None` for a host without it.
+    pub plugins: Option<crate::areas::plugins::PluginAreaOptions>,
+    /// The library, MIDI, the Maschine MK3 and AI control ([`crate::areas::services`]).
+    pub services: crate::areas::services::ServiceOptions,
 }
 
 impl HostOptions {
     /// The options of a normal run: the system's opener, recovery every 20 s.
     pub fn new(support: PathBuf, dialogs: Arc<dyn Dialogs>) -> Self {
-        HostOptions { support, dialogs, opener: Arc::new(SystemOpener), autosave_every: Some(Duration::from_secs(20)), audio: Some(crate::areas::audio::AudioOptions::from_environment()) }
+        let services = crate::areas::services::ServiceOptions::for_support(&support);
+        HostOptions { services, support, dialogs, opener: Arc::new(SystemOpener), autosave_every: Some(Duration::from_secs(20)), audio: Some(crate::areas::audio::AudioOptions::from_environment()), plugins: Some(crate::areas::plugins::PluginAreaOptions::from_environment()) }
     }
 }
 
@@ -44,6 +49,11 @@ pub struct Host {
     pub lifecycle: Arc<Lifecycle>,
     /// The audio area, when the host was installed with one.
     pub audio: Option<Arc<crate::areas::audio::Audio>>,
+    /// The plug-in area, when the host has an audio engine and plug-in hosting could start.
+    pub plugins: Option<Arc<crate::areas::plugins::Plugins>>,
+    /// The library, MIDI, the Maschine MK3 and AI control. The executable starts AI control
+    /// (`services.start_agent()`) and ends them all (`services.shutdown()`).
+    pub services: crate::areas::services::Services,
 }
 
 /// Registers every command `st-host` implements and returns its services.
@@ -60,6 +70,8 @@ pub fn install(bridge: &mut BridgeBuilder, options: HostOptions) -> Result<Host>
     let events = bridge.events();
     let audio_events = bridge.events();
     let sample_events = bridge.events();
+    let plugin_events = bridge.events();
+    let (service_events, service_calls) = (bridge.events(), bridge.calls());
     let commands = bridge.commands();
     session.register(commands);
     MediaRelink::register(session.clone(), events, commands);
@@ -72,13 +84,22 @@ pub fn install(bridge: &mut BridgeBuilder, options: HostOptions) -> Result<Host>
         None => None,
     };
     if let Some(audio) = &audio {
-        crate::areas::samples::install(commands, audio, &options.support, sample_events);
+        crate::areas::samples::install(commands, audio, &options.support, sample_events.clone());
+        crate::areas::export::install(commands, audio, &options.support, sample_events.clone());
+        crate::areas::recording::install(commands, audio, &options.support, sample_events);
     }
+    // Plug-in hosting that cannot start (no place for its sockets) costs the plug-ins, not the host.
+    let plugins = match (&audio, &options.plugins) {
+        (Some(audio), Some(plugins)) => crate::areas::plugins::install(commands, audio, &settings, &options.support, plugin_events, plugins).map_err(|error| eprintln!("supertracker: {error}")).ok(),
+        _ => None,
+    };
+    let engine = audio.as_ref().map(|audio| audio.engine().clone());
+    let services = crate::areas::services::install(commands, &session, &settings, &lifecycle, service_events, service_calls, engine, &options.support, &options.services)?;
 
     if let Some(interval) = options.autosave_every {
         session.start_autosave_timer(interval);
     }
-    Ok(Host { session, settings, lifecycle, audio })
+    Ok(Host { session, settings, lifecycle, audio, plugins, services })
 }
 
 struct Handshake {
@@ -244,6 +265,8 @@ pub struct Lifecycle {
 struct Quit {
     phase: Phase,
     listener: Option<Arc<dyn Fn(QuitProgress) + Send + Sync>>,
+    /// Told `true` when a quit question opens and `false` when it closes with "stay".
+    fence: Option<Arc<dyn Fn(bool) + Send + Sync>>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -298,6 +321,22 @@ impl Lifecycle {
         self.state().listener = Some(Arc::new(listener));
     }
 
+    /// Sets the function that fences work which must not start while a quit is being decided
+    /// (AI control stops admitting requests): it is called with `true` when the interface is
+    /// asked, and with `false` when the answer is "stay" or the executable gives up. After
+    /// "proceed" it is not called again. It runs on the thread that caused the step and must
+    /// not block.
+    pub fn set_fence(&self, fence: impl Fn(bool) + Send + Sync + 'static) {
+        self.state().fence = Some(Arc::new(fence));
+    }
+
+    fn fence(&self, quitting: bool) {
+        let fence = self.state().fence.clone();
+        if let Some(fence) = fence {
+            fence(quitting);
+        }
+    }
+
     /// Step 1 of the handshake (see the type's documentation).
     pub fn request_quit(&self) -> QuitRequest {
         let mut state = self.state();
@@ -310,6 +349,7 @@ impl Lifecycle {
         }
         state.phase = Phase::Asked;
         drop(state);
+        self.fence(true);
         self.events.emit("app.quitRequested", json!({}));
         QuitRequest::Asked
     }
@@ -322,8 +362,10 @@ impl Lifecycle {
     /// The executable stopped waiting for an answer and keeps running.
     pub fn give_up(&self) {
         let mut state = self.state();
-        if state.phase != Phase::Quitting {
+        if state.phase != Phase::Quitting && state.phase != Phase::Running {
             state.phase = Phase::Running;
+            drop(state);
+            self.fence(false);
         }
     }
 

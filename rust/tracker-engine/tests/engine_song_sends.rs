@@ -1,4 +1,4 @@
-//! Port of `tests/engine_song_sends_tests.cpp`: song order/section-loop playback and shared
+//! Port of the former C++ test program `engine_song_sends_tests.cpp`: song order/section-loop playback and shared
 //! delay/reverb send return parameters.
 #![cfg(feature = "engine")]
 
@@ -156,8 +156,8 @@ fn section_loop_with_tempo_map() {
     let mut e = Engine::new();
     let seq = [0, 1, 2, 3];
     configure_song(&mut e, &seq, true);
-    let tempos = [STClockTempoEvent { beat: 0.0, bpm: 120.0 }, STClockTempoEvent { beat: 2.0, bpm: 60.0 }];
-    let meters = [STClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
+    let tempos = [ClockTempoEvent { beat: 0.0, bpm: 120.0 }, ClockTempoEvent { beat: 2.0, bpm: 60.0 }];
+    let meters = [ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
     e.begin_update();
     assert!(e.set_timing_map(&tempos, &meters, 7).is_ok());
     e.set_song_loop(1, 2);

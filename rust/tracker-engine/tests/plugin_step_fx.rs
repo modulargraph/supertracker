@@ -1,4 +1,4 @@
-//! Port of `tests/plugin_step_fx_tests.cpp`: plug-in parameter locks on steps (plugin step FX),
+//! Port of the former C++ test program `plugin_step_fx_tests.cpp`: plug-in parameter locks on steps (plugin step FX),
 //! their interaction with automation lanes, and the events they emit.
 //!
 //! Allocations made by the audio callback, including event consumption, are counted (test setup,
@@ -479,7 +479,7 @@ fn cached_bus_overlaps_do_not_replay_events() {
         assert!(events.len() == 1);
         at(&events[0], 100, 0.75);
         let before = engine.status().seconds;
-        assert!(render_bus(&mut engine, st_return_bus(ST_MIN_RETURN_BUS), 0, 150).is_empty());
+        assert!(render_bus(&mut engine, return_bus(ST_MIN_RETURN_BUS), 0, 150).is_empty());
         assert!(engine.status().seconds == before);
         assert!(select(&render_bus(&mut engine, 1, 50, 125), destination).is_empty());
         engine.refresh_automation();
@@ -490,7 +490,7 @@ fn cached_bus_overlaps_do_not_replay_events() {
         events = select(&render_bus(&mut engine, 1, 200, 151), destination);
         assert!(events.len() == 1);
         at(&events[0], 300, 0.25);
-        assert!(render_bus(&mut engine, st_return_bus(ST_MIN_RETURN_BUS), 200, 151).is_empty());
+        assert!(render_bus(&mut engine, return_bus(ST_MIN_RETURN_BUS), 200, 151).is_empty());
     }
     assert!(render_allocations() == 0);
 }
@@ -519,8 +519,7 @@ fn saturated_queue_retries_active_lock() {
 
 /// "setter validation and step replacement"
 ///
-/// Dropped from the C++ group: `st_engine_set_plugin_step_fx(nullptr, ...)` (a null engine
-/// handle cannot be expressed).
+/// Dropped from the C++ group: the call with a null engine handle (it cannot be expressed).
 #[test]
 fn setter_validation_and_step_replacement() {
     let mut engine = fixture();

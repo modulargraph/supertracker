@@ -1,54 +1,36 @@
-//! The sample-accurate musical clock: the C API of `Sources/TrackerEngine/include/TrackerClock.h`.
+//! The sample-accurate musical clock.
 //!
-//! Replaces `Sources/TrackerEngine/TrackerClock.cpp` (and, in [`timing_map`], `ClockTimingMap.cpp`).
-//! The translation is deliberately literal: same numeric types, same order of floating-point
-//! operations, same fused multiply-adds, so every frame and beat equals the C++ engine's.
+//! A [`ClockMap`] is a tempo and meter map compiled for one sample rate; a [`ClockTimeline`]
+//! adds a transport origin (seek position, loop) and answers "what is the musical position of
+//! this graph frame" ([`ClockTimeline::context`]) and "for how many frames does it hold"
+//! ([`ClockTimeline::span`]). [`timing_map`] is the continuous seconds/beats law underneath.
 //!
-//! Immutable timing foundation; optionally adopted by TrackerEngine playback. Creation and
-//! destruction are control-thread operations. Queries allocate nothing, take no locks and never
-//! mutate state. Destroy only after readers are quiescent.
+//! Immutable timing foundation, adopted by the engine's playback. Maps and timelines are created
+//! on a control thread; queries allocate nothing, take no locks and never mutate state, so a
+//! map or timeline may be shared between threads freely.
 //!
-//! Rust callers can use [`STClockMap`] and [`STClockTimeline`] directly through their safe
-//! methods; the `st_clock_*` functions are thin wrappers that add the C null-pointer rules.
-//!
-//! Differences from the C++ that cannot be observed through valid use:
-//! * Running out of memory while creating a map or timeline aborts instead of reporting an error.
-//! * Where the C++ dereferenced an empty `std::optional` (undefined behaviour, reachable only if
-//!   inverse rounding puts the last sample's beat above 1000000), `st_clock_context` returns
-//!   `ST_CLOCK_OUTSIDE_DOMAIN`.
+//! All arithmetic is `f64` with a fixed order of operations and explicit fused multiply-adds,
+//! so every frame and beat is the same on every platform.
 
-#![deny(unsafe_op_in_unsafe_fn)]
-
-mod abi;
 mod cxx_math;
-mod long_double;
 pub mod timing_map;
-#[cfg(any(
-    all(
-        any(target_arch = "x86", target_arch = "x86_64"),
-        not(target_env = "msvc")
-    ),
-    test
-))]
-mod x87;
+mod types;
 
 #[cfg(test)]
 mod tests;
 
-use std::ffi::c_char;
 use std::fmt;
 use std::sync::Arc;
 
-pub use abi::*;
 use timing_map::{MeterEvent, TempoEvent, TimingMap, TimingMapError};
+pub use types::*;
 
 /// Graph frames and graph origins are within +/-2^52.
 const GRAPH_LIMIT: i64 = 1 << 52;
 /// Upstream latency is 0..2^30 frames.
 const LATENCY_LIMIT: i64 = 1 << 30;
 
-/// Why a map or timeline could not be created. [`ClockError::message`] is the text copied to the
-/// caller of the C API; the C++ tests compare parts of it.
+/// Why a map or timeline could not be created. [`ClockError::message`] is a text a user can read.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClockError {
     /// The sample rate is not finite or outside 8000..384000.
@@ -59,8 +41,6 @@ pub enum ClockError {
     Map(TimingMapError),
     /// Two different tempo/meter positions round up to the same sample.
     BoundariesCollapse,
-    /// No map was given for a timeline.
-    MapRequired,
     /// The graph origin or the seek beat is out of range.
     Origin,
     /// The loop beats are out of range, reversed, or not after the seek position.
@@ -78,7 +58,6 @@ impl ClockError {
             Self::BoundariesCollapse => {
                 "Distinct tempo/meter positions collapse onto one audio sample; move them apart or use the same quarter-beat position."
             }
-            Self::MapRequired => "A timing map is required.",
             Self::Origin => "Graph origin must be within +/-2^52 frames and seek beat within 0..1000000.",
             Self::Loop => "Loop requires 0<=start<end<=1000000 and a seek position before its end.",
             Self::LoopCollapse => "Loop/seek positions collapse onto the same audio sample.",
@@ -97,25 +76,6 @@ impl std::error::Error for ClockError {}
 impl From<TimingMapError> for ClockError {
     fn from(error: TimingMapError) -> Self {
         Self::Map(error)
-    }
-}
-
-/// Why a context or span query produced nothing.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ClockQueryError {
-    /// A bad argument: `ST_CLOCK_INVALID`.
-    Invalid,
-    /// A frame outside the graph or song domain: `ST_CLOCK_OUTSIDE_DOMAIN`.
-    OutsideDomain,
-}
-
-impl ClockQueryError {
-    /// The C result code.
-    pub const fn status(self) -> i32 {
-        match self {
-            Self::Invalid => ST_CLOCK_INVALID,
-            Self::OutsideDomain => ST_CLOCK_OUTSIDE_DOMAIN,
-        }
     }
 }
 
@@ -172,11 +132,11 @@ impl ClockData {
             }
             let mut kinds = 0;
             if tempos.get(t).is_some_and(|event| event.beat == beat) {
-                kinds |= ST_CLOCK_BOUNDARY_TEMPO;
+                kinds |= CLOCK_BOUNDARY_TEMPO;
                 t += 1;
             }
             if meters.get(m).is_some_and(|event| event.beat == beat) {
-                kinds |= ST_CLOCK_BOUNDARY_METER;
+                kinds |= CLOCK_BOUNDARY_METER;
                 m += 1;
             }
             let frame = data.raw_frame_at_beat(beat);
@@ -218,8 +178,8 @@ impl ClockData {
     }
 
     fn raw_frame_at_beat(&self, beat: f64) -> i64 {
-        // Every caller passes a beat inside the closed domain (the C++ dereferences the optional
-        // unchecked); zero is only a defined result for the impossible case.
+        // Every caller passes a beat inside the closed domain; zero is only a defined result
+        // for the impossible case.
         self.map
             .seconds_at_beat(beat)
             .map_or(0, |seconds| (seconds * self.rate).ceil() as i64)
@@ -284,7 +244,7 @@ impl ClockData {
     }
 }
 
-/// `STClockMap`: an immutable timing map compiled for one sample rate.
+/// An immutable timing map compiled for one sample rate.
 ///
 /// 1..1024 ascending unique events of each kind, both beginning at beat 0. Beats 0..1000000,
 /// BPM 20..400, meter 1..16 with denominator 2/4/8/16, sampleRate 8000..384000. Same-position
@@ -295,21 +255,21 @@ impl ClockData {
 /// generally quantize: the inverse at the returned sample can be less than one sample later.
 /// Sample-domain endpoints are inclusive; their beat is exactly 1000000. Negative frames are
 /// valid initial-tempo preroll.
-pub struct STClockMap {
+pub struct ClockMap {
     data: Arc<ClockData>,
 }
 
-impl STClockMap {
+impl ClockMap {
     pub fn new(
         sample_rate: f64,
-        tempos: &[STClockTempoEvent],
-        meters: &[STClockMeterEvent],
+        tempos: &[ClockTempoEvent],
+        meters: &[ClockMeterEvent],
         revision: u64,
     ) -> Result<Self, ClockError> {
         if !valid_rate(sample_rate) {
             return Err(ClockError::SampleRate);
         }
-        let allowed = 1..=ST_CLOCK_MAX_EVENTS as usize;
+        let allowed = 1..=CLOCK_MAX_EVENTS as usize;
         if !allowed.contains(&tempos.len()) || !allowed.contains(&meters.len()) {
             return Err(ClockError::EventCount);
         }
@@ -352,18 +312,18 @@ impl STClockMap {
     }
 }
 
-/// `STClockTimeline`: a map plus a transport origin.
+/// A map plus a transport origin.
 ///
-/// Timeline owns a map reference; the caller may destroy its `STClockMap` handle. Graph origin is
+/// The timeline shares the compiled map; the [`ClockMap`] it was made from may be dropped. Graph origin is
 /// within +/-2^52 frames. A seek quantizes startBeat once. Loops require
 /// 0<=start<end<=1000000 and startBeat<loopEndBeat; an intro before loopStart is allowed.
 /// Quantized loops repeat [startFrame,endFrame) exactly. Queries before graphOrigin do not wrap
 /// backwards and are marked preroll. A stopped timeline holds its quantized seek position and
 /// never advances.
-pub struct STClockTimeline {
+pub struct ClockTimeline {
     data: Arc<ClockData>,
     /// `playing` and `loop_enabled` are normalized to 0 or 1.
-    origin: STClockOrigin,
+    origin: ClockOrigin,
     start_frame: i64,
     /// Zero unless looping; otherwise `loop_start < loop_end`.
     loop_start: i64,
@@ -390,8 +350,8 @@ impl NextBoundary {
     }
 }
 
-impl STClockTimeline {
-    pub fn new(map: &STClockMap, mut origin: STClockOrigin) -> Result<Self, ClockError> {
+impl ClockTimeline {
+    pub fn new(map: &ClockMap, mut origin: ClockOrigin) -> Result<Self, ClockError> {
         if !valid_frame(origin.graph_origin_frame) || !valid_beat(origin.start_beat) {
             return Err(ClockError::Origin);
         }
@@ -434,7 +394,7 @@ impl STClockTimeline {
         &self,
         graph_frame: i64,
         upstream_latency_frames: i64,
-    ) -> Result<STClockContext, ClockQueryError> {
+    ) -> Result<ClockContext, ClockQueryError> {
         let latency = upstream_latency_frames;
         if !(0..=LATENCY_LIMIT).contains(&latency) {
             return Err(ClockQueryError::Invalid);
@@ -446,13 +406,13 @@ impl STClockTimeline {
         let origin = &self.origin;
         let playing = origin.playing != 0;
         let looping = origin.loop_enabled != 0;
-        let mut c = STClockContext {
+        let mut c = ClockContext {
             revision: data.revision,
             epoch: origin.epoch,
             graph_frame,
             content_graph_frame: graph_frame - latency,
             sample_rate: data.rate,
-            ..STClockContext::default()
+            ..ClockContext::default()
         };
         // All frames here are bounded: graph coordinates by 2^52, latency by 2^30 and song
         // frames by the map's last sample (about 2^40), so sums of a few of them fit easily.
@@ -463,13 +423,13 @@ impl STClockTimeline {
         };
         c.song_frame = self.start_frame + elapsed;
         if playing {
-            c.flags |= ST_CLOCK_PLAYING;
+            c.flags |= CLOCK_PLAYING;
         }
         if looping {
-            c.flags |= ST_CLOCK_LOOPING;
+            c.flags |= CLOCK_LOOPING;
         }
         if playing && elapsed < 0 {
-            c.flags |= ST_CLOCK_PREROLL;
+            c.flags |= CLOCK_PREROLL;
         }
         if looping && elapsed >= 0 && c.song_frame >= self.loop_end {
             let width = self.loop_end - self.loop_start;
@@ -512,7 +472,7 @@ impl STClockTimeline {
                 c.beat = cxx_math::next_below(c.bar_end_beat);
             }
         } else {
-            // See the module documentation: empty only where the C++ behaviour is undefined.
+            // Empty only if inverse rounding put the last sample's beat above the domain's end.
             let (Some(bpm), Some(bar)) =
                 (data.map.tempo_at_beat(c.beat), data.map.bar_at_beat(c.beat))
             else {
@@ -531,7 +491,7 @@ impl STClockTimeline {
         c.loop_start_beat = if looping { origin.loop_start_beat } else { 0.0 };
         c.loop_end_beat = if looping { origin.loop_end_beat } else { 0.0 };
         if c.song_frame == data.end_frame {
-            c.flags |= ST_CLOCK_DOMAIN_END;
+            c.flags |= CLOCK_DOMAIN_END;
         }
         let mut quarter = c.beat.floor();
         let frame_for_quarter = |beat: f64| {
@@ -569,15 +529,15 @@ impl STClockTimeline {
                     data.frame_at_beat(c.bar_end_beat)
                 };
                 if bar_end > c.song_frame {
-                    next.consider(bar_end - c.song_frame, ST_CLOCK_BOUNDARY_BAR);
+                    next.consider(bar_end - c.song_frame, CLOCK_BOUNDARY_BAR);
                 }
             }
-            next.consider(data.end_frame - c.song_frame, ST_CLOCK_BOUNDARY_DOMAIN);
+            next.consider(data.end_frame - c.song_frame, CLOCK_BOUNDARY_DOMAIN);
             if looping {
-                next.consider(self.loop_end - c.song_frame, ST_CLOCK_BOUNDARY_LOOP);
+                next.consider(self.loop_end - c.song_frame, CLOCK_BOUNDARY_LOOP);
             }
             if elapsed < 0 {
-                next.consider(-elapsed, ST_CLOCK_BOUNDARY_ORIGIN);
+                next.consider(-elapsed, CLOCK_BOUNDARY_ORIGIN);
             }
             if next.delta != i64::MAX {
                 c.next_boundary_frame = graph_frame + next.delta;
@@ -598,7 +558,7 @@ impl STClockTimeline {
             }
         }
         if c.next_quarter_beat_frame == i64::MAX {
-            c.flags |= ST_CLOCK_GRID_PROJECTION;
+            c.flags |= CLOCK_GRID_PROJECTION;
         }
         Ok(c)
     }
@@ -613,8 +573,8 @@ impl STClockTimeline {
         graph_frame: i64,
         requested_frames: u32,
         upstream_latency_frames: i64,
-    ) -> Result<STClockSpan, ClockQueryError> {
-        if !(1..=ST_CLOCK_MAX_SPAN).contains(&requested_frames) {
+    ) -> Result<ClockSpan, ClockQueryError> {
+        if !(1..=CLOCK_MAX_SPAN).contains(&requested_frames) {
             return Err(ClockQueryError::Invalid);
         }
         let context = self.context(graph_frame, upstream_latency_frames)?;
@@ -623,285 +583,9 @@ impl STClockTimeline {
             count = count.min(context.next_boundary_frame - graph_frame);
         }
         // `count` is at most `requested_frames`.
-        Ok(STClockSpan {
+        Ok(ClockSpan {
             context,
             frames: count.max(0) as u32,
         })
-    }
-}
-
-/// Copies `message` to caller storage of `capacity` bytes, truncated and always NUL terminated.
-///
-/// # Safety
-/// `out` is null or valid for writes of `capacity` bytes.
-unsafe fn error_text(out: *mut c_char, capacity: u32, message: &str) {
-    if out.is_null() || capacity == 0 {
-        return;
-    }
-    let count = message.len().min(capacity as usize - 1);
-    // SAFETY: `count + 1 <= capacity` bytes are written to storage the caller vouches for, and a
-    // Rust string never overlaps caller-owned C storage that is valid for writes.
-    unsafe {
-        std::ptr::copy_nonoverlapping(message.as_ptr(), out.cast::<u8>(), count);
-        out.add(count).write(0);
-    }
-}
-
-/// Reports `result` the C way: the object on the heap, or null and the message in `error`.
-///
-/// # Safety
-/// As for [`error_text`].
-unsafe fn into_handle<T>(
-    result: Result<T, ClockError>,
-    error: *mut c_char,
-    capacity: u32,
-) -> *mut T {
-    match result {
-        Ok(value) => Box::into_raw(Box::new(value)),
-        Err(failure) => {
-            // SAFETY: forwarded from the caller.
-            unsafe { error_text(error, capacity, failure.message()) };
-            std::ptr::null_mut()
-        }
-    }
-}
-
-/// Error text is copied to caller storage (optional); no partial object is returned on error.
-///
-/// # Safety
-/// `tempos` and `meters` are null or point to `tempo_count` / `meter_count` events; `error` is
-/// null or valid for writes of `error_capacity` bytes.
-#[no_mangle]
-pub unsafe extern "C" fn st_clock_map_create(
-    sample_rate: f64,
-    tempos: *const STClockTempoEvent,
-    tempo_count: u32,
-    meters: *const STClockMeterEvent,
-    meter_count: u32,
-    revision: u64,
-    error: *mut c_char,
-    error_capacity: u32,
-) -> *mut STClockMap {
-    // SAFETY: the caller's contract for `error`.
-    unsafe { error_text(error, error_capacity, "") };
-    let allowed = 1..=ST_CLOCK_MAX_EVENTS;
-    // Same order as the C++: the sample rate is checked before the event lists are looked at.
-    let result = if !valid_rate(sample_rate) {
-        Err(ClockError::SampleRate)
-    } else if tempos.is_null()
-        || meters.is_null()
-        || !allowed.contains(&tempo_count)
-        || !allowed.contains(&meter_count)
-    {
-        Err(ClockError::EventCount)
-    } else {
-        // SAFETY: both pointers are non-null and, by the caller's contract, address `tempo_count`
-        // and `meter_count` (1..1024) initialized events that nothing mutates during this call.
-        let (tempos, meters) = unsafe {
-            (
-                std::slice::from_raw_parts(tempos, tempo_count as usize),
-                std::slice::from_raw_parts(meters, meter_count as usize),
-            )
-        };
-        STClockMap::new(sample_rate, tempos, meters, revision)
-    };
-    // SAFETY: the caller's contract for `error`.
-    unsafe { into_handle(result, error, error_capacity) }
-}
-
-/// # Safety
-/// `map` is null or came from [`st_clock_map_create`] and is not used again. Timelines created
-/// from it stay valid.
-#[no_mangle]
-pub unsafe extern "C" fn st_clock_map_destroy(map: *mut STClockMap) {
-    if !map.is_null() {
-        // SAFETY: the pointer came from `Box::into_raw` in `st_clock_map_create` and ownership
-        // returns here exactly once.
-        drop(unsafe { Box::from_raw(map) });
-    }
-}
-
-/// On error, output values are left untouched.
-///
-/// # Safety
-/// `map` is null or a live map; `frame` is null or valid for a write.
-#[no_mangle]
-pub unsafe extern "C" fn st_clock_frame_at_beat(
-    map: *const STClockMap,
-    beat: f64,
-    frame: *mut i64,
-) -> i32 {
-    // SAFETY: a non-null `map` is a live, immutable map by the caller's contract.
-    let Some(map) = (unsafe { map.as_ref() }) else {
-        return ST_CLOCK_INVALID;
-    };
-    if frame.is_null() {
-        return ST_CLOCK_INVALID;
-    }
-    let Some(value) = map.frame_at_beat(beat) else {
-        return ST_CLOCK_OUTSIDE_DOMAIN;
-    };
-    // SAFETY: `frame` is non-null and writable by the caller's contract.
-    unsafe { frame.write(value) };
-    ST_CLOCK_OK
-}
-
-/// # Safety
-/// `map` is null or a live map; `beat` is null or valid for a write.
-#[no_mangle]
-pub unsafe extern "C" fn st_clock_beat_at_frame(
-    map: *const STClockMap,
-    frame: i64,
-    beat: *mut f64,
-) -> i32 {
-    // SAFETY: a non-null `map` is a live, immutable map by the caller's contract.
-    let Some(map) = (unsafe { map.as_ref() }) else {
-        return ST_CLOCK_INVALID;
-    };
-    if beat.is_null() {
-        return ST_CLOCK_INVALID;
-    }
-    let Some(value) = map.beat_at_frame(frame) else {
-        return ST_CLOCK_OUTSIDE_DOMAIN;
-    };
-    // SAFETY: `beat` is non-null and writable by the caller's contract.
-    unsafe { beat.write(value) };
-    ST_CLOCK_OK
-}
-
-/// # Safety
-/// `map` is null or a live map; `seconds` is null or valid for a write.
-#[no_mangle]
-pub unsafe extern "C" fn st_clock_seconds_at_beat(
-    map: *const STClockMap,
-    beat: f64,
-    seconds: *mut f64,
-) -> i32 {
-    // SAFETY: a non-null `map` is a live, immutable map by the caller's contract.
-    let Some(map) = (unsafe { map.as_ref() }) else {
-        return ST_CLOCK_INVALID;
-    };
-    if seconds.is_null() {
-        return ST_CLOCK_INVALID;
-    }
-    let Some(value) = map.seconds_at_beat(beat) else {
-        return ST_CLOCK_OUTSIDE_DOMAIN;
-    };
-    // SAFETY: `seconds` is non-null and writable by the caller's contract.
-    unsafe { seconds.write(value) };
-    ST_CLOCK_OK
-}
-
-/// # Safety
-/// `map` is null or a live map; `beat` is null or valid for a write.
-#[no_mangle]
-pub unsafe extern "C" fn st_clock_beat_at_seconds(
-    map: *const STClockMap,
-    seconds: f64,
-    beat: *mut f64,
-) -> i32 {
-    // SAFETY: a non-null `map` is a live, immutable map by the caller's contract.
-    let Some(map) = (unsafe { map.as_ref() }) else {
-        return ST_CLOCK_INVALID;
-    };
-    if beat.is_null() {
-        return ST_CLOCK_INVALID;
-    }
-    let Some(value) = map.beat_at_seconds(seconds) else {
-        return ST_CLOCK_OUTSIDE_DOMAIN;
-    };
-    // SAFETY: `beat` is non-null and writable by the caller's contract.
-    unsafe { beat.write(value) };
-    ST_CLOCK_OK
-}
-
-/// # Safety
-/// `map` is null or a live map; `error` is null or valid for writes of `error_capacity` bytes.
-#[no_mangle]
-pub unsafe extern "C" fn st_clock_timeline_create(
-    map: *const STClockMap,
-    origin: STClockOrigin,
-    error: *mut c_char,
-    error_capacity: u32,
-) -> *mut STClockTimeline {
-    // SAFETY: the caller's contract for `error`.
-    unsafe { error_text(error, error_capacity, "") };
-    // SAFETY: a non-null `map` is a live, immutable map by the caller's contract.
-    let result = match unsafe { map.as_ref() } {
-        Some(map) => STClockTimeline::new(map, origin),
-        None => Err(ClockError::MapRequired),
-    };
-    // SAFETY: the caller's contract for `error`.
-    unsafe { into_handle(result, error, error_capacity) }
-}
-
-/// # Safety
-/// `timeline` is null or came from [`st_clock_timeline_create`], has no reader left, and is not
-/// used again.
-#[no_mangle]
-pub unsafe extern "C" fn st_clock_timeline_destroy(timeline: *mut STClockTimeline) {
-    if !timeline.is_null() {
-        // SAFETY: the pointer came from `Box::into_raw` in `st_clock_timeline_create` and
-        // ownership returns here exactly once.
-        drop(unsafe { Box::from_raw(timeline) });
-    }
-}
-
-/// On error, `context` is left untouched.
-///
-/// # Safety
-/// `timeline` is null or a live timeline; `context` is null or valid for a write.
-#[no_mangle]
-pub unsafe extern "C" fn st_clock_context(
-    timeline: *const STClockTimeline,
-    graph_frame: i64,
-    upstream_latency_frames: i64,
-    context: *mut STClockContext,
-) -> i32 {
-    // SAFETY: a non-null `timeline` is a live, immutable timeline by the caller's contract.
-    let Some(timeline) = (unsafe { timeline.as_ref() }) else {
-        return ST_CLOCK_INVALID;
-    };
-    if context.is_null() {
-        return ST_CLOCK_INVALID;
-    }
-    match timeline.context(graph_frame, upstream_latency_frames) {
-        Ok(value) => {
-            // SAFETY: `context` is non-null and writable by the caller's contract.
-            unsafe { context.write(value) };
-            ST_CLOCK_OK
-        }
-        Err(error) => error.status(),
-    }
-}
-
-/// On error, `span` is left untouched.
-///
-/// # Safety
-/// `timeline` is null or a live timeline; `span` is null or valid for a write.
-#[no_mangle]
-pub unsafe extern "C" fn st_clock_span(
-    timeline: *const STClockTimeline,
-    graph_frame: i64,
-    requested_frames: u32,
-    upstream_latency_frames: i64,
-    span: *mut STClockSpan,
-) -> i32 {
-    // Every argument error is ST_CLOCK_INVALID and all of them precede the domain checks, as in
-    // the C++, so the order among them cannot be observed.
-    // SAFETY: a non-null `timeline` is a live, immutable timeline by the caller's contract.
-    let Some(timeline) = (unsafe { timeline.as_ref() }) else {
-        return ST_CLOCK_INVALID;
-    };
-    if span.is_null() {
-        return ST_CLOCK_INVALID;
-    }
-    match timeline.span(graph_frame, requested_frames, upstream_latency_frames) {
-        Ok(value) => {
-            // SAFETY: `span` is non-null and writable by the caller's contract.
-            unsafe { span.write(value) };
-            ST_CLOCK_OK
-        }
-        Err(error) => error.status(),
     }
 }

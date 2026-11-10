@@ -78,12 +78,12 @@ fn the_demo_song_plays_from_the_built_in_tables_of_st_samples() {
     options.samples = samples.clone();
     let engine = AudioEngine::new(options).unwrap();
     let demo: serde_json::Value = serde_json::from_str(include_str!("fixtures/demo_project.json")).unwrap();
+    // Built-in tables are generated on a worker within the lookup's short wait: the very first
+    // publication installs them.
     let report = engine.publish(&parse(&demo)).unwrap();
-    assert!(report.problems.iter().all(|problem| problem.error.is_none()));
-    assert!(samples.wait_idle(Duration::from_secs(20)));
-    let report = engine.samples_changed().unwrap();
     assert!(report.problems.is_empty(), "{:?}", report.problems);
     assert!(report.samples_installed >= 4);
+    assert!(samples.wait_idle(Duration::from_secs(20)));
     engine.play(&PlayOptions { song: true, from_start: true, ..PlayOptions::default() });
     let (left, right) = engine.render_offline(48_000, 512);
     assert!(peak(&left) > 0.05 && peak(&right) > 0.05);

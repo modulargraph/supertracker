@@ -1,4 +1,4 @@
-//! Voices of `STEngine` in `TrackerEngine.cpp`: note start (`noteOn`, zones, slices, voice
+//! Voices (ported from the C++ engine's `TrackerEngine.cpp`): note start (`noteOn`, zones, slices, voice
 //! modes, choke groups), note end (`externalOff`, `kill`, `release`, `allOff`), live parameters,
 //! and the per-sample DSP (`voiceSample`): envelopes, two LFOs, sampler modes (one-shot, loops,
 //! ping-pong, slices), wavetable and granular playback, the state-variable filter, drive, bit
@@ -525,7 +525,7 @@ fn granular_sample(v: &mut Voice, s: &Sample, sample_rate: f64, rate: f64, mod_p
     (l, r)
 }
 
-/// One live instrument parameter on one voice (see `st_engine_set_instrument_parameter`). Region
+/// One live instrument parameter on one voice (see `set_instrument_parameter`). Region
 /// targets only shape notes that start later (`onset`).
 fn apply_live(v: &mut Voice, target: i32, x: f32, onset: bool) {
     let (zone_volume, zone_pan, zone_tune) = (v.zone_volume, v.zone_pan, v.zone_tune);

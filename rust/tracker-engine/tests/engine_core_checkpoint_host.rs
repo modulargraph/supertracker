@@ -1,4 +1,4 @@
-//! Port of `tests/engine_tests.cpp`, part 4 of 5: transport checkpoints (capture/restore around
+//! Port of the former C++ test program `engine_tests.cpp`, part 4 of 5: transport checkpoints (capture/restore around
 //! a temporary export), raw host mixing and its note mask, host automation (destination map,
 //! timing, bounds and protected note-offs) and the mapped-timing suites (checkpoint, automation
 //! and metronome, synced LFO, publication bounds).
@@ -16,7 +16,7 @@ use engine_support_a::core_helpers::*;
 use engine_support_a::tone::*;
 use engine_support_a::{assert_zero_render_allocations, Engine};
 use std::f64::consts::PI;
-use tracker_engine::clock::{STClockMeterEvent, STClockTempoEvent};
+use tracker_engine::clock::{ClockMeterEvent, ClockTempoEvent};
 use tracker_engine::engine::*;
 
 #[test]
@@ -690,8 +690,8 @@ fn test_mapped_checkpoint() {
     let saved = e.capture_transport();
     assert!((saved.beat - 0.3125).abs() < 1e-12);
     e.begin_update();
-    let tempos = [STClockTempoEvent { beat: 0.0, bpm: 120.0 }, STClockTempoEvent { beat: 0.25, bpm: 240.0 }];
-    let meters = [STClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
+    let tempos = [ClockTempoEvent { beat: 0.0, bpm: 120.0 }, ClockTempoEvent { beat: 0.25, bpm: 240.0 }];
+    let meters = [ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
     assert!(e.set_timing_map(&tempos, &meters, 18).is_ok());
     assert!(e.commit_update_checked().is_ok());
     e.restore_transport(saved, 1);
@@ -812,7 +812,7 @@ fn test_mapped_publication_bounds() {
     let duration = e.duration(1);
     e.begin_update();
     assert!(e.set_pattern_timing_origin(1000000.0));
-    // C++ `!st_engine_commit_update_checked(...)&&error[0]`: rejected, with a message.
+    // The commit is rejected, with a message.
     assert!(e.commit_update_checked().is_err_and(|error| !error.is_empty()));
     assert!(e.duration(1) == duration);
     e.cancel_update();

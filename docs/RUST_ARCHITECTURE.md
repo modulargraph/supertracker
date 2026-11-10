@@ -83,6 +83,35 @@ silently ignored.
 - The same graph renders offline (export, freeze, render selection, tests) with the containers' deadline disabled.
 - Devices come from `cpal`; a null device (render to nowhere at a fixed rate) exists for tests and headless use.
 
+## Engine
+
+`tracker-engine` is pure Rust with no dependencies and no C interface: the C++ engine it was ported from, its C
+headers and the C++ test programs are gone, and the tests that defined the engine's behaviour are now the crate's own.
+
+- `tracker_engine::engine`: `Engine::new(sample_rate)` and its three handles (`ControlHalf` for the control thread,
+  `RenderHalf` for the audio thread, the clonable `StatusHandle` for everyone). `engine/host.rs` states why they may
+  cross threads. [AUDIO_ENGINE.md](AUDIO_ENGINE.md) describes the behaviour.
+- `tracker_engine::clock`: `ClockMap` and `ClockTimeline`, the sample-accurate tempo/meter clock (plain `f64`
+  arithmetic, the same results on every platform).
+- `tracker_engine::effects`: the built-in effect catalogue, `Effect` (an instance with lock-free parameter
+  mailboxes; `EffectControls` for other threads) and the drum models.
+- `tracker_engine::unit_range`: `UnitRangeCache`, the bounded render cache for one hosted unit.
+
+Run its tests from `rust/`:
+
+```sh
+cargo test -p tracker-engine              # debug build: overflow and bounds checks on
+cargo test -p tracker-engine --release    # the build the recorded PCM hashes and CPU budgets refer to
+cargo test -p tracker-engine --release --test engine_benchmark -- --ignored --nocapture   # one of the benchmarks
+```
+
+The benchmarks (`engine_benchmark`, `engine_dsp_benchmark`, `engine_render_budget`, `engine_many_tracks`,
+`effects_builtin_perf`) are `#[ignore]`d tests that print timings; they are run one at a time as above.
+
+The integration tests in `rust/tracker-engine/tests/` are ports of the former C++ test programs (same scenarios and
+assertions); their support modules install a counting allocator that fails a test when a render call allocates or
+frees.
+
 ## What "done" means for an area
 
 An area is ported when its commands are implemented in `st-host`, its behaviour is covered by Rust tests, the

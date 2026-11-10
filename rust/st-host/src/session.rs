@@ -55,7 +55,11 @@ pub struct Session {
     foreground: AtomicUsize,
     startup: Mutex<Startup>,
     autosave_timer: Mutex<Option<mpsc::Sender<()>>>,
+    /// Told about every project the audio side accepted ([`Session::observe_projects`]).
+    project_observers: Mutex<Vec<ProjectObserver>>,
 }
+
+type ProjectObserver = Arc<dyn Fn(&Project) + Send + Sync>;
 
 #[derive(Default)]
 struct Startup {
@@ -172,6 +176,7 @@ impl Session {
             foreground: AtomicUsize::new(0),
             startup: Mutex::new(startup),
             autosave_timer: Mutex::new(None),
+            project_observers: Mutex::new(Vec::new()),
         }))
     }
 
@@ -269,7 +274,20 @@ impl Session {
     }
 
     pub(crate) fn prepare_audio(&self, project: &Project, options: PublishOptions) -> Result<Option<Value>> {
-        self.audio.get().map(|audio| audio.prepare(project, &options)).transpose()
+        let result = self.audio.get().map(|audio| audio.prepare(project, &options)).transpose()?;
+        let observers = self.project_observers.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
+        for observer in observers {
+            observer(project);
+        }
+        Ok(result)
+    }
+
+    /// Calls `observer` with every project that is published, opened or restored, right after the
+    /// audio side has accepted it (so on the thread of that command). For the areas that follow
+    /// the project without being part of the audio engine: MIDI routes read the instruments'
+    /// devices and channels from it.
+    pub fn observe_projects(&self, observer: impl Fn(&Project) + Send + Sync + 'static) {
+        self.project_observers.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(Arc::new(observer));
     }
 
     /// Stops sound and disarms recording before the session is replaced.

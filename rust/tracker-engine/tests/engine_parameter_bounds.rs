@@ -1,4 +1,4 @@
-//! Port of `tests/engine_parameter_bounds_tests.cpp`: native finite-but-out-of-range inputs must
+//! Port of the former C++ test program `engine_parameter_bounds_tests.cpp`: native finite-but-out-of-range inputs must
 //! saturate before float->int conversion.
 #![cfg(feature = "engine")]
 

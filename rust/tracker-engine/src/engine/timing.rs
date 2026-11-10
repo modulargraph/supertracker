@@ -1,13 +1,13 @@
 //! The engine's use of the clock: C++ `EngineTiming` and `fixedClockContext` from
 //! `TrackerEngine.cpp`.
 //!
-//! A project's optional stepped tempo/meter map is a [`crate::clock::STClockMap`] with an
-//! always-playing [`crate::clock::STClockTimeline`] over it; without a map the legacy fixed-tempo
+//! A project's optional stepped tempo/meter map is a [`crate::clock::ClockMap`] with an
+//! always-playing [`crate::clock::ClockTimeline`] over it; without a map the legacy fixed-tempo
 //! clock context is derived here.
 
 use super::abi::*;
 use super::util::{clamp, cmax, next_down};
-use crate::clock::{STClockMap, STClockTimeline};
+use crate::clock::{ClockMap, ClockTimeline};
 use std::sync::atomic::AtomicU32;
 
 /// A validated tempo/meter map with its always-playing timeline (C++ `EngineTiming`).
@@ -19,10 +19,10 @@ use std::sync::atomic::AtomicU32;
 /// locks, so the render thread may call them.
 pub struct EngineTiming {
     pub origin_pins: AtomicU32,
-    map: STClockMap,
-    timeline: STClockTimeline,
-    pub tempos: Vec<STClockTempoEvent>,
-    pub meters: Vec<STClockMeterEvent>,
+    map: ClockMap,
+    timeline: ClockTimeline,
+    pub tempos: Vec<ClockTempoEvent>,
+    pub meters: Vec<ClockMeterEvent>,
     pub revision: u64,
     /// Immutable map endpoint (frame of beat 1000000); not searched for every sample.
     pub maximum_frame: i64,
@@ -33,13 +33,13 @@ impl EngineTiming {
     /// message.
     pub fn new(
         rate: f64,
-        tempos: &[STClockTempoEvent],
-        meters: &[STClockMeterEvent],
+        tempos: &[ClockTempoEvent],
+        meters: &[ClockMeterEvent],
         revision: u64,
     ) -> Result<EngineTiming, String> {
-        let map = STClockMap::new(rate, tempos, meters, revision).map_err(|problem| problem.message().to_string())?;
-        let origin = STClockOrigin { playing: 1, ..STClockOrigin::default() };
-        let timeline = STClockTimeline::new(&map, origin).map_err(|problem| problem.message().to_string())?;
+        let map = ClockMap::new(rate, tempos, meters, revision).map_err(|problem| problem.message().to_string())?;
+        let origin = ClockOrigin { playing: 1, ..ClockOrigin::default() };
+        let timeline = ClockTimeline::new(&map, origin).map_err(|problem| problem.message().to_string())?;
         let mut timing = EngineTiming {
             origin_pins: AtomicU32::new(0),
             map,
@@ -65,14 +65,14 @@ impl EngineTiming {
         self.map.beat_at_frame(frame).unwrap_or(0.0)
     }
 
-    /// The timeline's context at song frame `frame` (`st_clock_context(timeline, frame, 0, &out)`);
-    /// `out` is untouched unless the result is `ST_CLOCK_OK`.
+    /// The timeline's context at song frame `frame` (`ClockTimeline::context(frame, 0)`);
+    /// `out` is untouched unless the result is `CLOCK_OK`.
     #[inline]
-    pub fn context(&self, frame: i64, out: &mut STClockContext) -> i32 {
+    pub fn context(&self, frame: i64, out: &mut ClockContext) -> i32 {
         match self.timeline.context(frame, 0) {
             Ok(context) => {
                 *out = context;
-                ST_CLOCK_OK
+                CLOCK_OK
             }
             Err(problem) => problem.status(),
         }
@@ -103,8 +103,8 @@ impl EngineTiming {
 ///
 /// Legacy seeks retain fractional frames and support BPM through 999. Derive boundaries relative
 /// to that exact origin, including negative startup time.
-pub fn fixed_clock_context(c: &mut STClockContext, frame: f64, rate: f64, bpm: f64, numerator: i32, denominator: i32) {
-    *c = STClockContext::default();
+pub fn fixed_clock_context(c: &mut ClockContext, frame: f64, rate: f64, bpm: f64, numerator: i32, denominator: i32) {
+    *c = ClockContext::default();
     c.sample_rate = rate;
     c.song_frame = frame as i64;
     c.bpm = bpm;
@@ -131,7 +131,7 @@ pub fn fixed_clock_context(c: &mut STClockContext, frame: f64, rate: f64, bpm: f
         c.beat = next_down(c.bar_end_beat);
     }
     c.next_boundary_frame = c.song_frame.wrapping_add(offset(c.bar_end_beat));
-    c.next_boundary_kinds = ST_CLOCK_BOUNDARY_BAR;
+    c.next_boundary_kinds = CLOCK_BOUNDARY_BAR;
     let quarter = c.beat.floor();
     let mut next = offset(quarter);
     if next < 0 {

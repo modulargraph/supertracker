@@ -1,18 +1,18 @@
 //! Immutable tempo and meter map in quarter beats and seconds.
 //!
-//! Replaces `Sources/TrackerEngine/ClockTimingMap.hpp` and `ClockTimingMap.cpp`. The arithmetic
-//! is the same, operation for operation, so compiled boundaries and query results are
-//! bit-identical to the C++ engine (see [`super::long_double`] for the one target-dependent type).
+//! All arithmetic is `f64` in a fixed order of operations, so compiled boundaries and query
+//! results are the same on every platform. (The C++ engine this was ported from summed the
+//! tempo segments in `long double`, which is 80 bits wide on x86 and 64 bits on Apple Silicon;
+//! the 64-bit behaviour is the one kept.)
 //!
-//! Construct on a control thread; construction validates and reports a [`TimingMapError`] where
-//! the C++ constructor threw `std::invalid_argument`. Queries allocate nothing and never fail
+//! Construct on a control thread; construction validates and reports a [`TimingMapError`].
+//! Queries allocate nothing and never fail
 //! other than by returning `None`. Input event order is significant: positions must be ascending
 //! and unique, with an event at 0. There are no mutators or mutable views; inputs are copied.
 
 use std::fmt;
 
 use super::cxx_math;
-use super::long_double::{CxxLongDouble, LongDouble};
 
 /// A tempo change: `bpm` quarter notes per minute from quarter beat `beat` onwards.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -64,8 +64,7 @@ pub struct BarPosition {
     pub short_bar: bool,
 }
 
-/// Why a timing map could not be built. [`TimingMapError::message`] is the text the C++
-/// constructor threw; the C API copies it to the caller.
+/// Why a timing map could not be built. [`TimingMapError::message`] is a text a user can read.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TimingMapError {
     /// No events, or more than [`TimingMap::MAX_EVENTS`].
@@ -147,14 +146,13 @@ fn validate_positions(
     Ok(())
 }
 
-/// `compileTempos`, generic over the C++ `long double` so both variants can be tested anywhere.
-fn compile_tempos<L: LongDouble>(
-    events: &[TempoEvent],
-) -> Result<Vec<TempoSegment>, TimingMapError> {
+/// Validates the tempo events and computes where each segment starts in seconds: a
+/// Kahan-compensated prefix sum of the segment durations.
+fn compile_tempos(events: &[TempoEvent]) -> Result<Vec<TempoSegment>, TimingMapError> {
     validate_positions(events.len(), events.iter().map(|event| event.beat))?;
     let mut segments: Vec<TempoSegment> = Vec::with_capacity(events.len());
-    let mut seconds = L::from_f64(0.0);
-    let mut correction = L::from_f64(0.0);
+    let mut seconds = 0.0f64;
+    let mut correction = 0.0f64;
     let mut previous: Option<&TempoEvent> = None;
     for event in events {
         if !event.bpm.is_finite()
@@ -164,16 +162,14 @@ fn compile_tempos<L: LongDouble>(
             return Err(TimingMapError::Tempo);
         }
         if let Some(previous) = previous {
-            // Compensation also helps targets where long double is only 64-bit.
-            let duration = (L::from_f64(event.beat) - L::from_f64(previous.beat))
-                * L::from_f64(60.0)
-                / L::from_f64(previous.bpm);
+            // The compensation term recovers what each addition rounds away.
+            let duration = (event.beat - previous.beat) * 60.0 / previous.bpm;
             let adjusted = duration - correction;
             let next = seconds + adjusted;
             correction = (next - seconds) - adjusted;
             seconds = next;
         }
-        let rounded = seconds.to_f64();
+        let rounded = seconds;
         if !rounded.is_finite() || segments.last().is_some_and(|last| rounded <= last.seconds) {
             return Err(TimingMapError::TempoBoundariesTooClose);
         }
@@ -263,15 +259,7 @@ impl TimingMap {
 
     /// Validates and compiles the events. Tempo errors are reported before meter errors.
     pub fn new(tempos: &[TempoEvent], meters: &[MeterEvent]) -> Result<Self, TimingMapError> {
-        Self::with_long_double::<CxxLongDouble>(tempos, meters)
-    }
-
-    /// [`Self::new`] with an explicit C++ `long double`, so tests can cover every target's.
-    fn with_long_double<L: LongDouble>(
-        tempos: &[TempoEvent],
-        meters: &[MeterEvent],
-    ) -> Result<Self, TimingMapError> {
-        let tempos = compile_tempos::<L>(tempos)?;
+        let tempos = compile_tempos(tempos)?;
         let meters = compile_meters(meters)?;
         // Both compilers reject empty input.
         let (Some(last_tempo), Some(last_meter)) = (tempos.last(), meters.last()) else {
@@ -421,7 +409,6 @@ impl TimingMap {
 
 #[cfg(test)]
 mod tests {
-    use super::super::x87::Extended;
     use super::*;
 
     fn tempo(beat: f64, bpm: f64) -> TempoEvent {
@@ -778,7 +765,7 @@ mod tests {
     /// Thousands of pseudo-random maps and queries, digested exactly as the reference program
     /// digests them. The order of generator calls is part of the contract with that program.
     /// Returns the digest and the number of maps that were valid.
-    fn digest_of_random_maps<L: LongDouble>(cases: u64) -> (u64, u32) {
+    fn digest_of_random_maps(cases: u64) -> (u64, u32) {
         let mut r = Generator(0x5eed);
         let mut digest = Digest(0xcbf2_9ce4_8422_2325);
         let mut valid = 0;
@@ -829,7 +816,7 @@ mod tests {
                 }
             }
             digest.mix(index);
-            let map = match TimingMap::with_long_double::<L>(&tempos, &meters) {
+            let map = match TimingMap::new(&tempos, &meters) {
                 Ok(map) => map,
                 Err(error) => {
                     digest.mix(1000 + error as u64);
@@ -904,21 +891,14 @@ mod tests {
         (digest.0, valid)
     }
 
-    /// Differential check against the C++ `TimingMap`, including `beatAtBarPosition` and the
-    /// `BarPosition` fields that the C API does not expose. The expected digests were printed by
-    /// a C++ program with this same generator and digest, linked with the original
-    /// `ClockTimingMap.cpp`: once as built for x86-64 (80-bit `long double`) and once with
-    /// `-mlong-double-64` (the `long double` of arm64 macOS).
+    /// Differential check against the C++ `TimingMap` this module was ported from, including
+    /// `beat_at_bar_position` and the `BarPosition` fields. The expected digest was printed by a
+    /// C++ program with this same generator and digest, linked with the original
+    /// `ClockTimingMap.cpp` built with a 64-bit `long double` (`-mlong-double-64`, which is what
+    /// arm64 macOS has): the arithmetic this module performs on every platform.
     #[test]
     fn matches_the_cxx_timing_map() {
-        assert_eq!(
-            digest_of_random_maps::<Extended>(4000),
-            (0x6c93_b848_a06b_410b, 3804)
-        );
-        assert_eq!(
-            digest_of_random_maps::<f64>(4000),
-            (0x0642_6102_f3d5_0660, 3803)
-        );
+        assert_eq!(digest_of_random_maps(4000), (0x0642_6102_f3d5_0660, 3803));
     }
 
     #[test]

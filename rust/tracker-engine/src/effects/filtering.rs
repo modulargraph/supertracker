@@ -1,6 +1,6 @@
 //! Filtering processors: four-band EQ, multimode filter and cabinet.
 //!
-//! Replaces `Sources/TrackerEngine/EffectsFiltering.hpp` (namespace `stfx::filtering`).
+//! Ported from the C++ `EffectsFiltering.hpp` (namespace `stfx::filtering`).
 
 use super::common::{
     clamp, clean, core_accessors, db_gain, fast_exp, fast_sin_2pi, frame_buffers, max, mix, pole,

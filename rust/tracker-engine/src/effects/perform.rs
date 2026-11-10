@@ -1,7 +1,7 @@
 //! Performance effects: Perform Filter, Perform Flanger, Burst Echo, Reso Echo, Ring, Stutter,
 //! Tremolo and Scratcher.
 //!
-//! Replaces `Sources/TrackerEngine/EffectsPerform.hpp` (namespace `stfx::perform_detail` and
+//! Ported from the C++ `EffectsPerform.hpp` (namespace `stfx::perform_detail` and
 //! the `Perform*` classes).
 //!
 //! Original performance DSP, informed by the public NI effect-reference feature

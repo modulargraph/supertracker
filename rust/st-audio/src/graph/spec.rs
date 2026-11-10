@@ -231,6 +231,10 @@ impl GraphSpec {
             let mut inserts: Vec<InsertSpec> = instrument_plugin(&id, track.instrument()).into_iter().collect();
             inserts.extend(by_owner.get(&instrument_owner).into_iter().flatten().map(|descriptor| insert(descriptor, &instrument_owner, Some(&suffix))));
             inserts.extend(own_inserts(&id));
+            // A frozen track plays its print: its instrument and inserts are in it (`crate::freeze`).
+            if track.frozen.as_ref().is_some_and(|record| record.path.as_deref().is_some_and(|path| !path.is_empty())) {
+                inserts.clear();
+            }
             strips.push(StripSpec {
                 name: track.display_name(index),
                 kind: StripKind::Track(index),

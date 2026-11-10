@@ -1,13 +1,13 @@
 //! Drum synthesis voices: Kick, Snare, Hihat, Tom, Perc and Cymbal.
 //!
-//! Replaces `Sources/TrackerEngine/MaschineDrums.hpp` (namespace `stdrums`).
+//! Ported from the C++ `MaschineDrums.hpp` (namespace `stdrums`).
 //!
 //! Original drum voices inspired by common analog and modal synthesis methods.
 //! These six families are not NI's individual Drum Synth engines or a decoder
 //! for their parameter arrays. Callers must map imported controls explicitly.
 
 use super::common::{
-    clamp, clean, db_gain, max, min, wrap, ParameterInfo as P, PARAMETER_LOG as LOG, PI,
+    clamp, clean, db_gain, max, min, wrap, EffectInfo, ParameterInfo as P, PARAMETER_LOG as LOG, PI,
 };
 use std::ffi::CStr;
 
@@ -37,6 +37,55 @@ pub fn model_id(model: i32) -> &'static CStr {
     } else {
         0
     }]
+}
+
+/// Number of drum models.
+pub const MODEL_COUNT: u32 = 6;
+
+static MODELS: [EffectInfo; 6] = [
+    EffectInfo::new(c"kick", c"Kick", c"Drum Synth", 8, 0),
+    EffectInfo::new(c"snare", c"Snare", c"Drum Synth", 8, 0),
+    EffectInfo::new(c"hihat", c"Hi-hat", c"Drum Synth", 8, 0),
+    EffectInfo::new(c"tom", c"Tom", c"Drum Synth", 8, 0),
+    EffectInfo::new(c"perc", c"Percussion", c"Drum Synth", 8, 0),
+    EffectInfo::new(c"cymbal", c"Cymbal", c"Drum Synth", 8, 0),
+];
+
+/// Catalogue entry of the model at `index` (0-based: the model number minus one).
+pub fn model_info(index: u32) -> Option<&'static EffectInfo> {
+    MODELS.get(index as usize)
+}
+
+/// The model with persistent id `id`; [`NONE`] for an unknown id.
+pub fn model_for_id(id: &CStr) -> i32 {
+    (KICK..=CYMBAL).find(|&model| model_id(model) == id).unwrap_or(NONE)
+}
+
+/// Offline render of one drum hit at its root pitch into `out` (mono), until the voice ends or
+/// `out` is full. `controls` are the model's normalized controls (only the first eight are
+/// read; missing or non-finite ones use the model defaults). Returns the number of frames
+/// written, with the inaudible end of the decay trimmed; 0 for an invalid model, an empty
+/// buffer or a sample rate that is not finite or below 8 kHz.
+pub fn render(model: i32, controls: &[f32], sample_rate: f64, out: &mut [f32]) -> usize {
+    if !valid_model(model) || out.is_empty() || !sample_rate.is_finite() || sample_rate < 8000.0 {
+        return 0;
+    }
+    let controls = &controls[..controls.len().min(PARAMETER_COUNT as usize)];
+    let mut voice = Voice::default();
+    voice.start(model, sample_rate, controls, 1);
+    let mut frames = 0usize;
+    for slot in out.iter_mut() {
+        if !voice.active() {
+            break;
+        }
+        *slot = clean(voice.tick(1.0) as f64) as f32;
+        frames += 1;
+    }
+    // Trim the inaudible end of the decay.
+    while frames > 1 && out[frames - 1].abs() < 1e-5 {
+        frames -= 1;
+    }
+    frames
 }
 
 static COMMON: [P; 8] = [

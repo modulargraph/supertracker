@@ -1,4 +1,4 @@
-//! Port of `tests/builtin_effects_tests.cpp`: the built-in effect catalogue and the effect
+//! Port of the former C++ test program `builtin_effects_tests.cpp`: the built-in effect catalogue and the effect
 //! handle's contract (bypass, reset, parameter extremes, block partitioning), measured responses,
 //! silence gating, zero mix, concurrent parameter changes, tail estimates and a throughput smoke
 //! test.
@@ -7,11 +7,11 @@
 //! F failures, P processors". Each group here counts the same way on its own thread, prints its
 //! own line and fails if any check failed.
 //!
-//! The catalogue is used through the safe Rust API; the effect handle through
-//! `engine_support_b::fx` (the C functions, marked `TODO(api)` there).
+//! The catalogue is `tracker_engine::effects`; the effect handle is `effects::Effect` behind
+//! `engine_support_b::fx`.
 //!
-//! Dropped from the C++ program (C pointer mechanics): `st_builtin_effect_find(nullptr)` inside
-//! the "invalid catalogue lookup" check (the other two lookups of that check are kept).
+//! Dropped from the C++ program (C pointer mechanics): the lookup of a null id inside the
+//! "invalid catalogue lookup" check (the other two lookups of that check are kept).
 #![cfg(feature = "effects")]
 // The index loops mirror the C++ loops they translate.
 #![allow(clippy::needless_range_loop)]
@@ -25,7 +25,7 @@ use std::collections::BTreeSet;
 use std::f64::consts::PI;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
-use tracker_engine::effects::capi::{normalized, physical};
+use tracker_engine::effects::{normalized, physical};
 use tracker_engine::effects::common::{PARAMETER_INTEGER, PARAMETER_LOG, PARAMETER_TOGGLE};
 use tracker_engine::effects::{catalogue, find, Descriptor};
 
@@ -90,7 +90,7 @@ impl FX {
     }
 
     fn run_keyed(&mut self, l: &mut [f32], r: &mut [f32], sc: Option<&[f32]>) {
-        let sidechain = sc.map_or(Sidechain::None, Sidechain::Left);
+        let sidechain = sc.map_or(Sidechain::None, Sidechain::Mono);
         let rendered = self.fx().process(l, r, sidechain);
         check(rendered, &format!("{} renders", self.id));
     }
@@ -511,13 +511,13 @@ fn peak_of(v: &[f32], from: usize, mut to: usize) -> f64 {
     m
 }
 
-/// The floating-point control register (`mrs x, fpcr`).
-#[cfg(target_arch = "aarch64")]
-fn fpcr() -> u64 {
-    let value: u64;
-    // SAFETY: reads a user-readable system register into a general-purpose register.
-    unsafe { std::arch::asm!("mrs {}, fpcr", out(reg) value, options(nomem, nostack, preserves_flags)) };
-    value
+/// Whether arithmetic still produces and reads subnormal numbers: it does not while the
+/// processor's flush-to-zero / denormals-are-zero mode, which a render switches on for its own
+/// duration, is left set.
+fn subnormals_work() -> bool {
+    let smallest_normal = std::hint::black_box(f32::MIN_POSITIVE);
+    let subnormal = std::hint::black_box(smallest_normal * 0.5);
+    subnormal != 0.0 && std::hint::black_box(subnormal * 2.0) == smallest_normal
 }
 
 /// Silence gating: once the input has been silent for longer than the tail and the output has
@@ -618,15 +618,14 @@ fn gating_tests() {
         f.run(&mut after, &mut ar);
         check(peak_of(&after, 0, 0) == 0.0, "stutter captures the recent silence, not stale audio");
     }
-    #[cfg(target_arch = "aarch64")]
     {
-        let before = fpcr();
+        let before = subnormals_work();
         let mut f = FX::with("eq", sr, 128);
         let mut l = tone(sr, 330.0, 512);
         let mut r = l.clone();
         f.run(&mut l, &mut r);
-        let after = fpcr();
-        check(before == after, "render restores the caller's floating-point control register");
+        let after = subnormals_work();
+        check(before && after, "render restores the caller's floating-point control register");
     }
     finish("gating");
 }

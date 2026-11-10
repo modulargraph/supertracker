@@ -104,4 +104,29 @@ async function settle() { for (let i = 0; i < 40; i++) await Promise.resolve(); 
     assert.deepEqual(kept.answers().map(answer => answer.state), ['deciding', 'proceed', 'stay']);
     console.log('PASS when the host cannot secure the session, the person chooses between Quit Anyway and staying');
   }
+  {
+    // AI control is fenced while quitting is decided: suspended before anything else, reopened by every 'stay'.
+    const agent = h => { const log = []; h.window.STAgent = { suspendForTermination: async limit => { log.push('suspend:' + limit); return h.agentSettles !== false; },
+      resumeAfterTermination() { log.push('resume'); }, flushEdits: async () => {} }; return log; };
+    const quitting = harness(); quitting.ST.state.dirty = false;
+    const quitLog = agent(quitting);
+    quitting.ask(); await settle();
+    assert.deepEqual(quitting.answers().map(answer => answer.state), ['deciding', 'proceed']);
+    assert.deepEqual(quitLog, ['suspend:3000'], 'a quit that proceeds leaves AI control closed');
+
+    const cancelled = harness(); cancelled.ST.state.dirty = true;
+    const cancelLog = agent(cancelled);
+    cancelled.ask(); await settle(); cancelled.element('#unsaved-cancel').click(); await settle();
+    assert.deepEqual(cancelled.answers().map(answer => answer.state), ['deciding', 'stay']);
+    assert.deepEqual(cancelLog, ['suspend:3000', 'resume'], 'Cancel reopens AI control');
+
+    const busy = harness(); busy.ST.state.dirty = false; busy.agentSettles = false;
+    const busyLog = agent(busy);
+    busy.ask(); await settle();
+    const answers = busy.answers();
+    assert.deepEqual(answers.map(answer => answer.state), ['deciding', 'stay'], 'an AI command that does not finish in time keeps the application running');
+    assert.equal(answers[1].reason, 'An AI command is still running. Keep working and finish or cancel it before quitting.');
+    assert.deepEqual(busyLog, ['suspend:3000', 'resume']);
+    console.log('PASS AI control is suspended while quitting is decided, and reopened when the answer is stay');
+  }
 })().catch(error => { console.error(error); process.exit(1); });

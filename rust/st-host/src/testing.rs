@@ -97,7 +97,15 @@ impl TestHost {
     /// # Panics
     /// When no reply arrives within ten seconds.
     pub fn reply(&self, id: u64) -> Result<Value, String> {
-        let message = self.wait_for(|message| message.get("id").and_then(Value::as_u64) == Some(id), Duration::from_secs(10));
+        self.reply_within(id, Duration::from_secs(10))
+    }
+
+    /// As [`TestHost::reply`], for requests that may take longer (renders).
+    ///
+    /// # Panics
+    /// When no reply arrives within `timeout`.
+    pub fn reply_within(&self, id: u64, timeout: Duration) -> Result<Value, String> {
+        let message = self.wait_for(|message| message.get("id").and_then(Value::as_u64) == Some(id), timeout);
         let message = message.unwrap_or_else(|| panic!("no reply to request {id}"));
         if message["ok"] == json!(true) {
             Ok(message["result"].clone())

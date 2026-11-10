@@ -1,9 +1,9 @@
-//! Port of `tests/unit_range_tests.cpp`: the bounded render cache for one hosted unit:
+//! Port of the former C++ test program `unit_range_tests.cpp`: the bounded render cache for one hosted unit:
 //! 4097/4096 overlap, retention, complete preflight, revision/epoch changes, failure recovery,
 //! child-error latching, validation, concurrent rejection, real clock spans, zero allocations.
 //!
-//! The cache has no safe Rust API yet, so the tests reach it through `engine_support_b::unit_range`
-//! (the C functions behind a slice-and-trait wrapper, every call marked `TODO(api)` there).
+//! The tests drive `tracker_engine::unit_range` through `engine_support_b::unit_range`, which
+//! turns its results into the status codes the assertions compare.
 //!
 //! Dropped from the C++ program (C pointer mechanics, all in `creation_and_request_validation`):
 //! null cache handles for render/reset/get_stats, a null stats pointer, a null output array and a
@@ -16,7 +16,7 @@
 mod engine_support_b;
 
 use engine_support_b::alloc::{realtime, render_allocations};
-use engine_support_b::unit_range::{Cache, Callbacks, NeverCalled, Source};
+use engine_support_b::unit_range::*;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -82,7 +82,7 @@ struct Probe {
     epoch: u64,
     new_revision: u64,
     new_epoch: u64,
-    timeline: Option<Arc<STClockTimeline>>,
+    timeline: Option<Arc<ClockTimeline>>,
     query_trace: Vec<Call>,
     process_trace: Vec<Call>,
     query_trace_count: usize,
@@ -103,14 +103,14 @@ impl Source for Probe {
         self.prepare_error
     }
 
-    fn span(&mut self, start: i64, frames: u32, result: &mut STClockSpan) -> i32 {
+    fn span(&mut self, start: i64, frames: u32, result: &mut ClockSpan) -> i32 {
         self.queries += 1;
         assert!(!self.processing_started); // The complete plan precedes every child call.
         if self.require_prepare {
             assert!(start >= self.prepared_start && start.wrapping_add(frames as i64) <= self.prepared_end);
             assert!(start == self.planned_end);
         }
-        if self.span_error != ST_CLOCK_OK {
+        if self.span_error != CLOCK_OK {
             return self.span_error;
         }
         if let Some(timeline) = &self.timeline {
@@ -119,7 +119,7 @@ impl Source for Probe {
                 Err(error) => return error.status(),
             }
         } else {
-            *result = STClockSpan::default();
+            *result = ClockSpan::default();
             result.frames = frames;
             if self.partition > 0 {
                 let remainder = ((start % self.partition) + self.partition) % self.partition;
@@ -143,7 +143,7 @@ impl Source for Probe {
             context.bpm = 120.0;
             context.numerator = 4;
             context.denominator = 4;
-            context.flags = ST_CLOCK_PLAYING;
+            context.flags = CLOCK_PLAYING;
             context.next_boundary_frame = start.wrapping_add(result.frames as i64);
         }
         match self.bad {
@@ -174,10 +174,10 @@ impl Source for Probe {
             self.query_trace_count += 1;
         }
         self.planned_end = start.wrapping_add(result.frames as i64);
-        ST_CLOCK_OK
+        CLOCK_OK
     }
 
-    fn process(&mut self, context: &STClockContext, start: i64, frames: u32, output: &mut [&mut [f32]]) -> i32 {
+    fn process(&mut self, context: &ClockContext, start: i64, frames: u32, output: &mut [&mut [f32]]) -> i32 {
         if self.require_prepare {
             assert!(self.planned_end == self.prepared_end);
         }
@@ -209,7 +209,7 @@ impl Source for Probe {
             if self.channels == 2 {
                 assert!(r.iter().all(|&value| value == 0.0));
             }
-            let mut untouched = STUnitRangeStats { requests: 123, ..STUnitRangeStats::default() };
+            let mut untouched = UnitRangeStats { requests: 123, ..UnitRangeStats::default() };
             assert!(self.cache.stats_into(&mut untouched) == ST_UNIT_RANGE_BUSY && untouched.requests == 123);
             assert!(self.cache.reset() == ST_UNIT_RANGE_BUSY);
         }
@@ -280,7 +280,7 @@ impl Fixture {
             tag_context: false,
             require_prepare: true,
             prepare_error: 0,
-            span_error: ST_CLOCK_OK,
+            span_error: CLOCK_OK,
             process_error: -12345,
             fail_process: 0,
             bad: BadSpan::None,
@@ -339,8 +339,8 @@ impl Fixture {
     }
 
     #[track_caller]
-    fn stats(&self) -> STUnitRangeStats {
-        let mut value = STUnitRangeStats::default();
+    fn stats(&self) -> UnitRangeStats {
+        let mut value = UnitRangeStats::default();
         assert!(self.cache.stats_into(&mut value) == 0);
         value
     }
@@ -559,13 +559,13 @@ fn prepare_and_clock_failures_retry() {
         fixture.expect_sequence(8, 1);
     }
     fixture.bad = BadSpan::None;
-    fixture.span_error = ST_CLOCK_INVALID;
+    fixture.span_error = CLOCK_INVALID;
     assert!(fixture.render(8, 8) == ST_UNIT_RANGE_CLOCK_ERROR);
     fixture.expect_silent(8);
-    fixture.span_error = ST_CLOCK_OUTSIDE_DOMAIN;
+    fixture.span_error = CLOCK_OUTSIDE_DOMAIN;
     assert!(fixture.render(8, 8) == ST_UNIT_RANGE_DOMAIN_END);
     fixture.expect_silent(8);
-    fixture.span_error = ST_CLOCK_OK;
+    fixture.span_error = CLOCK_OK;
     fixture.rate = 44100.0;
     assert!(fixture.render(8, 8) == ST_UNIT_RANGE_CONTEXT_MISMATCH);
     fixture.expect_silent(8);
@@ -716,7 +716,7 @@ fn reentrancy_and_concurrent_rejection() {
             }
             assert!(left.iter().all(|&value| value == 0.0));
             assert!(right.iter().all(|&value| value == 0.0));
-            let mut stats = STUnitRangeStats { requests: 999, ..STUnitRangeStats::default() };
+            let mut stats = UnitRangeStats { requests: 999, ..UnitRangeStats::default() };
             assert!(cache.stats_into(&mut stats) == ST_UNIT_RANGE_BUSY && stats.requests == 999);
             assert!(cache.reset() == ST_UNIT_RANGE_BUSY);
         }
@@ -737,19 +737,19 @@ fn reentrancy_and_concurrent_rejection() {
 #[test]
 fn actual_clock_tempo_meter_and_latency() {
     let tempos = [
-        STClockTempoEvent { beat: 0.0, bpm: 120.0 },
-        STClockTempoEvent { beat: 0.25, bpm: 60.0 },
-        STClockTempoEvent { beat: 0.3, bpm: 180.0 },
+        ClockTempoEvent { beat: 0.0, bpm: 120.0 },
+        ClockTempoEvent { beat: 0.25, bpm: 60.0 },
+        ClockTempoEvent { beat: 0.3, bpm: 180.0 },
     ];
     let meters = [
-        STClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 },
-        STClockMeterEvent { beat: 0.25, numerator: 5, denominator: 8 },
-        STClockMeterEvent { beat: 0.3, numerator: 7, denominator: 8 },
+        ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 },
+        ClockMeterEvent { beat: 0.25, numerator: 5, denominator: 8 },
+        ClockMeterEvent { beat: 0.3, numerator: 7, denominator: 8 },
     ];
-    let map = STClockMap::new(48000.0, &tempos, &meters, 55);
+    let map = ClockMap::new(48000.0, &tempos, &meters, 55);
     assert!(map.is_ok());
     let map = map.unwrap();
-    let origin = STClockOrigin {
+    let origin = ClockOrigin {
         graph_origin_frame: 0,
         start_beat: 0.0,
         playing: 1,
@@ -758,7 +758,7 @@ fn actual_clock_tempo_meter_and_latency() {
         loop_end_beat: 0.0,
         epoch: 88,
     };
-    let timeline = STClockTimeline::new(&map, origin);
+    let timeline = ClockTimeline::new(&map, origin);
     assert!(timeline.is_ok());
     let timeline = Arc::new(timeline.unwrap());
     drop(map);
@@ -778,7 +778,7 @@ fn actual_clock_tempo_meter_and_latency() {
         assert!(first.bpm == last.bpm && first.numerator == last.numerator && first.denominator == last.denominator);
         assert!(first.bar_start_beat == last.bar_start_beat && first.content_graph_frame == call.frame - 257);
         assert!(call.revision == 55 && call.epoch == 88 && call.frames <= 4096);
-        preroll |= (first.flags & ST_CLOCK_PREROLL) != 0;
+        preroll |= (first.flags & CLOCK_PREROLL) != 0;
         tempo |= first.bpm == 60.0;
         meter |= first.numerator == 7;
     }

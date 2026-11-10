@@ -44,8 +44,11 @@ impl Fixture {
             let mut options = HostOptions::new(folder.path().join("support"), dialogs.clone());
             options.opener = opened.clone();
             options.autosave_every = None;
-            // These tests are about the host's own commands; the audio area has its own (tests/audio.rs).
+            // These tests are about the host's own commands; the audio area has its own (tests/audio.rs),
+            // and so have the library, MIDI, the Maschine MK3 and AI control (tests/library.rs, midi.rs,
+            // mk3.rs, agent.rs). Some tests below register stand-ins for those areas' commands.
             options.audio = None;
+            options.services = st_host::areas::services::ServiceOptions::none();
             services = Some(install(bridge, options).expect("install the host"));
             extra(bridge);
         });
@@ -364,16 +367,24 @@ fn an_open_request_from_the_system_reaches_the_interface_before_or_after_it_is_r
     services.session.request_open(PathBuf::from("/music/Early.supertracker"));
     let page = st_host::Outbox::new();
     let connection = bridge.connect(page.clone());
+    // The reply to request `id`; events of the areas (status, library, controller) may come first.
+    let reply = |id: u64| -> Value {
+        loop {
+            let st_host::Next::Message(text) = page.wait(Duration::from_secs(5)) else { panic!("no handshake") };
+            let message: Value = serde_json::from_str(&text).unwrap();
+            if message["id"] == id {
+                return message;
+            }
+        }
+    };
     connection.receive(r#"{"id": 1, "command": "ready"}"#);
-    let st_host::Next::Message(text) = page.wait(Duration::from_secs(5)) else { panic!("no handshake") };
-    let ready: Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(ready["result"]["openPath"], "/music/Early.supertracker");
+    assert_eq!(reply(1)["result"]["openPath"], "/music/Early.supertracker");
     // After: an event.
     services.session.request_open(PathBuf::from("/music/Late.supertracker"));
-    assert_eq!(page.drain(), [r#"{"payload":{"path":"/music/Late.supertracker"},"type":"project.openRequested"}"#]);
+    let opened: Vec<String> = page.drain().into_iter().filter(|text| text.contains("project.openRequested")).collect();
+    assert_eq!(opened, [r#"{"payload":{"path":"/music/Late.supertracker"},"type":"project.openRequested"}"#]);
     connection.receive(r#"{"id": 2, "command": "ready"}"#);
-    let st_host::Next::Message(text) = page.wait(Duration::from_secs(5)) else { panic!("no handshake") };
-    assert!(!text.contains("openPath"));
+    assert!(reply(2)["result"].get("openPath").is_none());
 }
 
 #[test]

@@ -2445,6 +2445,20 @@
   }
   function resumeAfterTermination() { terminationSuspended = false; }
 
+  /* The host's end of AI control (rust/st-host/src/areas/agent.rs). A client's request arrives as the event
+     `agent.call` {id, method, params}: the method runs through dispatch (queued behind the one before it), and
+     what dispatch resolves to goes back with the command `agent.reply` {id, reply}. The event `agent.status`
+     is the connection status for the badge and the Settings toggle. */
+  function hostEvent(payload, type) {
+    if (type === 'agent.status') { setConnection(payload); return true; }
+    if (type !== 'agent.call') return false;
+    const id = payload?.id;
+    dispatch(typeof payload?.method === 'string' ? payload.method : '', payload?.params ?? {})
+        // A reply the host no longer waits for (the call timed out, the client left) is refused: nothing to do.
+        .then(reply => S().request('agent.reply', { id, reply })).catch(() => {});
+    return true;
+  }
+
   // ---------------------------------------------------------------- status bar indicator and settings toggle
   let connection = { available: false, enabled: true, clients: 0 };
   function badgeText() { return busyCount > 0 ? 'AI editing…' : 'AI connected'; }
@@ -2472,10 +2486,10 @@
         + `<p class="small-note" id="agent-settings-note">${settingsNote()}</p></div>`;
   }
   function settingsNote() {
-    if (!connection.available) return 'Available in the macOS app.';
+    if (!connection.available) return 'Available in the SuperTracker application.';
     if (!connection.enabled) return 'Off. Claude and other MCP clients cannot read or edit your songs.';
     if (connection.error) return S().escapeHTML(`On, but the control socket is unavailable: ${connection.error}`);
-    return `On. MCP clients on this Mac (run <code>SuperTracker --mcp</code>) can read and edit the open song; every edit is undoable. ${connection.clients ? `${connection.clients} connected.` : 'None connected.'}`
+    return `On. MCP clients on this computer (run <code>supertracker --mcp</code>) can read and edit the open song; every edit is undoable. ${connection.clients ? `${connection.clients} connected.` : 'None connected.'}`
         + ` Applies immediately.`;
   }
   function paintSettings() {
@@ -2505,8 +2519,10 @@
       generation: () => window.STAgent?.editGeneration ?? 0,
       flush: () => window.STAgent?.flushEdits?.()
     });
+    window.STNativeEvents?.intercept(['agent.call', 'agent.status'], hostEvent);
     window.STAgent = globalThis.STAgent = {
       dispatch,
+      hostEvent,
       call: (name, params) => dispatch(name, params === undefined ? '{}' : JSON.stringify(params)).then(JSON.parse),
       methods: () => Object.keys(api),
       docs: () => clone(docs),

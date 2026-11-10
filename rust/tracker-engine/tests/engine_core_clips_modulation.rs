@@ -1,4 +1,4 @@
-//! Port of `tests/engine_tests.cpp`, part 2 of 5: timeline audio clips, live arrangement
+//! Port of the former C++ test program `engine_tests.cpp`, part 2 of 5: timeline audio clips, live arrangement
 //! extension and long gates, the independent filter envelope, the LFO routing matrix,
 //! independent LFOs with automation, modulation lifecycle and input sanitizing, and the
 //! tempo-synced LFOs (periods, live edits, automation).

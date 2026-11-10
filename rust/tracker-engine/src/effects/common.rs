@@ -1,6 +1,6 @@
 //! Shared DSP building blocks for the built-in effects.
 //!
-//! Replaces `Sources/TrackerEngine/BuiltinEffectsCommon.hpp` (namespace `stfx`): math helpers,
+//! Ported from the C++ `BuiltinEffectsCommon.hpp` (namespace `stfx`): math helpers,
 //! the fast transcendental approximations, memoization, the processor interface, parameter
 //! metadata, biquads, delay lines and parameter smoothing.
 //!
@@ -10,51 +10,46 @@
 //! `double` types, so that on the same machine and libm the output is bit-identical to the C++
 //! implementation.
 
-use std::ffi::{c_char, CStr};
+use std::ffi::CStr;
 
 /// `stfx::pi`.
 pub const PI: f64 = 3.1415926535897932384626433832795; // the same double as std::f64::consts::PI
 
-/// `ST_BUILTIN_PARAMETER_LOG`: the normalized value maps logarithmically onto the range.
+/// Parameter flag: the normalized value maps logarithmically onto the range.
 pub const PARAMETER_LOG: u32 = 1;
-/// `ST_BUILTIN_PARAMETER_INTEGER`: the physical value is rounded to an integer.
+/// Parameter flag: the physical value is rounded to an integer.
 pub const PARAMETER_INTEGER: u32 = 2;
-/// `ST_BUILTIN_PARAMETER_TOGGLE`: an on/off switch (0 or 1).
+/// Parameter flag: an on/off switch (0 or 1).
 pub const PARAMETER_TOGGLE: u32 = 4;
-/// `ST_BUILTIN_EFFECT_SIDECHAIN`: the effect has a detector that accepts an external key.
+/// Effect flag: the effect has a detector that accepts an external key.
 pub const EFFECT_SIDECHAIN: u32 = 1;
 
-/// One entry of an enum parameter's label table (`const char *`).
-#[repr(transparent)]
-pub struct Label(*const c_char);
-// SAFETY: a label only ever points at an immutable, 'static, NUL-terminated string literal.
-unsafe impl Sync for Label {}
+/// One entry of an enum parameter's label table.
+pub struct Label(&'static CStr);
 
 impl Label {
     pub const fn new(text: &'static CStr) -> Self {
-        Label(text.as_ptr())
+        Label(text)
+    }
+
+    pub const fn text(&self) -> &'static CStr {
+        self.0
     }
 }
 
-/// `STBuiltinParameterInfo`: one parameter of an effect or drum model. All ranges and defaults
-/// are in displayed physical units. Layout matches the C header.
-///
-/// The string and label pointers can only be set through the constructors, which take
-/// `'static` C strings; that is what makes the safe accessors below sound.
-#[repr(C)]
+/// One parameter of an effect or drum model. All ranges and defaults are in displayed physical
+/// units. The texts are C strings because that is how the catalogue tables are written; they
+/// are plain ASCII/UTF-8 (`to_str` never fails on them).
 pub struct ParameterInfo {
-    pub(crate) id: *const c_char,
-    pub(crate) name: *const c_char,
-    pub(crate) unit: *const c_char,
+    id: &'static CStr,
+    name: &'static CStr,
+    unit: &'static CStr,
     pub minimum: f64,
     pub maximum: f64,
     pub default_value: f64,
     pub flags: u32,
-    pub(crate) labels: *const *const c_char,
-    pub(crate) label_count: u32,
+    labels: &'static [Label],
 }
-// SAFETY: every pointer refers to immutable 'static data (string literals and label tables).
-unsafe impl Sync for ParameterInfo {}
 
 impl ParameterInfo {
     /// A continuous, integer or toggle parameter without value labels.
@@ -67,17 +62,7 @@ impl ParameterInfo {
         default_value: f64,
         flags: u32,
     ) -> Self {
-        ParameterInfo {
-            id: id.as_ptr(),
-            name: name.as_ptr(),
-            unit: unit.as_ptr(),
-            minimum,
-            maximum,
-            default_value,
-            flags,
-            labels: std::ptr::null(),
-            label_count: 0,
-        }
+        ParameterInfo { id, name, unit, minimum, maximum, default_value, flags, labels: &[] }
     }
 
     /// A parameter whose integer values have display labels.
@@ -92,65 +77,89 @@ impl ParameterInfo {
         flags: u32,
         labels: &'static [Label],
     ) -> Self {
-        ParameterInfo {
-            id: id.as_ptr(),
-            name: name.as_ptr(),
-            unit: unit.as_ptr(),
-            minimum,
-            maximum,
-            default_value,
-            flags,
-            // `Label` is a transparent wrapper around `*const c_char`.
-            labels: labels.as_ptr() as *const *const c_char,
-            label_count: labels.len() as u32,
-        }
+        ParameterInfo { id, name, unit, minimum, maximum, default_value, flags, labels }
     }
 
     /// The persistent parameter identifier.
     pub fn id(&self) -> &'static CStr {
-        // SAFETY: `id` always comes from a 'static C string literal (see the constructors).
-        unsafe { CStr::from_ptr(self.id) }
+        self.id
     }
 
     /// The display name.
     pub fn name(&self) -> &'static CStr {
-        // SAFETY: as for `id`.
-        unsafe { CStr::from_ptr(self.name) }
+        self.name
     }
 
     /// The display unit (may be empty).
     pub fn unit(&self) -> &'static CStr {
-        // SAFETY: as for `id`.
-        unsafe { CStr::from_ptr(self.unit) }
+        self.unit
     }
 
     /// Number of value labels (0 for parameters without labels).
     pub fn label_count(&self) -> u32 {
-        self.label_count
+        self.labels.len() as u32
     }
 
     /// The display label of integer value `index`, if the parameter has labels.
     pub fn label(&self, index: u32) -> Option<&'static CStr> {
-        if self.labels.is_null() || index >= self.label_count {
-            return None;
+        self.labels.get(index as usize).map(Label::text)
+    }
+
+    /// Normalized [0, 1] to the displayed physical value: clamped, logarithmic for
+    /// [`PARAMETER_LOG`] ranges, rounded for integers and toggles. Non-finite input maps as 0.
+    pub fn physical(&self, normalized: f64) -> f64 {
+        let n = if normalized.is_finite() { clamp(normalized, 0.0, 1.0) } else { 0.0 };
+        let mut v = if (self.flags & PARAMETER_LOG) != 0 && self.minimum > 0.0 {
+            self.minimum * (self.maximum / self.minimum).powf(n)
+        } else {
+            self.minimum + (self.maximum - self.minimum) * n
+        };
+        if (self.flags & (PARAMETER_INTEGER | PARAMETER_TOGGLE)) != 0 {
+            v = v.round();
         }
-        // SAFETY: `labels` points at `label_count` 'static C string pointers and index is in range.
-        unsafe { Some(CStr::from_ptr(*self.labels.add(index as usize))) }
+        clamp(v, self.minimum, self.maximum)
+    }
+
+    /// Displayed physical value to normalized [0, 1]. Non-finite values map the default.
+    pub fn normalized(&self, physical: f64) -> f64 {
+        let mut v = clamp(if physical.is_finite() { physical } else { self.default_value }, self.minimum, self.maximum);
+        if (self.flags & (PARAMETER_INTEGER | PARAMETER_TOGGLE)) != 0 {
+            v = v.round();
+        }
+        if self.maximum == self.minimum {
+            return 0.0;
+        }
+        clamp(
+            if (self.flags & PARAMETER_LOG) != 0 && self.minimum > 0.0 {
+                (v / self.minimum).ln() / (self.maximum / self.minimum).ln()
+            } else {
+                (v - self.minimum) / (self.maximum - self.minimum)
+            },
+            0.0,
+            1.0,
+        )
+    }
+
+    /// The default as a normalized value.
+    pub fn default_normalized(&self) -> f64 {
+        self.normalized(self.default_value)
+    }
+
+    /// [`ParameterInfo::physical`] for values that may come from outside: a non-finite
+    /// normalized value gives the default instead of the minimum.
+    pub fn physical_or_default(&self, normalized: f64) -> f64 {
+        self.physical(if normalized.is_finite() { normalized } else { self.default_normalized() })
     }
 }
 
-/// `STBuiltinEffectInfo`: catalogue entry of an effect or drum model. Layout matches the C header.
-/// As with `ParameterInfo`, the string pointers always come from `'static` C strings.
-#[repr(C)]
+/// Catalogue entry of an effect or drum model.
 pub struct EffectInfo {
-    pub(crate) id: *const c_char,
-    pub(crate) name: *const c_char,
-    pub(crate) category: *const c_char,
+    id: &'static CStr,
+    name: &'static CStr,
+    category: &'static CStr,
     pub parameter_count: u32,
     pub flags: u32,
 }
-// SAFETY: every pointer refers to an immutable 'static string literal.
-unsafe impl Sync for EffectInfo {}
 
 impl EffectInfo {
     pub const fn new(
@@ -160,60 +169,24 @@ impl EffectInfo {
         parameter_count: u32,
         flags: u32,
     ) -> Self {
-        EffectInfo {
-            id: id.as_ptr(),
-            name: name.as_ptr(),
-            category: category.as_ptr(),
-            parameter_count,
-            flags,
-        }
+        EffectInfo { id, name, category, parameter_count, flags }
     }
 
     /// The persistent effect identifier.
     pub fn id(&self) -> &'static CStr {
-        // SAFETY: `id` always comes from a 'static C string literal.
-        unsafe { CStr::from_ptr(self.id) }
+        self.id
     }
 
     /// The display name.
     pub fn name(&self) -> &'static CStr {
-        // SAFETY: as for `id`.
-        unsafe { CStr::from_ptr(self.name) }
+        self.name
     }
 
     /// The catalogue category.
     pub fn category(&self) -> &'static CStr {
-        // SAFETY: as for `id`.
-        unsafe { CStr::from_ptr(self.category) }
+        self.category
     }
 }
-
-// The layout the C header gives these structs on the supported 64-bit targets (x86_64 and
-// arm64); checked at compile time so a drift cannot go unnoticed on any of them.
-#[cfg(target_pointer_width = "64")]
-const _: () = {
-    use std::mem::{align_of, offset_of, size_of};
-    assert!(size_of::<ParameterInfo>() == 72 && align_of::<ParameterInfo>() == 8);
-    assert!(
-        offset_of!(ParameterInfo, id) == 0
-            && offset_of!(ParameterInfo, name) == 8
-            && offset_of!(ParameterInfo, unit) == 16
-    );
-    assert!(offset_of!(ParameterInfo, minimum) == 24 && offset_of!(ParameterInfo, maximum) == 32);
-    assert!(
-        offset_of!(ParameterInfo, default_value) == 40 && offset_of!(ParameterInfo, flags) == 48
-    );
-    assert!(
-        offset_of!(ParameterInfo, labels) == 56 && offset_of!(ParameterInfo, label_count) == 64
-    );
-    assert!(size_of::<EffectInfo>() == 32 && align_of::<EffectInfo>() == 8);
-    assert!(
-        offset_of!(EffectInfo, id) == 0
-            && offset_of!(EffectInfo, name) == 8
-            && offset_of!(EffectInfo, category) == 16
-    );
-    assert!(offset_of!(EffectInfo, parameter_count) == 24 && offset_of!(EffectInfo, flags) == 28);
-};
 
 /// Number of parameter slots every processor carries (`std::array<double,64> p`).
 pub const MAX_PARAMETERS: usize = 64;
@@ -808,129 +781,29 @@ impl Smoother {
 }
 
 #[cfg(test)]
-mod layout_tests {
-    //! Layout of the `#[repr(C)]` types exported through `STBuiltinEffects.h`.
-    //!
-    //! The same table is printed by this C++ program (compile with
-    //! `clang++ -std=c++17 -I Sources/TrackerEngine/include layout.cpp`), and the two outputs
-    //! must be identical:
-    //!
-    //! ```cpp
-    //! #include "STBuiltinEffects.h"
-    //! #include <cstddef>
-    //! #include <cstdio>
-    //! #define FIELD(type, field) std::printf(#type "." #field " offset %zu size %zu\n", offsetof(type, field), sizeof(((type *)0)->field))
-    //! int main() {
-    //!     std::printf("STBuiltinParameterInfo size %zu align %zu\n", sizeof(STBuiltinParameterInfo), alignof(STBuiltinParameterInfo));
-    //!     FIELD(STBuiltinParameterInfo, id); FIELD(STBuiltinParameterInfo, name); FIELD(STBuiltinParameterInfo, unit);
-    //!     FIELD(STBuiltinParameterInfo, minimum); FIELD(STBuiltinParameterInfo, maximum); FIELD(STBuiltinParameterInfo, defaultValue);
-    //!     FIELD(STBuiltinParameterInfo, flags); FIELD(STBuiltinParameterInfo, labels); FIELD(STBuiltinParameterInfo, labelCount);
-    //!     std::printf("STBuiltinEffectInfo size %zu align %zu\n", sizeof(STBuiltinEffectInfo), alignof(STBuiltinEffectInfo));
-    //!     FIELD(STBuiltinEffectInfo, id); FIELD(STBuiltinEffectInfo, name); FIELD(STBuiltinEffectInfo, category);
-    //!     FIELD(STBuiltinEffectInfo, parameterCount); FIELD(STBuiltinEffectInfo, flags);
-    //!     std::printf("flags LOG %d INTEGER %d TOGGLE %d SIDECHAIN %d\n", ST_BUILTIN_PARAMETER_LOG, ST_BUILTIN_PARAMETER_INTEGER,
-    //!         ST_BUILTIN_PARAMETER_TOGGLE, ST_BUILTIN_EFFECT_SIDECHAIN);
-    //! }
-    //! ```
+mod metadata_tests {
+    use super::*;
 
-    use super::{
-        EffectInfo, ParameterInfo, EFFECT_SIDECHAIN, PARAMETER_INTEGER, PARAMETER_LOG,
-        PARAMETER_TOGGLE,
-    };
-    use std::ffi::c_char;
-    use std::mem::{align_of, offset_of, size_of};
-
-    /// The layout table, in the format of the C++ program above.
-    fn layout() -> String {
-        let pointer = size_of::<*const c_char>();
-        let mut out = String::new();
-        out += &format!(
-            "STBuiltinParameterInfo size {} align {}\n",
-            size_of::<ParameterInfo>(),
-            align_of::<ParameterInfo>()
-        );
-        let parameter_fields = [
-            ("id", offset_of!(ParameterInfo, id), pointer),
-            ("name", offset_of!(ParameterInfo, name), pointer),
-            ("unit", offset_of!(ParameterInfo, unit), pointer),
-            (
-                "minimum",
-                offset_of!(ParameterInfo, minimum),
-                size_of::<f64>(),
-            ),
-            (
-                "maximum",
-                offset_of!(ParameterInfo, maximum),
-                size_of::<f64>(),
-            ),
-            (
-                "defaultValue",
-                offset_of!(ParameterInfo, default_value),
-                size_of::<f64>(),
-            ),
-            ("flags", offset_of!(ParameterInfo, flags), size_of::<u32>()),
-            (
-                "labels",
-                offset_of!(ParameterInfo, labels),
-                size_of::<*const *const c_char>(),
-            ),
-            (
-                "labelCount",
-                offset_of!(ParameterInfo, label_count),
-                size_of::<u32>(),
-            ),
-        ];
-        for (name, offset, size) in parameter_fields {
-            out += &format!("STBuiltinParameterInfo.{name} offset {offset} size {size}\n");
-        }
-        out += &format!(
-            "STBuiltinEffectInfo size {} align {}\n",
-            size_of::<EffectInfo>(),
-            align_of::<EffectInfo>()
-        );
-        let effect_fields = [
-            ("id", offset_of!(EffectInfo, id), pointer),
-            ("name", offset_of!(EffectInfo, name), pointer),
-            ("category", offset_of!(EffectInfo, category), pointer),
-            (
-                "parameterCount",
-                offset_of!(EffectInfo, parameter_count),
-                size_of::<u32>(),
-            ),
-            ("flags", offset_of!(EffectInfo, flags), size_of::<u32>()),
-        ];
-        for (name, offset, size) in effect_fields {
-            out += &format!("STBuiltinEffectInfo.{name} offset {offset} size {size}\n");
-        }
-        out += &format!("flags LOG {PARAMETER_LOG} INTEGER {PARAMETER_INTEGER} TOGGLE {PARAMETER_TOGGLE} SIDECHAIN {EFFECT_SIDECHAIN}\n");
-        out
-    }
+    static MODES: [Label; 3] = [Label::new(c"Off"), Label::new(c"Soft"), Label::new(c"Hard")];
+    static MODE: ParameterInfo = ParameterInfo::choice(c"mode", c"Mode", c"", 0.0, 2.0, 1.0, PARAMETER_INTEGER, &MODES);
+    static CUTOFF: ParameterInfo = ParameterInfo::new(c"cutoff", c"Cutoff", c"Hz", 20.0, 20000.0, 1000.0, PARAMETER_LOG);
 
     #[test]
-    fn c_layout() {
-        let table = layout();
-        print!("{table}");
-        // What the C++ program prints on the supported 64-bit targets (x86_64 and arm64, LP64).
-        #[cfg(target_pointer_width = "64")]
-        assert_eq!(
-            table,
-            "STBuiltinParameterInfo size 72 align 8\n\
-             STBuiltinParameterInfo.id offset 0 size 8\n\
-             STBuiltinParameterInfo.name offset 8 size 8\n\
-             STBuiltinParameterInfo.unit offset 16 size 8\n\
-             STBuiltinParameterInfo.minimum offset 24 size 8\n\
-             STBuiltinParameterInfo.maximum offset 32 size 8\n\
-             STBuiltinParameterInfo.defaultValue offset 40 size 8\n\
-             STBuiltinParameterInfo.flags offset 48 size 4\n\
-             STBuiltinParameterInfo.labels offset 56 size 8\n\
-             STBuiltinParameterInfo.labelCount offset 64 size 4\n\
-             STBuiltinEffectInfo size 32 align 8\n\
-             STBuiltinEffectInfo.id offset 0 size 8\n\
-             STBuiltinEffectInfo.name offset 8 size 8\n\
-             STBuiltinEffectInfo.category offset 16 size 8\n\
-             STBuiltinEffectInfo.parameterCount offset 24 size 4\n\
-             STBuiltinEffectInfo.flags offset 28 size 4\n\
-             flags LOG 1 INTEGER 2 TOGGLE 4 SIDECHAIN 1\n"
-        );
+    fn parameter_metadata_and_mapping() {
+        assert_eq!((MODE.id(), MODE.name(), MODE.unit()), (c"mode", c"Mode", c""));
+        assert_eq!((MODE.label_count(), MODE.label(2), MODE.label(3)), (3, Some(c"Hard"), None));
+        assert_eq!((CUTOFF.label_count(), CUTOFF.label(0)), (0, None));
+        assert_eq!((MODE.physical(0.4), MODE.physical(0.8), MODE.physical(7.0)), (1.0, 2.0, 2.0));
+        assert_eq!((MODE.normalized(1.4), MODE.default_normalized()), (0.5, 0.5));
+        // Logarithmic: the geometric middle of the range is the normalized middle.
+        assert!((CUTOFF.physical(0.5) - (20.0f64 * 20000.0).sqrt()).abs() < 1e-9);
+        assert!((CUTOFF.normalized(CUTOFF.physical(0.3)) - 0.3).abs() < 1e-12);
+        // Values from outside: non-finite normalized values are the minimum for `physical` and
+        // the default for `physical_or_default`; a non-finite physical value is the default.
+        assert_eq!(CUTOFF.physical(f64::NAN), 20.0);
+        assert!((CUTOFF.physical_or_default(f64::NAN) - 1000.0).abs() < 1e-9);
+        assert_eq!(CUTOFF.normalized(f64::INFINITY), CUTOFF.default_normalized());
+        let info = EffectInfo::new(c"eq", c"EQ", c"Filter", 2, EFFECT_SIDECHAIN);
+        assert_eq!((info.id(), info.name(), info.category(), info.parameter_count), (c"eq", c"EQ", c"Filter", 2));
     }
 }

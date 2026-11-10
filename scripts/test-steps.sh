@@ -22,42 +22,12 @@ clang -fobjc-arc -fmodules -fmodules-cache-path="$CLANG_MODULE_CACHE_PATH" -O2 -
 clang++ -std=c++17 -O2 -I Sources/TrackerEngine/include -c Sources/TrackerEngine/TrackerClock.cpp -o .build/test-bin/freeze-clock.o
 clang++ -std=c++17 -O2 -I Sources/TrackerEngine/include -c Sources/TrackerEngine/ClockTimingMap.cpp -o .build/test-bin/freeze-clock-map.o
 freeze_test_support=(-I .build/test-modules Sources/SuperTracker/MixerChannel.swift Sources/SuperTracker/KitProject.swift Sources/SuperTracker/ProjectLayout.swift Sources/SuperTracker/PayloadValue.swift Sources/SuperTracker/AudioRouting.swift Sources/SuperTracker/ProjectMigration.swift Sources/SuperTracker/KitGroups.swift Sources/SuperTracker/BuiltinWavetables.swift Sources/SuperTracker/WavetableFormat.swift Sources/SuperTracker/AudioFreezeDurationProof.swift Sources/SuperTracker/AudioFreezeProject.swift Sources/SuperTracker/AudioFreezeTrackFingerprint.swift .build/test-bin/freeze-clock.o .build/test-bin/freeze-clock-map.o -Xlinker -lc++)
-bash scripts/test-clock.sh
 swiftc -module-cache-path .build/clang-module-cache Sources/SuperTracker/AudioMIDITimebase.swift tests/AudioMIDITimebaseTests.swift -o .build/test-bin/midi-timebase
 .build/test-bin/midi-timebase
-bash scripts/test-engine-input-ack.sh
-bash scripts/test-engine-freeze-timeline.sh
-bash scripts/test-engine-freeze-extent.sh
 bash scripts/test-audio-freeze-duration-proof.sh
-clang++ -std=c++17 -O2 -pthread -I Sources/TrackerEngine/include Sources/TrackerEngine/TrackerEngine.cpp Sources/TrackerEngine/TrackerClock.cpp Sources/TrackerEngine/ClockTimingMap.cpp tests/engine_tests.cpp -o .build/test-bin/engine
-clang++ -std=c++17 -O2 -pthread -I Sources/TrackerEngine/include Sources/TrackerEngine/TrackerEngine.cpp Sources/TrackerEngine/TrackerClock.cpp Sources/TrackerEngine/ClockTimingMap.cpp tests/engine_many_tracks_tests.cpp -o .build/test-bin/engine-many-tracks
-.build/test-bin/engine-many-tracks
-# Render budget: a 16-pad kit session and 64 tracks pulled like the host (per channel, small quanta), generous CPU budgets, zero render allocations.
-clang++ -std=c++17 -O2 -pthread -I Sources/TrackerEngine/include Sources/TrackerEngine/TrackerEngine.cpp Sources/TrackerEngine/TrackerClock.cpp Sources/TrackerEngine/ClockTimingMap.cpp tests/engine_render_budget_tests.cpp -o .build/test-bin/engine-render-budget
-.build/test-bin/engine-render-budget
-# Sampler Wavetable mode: position, automation, step FX, frame size and smoothing.
-clang++ -std=c++17 -O2 -pthread -I Sources/TrackerEngine/include Sources/TrackerEngine/TrackerEngine.cpp Sources/TrackerEngine/TrackerClock.cpp Sources/TrackerEngine/ClockTimingMap.cpp tests/engine_wavetable_tests.cpp -o .build/test-bin/engine-wavetable
-.build/test-bin/engine-wavetable
-# Sampler Granular parameters, live instrument parameters and the sample editor's voice playhead snapshot.
-clang++ -std=c++17 -O2 -pthread -I Sources/TrackerEngine/include Sources/TrackerEngine/TrackerEngine.cpp Sources/TrackerEngine/TrackerClock.cpp Sources/TrackerEngine/ClockTimingMap.cpp tests/engine_granular_tests.cpp -o .build/test-bin/engine-granular
-.build/test-bin/engine-granular
-# Instruments sized per project: more than 64, Sound instruments after them.
-clang++ -std=c++17 -O2 -pthread -I Sources/TrackerEngine/include Sources/TrackerEngine/TrackerEngine.cpp Sources/TrackerEngine/TrackerClock.cpp Sources/TrackerEngine/ClockTimingMap.cpp tests/engine_instrument_count_tests.cpp -o .build/test-bin/engine-instrument-count
-.build/test-bin/engine-instrument-count
-clang++ -std=c++17 -O2 -pthread -I Sources/TrackerEngine/include Sources/TrackerEngine/TrackerEngine.cpp Sources/TrackerEngine/TrackerClock.cpp Sources/TrackerEngine/ClockTimingMap.cpp tests/engine_track_choke_tests.cpp -o .build/test-bin/engine-track-choke
-.build/test-bin/engine-track-choke
 # Project migration (tempo maps, built-in synths), built-in wavetables and wavetable file detection.
 swiftc -swift-version 5 -module-cache-path .build/clang-module-cache Sources/SuperTracker/ProjectMigration.swift Sources/SuperTracker/KitGroups.swift Sources/SuperTracker/MixerChannel.swift Sources/SuperTracker/BuiltinWavetables.swift Sources/SuperTracker/WavetableFormat.swift tests/ProjectMigrationTests.swift -o .build/test-bin/project-migration
 .build/test-bin/project-migration
-.build/test-bin/engine
-clang++ -std=c++17 -O2 -pthread -I Sources/TrackerEngine/include Sources/TrackerEngine/TrackerEngine.cpp Sources/TrackerEngine/TrackerClock.cpp Sources/TrackerEngine/ClockTimingMap.cpp tests/engine_debug_regressions.cpp -o .build/test-bin/engine-debug
-.build/test-bin/engine-debug
-bash scripts/test-engine-dsp.sh
-clang++ -std=c++17 -O2 -pthread -I Sources/TrackerEngine/include Sources/TrackerEngine/TrackerEngine.cpp Sources/TrackerEngine/TrackerClock.cpp Sources/TrackerEngine/ClockTimingMap.cpp tests/engine_timing_tests.cpp -o .build/test-bin/engine-timing
-.build/test-bin/engine-timing
-clang++ -std=c++17 -O2 -pthread -I Sources/TrackerEngine/include Sources/TrackerEngine/TrackerEngine.cpp Sources/TrackerEngine/TrackerClock.cpp Sources/TrackerEngine/ClockTimingMap.cpp tests/plugin_step_fx_tests.cpp -o .build/test-bin/plugin-step-fx
-.build/test-bin/plugin-step-fx
-bash scripts/test-engine-song-sends.sh
 bash scripts/test-audio-recording-location.sh
 swiftc -swift-version 5 -module-cache-path .build/clang-module-cache Sources/SuperTracker/AudioDeviceSelection.swift Sources/SuperTracker/AudioLineInputTopology.swift tests/AudioLineInputTopologyTests.swift -o .build/test-bin/line-input-topology
 .build/test-bin/line-input-topology
@@ -105,11 +75,6 @@ swiftc -O -swift-version 5 -module-cache-path .build/clang-module-cache Sources/
 bash scripts/test-mk3-lifecycle.sh
 bash scripts/test-plugin-parameter-metadata.sh
 bash scripts/test-builtin-effect-adapter.sh
-bash scripts/test-builtin-effects.sh
-bash scripts/test-builtin-effects-perf.sh
-bash scripts/test-drum-synths.sh
-bash scripts/test-perform-distortion-effects.sh
-bash tests/run_spatial_effects_tests.sh
 bash tests/run_maschine_core_mapping_tests.sh
 bash tests/run_maschine_additional_mapping_tests.sh
 bash tests/run_maschine_distortion_mapping_tests.sh
@@ -191,8 +156,6 @@ for SCRIPT in tests/*_tests.js; do node "$SCRIPT"; done
 bash scripts/test-sample-inspection.sh
 bash scripts/test-sampler.sh
 
-bash scripts/test-engine-step-effects.sh
-bash scripts/test-engine-reverse-continuity.sh
 # Offline routing graph assembly: strips, PDC, sidechains, sends and solo gates.
 swiftc -O -swift-version 5 -I .build/test-modules -module-cache-path .build/clang-module-cache Sources/SuperTracker/MixerChannel.swift Sources/SuperTracker/KitProject.swift Sources/SuperTracker/PayloadValue.swift Sources/SuperTracker/AudioRouting.swift Sources/SuperTracker/ProjectLayout.swift Sources/SuperTracker/AudioMixAutomation.swift Sources/SuperTracker/AudioDelayCompensation.swift Sources/SuperTracker/AudioRoutingCapture.swift Sources/SuperTracker/AudioRoutingGraph.swift tests/AudioRoutingGraphTests.swift Sources/SuperTracker/AudioRenderUnit.swift .build/test-bin/au-render-shim.o -o .build/test-bin/graph-assembly
 .build/test-bin/graph-assembly

@@ -1,4 +1,4 @@
-//! Port of `tests/sampler_modes_tests.cpp`: behavioural PCM checks for the Polyend-style sample
+//! Port of the former C++ test program `sampler_modes_tests.cpp`: behavioural PCM checks for the Polyend-style sample
 //! play modes. A ramp sample encodes the read position in its value, so the rendered output
 //! reveals where (and in which direction) the voice is reading.
 #![cfg(feature = "engine")]

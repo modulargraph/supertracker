@@ -1,7 +1,7 @@
-//! Timestamped bus history of `TrackerEngine.cpp`: `renderCached` (render_bus/render_channel),
+//! Timestamped bus history (ported from the C++ engine's `TrackerEngine.cpp`): `renderCached` (render_bus/render_channel),
 //! the per-bus rings (`writeRing`, `zeroRing`, `silenceRing`), retained clock and freeze metadata
 //! (`retainClock`, `retainFreeze`) and the queries over them (`prerollClock`,
-//! `st_engine_clock_span`, `st_engine_freeze_span`).
+//! `clock_span`, `freeze_span`).
 //!
 //! Serialized graph pulls may overlap and use different frame counts; only an uncached suffix
 //! advances the sequencer and DSP, existing ranges are copied without advancing music twice.
@@ -68,6 +68,62 @@ fn silence(buffer: &mut Option<&mut [f32]>) {
     }
 }
 
+/// Why [`Render::clock_span`] or [`Render::freeze_span`] has no span to give.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpanError {
+    /// An argument is out of range.
+    Invalid,
+    /// The frame lies outside the timing map's domain.
+    OutsideDomain,
+    /// The frame has not been rendered yet (or the history was reset).
+    NotPrepared,
+    /// The frame is older than the retained history.
+    NotRetained,
+    /// Freeze spans only: the project has no frozen-song policy.
+    NotConfigured,
+}
+
+impl SpanError {
+    /// The numeric code of this error (`CLOCK_INVALID`, `CLOCK_OUTSIDE_DOMAIN`,
+    /// `ST_ENGINE_CLOCK_NOT_PREPARED`, `ST_ENGINE_CLOCK_NOT_RETAINED`,
+    /// `ST_FREEZE_NOT_CONFIGURED`); success is `CLOCK_OK`.
+    pub const fn status(self) -> i32 {
+        match self {
+            SpanError::Invalid => CLOCK_INVALID,
+            SpanError::OutsideDomain => CLOCK_OUTSIDE_DOMAIN,
+            SpanError::NotPrepared => ST_ENGINE_CLOCK_NOT_PREPARED,
+            SpanError::NotRetained => ST_ENGINE_CLOCK_NOT_RETAINED,
+            SpanError::NotConfigured => ST_FREEZE_NOT_CONFIGURED,
+        }
+    }
+
+    /// `None` for `CLOCK_OK`.
+    fn from_status(status: i32) -> Option<SpanError> {
+        match status {
+            CLOCK_OK => None,
+            CLOCK_OUTSIDE_DOMAIN => Some(SpanError::OutsideDomain),
+            ST_ENGINE_CLOCK_NOT_PREPARED => Some(SpanError::NotPrepared),
+            ST_ENGINE_CLOCK_NOT_RETAINED => Some(SpanError::NotRetained),
+            ST_FREEZE_NOT_CONFIGURED => Some(SpanError::NotConfigured),
+            _ => Some(SpanError::Invalid),
+        }
+    }
+}
+
+impl std::fmt::Display for SpanError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            SpanError::Invalid => "The span request is out of range.",
+            SpanError::OutsideDomain => "The frame lies outside the timing map.",
+            SpanError::NotPrepared => "The frame has not been rendered yet.",
+            SpanError::NotRetained => "The frame is older than the retained history.",
+            SpanError::NotConfigured => "The project has no frozen-song policy.",
+        })
+    }
+}
+
+impl std::error::Error for SpanError {}
+
 impl Render {
     fn write_ring(&self, ring: &mut BusRingState, l: &[f32], r: &[f32], start: u64) {
         if ring.generation != self.cache_generation {
@@ -91,9 +147,59 @@ impl Render {
         }
     }
 
+    /// One output bus at graph time `time`, `left.len()` frames (the shorter length when the
+    /// buffers differ): the bus history is extended up to the end of the request (rendering the
+    /// project in blocks, with their events) and the requested range is copied out, so several
+    /// pulls of the same range, in any order of buses, render it once. Bus numbers: a track's
+    /// own number for the tracks, then the return bus at [`return_bus`].
+    ///
+    /// Silence, without rendering, for a negative bus, more frames than the history holds
+    /// ([`CACHE_CAPACITY`]) and a range that overflows the timestamp. Zero frames do nothing.
+    /// History that has been overwritten reads as silence, as does a bus the project lacks.
+    pub fn render_bus(&mut self, sh: &Shared, bus: i32, time: u64, left: &mut [f32], right: &mut [f32]) {
+        self.render_history(sh, bus, false, time, left, right);
+    }
+
+    /// As [`Render::render_bus`], addressed by logical channel: a track's own channel number,
+    /// or any negative number for the return bus. The bus is resolved against the project that
+    /// rendered the range, so a caller keyed by channel never reads another channel's bus
+    /// across a renumbering; a channel the project lacks is silent.
+    pub fn render_channel(&mut self, sh: &Shared, channel: i32, time: u64, left: &mut [f32], right: &mut [f32]) {
+        self.render_history(sh, channel, true, time, left, right);
+    }
+
+    /// Extends the bus history to `time + frames` without copying anything out: what
+    /// [`Render::render_bus`] does before it reads. For hosts that only need the events and
+    /// clock history of a range.
+    pub fn prepare_history(&mut self, sh: &Shared, time: u64, frames: u32) {
+        if self.engine_id != sh.engine_id || frames == 0 || frames as usize > CACHE_CAPACITY || time > u64::MAX - frames as u64 {
+            return;
+        }
+        // The return bus always exists; nothing is copied without output buffers.
+        self.render_cached(sh, -1, true, time, None, None, frames);
+    }
+
+    /// The argument rules shared by `render_bus` and `render_channel`.
+    fn render_history(&mut self, sh: &Shared, bus: i32, channel: bool, time: u64, left: &mut [f32], right: &mut [f32]) {
+        let frames = cmin(left.len(), right.len());
+        let (left, right) = (&mut left[..frames], &mut right[..frames]);
+        if self.engine_id != sh.engine_id
+            || (!channel && bus < 0)
+            || frames > CACHE_CAPACITY
+            || time > u64::MAX - frames as u64
+        {
+            left.fill(0.0);
+            right.fill(0.0);
+            return;
+        }
+        if frames != 0 {
+            self.render_cached(sh, bus, channel, time, Some(left), Some(right), frames as u32);
+        }
+    }
+
     /// `renderCached`: one bus (or logical channel) of `n` frames at graph time `time`. The
     /// caller has already rejected `n > CACHE_CAPACITY`, a negative bus and timestamp overflow.
-    pub fn render_cached(
+    pub(crate) fn render_cached(
         &mut self,
         sh: &Shared,
         mut bus: i32,
@@ -214,22 +320,22 @@ impl Render {
 
     /// Clock context before the first prepared timestamp: the immutable initial map/consumed
     /// transport origin (PREROLL if playing, no backward loop); a stopped origin holds.
-    fn preroll_clock(&self, graph_frame: i64, content: i64, requested: u32, latency: i64, out: &mut STClockSpan) -> i32 {
+    fn preroll_clock(&self, graph_frame: i64, content: i64, requested: u32, latency: i64, out: &mut ClockSpan) -> i32 {
         let origin_graph = self.cache_origin_graph as i64;
         if !self.cache_origin_valid || content >= origin_graph || origin_graph.wrapping_sub(content) > LIMIT_30 {
             return ST_ENGINE_CLOCK_NOT_RETAINED;
         }
         let origin = &self.cache_origin_clock;
-        let active = (origin.flags & ST_CLOCK_PLAYING) != 0;
+        let active = (origin.flags & CLOCK_PLAYING) != 0;
         let frame = self.cache_origin_transport + (if active { content.wrapping_sub(origin_graph) as f64 } else { 0.0 });
-        let mut result = STClockSpan::default();
+        let mut result = ClockSpan::default();
         let c = &mut result.context;
         if !self.cache_origin_timing.is_null() {
             // SAFETY: the cache origin pins this map (`origin_pins`), so `collect()` keeps it
             // alive until `release_clock_origin`.
             let timing = unsafe { &*self.cache_origin_timing };
-            if timing.context(frame as i64, c) != ST_CLOCK_OK {
-                return ST_CLOCK_OUTSIDE_DOMAIN;
+            if timing.context(frame as i64, c) != CLOCK_OK {
+                return CLOCK_OUTSIDE_DOMAIN;
             }
         } else {
             fixed_clock_context(c, frame, self.sample_rate, origin.bpm, origin.numerator, origin.denominator);
@@ -242,9 +348,9 @@ impl Render {
         c.loop_iteration = 0;
         c.loop_start_beat = origin.loop_start_beat;
         c.loop_end_beat = origin.loop_end_beat;
-        c.flags = (c.flags & ST_CLOCK_DOMAIN_END)
-            | (origin.flags & (ST_CLOCK_PLAYING | ST_CLOCK_LOOPING | ST_CLOCK_RECORDING))
-            | (if active { ST_CLOCK_PREROLL } else { 0 });
+        c.flags = (c.flags & CLOCK_DOMAIN_END)
+            | (origin.flags & (CLOCK_PLAYING | CLOCK_LOOPING | CLOCK_RECORDING))
+            | (if active { CLOCK_PREROLL } else { 0 });
         let translated =
             |value: i64| if value == i64::MAX { value } else { graph_frame.wrapping_add(value).wrapping_sub(song_frame) };
         c.next_boundary_frame = if active { translated(c.next_boundary_frame) } else { i64::MAX };
@@ -253,9 +359,9 @@ impl Render {
         let origin_frame = origin_graph.wrapping_add(latency);
         if c.next_boundary_frame > origin_frame {
             c.next_boundary_frame = origin_frame;
-            c.next_boundary_kinds = ST_CLOCK_BOUNDARY_ORIGIN;
+            c.next_boundary_kinds = CLOCK_BOUNDARY_ORIGIN;
         } else if c.next_boundary_frame == origin_frame {
-            c.next_boundary_kinds |= ST_CLOCK_BOUNDARY_ORIGIN;
+            c.next_boundary_kinds |= CLOCK_BOUNDARY_ORIGIN;
         }
         if c.next_quarter_beat_frame >= origin_frame {
             c.next_quarter_beat_frame = if origin.next_quarter_beat_frame == i64::MAX {
@@ -265,23 +371,51 @@ impl Render {
             };
         }
         if c.next_quarter_beat_frame == i64::MAX {
-            c.flags |= ST_CLOCK_GRID_PROJECTION;
+            c.flags |= CLOCK_GRID_PROJECTION;
         }
         result.frames = cmin(requested as i64, cmax(0, c.next_boundary_frame.wrapping_sub(graph_frame))) as u32;
         *out = result;
-        ST_CLOCK_OK
+        CLOCK_OK
     }
 
-    /// `st_engine_clock_span`
-    pub fn clock_span(&self, sh: &Shared, graph_frame: i64, requested: u32, latency: i64, out: &mut STClockSpan) -> i32 {
+    /// The musical clock of rendered graph time: the context at `graph_frame` and how many of
+    /// the `requested` frames (1..=65536) share it. `latency` (0..=2^30) is the upstream latency
+    /// subtracted before the lookup. Only time the bus history covers can be asked for (and the
+    /// pre-roll before its origin); a span ends where the context changes.
+    pub fn clock_span(&self, sh: &Shared, graph_frame: i64, requested: u32, latency: i64) -> Result<ClockSpan, SpanError> {
+        if self.engine_id != sh.engine_id {
+            return Err(SpanError::Invalid);
+        }
+        let mut span = ClockSpan::default();
+        match SpanError::from_status(self.clock_span_status(sh, graph_frame, requested, latency, &mut span)) {
+            None => Ok(span),
+            Some(error) => Err(error),
+        }
+    }
+
+    /// The freeze metadata of rendered graph time, with the arguments of
+    /// [`Render::clock_span`]. Needs a frozen-song policy (`Control::set_frozen_song_policy`).
+    pub fn freeze_span(&self, sh: &Shared, graph_frame: i64, requested: u32, latency: i64) -> Result<STFreezeSpan, SpanError> {
+        if self.engine_id != sh.engine_id {
+            return Err(SpanError::Invalid);
+        }
+        let mut span = STFreezeSpan::default();
+        match SpanError::from_status(self.freeze_span_status(sh, graph_frame, requested, latency, &mut span)) {
+            None => Ok(span),
+            Some(error) => Err(error),
+        }
+    }
+
+    /// `clock_span` with its result as a status code; `out` is written only for `CLOCK_OK`.
+    fn clock_span_status(&self, sh: &Shared, graph_frame: i64, requested: u32, latency: i64, out: &mut ClockSpan) -> i32 {
         if requested < 1
-            || requested > ST_CLOCK_MAX_SPAN
+            || requested > CLOCK_MAX_SPAN
             || latency < 0
             || latency > LIMIT_30
             || graph_frame < -LIMIT_52
             || graph_frame > LIMIT_52
         {
-            return ST_CLOCK_INVALID;
+            return CLOCK_INVALID;
         }
         let content = graph_frame - latency;
         if !self.cache_valid || self.observed_cache_epoch != sh.cache_epoch.load(Ordering::Acquire) {
@@ -298,7 +432,7 @@ impl Render {
             return ST_ENGINE_CLOCK_NOT_PREPARED;
         }
         let at = |frame: u64| self.cached_clock[(frame % CLOCK_CAPACITY as u64) as usize];
-        let mut result = STClockSpan { context: at(content_frame), frames: 0 };
+        let mut result = ClockSpan { context: at(content_frame), frames: 0 };
         let c = &mut result.context;
         c.graph_frame = graph_frame;
         c.content_graph_frame = content;
@@ -323,23 +457,23 @@ impl Render {
         if let Some(n) = changed {
             count = n;
             c.next_boundary_frame = graph_frame + n as i64;
-            c.next_boundary_kinds = ST_CLOCK_BOUNDARY_ORIGIN;
+            c.next_boundary_kinds = CLOCK_BOUNDARY_ORIGIN;
         }
         result.frames = count;
         *out = result;
-        ST_CLOCK_OK
+        CLOCK_OK
     }
 
-    /// `st_engine_freeze_span`
-    pub fn freeze_span(&self, sh: &Shared, graph_frame: i64, requested: u32, latency: i64, out: &mut STFreezeSpan) -> i32 {
+    /// `freeze_span` with its result as a status code; `out` is written only for `CLOCK_OK`.
+    fn freeze_span_status(&self, sh: &Shared, graph_frame: i64, requested: u32, latency: i64, out: &mut STFreezeSpan) -> i32 {
         if requested < 1
-            || requested > ST_CLOCK_MAX_SPAN
+            || requested > CLOCK_MAX_SPAN
             || latency < 0
             || latency > LIMIT_30
             || graph_frame < -LIMIT_52
             || graph_frame > LIMIT_52
         {
-            return ST_CLOCK_INVALID;
+            return CLOCK_INVALID;
         }
         let history = sh.freeze_history.load(Ordering::Acquire);
         if history.is_null() {
@@ -400,7 +534,7 @@ impl Render {
         result.context.graph_frame = graph_frame;
         result.context.content_graph_frame = content;
         *out = result;
-        ST_CLOCK_OK
+        CLOCK_OK
     }
 }
 
@@ -476,7 +610,7 @@ impl<'a> Rt<'a> {
         let slot = (graph_frame % CLOCK_CAPACITY as u64) as usize;
         if graph_frame > (1u64 << 52) {
             if let Some(entry) = self.e.cached_clock.get_mut(slot) {
-                *entry = STClockContext::default();
+                *entry = ClockContext::default();
             }
             return;
         }
@@ -510,7 +644,7 @@ impl<'a> Rt<'a> {
             let until: i64 =
                 if p.timing.is_some() { end.wrapping_sub(song_frame) } else { (endpoint - transport_frames).ceil() as i64 };
             let boundary = graph.wrapping_add(cmax(1, until));
-            let kind = if (c.flags & ST_CLOCK_LOOPING) != 0 { ST_CLOCK_BOUNDARY_LOOP } else { ST_CLOCK_BOUNDARY_DOMAIN };
+            let kind = if (c.flags & CLOCK_LOOPING) != 0 { CLOCK_BOUNDARY_LOOP } else { CLOCK_BOUNDARY_DOMAIN };
             if boundary < c.next_boundary_frame {
                 c.next_boundary_frame = boundary;
                 c.next_boundary_kinds = kind;
@@ -519,7 +653,7 @@ impl<'a> Rt<'a> {
             }
             if c.next_quarter_beat_frame >= boundary {
                 c.next_quarter_beat_frame = i64::MAX;
-                if (c.flags & ST_CLOCK_LOOPING) != 0 {
+                if (c.flags & CLOCK_LOOPING) != 0 {
                     let first = c.loop_start_beat.ceil();
                     if first < c.loop_end_beat {
                         let rate = self.e.sample_rate;
@@ -547,9 +681,9 @@ impl<'a> Rt<'a> {
             }
         }
         if c.next_quarter_beat_frame == i64::MAX {
-            c.flags |= ST_CLOCK_GRID_PROJECTION;
+            c.flags |= CLOCK_GRID_PROJECTION;
         } else {
-            c.flags &= !ST_CLOCK_GRID_PROJECTION;
+            c.flags &= !CLOCK_GRID_PROJECTION;
         }
         let origin = !self.e.cache_origin_valid;
         self.retain_freeze(graph_frame, origin);

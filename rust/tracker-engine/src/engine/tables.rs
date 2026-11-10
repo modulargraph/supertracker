@@ -201,7 +201,7 @@ impl FreezeHistory {
 /// The render-owned contents of `ChannelTables`.
 pub struct TablesState {
     pub track_count: i32,
-    /// The return bus (`st_return_bus(track_count)`).
+    /// The return bus (`return_bus(track_count)`).
     pub base: i32,
     pub channels: i32,
     pub buses: i32,
@@ -264,9 +264,9 @@ impl ChannelTables {
     /// Control thread. `rings[bus]` is the history ring of each logical bus that has one.
     /// `None` when memory is exhausted (C++ `std::bad_alloc`).
     pub fn new(tracks: i32, rings: Vec<Option<Arc<BusRing>>>) -> Option<ChannelTables> {
-        let base = st_return_bus(tracks);
-        let channels = st_channel_count(tracks);
-        let buses = st_output_bus_count(tracks);
+        let base = return_bus(tracks);
+        let channels = channel_count(tracks);
+        let buses = output_bus_count(tracks);
         let channel_count = channels as usize;
         let bus_count = buses as usize;
         Some(ChannelTables {

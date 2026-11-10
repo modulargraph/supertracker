@@ -317,6 +317,29 @@ impl ProjectSync {
         }
     }
 
+    /// The engine asset holding the audio of `path` (a frozen track's print), installed if it is
+    /// not yet; `None` while the file is not decoded or cannot be. Like timeline clips, prints
+    /// share the engine's 256 asset slots, one per distinct file.
+    fn print_asset(&mut self, control: &mut tracker_engine::engine::control::Control, shared: &tracker_engine::engine::state::Shared, sample_rate: f64, path: &str, report: &mut ApplyReport) -> Result<Option<i32>, String> {
+        if !self.clip_assets.contains_key(path) {
+            let used: Vec<i32> = self.clip_assets.values().map(|(slot, _)| *slot).collect();
+            let Some(slot) = (0..256).find(|slot| !used.contains(slot)) else { return Ok(None) };
+            self.clip_assets.insert(path.to_string(), (slot, None));
+        }
+        let pcm = self.lookup(path, None, &mut report.problems);
+        let (slot, installed) = self.clip_assets[path];
+        let identity = pcm.as_ref().map(|pcm| Arc::as_ptr(pcm) as usize);
+        if installed != identity {
+            let accepted = control.set_audio_asset(shared, sample_rate, slot, pcm.as_ref().map(|pcm| Pcm { left: &pcm.left, right: Some(&pcm.right), rate: pcm.sample_rate }));
+            if pcm.is_some() && !accepted {
+                return Err(format!("The engine could not load the frozen audio {path}."));
+            }
+            report.samples_installed += pcm.is_some() as usize;
+            self.clip_assets.insert(path.to_string(), (slot, identity));
+        }
+        Ok(pcm.is_some().then_some(slot))
+    }
+
     /// Sends `project` to the engine and publishes it. `spec` is the project's mixer (for the
     /// numbering of host automation). On an error the engine keeps the project it had.
     pub fn apply(&mut self, engine: &mut ControlHalf, project: &Project, spec: &GraphSpec, defaults: DestinationDefault<'_>) -> Result<ApplyReport, String> {
@@ -570,7 +593,10 @@ impl ProjectSync {
         // Timeline clips: each distinct file is an engine asset.
         control.clear_audio_clips();
         let clips = project.clip_list();
-        let wanted: Vec<&str> = clips.iter().filter_map(|clip| clip.file()).collect();
+        // Prints of frozen tracks that are not timeline clips (`crate::freeze`): they use assets too.
+        let prints = crate::freeze::engine_prints(project);
+        let mut wanted: Vec<&str> = clips.iter().filter_map(|clip| clip.file()).collect();
+        wanted.extend(prints.iter().flat_map(|print| print.paths()));
         let stale: Vec<String> = self.clip_assets.keys().filter(|path| !wanted.contains(&path.as_str())).cloned().collect();
         for path in stale {
             if let Some((slot, Some(_))) = self.clip_assets.remove(&path) {
@@ -609,6 +635,26 @@ impl ProjectSync {
                     clip.fade_out() as f32,
                     clip.muted(),
                 );
+            }
+        }
+        for print in &prints {
+            match print {
+                crate::freeze::EnginePrint::Pattern { track, pattern, head, loop_print, gain } => {
+                    // Both files are asked for at once, so that they are decoded together.
+                    let head = self.print_asset(control, shared, sample_rate, head, &mut report)?;
+                    let loop_asset = match loop_print {
+                        Some(path) => self.print_asset(control, shared, sample_rate, path, &mut report)?.unwrap_or(-1),
+                        None => -1,
+                    };
+                    if let Some(head) = head {
+                        control.add_pattern_clip(head, loop_asset, *track as i32, clamp_i32(*pattern), *gain);
+                    }
+                }
+                crate::freeze::EnginePrint::SongTail { track, path, start_frame, gain } => {
+                    if let Some(asset) = self.print_asset(control, shared, sample_rate, path, &mut report)? {
+                        control.add_song_tail_clip(asset, *track as i32, *start_frame, *gain);
+                    }
+                }
             }
         }
         report.problems.dedup();

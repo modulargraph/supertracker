@@ -1,4 +1,4 @@
-//! Port of `tests/engine_timing_tests.cpp`, part 2 of 2: the retained clock history behind
+//! Port of the former C++ test program `engine_timing_tests.cpp`, part 2 of 2: the retained clock history behind
 //! `clock_span` (spans, revisions, upstream latency, expiry), mapped startup preroll and the
 //! lifetime of the graph origin's map, legacy fractional preroll with a stopped origin, legacy
 //! fractional song boundaries, concurrent origin ownership (publication and collection on the
@@ -21,12 +21,12 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tracker_engine::clock::*;
 use tracker_engine::engine::*;
 
-fn tempo(beat: f64, bpm: f64) -> STClockTempoEvent {
-    STClockTempoEvent { beat, bpm }
+fn tempo(beat: f64, bpm: f64) -> ClockTempoEvent {
+    ClockTempoEvent { beat, bpm }
 }
 
-fn meter(beat: f64, numerator: i32, denominator: i32) -> STClockMeterEvent {
-    STClockMeterEvent { beat, numerator, denominator }
+fn meter(beat: f64, numerator: i32, denominator: i32) -> ClockMeterEvent {
+    ClockMeterEvent { beat, numerator, denominator }
 }
 
 #[test]
@@ -49,8 +49,8 @@ fn test_retained_clock_spans() {
     assert!(before_change.context.graph_frame == 8999 && before_change.context.content_graph_frame == 8999);
     assert!(before_change.context.song_frame == 8999 && before_change.context.next_boundary_frame == 9000);
     assert!(
-        (before_change.context.next_boundary_kinds & (ST_CLOCK_BOUNDARY_TEMPO | ST_CLOCK_BOUNDARY_METER))
-            == (ST_CLOCK_BOUNDARY_TEMPO | ST_CLOCK_BOUNDARY_METER)
+        (before_change.context.next_boundary_kinds & (CLOCK_BOUNDARY_TEMPO | CLOCK_BOUNDARY_METER))
+            == (CLOCK_BOUNDARY_TEMPO | CLOCK_BOUNDARY_METER)
     );
 
     let old_revision = prepared_span(&mut engine, 9000);
@@ -58,7 +58,7 @@ fn test_retained_clock_spans() {
     assert!(old_revision.context.bpm == 60.0 && old_revision.context.revision == 1);
     assert!(old_revision.context.numerator == 7 && old_revision.context.denominator == 8);
     assert!(old_revision.context.bar == 2 && old_revision.context.bar_start_beat == 0.375);
-    assert!(old_revision.context.flags & ST_CLOCK_PLAYING != 0);
+    assert!(old_revision.context.flags & CLOCK_PLAYING != 0);
 
     let delayed = prepared_span_at(&mut engine, 9127, 256, 128);
     assert!(delayed.frames == 1 && delayed.context.graph_frame == 9127);
@@ -71,7 +71,7 @@ fn test_retained_clock_spans() {
     expect_clock_error(&mut engine, 12000, 0, ST_ENGINE_CLOCK_NOT_PREPARED);
     let startup = prepared_span(&mut engine, -1);
     assert!(startup.frames == 1 && startup.context.song_frame == -1);
-    assert!(startup.context.flags & ST_CLOCK_PREROLL != 0);
+    assert!(startup.context.flags & CLOCK_PREROLL != 0);
     let delayed_startup = prepared_span_at(&mut engine, 0, 64, 1);
     assert!(delayed_startup.frames == 1 && delayed_startup.context.content_graph_frame == -1);
     assert!(delayed_startup.context.next_boundary_frame == 1);
@@ -156,22 +156,22 @@ fn test_mapped_startup_preroll_and_origin_lifetime() {
     assert!(preceding.frames == 1 && preceding.context.song_frame == 8999);
     assert!(preceding.context.bpm == 120.0 && preceding.context.numerator == 4);
     assert!(preceding.context.denominator == 4 && preceding.context.next_boundary_frame == 1001);
-    assert!(preceding.context.flags & ST_CLOCK_PREROLL != 0);
+    assert!(preceding.context.flags & CLOCK_PREROLL != 0);
     let boundary = prepared_span_at(&mut engine, 1000, 64, 6000);
     assert!(boundary.context.song_frame == 9000 && boundary.context.beat == 0.375);
     assert!(boundary.context.bpm == 60.0 && boundary.context.numerator == 7 && boundary.context.denominator == 8);
-    assert!(boundary.context.flags & ST_CLOCK_PLAYING != 0);
+    assert!(boundary.context.flags & CLOCK_PLAYING != 0);
     let negative = prepared_span_at(&mut engine, 1000, 64, 16000);
     assert!(negative.context.song_frame == -1000 && negative.context.beat < 0.0);
     assert!(negative.context.bar == 0 && negative.context.bar_end_beat == 0.0);
     assert!(
-        (negative.context.flags & (ST_CLOCK_PREROLL | ST_CLOCK_PLAYING | ST_CLOCK_LOOPING))
-            == (ST_CLOCK_PREROLL | ST_CLOCK_PLAYING | ST_CLOCK_LOOPING)
+        (negative.context.flags & (CLOCK_PREROLL | CLOCK_PLAYING | CLOCK_LOOPING))
+            == (CLOCK_PREROLL | CLOCK_PLAYING | CLOCK_LOOPING)
     );
     assert!(negative.context.loop_iteration == 0);
     let edge = prepared_span_at(&mut engine, 1000, 64, 1);
     assert!(edge.frames == 1 && edge.context.next_boundary_frame == 1001);
-    assert!(edge.context.next_boundary_kinds & ST_CLOCK_BOUNDARY_ORIGIN != 0);
+    assert!(edge.context.next_boundary_kinds & CLOCK_BOUNDARY_ORIGIN != 0);
     assert!(status_key(&status) == status_key(&engine.status()));
     let mut notes: Vec<Note> = Vec::new();
     drain_notes(&mut engine, 1000, &mut notes);
@@ -204,10 +204,10 @@ fn test_mapped_startup_preroll_and_origin_lifetime() {
     assert!(reset.context.revision == 3 && reset.context.epoch != preceding.context.epoch);
     assert!(reset.context.song_frame == 15000 && reset.context.beat == 0.5);
     assert!(reset.context.bpm == 96.0 && reset.context.numerator == 5 && reset.context.denominator == 8);
-    assert!(reset.context.flags & ST_CLOCK_PREROLL != 0);
+    assert!(reset.context.flags & CLOCK_PREROLL != 0);
     assert!(prepared_span(&mut engine, 1000).context.revision == 3);
     let furthest = prepared_span(&mut engine, 200000 - (1i64 << 30));
-    assert!(furthest.frames > 0 && (furthest.context.flags & ST_CLOCK_PREROLL) != 0);
+    assert!(furthest.frames > 0 && (furthest.context.flags & CLOCK_PREROLL) != 0);
     expect_clock_error(&mut engine, 200000 - (1i64 << 30) - 1, 0, ST_ENGINE_CLOCK_NOT_RETAINED);
     assert_zero_render_allocations();
 }
@@ -235,7 +235,7 @@ fn test_legacy_fractional_preroll_and_stopped_origin() {
     assert!((preroll.context.beat - (-0.034375)).abs() < 1e-14);
     assert!(preroll.context.bpm == 999.0 && preroll.context.bar == 0);
     assert!(preroll.context.bar_start_beat == -1.5 && preroll.context.bar_end_beat == 0.0);
-    assert!(preroll.context.flags & ST_CLOCK_PREROLL != 0);
+    assert!(preroll.context.flags & CLOCK_PREROLL != 0);
     let before_zero = prepared_span_at(&mut engine, 4195, 64, 1000);
     let after_zero = prepared_span_at(&mut engine, 4196, 64, 1000);
     assert!(before_zero.frames == 1 && before_zero.context.beat < 0.0);
@@ -260,7 +260,7 @@ fn test_legacy_fractional_preroll_and_stopped_origin() {
     let held_farther = prepared_span_at(&mut engine, 10000, 64, 1000000);
     assert!((held.context.beat - 0.3125).abs() < 1e-14 && held.context.beat == held_farther.context.beat);
     assert!(held.context.song_frame == 900 && held.context.bpm == 999.0);
-    assert!((held.context.flags & (ST_CLOCK_PLAYING | ST_CLOCK_PREROLL)) == 0);
+    assert!((held.context.flags & (CLOCK_PLAYING | CLOCK_PREROLL)) == 0);
     assert!(held.context.next_quarter_beat_frame == i64::MAX);
     notes.clear();
     drain_notes(&mut engine, 10000, &mut notes);
@@ -281,7 +281,7 @@ fn test_legacy_fractional_preroll_and_stopped_origin() {
     assert!(notes.last().unwrap().note == 64);
     assert!(context_key(&prepared_span_at(&mut engine, 10000, 64, 1000).context) == context_key(&held.context));
     let playing = prepared_span(&mut engine, 10064);
-    assert!(playing.context.flags & ST_CLOCK_PLAYING != 0);
+    assert!(playing.context.flags & CLOCK_PLAYING != 0);
     assert!((playing.context.beat - 1.0).abs() < 1e-14);
     assert_zero_render_allocations();
 }
@@ -310,15 +310,15 @@ fn test_legacy_fractional_song_boundary_partitioning() {
         // later, not ceil(endFrame)-floor(originFrame)=35123.
         const BOUNDARY: i64 = 1000 + 35122;
         let before = prepared_span_at(&mut engine, BOUNDARY - 1, 256, 0);
-        assert!(before.frames == 1 && (before.context.flags & ST_CLOCK_PLAYING) != 0);
+        assert!(before.frames == 1 && (before.context.flags & CLOCK_PLAYING) != 0);
         assert!(before.context.next_boundary_frame == BOUNDARY);
         assert!(
             before.context.next_boundary_kinds
-                & (if looping != 0 { ST_CLOCK_BOUNDARY_LOOP } else { ST_CLOCK_BOUNDARY_DOMAIN })
+                & (if looping != 0 { CLOCK_BOUNDARY_LOOP } else { CLOCK_BOUNDARY_DOMAIN })
                 != 0
         );
         let after = prepared_span_at(&mut engine, BOUNDARY, 256, 0);
-        assert!(after.frames > 0 && ((after.context.flags & ST_CLOCK_PLAYING) != 0) == (looping != 0));
+        assert!(after.frames > 0 && ((after.context.flags & CLOCK_PLAYING) != 0) == (looping != 0));
         assert!(after.context.epoch != before.context.epoch);
         if looping != 0 {
             assert!(after.context.loop_iteration == 1 && after.context.beat == 0.0);
@@ -340,7 +340,7 @@ fn test_legacy_fractional_song_boundary_partitioning() {
             let last = prepared_span_at(&mut engine, at + span.frames as i64 - 1, 1, 0);
             assert!(last.context.epoch == span.context.epoch);
             assert!(last.context.loop_iteration == span.context.loop_iteration);
-            assert!((last.context.flags & ST_CLOCK_PLAYING) == (span.context.flags & ST_CLOCK_PLAYING));
+            assert!((last.context.flags & CLOCK_PLAYING) == (span.context.flags & CLOCK_PLAYING));
             at += span.frames as i64;
         }
     }
@@ -376,7 +376,7 @@ fn test_concurrent_origin_ownership() {
                         audio_half.render_bus_into(0, origin, &mut left, &mut right);
                         let preroll = prepared_span_at(&mut audio_half, origin as i64, 64, 256);
                         assert!(preroll.context.revision == round as u64 + 2);
-                        assert!(preroll.context.flags & ST_CLOCK_PREROLL != 0);
+                        assert!(preroll.context.flags & CLOCK_PREROLL != 0);
                         assert!(preroll.frames > 0 && preroll.context.beat.is_finite());
                     }
                     while audio_half.pop_event().is_some() {}
@@ -426,8 +426,8 @@ fn test_recording_context_and_checkpoint() {
     let held = prepared_span_at(&mut engine, 0, 32, 0);
     assert!(held.context.beat == 0.25);
     assert!(held.context.next_quarter_beat_frame == i64::MAX);
-    assert!(held.context.next_quarter_grid_frame == 33000 && (held.context.flags & ST_CLOCK_GRID_PROJECTION) != 0);
-    assert!((held.context.flags & ST_CLOCK_RECORDING) == 0 && engine.status().recording == 0);
+    assert!(held.context.next_quarter_grid_frame == 33000 && (held.context.flags & CLOCK_GRID_PROJECTION) != 0);
+    assert!((held.context.flags & CLOCK_RECORDING) == 0 && engine.status().recording == 0);
 
     engine.set_recording(1);
     // Publishing intent cannot rewrite already-generated, possibly PDC-delayed
@@ -437,10 +437,10 @@ fn test_recording_context_and_checkpoint() {
     prepare_bus(&mut engine, 32, 32);
     let (before, armed) = (prepared_span_at(&mut engine, 0, 64, 0), prepared_span_at(&mut engine, 32, 32, 0));
     assert!(before.frames == 32 && before.context.epoch != armed.context.epoch);
-    assert!(armed.context.flags & ST_CLOCK_RECORDING != 0);
-    assert!((armed.context.flags & ST_CLOCK_PLAYING) == 0 && engine.status().recording == 1);
+    assert!(armed.context.flags & CLOCK_RECORDING != 0);
+    assert!((armed.context.flags & CLOCK_PLAYING) == 0 && engine.status().recording == 1);
     let delayed = prepared_span_at(&mut engine, 96, 32, 64);
-    assert!(delayed.context.flags & ST_CLOCK_RECORDING != 0);
+    assert!(delayed.context.flags & CLOCK_RECORDING != 0);
     assert!(delayed.context.next_quarter_grid_frame == 33096);
     engine.set_recording(1);
     prepare_bus(&mut engine, 64, 32);
@@ -449,13 +449,13 @@ fn test_recording_context_and_checkpoint() {
     engine.play(1);
     prepare_bus(&mut engine, 96, 32);
     assert!(
-        (prepared_span_at(&mut engine, 96, 32, 0).context.flags & (ST_CLOCK_PLAYING | ST_CLOCK_RECORDING))
-            == (ST_CLOCK_PLAYING | ST_CLOCK_RECORDING)
+        (prepared_span_at(&mut engine, 96, 32, 0).context.flags & (CLOCK_PLAYING | CLOCK_RECORDING))
+            == (CLOCK_PLAYING | CLOCK_RECORDING)
     );
     engine.stop();
     prepare_bus(&mut engine, 128, 32);
     let stopped = prepared_span_at(&mut engine, 128, 32, 0);
-    assert!((stopped.context.flags & ST_CLOCK_PLAYING) == 0 && (stopped.context.flags & ST_CLOCK_RECORDING) != 0);
+    assert!((stopped.context.flags & CLOCK_PLAYING) == 0 && (stopped.context.flags & CLOCK_RECORDING) != 0);
 
     let saved = engine.capture_transport();
     assert!(saved.recording == 1 && saved.playing == 0);
@@ -467,17 +467,17 @@ fn test_recording_context_and_checkpoint() {
     prepare_bus(&mut engine, 0, 32);
     engine.set_recording(0);
     prepare_bus(&mut engine, 32, 32);
-    assert!((prepared_span_at(&mut engine, 32, 32, 0).context.flags & ST_CLOCK_RECORDING) == 0);
+    assert!((prepared_span_at(&mut engine, 32, 32, 0).context.flags & CLOCK_RECORDING) == 0);
     // The cache's pinned stopped origin keeps its original recording context.
     let origin = prepared_span_at(&mut engine, 0, 32, 64);
-    assert!(origin.context.flags & ST_CLOCK_RECORDING != 0);
-    assert!(origin.context.flags & ST_CLOCK_GRID_PROJECTION != 0);
+    assert!(origin.context.flags & CLOCK_RECORDING != 0);
+    assert!(origin.context.flags & CLOCK_GRID_PROJECTION != 0);
     assert!(origin.context.next_quarter_grid_frame > origin.context.graph_frame);
     assert_zero_render_allocations();
 }
 
 #[test]
-fn test_engine_short_loop_projected_grid() {
+fn test_short_loop_projected_grid() {
     let mut engine = Engine::new();
     begin_fixture(&mut engine, ST_INSTRUMENT_MIDI, 1, 0.0);
     engine.set_timing(120.0, 32, 0.0, 1.0);
@@ -486,8 +486,8 @@ fn test_engine_short_loop_projected_grid() {
     prepare_bus(&mut engine, 0, 1600);
     for frame in [0i64, 17, 749, 750, 800, 1500] {
         let c = prepared_span_at(&mut engine, frame, 1, 0).context;
-        assert!(c.flags & ST_CLOCK_LOOPING != 0);
-        assert!(c.flags & ST_CLOCK_GRID_PROJECTION != 0);
+        assert!(c.flags & CLOCK_LOOPING != 0);
+        assert!(c.flags & CLOCK_GRID_PROJECTION != 0);
         assert!(c.next_quarter_beat_frame == i64::MAX);
         assert!(c.next_quarter_grid_frame == frame + 39000 - c.song_frame);
     }

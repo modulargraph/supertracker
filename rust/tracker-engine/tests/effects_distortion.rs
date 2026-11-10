@@ -1,4 +1,4 @@
-//! Port of `tests/effects_distortion_tests.cpp`: Distortion, Lofi and Saturator exercised
+//! Port of the former C++ test program `effects_distortion_tests.cpp`: Distortion, Lofi and Saturator exercised
 //! directly through `effects::distortion` (no C API), including the "no allocation in
 //! process/reset" check. Same checks and tolerances as the C++ program, whose `require` is
 //! called 148742 times.
@@ -535,13 +535,12 @@ fn distortion_family() {
     println!("PASS: distortion family metadata, signal behavior, reset/partition invariance, transitions, stability, and render allocation checks ({} checks)", c.count);
     assert_eq!(
         c.count, 148742,
-        "same number of checks as tests/effects_distortion_tests.cpp"
+        "same number of checks as the C++ program effects_distortion_tests.cpp"
     );
 }
 
 /// The allocation counter behind the "no allocation in process/reset" checks does see heap
-/// allocations (it is absent when the crate's own `cxx-alloc` test allocator is enabled).
-#[cfg(not(feature = "cxx-alloc"))]
+/// allocations.
 #[test]
 fn allocation_counter_detects_allocations() {
     let before = allocations();

@@ -1,4 +1,4 @@
-//! Port of `tests/engine_freeze_timeline_tests.cpp`: the frozen-song timeline (`freeze_span`):
+//! Port of the former C++ test program `engine_freeze_timeline_tests.cpp`: the frozen-song timeline (`freeze_span`):
 //! policy, exact project frames across seeks/loops/restores, natural tails, retained history and
 //! query bounds.
 //!
@@ -37,7 +37,7 @@ fn render(e: &mut Engine, at: u64, count: u32) {
 fn span_with(e: &mut Engine, at: i64, n: u32, latency: i64) -> STFreezeSpan {
     let mut result = STFreezeSpan::default();
     let status = realtime(|| e.freeze_span(at, n, latency, &mut result));
-    assert!(status == ST_CLOCK_OK && result.frames > 0);
+    assert!(status == CLOCK_OK && result.frames > 0);
     result
 }
 
@@ -77,13 +77,13 @@ fn fixture_with(e: &mut Engine, bpm: f64, rows: i32, swing: f32, loop_song: bool
     }
     if mapped {
         let tempos = [
-            STClockTempoEvent { beat: 0.0, bpm: 120.0 },
-            STClockTempoEvent { beat: 0.5, bpm: 60.0 },
-            STClockTempoEvent { beat: 1.5, bpm: 180.0 },
+            ClockTempoEvent { beat: 0.0, bpm: 120.0 },
+            ClockTempoEvent { beat: 0.5, bpm: 60.0 },
+            ClockTempoEvent { beat: 1.5, bpm: 180.0 },
         ];
         let meters = [
-            STClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 },
-            STClockMeterEvent { beat: 0.75, numerator: 7, denominator: 8 },
+            ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 },
+            ClockMeterEvent { beat: 0.75, numerator: 7, denominator: 8 },
         ];
         assert!(e.set_timing_map(&tempos, &meters, 51).is_ok());
     }
@@ -374,11 +374,11 @@ fn retained_window_exhaustion_overflow_bounds_and_no_fabricated_pre_allocation_h
     assert!(e.freeze_span(65535, 1, 0, &mut out) == ST_ENGINE_CLOCK_NOT_RETAINED && out.frames == 77);
     assert!(span_with(&mut e, 65536, 1, 0).context.content_graph_frame == 65536);
     assert!(e.freeze_span(327680, 1, 0, &mut out) == ST_ENGINE_CLOCK_NOT_PREPARED);
-    assert!(e.freeze_span(0, 0, 0, &mut out) == ST_CLOCK_INVALID);
-    assert!(e.freeze_span(0, 65537, 0, &mut out) == ST_CLOCK_INVALID);
-    assert!(e.freeze_span(0, 1, -1, &mut out) == ST_CLOCK_INVALID);
-    assert!(e.freeze_span(i64::MAX, 1, 0, &mut out) == ST_CLOCK_INVALID);
-    assert!(e.freeze_span(0, 1, (1i64 << 30) + 1, &mut out) == ST_CLOCK_INVALID);
+    assert!(e.freeze_span(0, 0, 0, &mut out) == CLOCK_INVALID);
+    assert!(e.freeze_span(0, 65537, 0, &mut out) == CLOCK_INVALID);
+    assert!(e.freeze_span(0, 1, -1, &mut out) == CLOCK_INVALID);
+    assert!(e.freeze_span(i64::MAX, 1, 0, &mut out) == CLOCK_INVALID);
+    assert!(e.freeze_span(0, 1, (1i64 << 30) + 1, &mut out) == CLOCK_INVALID);
     let mut late = Engine::new();
     fixture_with(&mut late, 120.0, 4, 0.0, false, false, false);
     late.play(1);
@@ -444,7 +444,7 @@ fn query_never_advances_transport_silent_anchor_prepares_exactly_once_across_ove
     assert!(e.status().playing == 0 && e.pop_input_ack().is_none());
     // A silent transport anchor may prepare any bus with null PCM outputs.
     // It does not require an unfrozen track or an audible source node.
-    realtime(|| e.render_bus_null(st_return_bus(ST_MIN_RETURN_BUS), 0, 4097));
+    realtime(|| e.render_bus_null(return_bus(ST_MIN_RETURN_BUS), 0, 4097));
     assert!(e.pop_input_ack().is_some_and(|ack| ack.graph_frame == 0));
     assert!(span_with(&mut e, 0, 4097, 0).frames == 4097 && span(&mut e, 0).context.phase == ST_FREEZE_SONG);
     let seconds = e.status().seconds;

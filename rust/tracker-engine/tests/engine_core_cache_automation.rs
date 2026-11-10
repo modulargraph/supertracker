@@ -1,4 +1,4 @@
-//! Port of `tests/engine_tests.cpp`, part 3 of 5: unequal overlapping bus requests on the
+//! Port of the former C++ test program `engine_tests.cpp`, part 3 of 5: unequal overlapping bus requests on the
 //! timestamped bus cache, cached event offsets, large pulls that must keep note-offs, exact
 //! stepped automation, timed mix defaults and the automation refresh (also as a concurrent
 //! mailbox), live notes across automatic playback changes, the explicit slice effect and step

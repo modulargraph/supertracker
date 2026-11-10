@@ -1,4 +1,4 @@
-//! The engine object: C++ `struct STEngine`'s data members from `TrackerEngine.cpp`, split by the
+//! The engine object's data, split by the
 //! thread that owns them.
 //!
 //! * [`Shared`]: atomics and lock-free rings both threads touch.
@@ -156,7 +156,7 @@ pub struct Voice {
     pub env_stage: i32,
     pub dir: i32,
     pub arp: i32,
-    /// Choke group and its scope when the voice started (see `st_engine_set_track_voice`).
+    /// Choke group and its scope when the voice started (see `set_track_voice`).
     pub choke_group: i32,
     pub choke_scope: i32,
     // Cache only exact input matches; automation/modulation still evaluates each sample.
@@ -484,7 +484,7 @@ pub struct SongTail {
     pub position: i64,
 }
 
-/// Live instrument parameter (`st_engine_set_instrument_parameter`): render-thread only, cleared
+/// Live instrument parameter (`set_instrument_parameter`): render-thread only, cleared
 /// on publication.
 #[derive(Clone, Copy)]
 pub struct LiveParam {
@@ -499,62 +499,69 @@ impl LiveParam {
 
 /// State both threads touch: atomics and single-producer/single-consumer rings.
 pub struct Shared {
+    /// Which engine this is: `Control` and `Render` only work with the `Shared` they were
+    /// created with (see `host.rs`).
+    pub(crate) engine_id: u64,
     /// The latest committed project not yet adopted by the render thread (owned `Box`).
-    pub pending: AtomicPtr<Project>,
+    pub(crate) pending: AtomicPtr<Project>,
     /// Lock-free list of projects the render thread has replaced; freed by `collect()`.
-    pub retired: AtomicPtr<Project>,
-    pub commands: Ring<Command>,
-    pub events: Ring<STEvent>,
-    pub input_acks: Ring<STInputAck>,
-    pub input_outstanding: AtomicU32,
-    pub automation_refresh_requested: AtomicBool,
-    pub peak_store: AtomicPtr<PeakStore>,
-    pub freeze_history: AtomicPtr<FreezeHistory>,
-    pub cache_epoch: AtomicU64,
-    pub status_playing: AtomicI32,
-    pub status_recording: AtomicI32,
-    pub status_pattern: AtomicI32,
-    pub status_row: AtomicI32,
-    pub status_sequence: AtomicI32,
-    pub status_tracks: AtomicI32,
-    pub status_song_mode: AtomicI32,
-    pub status_queued_pattern: AtomicI32,
-    pub status_queued_sequence: AtomicI32,
-    pub status_count_in: AtomicI32,
-    pub status_position: AtomicF64,
-    pub status_seconds: AtomicF64,
-    pub status_beat: AtomicF64,
-    pub status_bpm: AtomicF64,
-    pub status_bar_start: AtomicF64,
-    pub status_bar: AtomicI64,
-    pub status_numerator: AtomicI32,
-    pub status_denominator: AtomicI32,
-    pub status_timing_revision: AtomicU64,
-    pub peak_l: AtomicF32,
-    pub peak_r: AtomicF32,
-    pub dropped_commands: AtomicU64,
-    pub dropped_events: AtomicU64,
-    /// Voice playhead snapshot (`st_engine_voice_positions`): seqlock, odd while the render
+    pub(crate) retired: AtomicPtr<Project>,
+    pub(crate) commands: Ring<Command>,
+    pub(crate) events: Ring<STEvent>,
+    pub(crate) input_acks: Ring<STInputAck>,
+    pub(crate) input_outstanding: AtomicU32,
+    pub(crate) automation_refresh_requested: AtomicBool,
+    pub(crate) peak_store: AtomicPtr<PeakStore>,
+    pub(crate) freeze_history: AtomicPtr<FreezeHistory>,
+    pub(crate) cache_epoch: AtomicU64,
+    pub(crate) status_playing: AtomicI32,
+    pub(crate) status_recording: AtomicI32,
+    pub(crate) status_pattern: AtomicI32,
+    pub(crate) status_row: AtomicI32,
+    pub(crate) status_sequence: AtomicI32,
+    pub(crate) status_tracks: AtomicI32,
+    pub(crate) status_song_mode: AtomicI32,
+    pub(crate) status_queued_pattern: AtomicI32,
+    pub(crate) status_queued_sequence: AtomicI32,
+    pub(crate) status_count_in: AtomicI32,
+    pub(crate) status_position: AtomicF64,
+    pub(crate) status_seconds: AtomicF64,
+    pub(crate) status_beat: AtomicF64,
+    pub(crate) status_bpm: AtomicF64,
+    pub(crate) status_bar_start: AtomicF64,
+    pub(crate) status_bar: AtomicI64,
+    pub(crate) status_numerator: AtomicI32,
+    pub(crate) status_denominator: AtomicI32,
+    pub(crate) status_timing_revision: AtomicU64,
+    pub(crate) peak_l: AtomicF32,
+    pub(crate) peak_r: AtomicF32,
+    pub(crate) dropped_commands: AtomicU64,
+    pub(crate) dropped_events: AtomicU64,
+    /// Voice playhead snapshot (`voice_positions`): seqlock, odd while the render
     /// thread writes.
-    pub voice_watch: AtomicI32,
-    pub voice_seq: AtomicU64,
-    pub voice_snapshot_count: AtomicI32,
-    pub voice_snapshot: UnsafeCell<[STVoicePosition; ST_VOICE_POSITION_CAPACITY]>,
-    pub voice_serial: AtomicU64,
+    pub(crate) voice_watch: AtomicI32,
+    pub(crate) voice_seq: AtomicU64,
+    pub(crate) voice_snapshot_count: AtomicI32,
+    pub(crate) voice_snapshot: UnsafeCell<[STVoicePosition; ST_VOICE_POSITION_CAPACITY]>,
+    pub(crate) voice_serial: AtomicU64,
     /// Play/Stop/count-in are applied by the render thread, so the published status lags a
     /// queued transport command until the next render (or forever while no render runs). Each
     /// one carries a serial; until the render has applied and published the latest serial,
-    /// `st_engine_status` flags it pending together with the requested state.
-    pub transport_requested: AtomicU32,
-    pub status_transport_applied: AtomicU32,
-    pub transport_requested_playing: AtomicI32,
-    pub status_publication: AtomicU64,
-    pub status_seek_revision: AtomicU64,
+    /// `status` flags it pending together with the requested state.
+    pub(crate) transport_requested: AtomicU32,
+    pub(crate) status_transport_applied: AtomicU32,
+    pub(crate) transport_requested_playing: AtomicI32,
+    pub(crate) status_publication: AtomicU64,
+    pub(crate) status_seek_revision: AtomicU64,
 }
 
+/// Source of process-unique engine identities.
+static ENGINE_IDS: AtomicU64 = AtomicU64::new(0);
+
 impl Shared {
-    pub fn new() -> Shared {
+    pub(crate) fn new() -> Shared {
         Shared {
+            engine_id: ENGINE_IDS.fetch_add(1, Ordering::Relaxed) + 1,
             pending: AtomicPtr::new(std::ptr::null_mut()),
             retired: AtomicPtr::new(std::ptr::null_mut()),
             commands: Ring::new(MAX_COMMANDS),
@@ -602,7 +609,7 @@ impl Shared {
     }
 
     /// Control thread: queue a command, counting it as dropped when the ring is full.
-    pub fn queue(&self, command: &Command) {
+    pub(crate) fn queue(&self, command: &Command) {
         if !self.commands.push(command) {
             self.dropped_commands.fetch_add(1, Ordering::Relaxed);
         }
@@ -610,7 +617,7 @@ impl Shared {
 
     /// Control thread: queue Play/Stop/count-in with a transport serial (see
     /// `transport_requested`).
-    pub fn queue_transport(&self, mut command: Command, playing_after: bool) {
+    pub(crate) fn queue_transport(&self, mut command: Command, playing_after: bool) {
         let mut serial = self.transport_requested.load(Ordering::Relaxed).wrapping_add(1);
         if serial == 0 {
             serial = 1;
@@ -626,7 +633,7 @@ impl Shared {
 }
 
 impl Shared {
-    /// `st_engine_status`: a coherent snapshot of the published transport state (seqlock on
+    /// A coherent snapshot of the published transport state (seqlock on
     /// `status_publication`). Any thread.
     pub fn status(&self) -> STStatus {
         let mut s = STStatus::default();
@@ -666,7 +673,7 @@ impl Shared {
             s.queued_sequence = self.status_queued_sequence.load(relaxed);
             s.count_in = self.status_count_in.load(relaxed);
             // A queued Play/Stop/count-in not yet rendered: the rendered fields are stale until
-            // it is; see st_status_transport_playing.
+            // it is; see `STStatus::transport_playing`.
             if (requested.wrapping_sub(applied) as i32) > 0 {
                 s.transport_pending = 1;
                 s.requested_playing = self.transport_requested_playing.load(relaxed);
@@ -678,7 +685,7 @@ impl Shared {
         }
     }
 
-    /// `st_engine_track_peak`. Any thread.
+    /// Any thread.
     pub fn track_peak(&self, track: i32) -> f32 {
         if track < 0 {
             return 0.0;
@@ -692,7 +699,7 @@ impl Shared {
         unsafe { &*store }.load(track as usize)
     }
 
-    /// `st_engine_voice_positions`: copy the latest playhead snapshot into `out` (up to its
+    /// Copy the latest playhead snapshot into `out` (up to its
     /// length). Returns the voice count and the snapshot serial, or `None` when no stable
     /// snapshot could be read. Any thread; never blocks the renderer.
     pub fn voice_positions(&self, out: &mut [STVoicePosition]) -> Option<(usize, u64)> {
@@ -719,37 +726,44 @@ impl Shared {
         None
     }
 
-    /// `st_engine_watch_voice_positions`: instrument >= 0, -1 every instrument, less stops.
+    /// Instrument >= 0, -1 every instrument, less stops.
     pub fn watch_voice_positions(&self, instrument: i32) {
         self.voice_watch.store(if instrument < -1 { -2 } else { instrument }, Ordering::Relaxed);
     }
 
-    /// `st_engine_refresh_automation`: coalescing mailbox, callable from any thread.
+    /// Coalescing mailbox, callable from any thread.
     pub fn refresh_automation(&self) {
         self.automation_refresh_requested.store(true, Ordering::Release);
     }
 
-    /// `st_engine_reset_render_cache`: start a fresh timestamp epoch (graph stopped).
+    /// Start a fresh timestamp epoch (graph stopped).
     pub fn reset_render_cache(&self) {
         self.cache_epoch.fetch_add(1, Ordering::Release);
     }
 
-    /// `st_engine_pop_input_ack` (one serialized consumer).
-    pub fn pop_input_ack(&self) -> Option<STInputAck> {
+    /// The next input acknowledgement. The ring has one consumer, the control half
+    /// (`ControlHalf::pop_input_ack`), which is why this is not public.
+    pub(crate) fn pop_input_ack(&self) -> Option<STInputAck> {
         let ack = self.input_acks.pop()?;
         self.input_outstanding.fetch_sub(1, Ordering::Relaxed);
         Some(ack)
+    }
+
+    /// The next engine event. The ring has one consumer, the render half
+    /// (`RenderHalf::pop_event`), which is why this is not public.
+    pub(crate) fn pop_event(&self) -> Option<STEvent> {
+        self.events.pop()
     }
 }
 
 /// Where events go: the part of the render state `emit` needs, kept separate so voices can be
 /// ended while other render fields are borrowed.
 pub struct EventOut {
-    pub suppress_events: bool,
-    pub frame_offset: i32,
+    pub(crate) suppress_events: bool,
+    pub(crate) frame_offset: i32,
 }
 
-/// `STEngine::emit`. Returns false when the event was dropped.
+/// `EngineCore::emit`. Returns false when the event was dropped.
 ///
 /// Reserve one termination for every possible external voice. Automation and fresh notes may be
 /// dropped under extreme pressure; accepted notes always retain enough room for note-off, so an
@@ -773,140 +787,142 @@ pub fn emit_event(out: &EventOut, sh: &Shared, mut event: STEvent) -> bool {
 
 /// Everything the render thread owns.
 pub struct Render {
-    pub sample_rate: f64,
+    /// The engine this render state belongs to (`Shared::engine_id`).
+    pub(crate) engine_id: u64,
+    pub(crate) sample_rate: f64,
     /// The project in use. Owned by the render thread from adoption (`pending`) until it pushes
     /// it onto `retired`; only `adopt_project` replaces it.
-    pub current: *mut Project,
+    pub(crate) current: *mut Project,
     /// Render view of `current->tables`; replaced only when a project is swapped in.
-    pub tb: *mut TablesState,
-    pub pending_input_acks: Box<[STInputAck]>,
-    pub pending_input_count: usize,
-    pub early_inputs: [EarlyInput; 16],
-    pub early_input_next: usize,
-    pub input_run_id: u64,
-    pub input_loop_beats: f64,
-    pub voices: Box<[Voice]>,
-    pub active_voice_masks: [u64; VOICE_GROUPS],
-    pub scheduled: Box<[Scheduled]>,
-    pub scheduled_masks: [u64; SCHEDULED_GROUPS],
+    pub(crate) tb: *mut TablesState,
+    pub(crate) pending_input_acks: Box<[STInputAck]>,
+    pub(crate) pending_input_count: usize,
+    pub(crate) early_inputs: [EarlyInput; 16],
+    pub(crate) early_input_next: usize,
+    pub(crate) input_run_id: u64,
+    pub(crate) input_loop_beats: f64,
+    pub(crate) voices: Box<[Voice]>,
+    pub(crate) active_voice_masks: [u64; VOICE_GROUPS],
+    pub(crate) scheduled: Box<[Scheduled]>,
+    pub(crate) scheduled_masks: [u64; SCHEDULED_GROUPS],
     /// Mask words that may hold pending notes: slots are taken lowest first, so the per-sample
     /// scan stops here.
-    pub scheduled_groups_used: usize,
-    pub lane_event_state: [LaneEventState; 256],
-    pub host_lane_event_state: [LaneEventState; 256],
-    pub automation_pattern: i32,
-    pub plugin_row_lock_count: usize,
-    pub plugin_locks_pending: i32,
-    pub plugin_lane_locked: [bool; 256],
-    pub plugin_host_lane_locked: [bool; 256],
-    pub click_beat: i64,
-    pub click_phase: f64,
-    pub click_age: f64,
-    pub click_accent: bool,
-    pub delay_l: Vec<f32>,
-    pub delay_r: Vec<f32>,
-    pub delay_pos: usize,
-    pub delay_tone_l: f32,
-    pub delay_tone_r: f32,
-    pub pre_l: Vec<f32>,
-    pub pre_r: Vec<f32>,
-    pub pre_pos: usize,
-    pub comb_l: [Comb; 8],
-    pub comb_r: [Comb; 8],
-    pub ap_l: [Allpass; 4],
-    pub ap_r: [Allpass; 4],
-    pub cached_clock: Box<[STClockContext]>,
-    pub cache_generation: u64,
-    pub cache_origin_freeze: STFreezeContext,
-    pub cache_origin_freeze_valid: bool,
-    pub freeze_playback_id: u64,
-    pub freeze_transition_id: u64,
-    pub freeze_cause: STFreezeCause,
-    pub freeze_transition_pending: bool,
-    pub freeze_natural_tail: bool,
-    pub freeze_transition_graph: i64,
-    pub freeze_transition_project: i64,
+    pub(crate) scheduled_groups_used: usize,
+    pub(crate) lane_event_state: [LaneEventState; 256],
+    pub(crate) host_lane_event_state: [LaneEventState; 256],
+    pub(crate) automation_pattern: i32,
+    pub(crate) plugin_row_lock_count: usize,
+    pub(crate) plugin_locks_pending: i32,
+    pub(crate) plugin_lane_locked: [bool; 256],
+    pub(crate) plugin_host_lane_locked: [bool; 256],
+    pub(crate) click_beat: i64,
+    pub(crate) click_phase: f64,
+    pub(crate) click_age: f64,
+    pub(crate) click_accent: bool,
+    pub(crate) delay_l: Vec<f32>,
+    pub(crate) delay_r: Vec<f32>,
+    pub(crate) delay_pos: usize,
+    pub(crate) delay_tone_l: f32,
+    pub(crate) delay_tone_r: f32,
+    pub(crate) pre_l: Vec<f32>,
+    pub(crate) pre_r: Vec<f32>,
+    pub(crate) pre_pos: usize,
+    pub(crate) comb_l: [Comb; 8],
+    pub(crate) comb_r: [Comb; 8],
+    pub(crate) ap_l: [Allpass; 4],
+    pub(crate) ap_r: [Allpass; 4],
+    pub(crate) cached_clock: Box<[ClockContext]>,
+    pub(crate) cache_generation: u64,
+    pub(crate) cache_origin_freeze: STFreezeContext,
+    pub(crate) cache_origin_freeze_valid: bool,
+    pub(crate) freeze_playback_id: u64,
+    pub(crate) freeze_transition_id: u64,
+    pub(crate) freeze_cause: STFreezeCause,
+    pub(crate) freeze_transition_pending: bool,
+    pub(crate) freeze_natural_tail: bool,
+    pub(crate) freeze_transition_graph: i64,
+    pub(crate) freeze_transition_project: i64,
     /// Pinned through `EngineTiming::origin_pins` while non-null.
-    pub cache_origin_timing: *const EngineTiming,
-    pub cache_origin_clock: STClockContext,
-    pub cache_origin_transport: f64,
-    pub cache_origin_graph: u64,
-    pub cache_origin_valid: bool,
-    pub observed_cache_epoch: u64,
-    pub cache_begin: u64,
-    pub cache_end: u64,
-    pub clock_begin: u64,
-    pub cache_valid: bool,
-    pub playing: bool,
-    pub recording: bool,
-    pub song_mode: bool,
-    pub row_has_started: bool,
-    pub sequence_finished: bool,
-    pub out: EventOut,
-    pub song_end_frames: f64,
-    pub scheduled_count: i32,
-    pub pattern: i32,
-    pub row: i32,
-    pub sequence: i32,
-    pub serial: i32,
+    pub(crate) cache_origin_timing: *const EngineTiming,
+    pub(crate) cache_origin_clock: ClockContext,
+    pub(crate) cache_origin_transport: f64,
+    pub(crate) cache_origin_graph: u64,
+    pub(crate) cache_origin_valid: bool,
+    pub(crate) observed_cache_epoch: u64,
+    pub(crate) cache_begin: u64,
+    pub(crate) cache_end: u64,
+    pub(crate) clock_begin: u64,
+    pub(crate) cache_valid: bool,
+    pub(crate) playing: bool,
+    pub(crate) recording: bool,
+    pub(crate) song_mode: bool,
+    pub(crate) row_has_started: bool,
+    pub(crate) sequence_finished: bool,
+    pub(crate) out: EventOut,
+    pub(crate) song_end_frames: f64,
+    pub(crate) scheduled_count: i32,
+    pub(crate) pattern: i32,
+    pub(crate) row: i32,
+    pub(crate) sequence: i32,
+    pub(crate) serial: i32,
     /// Optional pattern-mode loop range, inclusive rows; -1 disables.
-    pub loop_start_row: i32,
-    pub loop_end_row: i32,
+    pub(crate) loop_start_row: i32,
+    pub(crate) loop_end_row: i32,
     /// Optional jump honoured at the next pattern boundary; -1 none.
-    pub queued_pattern: i32,
-    pub queued_sequence: i32,
+    pub(crate) queued_pattern: i32,
+    pub(crate) queued_sequence: i32,
     /// With a queued jump: switch to Song (1) or Pattern (0) mode there; -1 keeps the mode.
-    pub queued_mode: i32,
+    pub(crate) queued_mode: i32,
     /// Optional pre-roll before Play; 0 none.
-    pub count_in_total: i64,
-    pub count_in_elapsed: i64,
-    pub count_in_click: i64,
-    pub count_in_bar: i64,
-    pub count_in_song: bool,
+    pub(crate) count_in_total: i64,
+    pub(crate) count_in_elapsed: i64,
+    pub(crate) count_in_click: i64,
+    pub(crate) count_in_bar: i64,
+    pub(crate) count_in_song: bool,
     /// Pattern-mode clip cursor: frames since the current pass's row 0, and printed tails of
     /// passes that handed over to another pattern.
-    pub pattern_clip_frame: i64,
-    pub pattern_clip_pattern: i32,
-    pub pattern_clip_row: i32,
-    pub pattern_clip_length: i32,
-    pub pattern_clip_valid: bool,
-    pub pattern_clip_looped: bool,
-    pub pattern_tails: [PatternTail; 8],
-    pub song_tails: [SongTail; 8],
-    pub row_remaining: f64,
-    pub row_duration: f64,
-    pub transport_frames: f64,
-    pub total_frames: f64,
-    pub musical_beat: f64,
-    pub effective_bpm: f64,
-    pub pattern_origin_beat: f64,
-    pub loop_beat_offset: f64,
-    pub row_start_beat: f64,
-    pub row_end_beat: f64,
-    pub timing_epoch: u64,
-    pub clock_loop_iteration: i64,
-    pub musical_context: STClockContext,
-    pub rng: u32,
-    pub live_params: [LiveParam; 64],
-    pub live_param_count: usize,
-    pub voice_snapshot_empty: bool,
-    pub voice_stage: [STVoicePosition; ST_VOICE_POSITION_CAPACITY],
-    pub transport_applied: u32,
-    pub seek_revision: u64,
+    pub(crate) pattern_clip_frame: i64,
+    pub(crate) pattern_clip_pattern: i32,
+    pub(crate) pattern_clip_row: i32,
+    pub(crate) pattern_clip_length: i32,
+    pub(crate) pattern_clip_valid: bool,
+    pub(crate) pattern_clip_looped: bool,
+    pub(crate) pattern_tails: [PatternTail; 8],
+    pub(crate) song_tails: [SongTail; 8],
+    pub(crate) row_remaining: f64,
+    pub(crate) row_duration: f64,
+    pub(crate) transport_frames: f64,
+    pub(crate) total_frames: f64,
+    pub(crate) musical_beat: f64,
+    pub(crate) effective_bpm: f64,
+    pub(crate) pattern_origin_beat: f64,
+    pub(crate) loop_beat_offset: f64,
+    pub(crate) row_start_beat: f64,
+    pub(crate) row_end_beat: f64,
+    pub(crate) timing_epoch: u64,
+    pub(crate) clock_loop_iteration: i64,
+    pub(crate) musical_context: ClockContext,
+    pub(crate) rng: u32,
+    pub(crate) live_params: [LiveParam; 64],
+    pub(crate) live_param_count: usize,
+    pub(crate) voice_snapshot_empty: bool,
+    pub(crate) voice_stage: [STVoicePosition; ST_VOICE_POSITION_CAPACITY],
+    pub(crate) transport_applied: u32,
+    pub(crate) seek_revision: u64,
     /// Raw host mixing into the bus cache: a channel's bus is exactly its summed input, so voices
     /// and clips add straight into the bus block (same order, same sums) instead of a per-sample
     /// channel pass; peaks and the mix are taken from the buses per block.
-    pub direct_bus: bool,
-    pub direct_frame: u32,
-    pub direct_frames: u32,
-    pub direct_mix_l: Vec<f32>,
-    pub direct_mix_r: Vec<f32>,
+    pub(crate) direct_bus: bool,
+    pub(crate) direct_frame: u32,
+    pub(crate) direct_frames: u32,
+    pub(crate) direct_mix_l: Vec<f32>,
+    pub(crate) direct_mix_r: Vec<f32>,
 }
 
 impl Render {
     /// Control thread, at engine creation. `current` is a fresh default project that shares the
     /// control project's tables.
-    pub fn new(sample_rate: f64, current: *mut Project, tb: *mut TablesState) -> Render {
+    pub(crate) fn new(engine_id: u64, sample_rate: f64, current: *mut Project, tb: *mut TablesState) -> Render {
         let delay_length = (sample_rate * 4.0) as usize + 1;
         let pre_length = (sample_rate * 0.5) as usize + 1;
         const COMB_SIZES: [i32; 8] = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617];
@@ -914,6 +930,7 @@ impl Render {
         let comb = |size: i32| Comb { data: vec![0.0; (size as f64 * sample_rate / 44100.0) as usize + 1], position: 0, filter: 0.0 };
         let allpass = |size: i32| Allpass { data: vec![0.0; (size as f64 * sample_rate / 44100.0) as usize + 1], position: 0 };
         Render {
+            engine_id,
             sample_rate,
             current,
             tb,
@@ -963,7 +980,7 @@ impl Render {
             freeze_transition_graph: i64::MIN,
             freeze_transition_project: 0,
             cache_origin_timing: std::ptr::null(),
-            cache_origin_clock: STClockContext::default(),
+            cache_origin_clock: ClockContext::default(),
             cache_origin_transport: 0.0,
             cache_origin_graph: 0,
             cache_origin_valid: false,
@@ -1014,7 +1031,7 @@ impl Render {
             row_end_beat: 0.25,
             timing_epoch: 1,
             clock_loop_iteration: 0,
-            musical_context: STClockContext::default(),
+            musical_context: ClockContext::default(),
             rng: 0xa173cc79,
             live_params: [LiveParam::NONE; 64],
             live_param_count: 0,
@@ -1033,13 +1050,13 @@ impl Render {
 
 /// The render thread at work: `Render` together with the project and channel tables in use.
 ///
-/// Most of `STEngine`'s member functions are methods of this view (in `transport.rs`,
+/// Most of `EngineCore`'s member functions are methods of this view (in `transport.rs`,
 /// `sequencer.rs`, `voice.rs`, `mixer.rs` and `render_cache.rs`).
 pub struct Rt<'a> {
-    pub e: &'a mut Render,
-    pub p: &'a Project,
-    pub tb: &'a mut TablesState,
-    pub sh: &'a Shared,
+    pub(crate) e: &'a mut Render,
+    pub(crate) p: &'a Project,
+    pub(crate) tb: &'a mut TablesState,
+    pub(crate) sh: &'a Shared,
 }
 
 impl<'a> Rt<'a> {
@@ -1064,14 +1081,16 @@ impl<'a> Rt<'a> {
     }
 }
 
-/// The opaque `STEngine` of the C API.
-pub struct STEngine {
-    pub sample_rate: f64,
-    pub shared: Shared,
-    /// Control-thread state. Access rule: only the single serial control thread (the header's
-    /// "ordinary control functions are single-producer") dereferences this cell.
-    pub control: UnsafeCell<Control>,
-    /// Render-thread state. Access rule: only the serialized render/audio functions, or the
-    /// header's "exclusive stopped-graph operations", dereference this cell.
-    pub render: UnsafeCell<Render>,
+/// The engine's storage: what both halves share, and the state each half owns. Private to the
+/// crate; a host reaches it through the handles of `host.rs`, where the reasons for its
+/// `Send`/`Sync` implementations are written down.
+pub(crate) struct EngineCore {
+    pub(crate) sample_rate: f64,
+    pub(crate) shared: Shared,
+    /// Control-thread state. Access rule: dereferenced only through the engine's one
+    /// `ControlHalf`, borrowed exclusively.
+    pub(crate) control: UnsafeCell<Control>,
+    /// Render-thread state. Access rule: dereferenced only through the engine's one
+    /// `RenderHalf`, borrowed exclusively.
+    pub(crate) render: UnsafeCell<Render>,
 }

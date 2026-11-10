@@ -1,4 +1,4 @@
-//! Port of `tests/engine_dsp_benchmark.cpp`: the offline engine performance and bit-exact
+//! Port of the former C++ test program `engine_dsp_benchmark.cpp`: the offline engine performance and bit-exact
 //! differential fixture. No devices or plug-ins.
 //!
 //! * `benchmark` (ignored) is the C++ program: it renders every scenario and prints the same JSON
@@ -156,14 +156,14 @@ fn scene(scenario: &Scenario) -> Outcome {
     e.set_sequence(&[0], true, 0);
     if scenario.mapped {
         let tempos = [
-            STClockTempoEvent { beat: 0.0, bpm: 127.0 },
-            STClockTempoEvent { beat: 1.0, bpm: 181.0 },
-            STClockTempoEvent { beat: 3.0, bpm: 93.0 },
-            STClockTempoEvent { beat: 7.0, bpm: 149.0 },
+            ClockTempoEvent { beat: 0.0, bpm: 127.0 },
+            ClockTempoEvent { beat: 1.0, bpm: 181.0 },
+            ClockTempoEvent { beat: 3.0, bpm: 93.0 },
+            ClockTempoEvent { beat: 7.0, bpm: 149.0 },
         ];
         let meters = [
-            STClockMeterEvent { beat: 0.0, numerator: 7, denominator: 8 },
-            STClockMeterEvent { beat: 7.0, numerator: 4, denominator: 4 },
+            ClockMeterEvent { beat: 0.0, numerator: 7, denominator: 8 },
+            ClockMeterEvent { beat: 7.0, numerator: 4, denominator: 4 },
         ];
         assert!(e.set_timing_map(&tempos, &meters, 15).is_ok());
     }
@@ -229,8 +229,8 @@ fn scene(scenario: &Scenario) -> Outcome {
         });
         block_us.push(begin.elapsed().as_secs_f64() * 1e6);
         if scenario.host {
-            let mut span = STClockSpan::default();
-            assert!(e.clock_span(offset as i64, count as u32, 0, &mut span) == ST_CLOCK_OK);
+            let mut span = ClockSpan::default();
+            assert!(e.clock_span(offset as i64, count as u32, 0, &mut span) == CLOCK_OK);
             clock = hash_f64(
                 hash_f64(hash_f64(clock, span.context.beat), span.context.bpm),
                 span.context.next_boundary_frame as f64,

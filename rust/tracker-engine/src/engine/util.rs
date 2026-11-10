@@ -1,9 +1,11 @@
-//! Small building blocks of `TrackerEngine.cpp`'s anonymous namespace: the C++ `clamp`/`std::min`/
-//! `std::max` semantics, the lock-free single-producer/single-consumer `Ring`, the calloc-backed
-//! `FloatBlock`, and the xorshift generator behind every random decision.
+//! Small building blocks of the engine: `clamp`/`cmin`/`cmax` with the exact comparison
+//! semantics the DSP was written against (which operand is returned for NaN and equal values),
+//! the lock-free single-producer/single-consumer `Ring`, the zero-page-backed `FloatBlock`, and
+//! the xorshift generator behind every random decision.
 
+use std::alloc::{alloc_zeroed, dealloc, Layout};
 use std::cell::UnsafeCell;
-use std::ffi::c_void;
+use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 /// The C++ engine's `pi` constant (3.1415926535897932384626433832795 rounds to this double).
@@ -156,16 +158,11 @@ impl<T: Copy + Default> Ring<T> {
     }
 }
 
-extern "C" {
-    fn calloc(count: usize, size: usize) -> *mut c_void;
-    fn free(pointer: *mut c_void);
-}
-
-/// calloc-backed float storage (C++ `FloatBlock`): large blocks come from fresh zero pages, so
-/// buses and cache history that are never written never become resident memory. Allocated and
-/// freed on the control thread only.
+/// Zero-initialised float storage: large blocks come from fresh zero pages (the system
+/// allocator's zeroed allocation), so buses and cache history that are never written never
+/// become resident memory. Allocated and freed on the control thread only.
 pub struct FloatBlock {
-    data: *mut f32,
+    data: NonNull<f32>,
     count: usize,
 }
 
@@ -174,43 +171,40 @@ pub struct FloatBlock {
 unsafe impl Send for FloatBlock {}
 
 impl FloatBlock {
-    /// Returns `None` when the allocation fails (C++ `std::bad_alloc`).
+    /// Returns `None` when the allocation fails.
     pub fn new(count: usize) -> Option<FloatBlock> {
         if count == 0 {
-            return Some(FloatBlock { data: std::ptr::null_mut(), count: 0 });
+            return Some(FloatBlock { data: NonNull::dangling(), count: 0 });
         }
-        // SAFETY: plain C allocation; the result is checked for null before use.
-        let data = unsafe { calloc(count, std::mem::size_of::<f32>()) } as *mut f32;
-        if data.is_null() {
-            None
-        } else {
-            Some(FloatBlock { data, count })
-        }
+        let layout = Layout::array::<f32>(count).ok()?;
+        // SAFETY: the layout has a non-zero size; the result is checked for null before use.
+        let data = NonNull::new(unsafe { alloc_zeroed(layout) } as *mut f32)?;
+        Some(FloatBlock { data, count })
     }
 
     #[inline(always)]
     pub fn as_slice(&self) -> &[f32] {
-        if self.count == 0 {
-            return &[];
-        }
-        // SAFETY: `data` points to `count` zero-initialised floats owned by this block.
-        unsafe { std::slice::from_raw_parts(self.data, self.count) }
+        // SAFETY: `data` points to `count` zero-initialised floats owned by this block (or is a
+        // dangling, well-aligned pointer for an empty block, which is what an empty slice needs).
+        unsafe { std::slice::from_raw_parts(self.data.as_ptr(), self.count) }
     }
 
     #[inline(always)]
     pub fn as_mut_slice(&mut self) -> &mut [f32] {
-        if self.count == 0 {
-            return &mut [];
-        }
         // SAFETY: as in `as_slice`, and `&mut self` guarantees exclusive access.
-        unsafe { std::slice::from_raw_parts_mut(self.data, self.count) }
+        unsafe { std::slice::from_raw_parts_mut(self.data.as_ptr(), self.count) }
     }
 }
 
 impl Drop for FloatBlock {
     fn drop(&mut self) {
-        // SAFETY: `data` came from calloc (or is null, which free accepts) and is freed once.
-        unsafe { free(self.data as *mut c_void) }
+        if self.count == 0 {
+            return;
+        }
+        if let Ok(layout) = Layout::array::<f32>(self.count) {
+            // SAFETY: `data` came from `alloc_zeroed` with this same layout and is freed once.
+            unsafe { dealloc(self.data.as_ptr() as *mut u8, layout) }
+        }
     }
 }
 

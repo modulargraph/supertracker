@@ -1,5 +1,5 @@
-//! Port of `tests/clock_tests.cpp`: the sample-accurate musical clock through its safe Rust API
-//! (`STClockMap`, `STClockTimeline`): conversion, exact post-tempo frame inverse, projected
+//! Port of the former C++ test program `clock_tests.cpp`: the sample-accurate musical clock through its safe Rust API
+//! (`ClockMap`, `ClockTimeline`): conversion, exact post-tempo frame inverse, projected
 //! stopped/short-loop grid, ceil boundaries, preroll, loop/seek/latency, immutable lifetime,
 //! validation, extremes, span partitioning and concurrent zero-allocation queries.
 //!
@@ -15,18 +15,18 @@ mod engine_support_b;
 use engine_support_b::alloc::{realtime, render_allocations};
 use tracker_engine::clock::*;
 
-fn tempo(beat: f64, bpm: f64) -> STClockTempoEvent {
-    STClockTempoEvent { beat, bpm }
+fn tempo(beat: f64, bpm: f64) -> ClockTempoEvent {
+    ClockTempoEvent { beat, bpm }
 }
 
-fn meter(beat: f64, numerator: i32, denominator: i32) -> STClockMeterEvent {
-    STClockMeterEvent { beat, numerator, denominator }
+fn meter(beat: f64, numerator: i32, denominator: i32) -> ClockMeterEvent {
+    ClockMeterEvent { beat, numerator, denominator }
 }
 
 /// C++ `struct Map`: creation must succeed.
 #[track_caller]
-fn map_with(tempos: &[STClockTempoEvent], meters: &[STClockMeterEvent], rate: f64, revision: u64) -> STClockMap {
-    let result = STClockMap::new(rate, tempos, meters, revision);
+fn map_with(tempos: &[ClockTempoEvent], meters: &[ClockMeterEvent], rate: f64, revision: u64) -> ClockMap {
+    let result = ClockMap::new(rate, tempos, meters, revision);
     if let Err(error) = &result {
         eprintln!("Map: {error}");
     }
@@ -36,13 +36,13 @@ fn map_with(tempos: &[STClockTempoEvent], meters: &[STClockMeterEvent], rate: f6
 
 /// `Map map(tempos, meters)`: 48 kHz, revision 1.
 #[track_caller]
-fn map_48k(tempos: &[STClockTempoEvent], meters: &[STClockMeterEvent]) -> STClockMap {
+fn map_48k(tempos: &[ClockTempoEvent], meters: &[ClockMeterEvent]) -> ClockMap {
     map_with(tempos, meters, 48000.0, 1)
 }
 
 /// `Map map;`: 120 BPM in 4/4.
 #[track_caller]
-fn plain_map() -> STClockMap {
+fn plain_map() -> ClockMap {
     map_48k(&[tempo(0.0, 120.0)], &[meter(0.0, 4, 4)])
 }
 
@@ -54,14 +54,14 @@ fn origin(
     loop_start_beat: f64,
     loop_end_beat: f64,
     epoch: u64,
-) -> STClockOrigin {
-    STClockOrigin { graph_origin_frame, start_beat, playing, loop_enabled, loop_start_beat, loop_end_beat, epoch }
+) -> ClockOrigin {
+    ClockOrigin { graph_origin_frame, start_beat, playing, loop_enabled, loop_start_beat, loop_end_beat, epoch }
 }
 
 /// C++ `struct Timeline`: creation must succeed.
 #[track_caller]
-fn timeline_at(map: &STClockMap, origin: STClockOrigin) -> STClockTimeline {
-    let result = STClockTimeline::new(map, origin);
+fn timeline_at(map: &ClockMap, origin: ClockOrigin) -> ClockTimeline {
+    let result = ClockTimeline::new(map, origin);
     if let Err(error) = &result {
         eprintln!("Timeline: {error}");
     }
@@ -71,26 +71,26 @@ fn timeline_at(map: &STClockMap, origin: STClockOrigin) -> STClockTimeline {
 
 /// `Timeline timeline(map)`: origin `{0,0,1,0,0,0,1}`.
 #[track_caller]
-fn default_timeline(map: &STClockMap) -> STClockTimeline {
+fn default_timeline(map: &ClockMap) -> ClockTimeline {
     timeline_at(map, origin(0, 0.0, 1, 0, 0.0, 0.0, 1))
 }
 
 #[track_caller]
-fn frame(m: &STClockMap, beat: f64) -> i64 {
+fn frame(m: &ClockMap, beat: f64) -> i64 {
     let result = m.frame_at_beat(beat);
     assert!(result.is_some());
     result.unwrap()
 }
 
 #[track_caller]
-fn beat(m: &STClockMap, frame: i64) -> f64 {
+fn beat(m: &ClockMap, frame: i64) -> f64 {
     let result = m.beat_at_frame(frame);
     assert!(result.is_some());
     result.unwrap()
 }
 
 #[track_caller]
-fn context_at(t: &STClockTimeline, frame: i64, latency: i64) -> STClockContext {
+fn context_at(t: &ClockTimeline, frame: i64, latency: i64) -> ClockContext {
     let result = t.context(frame, latency);
     if let Err(error) = &result {
         eprintln!("context frame={} latency={} status={}", frame, latency, error.status());
@@ -107,19 +107,19 @@ fn context_at(t: &STClockTimeline, frame: i64, latency: i64) -> STClockContext {
 }
 
 #[track_caller]
-fn context(t: &STClockTimeline, frame: i64) -> STClockContext {
+fn context(t: &ClockTimeline, frame: i64) -> ClockContext {
     context_at(t, frame, 0)
 }
 
 #[track_caller]
-fn span_at(t: &STClockTimeline, frame: i64, count: u32, latency: i64) -> STClockSpan {
+fn span_at(t: &ClockTimeline, frame: i64, count: u32, latency: i64) -> ClockSpan {
     let result = t.span(frame, count, latency);
     assert!(result.is_ok());
     result.unwrap()
 }
 
 #[track_caller]
-fn span(t: &STClockTimeline, frame: i64, count: u32) -> STClockSpan {
+fn span(t: &ClockTimeline, frame: i64, count: u32) -> ClockSpan {
     span_at(t, frame, count, 0)
 }
 
@@ -185,8 +185,8 @@ fn ceil_and_atomic_boundaries() {
     let part = span(&timeline, 0, 4096);
     assert!(
         part.frames == 124
-            && (part.context.next_boundary_kinds & ST_CLOCK_BOUNDARY_TEMPO) != 0
-            && (part.context.next_boundary_kinds & ST_CLOCK_BOUNDARY_METER) != 0
+            && (part.context.next_boundary_kinds & CLOCK_BOUNDARY_TEMPO) != 0
+            && (part.context.next_boundary_kinds & CLOCK_BOUNDARY_METER) != 0
     );
     assert!(after.beat - event_beat < 60.0 / (60.0 * 48000.0));
     zero_query_allocations();
@@ -197,8 +197,8 @@ fn preroll() {
     let map = plain_map();
     let timeline = default_timeline(&map);
     let a = context(&timeline, -1);
-    assert!(a.flags & ST_CLOCK_PREROLL != 0);
-    assert!(a.flags & ST_CLOCK_PLAYING != 0);
+    assert!(a.flags & CLOCK_PREROLL != 0);
+    assert!(a.flags & CLOCK_PLAYING != 0);
     assert!(a.song_frame == -1 && a.bar == 0 && a.bar_start_beat == -4.0 && a.bar_end_beat == 0.0 && a.beat < 0.0);
     let b = context(&timeline, -96001);
     assert!(b.bar == -1 && b.bar_start_beat == -8.0 && b.bar_end_beat == -4.0);
@@ -207,10 +207,10 @@ fn preroll() {
         latency.frames == 64
             && latency.context.song_frame == -64
             && latency.context.next_boundary_frame == 64
-            && (latency.context.next_boundary_kinds & ST_CLOCK_BOUNDARY_ORIGIN) != 0
+            && (latency.context.next_boundary_kinds & CLOCK_BOUNDARY_ORIGIN) != 0
     );
     let at_zero = context_at(&timeline, 64, 64);
-    assert!((at_zero.flags & ST_CLOCK_PREROLL) == 0 && at_zero.beat == 0.0 && at_zero.content_graph_frame == 0);
+    assert!((at_zero.flags & CLOCK_PREROLL) == 0 && at_zero.beat == 0.0 && at_zero.content_graph_frame == 0);
     zero_query_allocations();
 }
 
@@ -234,7 +234,7 @@ fn preroll_bar_boundaries() {
                     assert!(range.frames > 0);
                     let last = context_at(&current, query + range.frames as i64 - 1, 1i64 << 30);
                     assert!(last.bar == range.context.bar && last.bar_start_beat == range.context.bar_start_beat);
-                    if range.context.next_boundary_kinds & ST_CLOCK_BOUNDARY_BAR != 0 {
+                    if range.context.next_boundary_kinds & CLOCK_BOUNDARY_BAR != 0 {
                         assert!(
                             context_at(&current, range.context.next_boundary_frame, 1i64 << 30).bar
                                 != range.context.bar
@@ -265,10 +265,10 @@ fn seek_loop_and_latency() {
     let second = context(&timeline, 388000);
     assert!(second.song_frame == 96000 && second.loop_iteration == 2);
     let before = span(&timeline, 195999, 4096);
-    assert!(before.frames == 1 && (before.context.next_boundary_kinds & ST_CLOCK_BOUNDARY_LOOP) != 0);
+    assert!(before.frames == 1 && (before.context.next_boundary_kinds & CLOCK_BOUNDARY_LOOP) != 0);
     let historical = context(&timeline, 99999);
     assert!(
-        historical.loop_iteration == 0 && (historical.flags & ST_CLOCK_PREROLL) != 0 && historical.song_frame == 191999
+        historical.loop_iteration == 0 && (historical.flags & CLOCK_PREROLL) != 0 && historical.song_frame == 191999
     );
     let intro = timeline_at(&map, origin(0, 0.0, 1, 1, 4.0, 8.0, 23));
     assert!(context(&intro, 0).beat == 0.0 && context(&intro, 288000).beat == 4.0);
@@ -281,7 +281,7 @@ fn seek_loop_and_latency() {
 fn stopped_and_immutable_lifetime() {
     let tempos = [tempo(0.0, 120.0)];
     let meters = [meter(0.0, 4, 4)];
-    let map = STClockMap::new(48000.0, &tempos, &meters, 9);
+    let map = ClockMap::new(48000.0, &tempos, &meters, 9);
     assert!(map.is_ok());
     let map = map.unwrap();
     let paused = timeline_at(&map, origin(1000, 3.125, 0, 0, 0.0, 0.0, 41));
@@ -292,8 +292,8 @@ fn stopped_and_immutable_lifetime() {
         a.song_frame == b.song_frame
             && a.beat == 3.125
             && b.beat == a.beat
-            && (b.flags & ST_CLOCK_PLAYING) == 0
-            && (b.flags & ST_CLOCK_PREROLL) == 0
+            && (b.flags & CLOCK_PLAYING) == 0
+            && (b.flags & CLOCK_PREROLL) == 0
             && a.revision == 9
             && a.epoch == 41
     );
@@ -314,8 +314,8 @@ fn validation_and_untouched_outputs() {
     let meter_list = [meter(0.0, 4, 4)];
     // C++ `invalid`: creation fails with an error text; the last text is kept for `strstr`.
     let mut error = String::new();
-    let mut invalid = |rate: f64, t: &[STClockTempoEvent], m: &[STClockMeterEvent]| {
-        let p = STClockMap::new(rate, t, m, 0);
+    let mut invalid = |rate: f64, t: &[ClockTempoEvent], m: &[ClockMeterEvent]| {
+        let p = ClockMap::new(rate, t, m, 0);
         error = p.as_ref().err().map_or(String::new(), |failure| failure.message().to_string());
         assert!(p.is_err() && !error.is_empty());
     };
@@ -323,7 +323,7 @@ fn validation_and_untouched_outputs() {
     invalid(7999.0, &tempo_list, &meter_list);
     // (C++ also passed a null tempo pointer here: dropped.)
     invalid(48000.0, &[], &meter_list);
-    let too_many: Vec<STClockTempoEvent> = (0..1025).map(|n| tempo(n as f64, 120.0)).collect();
+    let too_many: Vec<ClockTempoEvent> = (0..1025).map(|n| tempo(n as f64, 120.0)).collect();
     invalid(48000.0, &too_many, &meter_list);
     let order = [tempo(0.0, 120.0), tempo(2.0, 60.0), tempo(1.0, 90.0)];
     invalid(48000.0, &order, &meter_list);
@@ -335,14 +335,14 @@ fn validation_and_untouched_outputs() {
     invalid(48000.0, &collapsed, &meter_list);
     assert!(error.contains("collapse"));
     // C++: a one-byte error buffer is still terminated; here: the creation fails.
-    assert!(STClockMap::new(0.0, &[], &[], 0).is_err());
+    assert!(ClockMap::new(0.0, &[], &[], 0).is_err());
     let good = plain_map();
     let mut o = origin(0, 0.0, 1, 1, 1.0, 1.0, 0);
-    assert!(STClockTimeline::new(&good, o).is_err());
+    assert!(ClockTimeline::new(&good, o).is_err());
     o = origin(0, 0.0, 1, 1, 1e-8, 2e-8, 0);
-    assert!(STClockTimeline::new(&good, o).is_err_and(|failure| failure.message().contains("collapse")));
+    assert!(ClockTimeline::new(&good, o).is_err_and(|failure| failure.message().contains("collapse")));
     o = origin(0, f64::NAN, 0, 0, 0.0, 0.0, 0);
-    assert!(STClockTimeline::new(&good, o).is_err());
+    assert!(ClockTimeline::new(&good, o).is_err());
     let timeline = default_timeline(&good);
     assert!(timeline.context(0, -1) == Err(ClockQueryError::Invalid));
     assert!(timeline.context(i64::MAX, 0) == Err(ClockQueryError::OutsideDomain));
@@ -362,7 +362,7 @@ fn domain_extremes() {
             assert!(beat(&map, end) == 1000000.0);
             let timeline = default_timeline(&map);
             let last = span(&timeline, end, 4096);
-            assert!(last.frames == 0 && (last.context.flags & ST_CLOCK_DOMAIN_END) != 0);
+            assert!(last.frames == 0 && (last.context.flags & CLOCK_DOMAIN_END) != 0);
             assert!(timeline.context(end + 1, 0) == Err(ClockQueryError::OutsideDomain));
             let extreme = context_at(&timeline, -(1i64 << 52), 1i64 << 30);
             assert!(extreme.beat.is_finite() && extreme.bar <= 0 && extreme.next_boundary_frame > extreme.graph_frame);
@@ -393,7 +393,7 @@ fn span_partitioning() {
                     && first.denominator == last.denominator
                     && first.bar_start_beat == last.bar_start_beat
                     && first.loop_iteration == last.loop_iteration
-                    && ((first.flags ^ last.flags) & ST_CLOCK_PREROLL) == 0
+                    && ((first.flags ^ last.flags) & CLOCK_PREROLL) == 0
             );
             let expected = first.beat + (piece.frames - 1) as f64 * first.bpm / (60.0 * first.sample_rate);
             assert!((last.beat - expected).abs() < 2e-9);
@@ -527,8 +527,8 @@ fn projected_quarter_grid() {
         let c = context_at(&stopped, graph, 64);
         assert!(c.beat == 0.25 && c.song_frame == 6000);
         assert!(c.next_quarter_beat_frame == i64::MAX);
-        assert!(c.next_quarter_grid_frame == graph + 33000 && (c.flags & ST_CLOCK_GRID_PROJECTION) != 0);
-        assert!((c.flags & (ST_CLOCK_PLAYING | ST_CLOCK_RECORDING)) == 0);
+        assert!(c.next_quarter_grid_frame == graph + 33000 && (c.flags & CLOCK_GRID_PROJECTION) != 0);
+        assert!((c.flags & (CLOCK_PLAYING | CLOCK_RECORDING)) == 0);
     }
     let integer = timeline_at(&map, origin(0, 0.0, 0, 0, 0.0, 0.0, 2));
     assert!(context(&integer, 712).next_quarter_grid_frame == 712);
@@ -537,13 +537,13 @@ fn projected_quarter_grid() {
         let c = context(&tiny, graph);
         assert!(c.next_quarter_beat_frame == i64::MAX);
         assert!(c.next_quarter_grid_frame == graph + 39000 - c.song_frame);
-        assert!(c.next_quarter_grid_frame > graph && (c.flags & ST_CLOCK_GRID_PROJECTION) != 0);
+        assert!(c.next_quarter_grid_frame > graph && (c.flags & CLOCK_GRID_PROJECTION) != 0);
     }
     // Reachable next-cycle beats keep their existing transport meaning, even
     // when the separate unwrapped-grid distance is different.
     let reachable = timeline_at(&map, origin(0, 1.125, 1, 1, 0.25, 1.25, 4));
     let c = context(&reachable, 0);
     assert!(c.next_quarter_beat_frame == 39000 && c.next_quarter_grid_frame == 42000);
-    assert!((c.flags & ST_CLOCK_GRID_PROJECTION) == 0);
+    assert!((c.flags & CLOCK_GRID_PROJECTION) == 0);
     zero_query_allocations();
 }

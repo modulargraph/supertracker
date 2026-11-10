@@ -1,4 +1,4 @@
-//! Port of `tests/engine_render_budget_tests.cpp`: representative projects rendered the way the
+//! Port of the former C++ test program `engine_render_budget_tests.cpp`: representative projects rendered the way the
 //! host pulls them (every channel bus plus the return, per small quantum, host mixing), timed in
 //! thread CPU against generous budgets, with zero render allocations. Budgets are a coarse
 //! regression guard that holds under a parallel test run, not a device deadline.

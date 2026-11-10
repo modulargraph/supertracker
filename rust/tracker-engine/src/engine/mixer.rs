@@ -1,4 +1,4 @@
-//! The block renderer of `STEngine` in `TrackerEngine.cpp`: `process` (per-sample sequencing,
+//! The block renderer (ported from the C++ engine's `TrackerEngine.cpp`): `process` (per-sample sequencing,
 //! voices, channel mix, peaks), the legacy send returns (stereo cross-feedback delay, pre-delay,
 //! eight-comb/four-allpass reverb), the metronome and count-in clicks, and timeline audio
 //! (`mixClips`, pattern-mode clips and their printed tails, song-loop tails).
@@ -14,7 +14,7 @@ impl Render {
     /// `process`: render `frames` frames. `cache` renders into the per-bus block buffers (bus
     /// history) instead of only the stereo mix; `event_offset` is the frame offset of the first
     /// frame within the caller's request; `graph_start` its graph timestamp.
-    pub fn process(
+    pub(crate) fn process(
         &mut self,
         sh: &Shared,
         out_l: Option<&mut [f32]>,

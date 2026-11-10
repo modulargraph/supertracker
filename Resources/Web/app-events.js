@@ -80,6 +80,10 @@
       toast(payload.error || payload.message || 'A referenced sample could not be loaded', 'error');
     } else if (type === 'plugin.error') {
       toast(payload.error || payload.message || 'Plug-in could not be restored', 'error');
+    } else if (type === 'plugins.recovery') {
+      // A plug-in stopped working while the project was open: offer the review (and Retry) at once,
+      // unless another dialog is open; "Review interrupted plug-ins" shows the same report later.
+      if (!state.modal && payload?.suspects?.some(item => item.requiresReview)) window.STPluginRecovery?.show(payload);
     } else if (type === 'audio.latency') {
       state.audio.latencyCompensation = payload;
       const info = $('#audio-latency');

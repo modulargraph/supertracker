@@ -1,4 +1,4 @@
-//! Port of `tests/engine_test_tone.hpp`: test tones for the engine. The built-in synth is
+//! Port of the former C++ test program `engine_test_tone.hpp`: test tones for the engine. The built-in synth is
 //! retired; tests that need a plain sustained tone use a sampler in Wavetable mode on a
 //! generated single cycle, which is also what migrated projects play.
 
@@ -54,7 +54,7 @@ pub fn test_tone_instrument(wave: i32) -> STInstrument {
 }
 
 /// `loadTestTone`: loads `wave` into `instrument` (draft or immediate, like
-/// `st_engine_set_sample`).
+/// `Control::set_sample`).
 pub fn load_test_tone(engine: &mut Engine, instrument: i32, wave: i32) {
     let cycle = test_cycle(wave);
     engine.set_sample(instrument, &cycle, 48000.0);

@@ -1,6 +1,6 @@
 //! Spatial processors: Ice, Metaverb, Reflex and the three reverbs (legacy, algorithmic, plate).
 //!
-//! Replaces `Sources/TrackerEngine/EffectsSpatial.hpp` (namespace `stfx::spatial`).
+//! Ported from the C++ `EffectsSpatial.hpp` (namespace `stfx::spatial`).
 //!
 //! Original implementations informed by NI's public effect descriptions. These
 //! are deliberately not described as bit-compatible NI algorithms or presets.

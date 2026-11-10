@@ -1,4 +1,4 @@
-//! Port of `tests/builtin_effects_perf_tests.cpp`: the built-in effect CPU budget check and
+//! Port of the former C++ test program `builtin_effects_perf_tests.cpp`: the built-in effect CPU budget check and
 //! benchmark.
 //!
 //! * `budget`: the program's default mode (budget assertions).
@@ -15,7 +15,7 @@
 //! only; an unoptimized (`debug_assertions`) build runs every case once, prints the numbers and
 //! still asserts the functional half of the silence-gating check (exact silence, resumes).
 //!
-//! The effect handle is driven through `engine_support_b::fx` (the C functions, `TODO(api)`).
+//! The effect handle is `effects::Effect` behind `engine_support_b::fx`.
 #![cfg(feature = "effects")]
 // `s % 4 == 0` next to `s % 8 == 4`: the C++ drum pattern, spelled the same way.
 #![allow(clippy::manual_is_multiple_of)]
@@ -25,7 +25,7 @@ mod engine_support_b;
 use engine_support_b::fx::{Fx, Sidechain};
 use std::f64::consts::PI;
 use std::time::Instant;
-use tracker_engine::effects::capi::normalized;
+use tracker_engine::effects::normalized;
 use tracker_engine::effects::catalogue;
 
 const RATE: f64 = 48000.0;

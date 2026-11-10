@@ -1,97 +1,186 @@
-//! Bounded render cache for one hosted unit: the C API of
-//! `Sources/TrackerEngine/include/TrackerUnitRange.h`.
+//! Bounded render cache for one hosted unit.
 //!
-//! Replaces `Sources/TrackerEngine/TrackerUnitRange.cpp`. A cache retains the most recent output
-//! of one child processor (a plug-in) in a ring, so overlapping or repeated graph ranges are
-//! served from memory and only the uncached suffix is rendered, in spans the clock dictates.
+//! A [`UnitRangeCache`] retains the most recent output of one child processor (a plug-in) in a
+//! ring, so overlapping or repeated graph ranges are served from memory and only the uncached
+//! suffix is rendered, in spans the clock dictates. The child is a [`UnitRangeSource`].
 //!
-//! # Threading and real-time properties (unchanged from the C++)
+//! # Threading and real-time properties
 //!
-//! * `st_unit_range_create` / `destroy` are control-thread operations and the only places that
-//!   allocate or free. `render`, `reset` and `get_stats` never allocate, lock or wait.
+//! * [`UnitRangeCache::new`] and dropping the cache are control-thread operations and the only
+//!   places that allocate or free. `render`, `reset` and `stats` never allocate, lock or wait.
 //! * One atomic flag admits a single caller at a time. A concurrent or reentrant `render`,
-//!   `reset` or `get_stats` returns `ST_UNIT_RANGE_BUSY` immediately instead of waiting.
+//!   `reset` or `stats` returns [`UnitRangeError::Busy`] immediately instead of waiting.
 //! * Cache publication is transactional: new PCM is rendered into scratch storage and committed
 //!   to the ring only after every child call succeeded. A child that fails may already have
 //!   advanced, so its error is latched until `reset`.
 //!
 //! # How the shared state is kept sound
 //!
-//! C callers hold a `*mut STUnitRangeCache` and may call from any thread, so every entry point
-//! only ever forms a shared reference to the cache. The configuration fields are immutable after
-//! creation and may be read by anyone (the BUSY path needs them to clear the output). Everything
-//! mutable lives in one `UnsafeCell<State>` that is only reachable through [`RenderGuard`], and a
-//! guard exists only while its holder owns the `rendering` flag.
+//! A cache is used through `&self` from any thread (it is `Sync`), and a source may call back
+//! into the cache it is rendering for. The configuration fields are immutable after creation and
+//! may be read by anyone (the busy path needs them to clear the output). Everything mutable
+//! lives in one `UnsafeCell<State>` that is only reachable through a private guard, and a guard
+//! exists only while its holder owns the `rendering` flag.
 
-#![deny(unsafe_op_in_unsafe_fn)]
-
-use std::alloc::{alloc, Layout};
 use std::cell::UnsafeCell;
-use std::ffi::{c_char, c_void};
+use std::fmt;
+use std::num::NonZeroI32;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(feature = "clock")]
-use crate::clock as clock_abi;
+use crate::clock as clock_types;
 // The cache needs only the clock's data types, so it also builds without the clock itself.
 #[cfg(not(feature = "clock"))]
-#[path = "../clock/abi.rs"]
+#[path = "../clock/types.rs"]
 #[allow(dead_code)]
-mod clock_abi;
+mod clock_types;
 
-use clock_abi::{STClockContext, STClockSpan, ST_CLOCK_OK, ST_CLOCK_OUTSIDE_DOMAIN};
+use clock_types::{ClockContext, ClockQueryError, ClockSpan};
 
 #[cfg(test)]
 mod tests;
 
-// Cache-specific errors are separate from callback OSStatus values. A nonzero prepare/process
-// result is returned verbatim. A failed process result remains latched until reset; no later
-// request may retry a partially advanced processor.
-pub const ST_UNIT_RANGE_OK: i32 = 0;
-pub const ST_UNIT_RANGE_INVALID: i32 = -74000;
-pub const ST_UNIT_RANGE_OVERSIZE: i32 = -74001;
-pub const ST_UNIT_RANGE_OVERFLOW: i32 = -74002;
-pub const ST_UNIT_RANGE_GAP: i32 = -74003;
-pub const ST_UNIT_RANGE_EXPIRED: i32 = -74004;
-pub const ST_UNIT_RANGE_BUSY: i32 = -74005;
-pub const ST_UNIT_RANGE_CLOCK_ERROR: i32 = -74006;
-pub const ST_UNIT_RANGE_DOMAIN_END: i32 = -74007;
-pub const ST_UNIT_RANGE_CONTEXT_MISMATCH: i32 = -74008;
-pub const ST_UNIT_RANGE_SPAN_LIMIT: i32 = -74009;
+/// Why a request to a [`UnitRangeCache`] failed.
+///
+/// Every error has a numeric [`code`](UnitRangeError::code), which is what
+/// [`UnitRangeStats::last_error`] and [`UnitRangeStats::latched_error`] hold. Cache errors are
+/// separate from the status values of the source: a failed `prepare` or `process` result is
+/// passed through verbatim as [`UnitRangeError::Source`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnitRangeError {
+    /// No frames, too few or too short output buffers, or an uncached range without a source.
+    Invalid,
+    /// More frames than the cache's request capacity.
+    Oversize,
+    /// The range runs past the last graph frame.
+    Overflow,
+    /// The range starts after the rendered end: the frames between were never rendered.
+    Gap,
+    /// The range starts before the retained history.
+    Expired,
+    /// Another call on this cache is in progress (on any thread, or further up this stack).
+    Busy,
+    /// The source's clock refused a span.
+    ClockError,
+    /// The clock's domain ends before the request does.
+    DomainEnd,
+    /// A span the source returned does not fit the request or the cached format.
+    ContextMismatch,
+    /// The request needs more child calls than the cache was created for.
+    SpanLimit,
+    /// The source's own failure. A failed `process` stays latched until `reset`: no later
+    /// request may retry a partially advanced processor.
+    Source(NonZeroI32),
+}
 
-// All callbacks execute synchronously on the calling render thread and must not throw, allocate,
-// wait or mutate the cache. prepare is optional; span/process are required. Only the uncached
-// suffix is prepared/processed. prepare extends the native audio/context/event caches first, but
-// must not send events to or advance this child. Complete span preflight then finishes before any
-// process call or per-child event delivery. Each query requests at most maximumChildFrames.
-// Cached-only calls need none of these callbacks.
+impl UnitRangeError {
+    /// The numeric code of this error; 0 is success.
+    pub const fn code(self) -> i32 {
+        match self {
+            UnitRangeError::Invalid => -74000,
+            UnitRangeError::Oversize => -74001,
+            UnitRangeError::Overflow => -74002,
+            UnitRangeError::Gap => -74003,
+            UnitRangeError::Expired => -74004,
+            UnitRangeError::Busy => -74005,
+            UnitRangeError::ClockError => -74006,
+            UnitRangeError::DomainEnd => -74007,
+            UnitRangeError::ContextMismatch => -74008,
+            UnitRangeError::SpanLimit => -74009,
+            UnitRangeError::Source(code) => code.get(),
+        }
+    }
 
-/// `STUnitRangePrepareFn`
-pub type STUnitRangePrepareFn =
-    Option<unsafe extern "C" fn(user: *mut c_void, graph_frame: i64, frames: u32) -> i32>;
-/// `STUnitRangeSpanFn`
-pub type STUnitRangeSpanFn = Option<
-    unsafe extern "C" fn(
-        user: *mut c_void,
-        graph_frame: i64,
-        frames: u32,
-        span: *mut STClockSpan,
-    ) -> i32,
->;
-/// `STUnitRangeProcessFn`
-pub type STUnitRangeProcessFn = Option<
-    unsafe extern "C" fn(
-        user: *mut c_void,
-        context: *const STClockContext,
-        graph_frame: i64,
-        frames: u32,
-        output: *const *mut f32,
-    ) -> i32,
->;
+    /// The error with this code; `None` for 0. A code outside the cache's own range is a
+    /// source failure.
+    pub const fn from_code(code: i32) -> Option<UnitRangeError> {
+        Some(match code {
+            -74000 => UnitRangeError::Invalid,
+            -74001 => UnitRangeError::Oversize,
+            -74002 => UnitRangeError::Overflow,
+            -74003 => UnitRangeError::Gap,
+            -74004 => UnitRangeError::Expired,
+            -74005 => UnitRangeError::Busy,
+            -74006 => UnitRangeError::ClockError,
+            -74007 => UnitRangeError::DomainEnd,
+            -74008 => UnitRangeError::ContextMismatch,
+            -74009 => UnitRangeError::SpanLimit,
+            _ => match NonZeroI32::new(code) {
+                Some(code) => UnitRangeError::Source(code),
+                None => return None,
+            },
+        })
+    }
+}
 
-/// `STUnitRangeStats`. Field names are the header's in snake case.
-#[repr(C)]
+impl fmt::Display for UnitRangeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UnitRangeError::Invalid => formatter.write_str("The unit render request is invalid."),
+            UnitRangeError::Oversize => formatter.write_str("The unit render request exceeds the cache's request capacity."),
+            UnitRangeError::Overflow => formatter.write_str("The unit render request runs past the last graph frame."),
+            UnitRangeError::Gap => formatter.write_str("The unit render request leaves a gap after the rendered range."),
+            UnitRangeError::Expired => formatter.write_str("The unit render request starts before the retained history."),
+            UnitRangeError::Busy => formatter.write_str("The unit cache is in use."),
+            UnitRangeError::ClockError => formatter.write_str("The clock refused a span of the unit render request."),
+            UnitRangeError::DomainEnd => formatter.write_str("The clock's domain ends inside the unit render request."),
+            UnitRangeError::ContextMismatch => formatter.write_str("A clock span does not fit the unit render request."),
+            UnitRangeError::SpanLimit => formatter.write_str("The unit render request needs more spans than the cache allows."),
+            UnitRangeError::Source(code) => write!(formatter, "The unit failed with status {code}."),
+        }
+    }
+}
+
+impl std::error::Error for UnitRangeError {}
+
+/// Why [`UnitRangeCache::new`] refused a configuration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UnitRangeConfigError(&'static str);
+
+impl UnitRangeConfigError {
+    pub const fn message(self) -> &'static str {
+        self.0
+    }
+}
+
+impl fmt::Display for UnitRangeConfigError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.0)
+    }
+}
+
+impl std::error::Error for UnitRangeConfigError {}
+
+/// The child of a [`UnitRangeCache`]: what produces the audio the cache retains.
+///
+/// All three methods run synchronously on the thread that called [`UnitRangeCache::render`] and
+/// must not allocate, wait or use the cache (a call back into it is refused as
+/// [`UnitRangeError::Busy`]). Only the uncached suffix of a request is prepared and processed.
+/// The complete span plan is made before the first `process` call or per-child event delivery.
+/// A request served from retained audio calls none of them.
+pub trait UnitRangeSource {
+    /// Extend the upstream audio, clock and event caches for `frames` frames at `graph_frame`,
+    /// without sending events to the child or advancing it. An error ends the request and may be
+    /// retried. The default does nothing.
+    fn prepare(&mut self, graph_frame: i64, frames: u32) -> Result<(), NonZeroI32> {
+        let _ = (graph_frame, frames);
+        Ok(())
+    }
+
+    /// The clock span at `graph_frame`, at most `frames` long (at most the cache's child frame
+    /// limit is asked for). [`ClockQueryError::OutsideDomain`] ends the request as
+    /// [`UnitRangeError::DomainEnd`], any other error as [`UnitRangeError::ClockError`].
+    fn span(&mut self, graph_frame: i64, frames: u32) -> Result<ClockSpan, ClockQueryError>;
+
+    /// Render `frames` frames at `graph_frame` into `output`: one buffer per channel, each
+    /// `frames` long and zeroed. `context` is the span's. An error is latched: the child may
+    /// have advanced, so the cache refuses further requests until it is reset.
+    fn process(&mut self, context: &ClockContext, graph_frame: i64, frames: u32, output: &mut [&mut [f32]]) -> Result<(), NonZeroI32>;
+}
+
+/// A snapshot of a cache's counters and of what it retains.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct STUnitRangeStats {
+pub struct UnitRangeStats {
     pub requests: u64,
     pub successful_requests: u64,
     pub cache_hits: u64,
@@ -103,33 +192,16 @@ pub struct STUnitRangeStats {
     pub revision: u64,
     pub epoch: u64,
     pub retained_frames: u32,
+    /// 1 once a first request has succeeded and fixed the graph position of the history.
     pub anchored: u32,
+    /// [`UnitRangeError::code`] of the last request; 0 when it succeeded.
     pub last_error: i32,
+    /// [`UnitRangeError::code`] of the child failure that blocks the cache until `reset`; 0 none.
     pub latched_error: i32,
 }
 
-// Layout of the struct in TrackerUnitRange.h, as printed by a C++ program using sizeof/offsetof.
-const _: () = {
-    use std::mem::{align_of, offset_of, size_of};
-    assert!(size_of::<STUnitRangeStats>() == 96 && align_of::<STUnitRangeStats>() == 8);
-    assert!(offset_of!(STUnitRangeStats, requests) == 0);
-    assert!(offset_of!(STUnitRangeStats, successful_requests) == 8);
-    assert!(offset_of!(STUnitRangeStats, cache_hits) == 16);
-    assert!(offset_of!(STUnitRangeStats, prepared_frames) == 24);
-    assert!(offset_of!(STUnitRangeStats, processed_frames) == 32);
-    assert!(offset_of!(STUnitRangeStats, process_calls) == 40);
-    assert!(offset_of!(STUnitRangeStats, retained_start_frame) == 48);
-    assert!(offset_of!(STUnitRangeStats, rendered_end_frame) == 56);
-    assert!(offset_of!(STUnitRangeStats, revision) == 64);
-    assert!(offset_of!(STUnitRangeStats, epoch) == 72);
-    assert!(offset_of!(STUnitRangeStats, retained_frames) == 80);
-    assert!(offset_of!(STUnitRangeStats, anchored) == 84);
-    assert!(offset_of!(STUnitRangeStats, last_error) == 88);
-    assert!(offset_of!(STUnitRangeStats, latched_error) == 92);
-};
-
-/// `STUnitRangeCache`. Opaque to C.
-pub struct STUnitRangeCache {
+/// The render cache of one hosted unit. See the module documentation.
+pub struct UnitRangeCache {
     // Immutable after creation; readable without owning `rendering`.
     channels: u32,
     maximum_request: u32,
@@ -144,28 +216,28 @@ struct State {
     write_position: u32,
     content_offset: i64,
     sample_rate: f64,
-    stats: STUnitRangeStats,
+    stats: UnitRangeStats,
     /// Ring of retained PCM: `channels` consecutive blocks of `history_frames` samples.
     history: Vec<f32>,
     /// The suffix being rendered: `channels` consecutive blocks of `maximum_request` samples.
     scratch: Vec<f32>,
-    /// The preflighted child calls of one request: exactly `maximumSpans` entries.
-    plan: Vec<STClockSpan>,
+    /// The preflighted child calls of one request: exactly `maximum_spans` entries.
+    plan: Vec<ClockSpan>,
 }
 
-// SAFETY: the C API lets any thread call into a cache. The configuration fields never change,
-// `rendering` is atomic, and `state` is only accessed by the one caller that owns `rendering`
-// (see `RenderGuard`), so shared references on several threads never race.
-unsafe impl Sync for STUnitRangeCache {}
+// SAFETY: any thread may call into a cache through `&self`. The configuration fields never
+// change, `rendering` is atomic, and `state` is only accessed by the one caller that owns
+// `rendering` (see `RenderGuard`), so shared references on several threads never race.
+unsafe impl Sync for UnitRangeCache {}
 
 /// Ownership of a cache's `rendering` flag, and with it of the mutable state.
 struct RenderGuard<'a> {
-    cache: &'a STUnitRangeCache,
+    cache: &'a UnitRangeCache,
 }
 
 impl<'a> RenderGuard<'a> {
     /// `None` when another call (on any thread, or further up this thread's stack) is active.
-    fn acquire(cache: &'a STUnitRangeCache) -> Option<Self> {
+    fn acquire(cache: &'a UnitRangeCache) -> Option<Self> {
         if cache.rendering.swap(true, Ordering::Acquire) {
             None
         } else {
@@ -177,7 +249,9 @@ impl<'a> RenderGuard<'a> {
         // SAFETY: at most one guard exists per cache at a time: `acquire` hands one out only on
         // the false -> true transition of `rendering`, and the flag is cleared only when that
         // guard is dropped. The returned borrow is tied to `&mut self`, so this guard cannot
-        // produce a second reference either. Nothing else touches `state`.
+        // produce a second reference either. Nothing else touches `state`: a reentrant call
+        // from a source only forms a shared reference to the cache and fails `acquire` before
+        // it looks inside the cell.
         unsafe { &mut *self.cache.state.get() }
     }
 }
@@ -188,116 +262,24 @@ impl Drop for RenderGuard<'_> {
     }
 }
 
-/// Copies `message` to caller storage of `capacity` bytes, truncated and always NUL terminated.
-///
-/// # Safety
-/// `output` is null or valid for writes of `capacity` bytes.
-unsafe fn write_error(output: *mut c_char, capacity: u32, message: &str) {
-    if output.is_null() || capacity == 0 {
-        return;
-    }
-    let count = message.len().min(capacity as usize - 1);
-    // SAFETY: `count + 1 <= capacity` bytes are written to storage the caller vouches for; it
-    // cannot overlap a Rust string constant.
-    unsafe {
-        std::ptr::copy_nonoverlapping(message.as_ptr(), output.cast::<u8>(), count);
-        output.add(count).write(0);
-    }
-}
-
-/// Clears the caller's output: at most `maximum_request` samples per non-null channel, which
-/// keeps rejection work bounded. Uses only immutable configuration, so it is safe while BUSY.
-///
-/// # Safety
-/// `output` is null or points to `channels` pointers, each null or valid for writes of
-/// `min(frames, maximum_request)` samples.
-unsafe fn silence(cache: &STUnitRangeCache, frames: u32, output: *const *mut f32) {
-    if output.is_null() {
-        return;
-    }
-    let bounded = frames.min(cache.maximum_request) as usize;
-    for channel in 0..cache.channels as usize {
-        // SAFETY: `output` holds `channels` pointers; a non-null one is writable for `bounded`
-        // samples by the caller's contract. All-zero bytes are 0.0f.
-        unsafe {
-            let samples = *output.add(channel);
-            if !samples.is_null() {
-                std::ptr::write_bytes(samples, 0, bounded);
-            }
-        }
-    }
-}
-
-/// Records `error`, clears the output and returns `error`.
-///
-/// # Safety
-/// As for [`silence`].
-unsafe fn fail(
-    cache: &STUnitRangeCache,
-    stats: &mut STUnitRangeStats,
-    error: i32,
-    frames: u32,
-    output: *const *mut f32,
-) -> i32 {
-    stats.last_error = error;
-    // SAFETY: forwarded from the caller.
-    unsafe { silence(cache, frames, output) };
-    error
-}
-
-/// # Safety
-/// `output` is null or points to `channels` pointers.
-unsafe fn valid_output(cache: &STUnitRangeCache, output: *const *mut f32) -> bool {
-    if output.is_null() {
-        return false;
-    }
-    // SAFETY: `output` holds `channels` readable pointers by the caller's contract.
-    (0..cache.channels as usize).all(|channel| unsafe { !(*output.add(channel)).is_null() })
-}
-
 /// Copies `frames` retained samples starting at graph frame `start` to the caller's output.
-///
-/// # Safety
-/// `output` points to `channels` non-null pointers, each valid for writes of `frames` samples
-/// and not overlapping the cache. `[start, start + frames)` lies within the retained range, and
-/// `frames` is at most `maximum_request`.
-unsafe fn copy_cached(
-    cache: &STUnitRangeCache,
-    state: &State,
-    start: i64,
-    frames: u32,
-    output: *const *mut f32,
-) {
+/// `[start, start + frames)` lies within the retained range, `frames` is at most
+/// `maximum_request`, and `output` holds one buffer of at least `frames` samples per channel.
+fn copy_cached(cache: &UnitRangeCache, state: &State, start: i64, frames: u32, output: &mut [&mut [f32]]) {
     let history_frames = cache.history_frames;
     let offset = (start as u64).wrapping_sub(state.stats.retained_start_frame as u64);
-    let oldest =
-        (state.write_position + history_frames - state.stats.retained_frames) % history_frames;
+    let oldest = (state.write_position + history_frames - state.stats.retained_frames) % history_frames;
     let position = (u64::from(oldest).wrapping_add(offset) % u64::from(history_frames)) as u32;
     let first = frames.min(history_frames - position) as usize;
     let (position, frames) = (position as usize, frames as usize);
-    let channels = state
-        .history
-        .chunks_exact(history_frames as usize)
-        .take(cache.channels as usize);
-    for (channel, source) in channels.enumerate() {
-        // SAFETY: `output[channel]` is writable for `frames` samples and disjoint from the ring.
+    let channels = state.history.chunks_exact(history_frames as usize).take(cache.channels as usize);
+    for (source, destination) in channels.zip(output.iter_mut()) {
         // `position < history_frames` and `first <= history_frames - position`, and the wrapped
         // remainder `frames - first` is at most `maximum_request <= history_frames`, so both
         // source ranges lie inside this channel's block.
-        unsafe {
-            let destination = *output.add(channel);
-            std::ptr::copy_nonoverlapping(
-                source[position..position + first].as_ptr(),
-                destination,
-                first,
-            );
-            if first < frames {
-                std::ptr::copy_nonoverlapping(
-                    source[..frames - first].as_ptr(),
-                    destination.add(first),
-                    frames - first,
-                );
-            }
+        destination[..first].copy_from_slice(&source[position..position + first]);
+        if first < frames {
+            destination[first..frames].copy_from_slice(&source[..frames - first]);
         }
     }
 }
@@ -305,11 +287,11 @@ unsafe fn copy_cached(
 /// Appends the first `frames` scratch samples of each channel to the ring; `end` is the graph
 /// frame after them and `last` the context of the final span.
 fn commit(
-    cache: &STUnitRangeCache,
+    cache: &UnitRangeCache,
     state: &mut State,
     end: i64,
     frames: u32,
-    last: &STClockContext,
+    last: &ClockContext,
     sample_rate: f64,
     content_offset: i64,
 ) {
@@ -347,405 +329,277 @@ fn try_filled<T: Clone + Default>(count: usize) -> Option<Vec<T>> {
     Some(values)
 }
 
-/// `Box::new` that reports allocation failure instead of aborting.
-fn try_box<T>(value: T) -> Option<Box<T>> {
-    let layout = Layout::new::<T>();
-    if layout.size() == 0 {
-        return Some(Box::new(value));
-    }
-    // SAFETY: the layout has a non-zero size.
-    let pointer = unsafe { alloc(layout) }.cast::<T>();
-    if pointer.is_null() {
-        return None;
-    }
-    // SAFETY: `pointer` is a fresh allocation from the global allocator with the layout of `T`,
-    // which is exactly what a `Box<T>` owns; it is initialized before the box is formed.
-    unsafe {
-        pointer.write(value);
-        Some(Box::from_raw(pointer))
-    }
-}
-
-fn create(
-    channels: u32,
-    maximum_request_frames: u32,
-    history_frames: u32,
-    maximum_child_frames: u32,
-    maximum_spans: u32,
-) -> Result<Box<STUnitRangeCache>, &'static str> {
-    if !(1..=2).contains(&channels) {
-        return Err("Unit cache requires one or two channels.");
-    }
-    if !(1..=65536).contains(&maximum_request_frames) {
-        return Err("Unit request capacity must be 1..65536 frames.");
-    }
-    if history_frames < maximum_request_frames || history_frames > 131072 {
-        return Err("Unit history must cover one maximum request and not exceed 131072 frames.");
-    }
-    if maximum_child_frames < 1 || maximum_child_frames > maximum_request_frames {
-        return Err("Child frame limit must fit the request capacity.");
-    }
-    if !(1..=256).contains(&maximum_spans) {
-        return Err("Unit span capacity must be 1..256.");
-    }
-    if maximum_spans < maximum_request_frames.div_ceil(maximum_child_frames) {
-        return Err(
-            "Unit span capacity cannot cover the maximum request at the child frame limit.",
-        );
-    }
-    const OUT_OF_MEMORY: &str = "Could not allocate bounded unit render storage.";
-    let channel_count = channels as usize;
-    let state = State {
-        write_position: 0,
-        content_offset: 0,
-        sample_rate: 0.0,
-        stats: STUnitRangeStats::default(),
-        history: try_filled(channel_count * history_frames as usize).ok_or(OUT_OF_MEMORY)?,
-        scratch: try_filled(channel_count * maximum_request_frames as usize)
-            .ok_or(OUT_OF_MEMORY)?,
-        plan: try_filled(maximum_spans as usize).ok_or(OUT_OF_MEMORY)?,
-    };
-    try_box(STUnitRangeCache {
-        channels,
-        maximum_request: maximum_request_frames,
-        history_frames,
-        maximum_child: maximum_child_frames,
-        rendering: AtomicBool::new(false),
-        state: UnsafeCell::new(state),
-    })
-    .ok_or(OUT_OF_MEMORY)
-}
-
-/// Control-thread allocation. channels=1/2, maximumRequestFrames=1..65536,
-/// historyFrames=maximumRequestFrames..131072, maximumChildFrames=1..maximumRequestFrames,
-/// maximumSpans=1..256. maximumSpans counts actual child calls, including splitting at
-/// maximumChildFrames, and must cover ceil(maximumRequestFrames/maximumChildFrames).
-/// Error text is optional and always NUL terminated.
-///
-/// # Safety
-/// `error` is null or valid for writes of `error_capacity` bytes.
-#[no_mangle]
-pub unsafe extern "C" fn st_unit_range_create(
-    channels: u32,
-    maximum_request_frames: u32,
-    history_frames: u32,
-    maximum_child_frames: u32,
-    maximum_spans: u32,
-    error: *mut c_char,
-    error_capacity: u32,
-) -> *mut STUnitRangeCache {
-    // SAFETY: the caller's contract for `error`, here and below.
-    unsafe { write_error(error, error_capacity, "") };
-    match create(
-        channels,
-        maximum_request_frames,
-        history_frames,
-        maximum_child_frames,
-        maximum_spans,
-    ) {
-        Ok(cache) => Box::into_raw(cache),
-        Err(message) => {
-            unsafe { write_error(error, error_capacity, message) };
-            std::ptr::null_mut()
+impl UnitRangeCache {
+    /// Control-thread allocation. `channels` 1 or 2, `maximum_request_frames` 1..=65536,
+    /// `history_frames` from the request capacity up to 131072, `maximum_child_frames` 1 up to
+    /// the request capacity, `maximum_spans` 1..=256. `maximum_spans` counts actual child calls,
+    /// including the splitting at `maximum_child_frames`, and must cover
+    /// `ceil(maximum_request_frames / maximum_child_frames)`.
+    pub fn new(
+        channels: u32,
+        maximum_request_frames: u32,
+        history_frames: u32,
+        maximum_child_frames: u32,
+        maximum_spans: u32,
+    ) -> Result<UnitRangeCache, UnitRangeConfigError> {
+        let refuse = |message| Err(UnitRangeConfigError(message));
+        if !(1..=2).contains(&channels) {
+            return refuse("Unit cache requires one or two channels.");
         }
-    }
-}
-
-/// Destroy only when callbacks are quiescent.
-///
-/// # Safety
-/// `cache` is null or came from [`st_unit_range_create`], no call on it is in progress, and it is
-/// not used again.
-#[no_mangle]
-pub unsafe extern "C" fn st_unit_range_destroy(cache: *mut STUnitRangeCache) {
-    if !cache.is_null() {
-        // SAFETY: the pointer came from `Box::into_raw` in `st_unit_range_create`; the caller
-        // guarantees exclusive access and gives up ownership exactly once.
-        drop(unsafe { Box::from_raw(cache) });
-    }
-}
-
-/// Forgets all retained audio, the anchor and any latched error. Reset also clears statistics.
-///
-/// # Safety
-/// `cache` is null or a live cache.
-#[no_mangle]
-pub unsafe extern "C" fn st_unit_range_reset(cache: *mut STUnitRangeCache) -> i32 {
-    // SAFETY: a non-null `cache` is live by the caller's contract; only a shared reference is
-    // formed (see the module documentation).
-    let Some(cache) = (unsafe { cache.as_ref() }) else {
-        return ST_UNIT_RANGE_INVALID;
-    };
-    let Some(mut guard) = RenderGuard::acquire(cache) else {
-        return ST_UNIT_RANGE_BUSY;
-    };
-    let state = guard.state();
-    state.stats = STUnitRangeStats::default();
-    state.write_position = 0;
-    state.content_offset = 0;
-    state.sample_rate = 0.0;
-    ST_UNIT_RANGE_OK
-}
-
-/// Bounded snapshot; returns BUSY without touching stats when rendering is active.
-///
-/// # Safety
-/// `cache` is null or a live cache; `stats` is null or valid for a write.
-#[no_mangle]
-pub unsafe extern "C" fn st_unit_range_get_stats(
-    cache: *mut STUnitRangeCache,
-    stats: *mut STUnitRangeStats,
-) -> i32 {
-    // SAFETY: as in `st_unit_range_reset`.
-    let Some(cache) = (unsafe { cache.as_ref() }) else {
-        return ST_UNIT_RANGE_INVALID;
-    };
-    if stats.is_null() {
-        return ST_UNIT_RANGE_INVALID;
-    }
-    let Some(mut guard) = RenderGuard::acquire(cache) else {
-        return ST_UNIT_RANGE_BUSY;
-    };
-    // SAFETY: `stats` is non-null and writable by the caller's contract.
-    unsafe { stats.write(guard.state().stats) };
-    ST_UNIT_RANGE_OK
-}
-
-/// First success anchors any clock-valid graph frame. Further requests may repeat retained ranges
-/// or overlap the retained prefix and append a contiguous suffix. Gaps, expired history, bad
-/// spans, changed content offset/sample rate, and arithmetic overflow fail without changing good
-/// cached PCM. Cached-only requests invoke no callbacks, including after a caller replaces its
-/// clock. Revision/epoch changes at span boundaries are forwarded to the child, including within
-/// one request; they do not invalidate old PCM. Changing sample rate or upstream content-frame
-/// offset requires a quiescent reset. Spans must stay within their context's nextBoundaryFrame
-/// and carry finite beat/bar/tempo values, positive tempo/numerator, and denominator 2/4/8/16.
-///
-/// Output is planar, one valid pointer per channel, with frames writable samples. Failures clear
-/// output; invalid oversized calls clear only maximumRequestFrames samples per valid channel,
-/// keeping rejection work bounded. A null cache cannot determine channels and therefore does not
-/// touch output. Concurrent/reentrant render is rejected immediately. No render-time allocation,
-/// locks or waiting.
-///
-/// # Safety
-/// `cache` is null or a live cache. `output` is null or points to one pointer per channel, each
-/// null or valid for writes of `frames` samples (of `maximumRequestFrames` samples when `frames`
-/// is larger) and not overlapping the cache. The callbacks follow the rules above: they do not
-/// unwind, `span` writes only the span it is given, and `process` writes at most `frames` samples
-/// to each buffer it is given and nothing else of the cache.
-#[no_mangle]
-pub unsafe extern "C" fn st_unit_range_render(
-    cache: *mut STUnitRangeCache,
-    graph_frame: i64,
-    frames: u32,
-    output: *const *mut f32,
-    prepare: STUnitRangePrepareFn,
-    span: STUnitRangeSpanFn,
-    process: STUnitRangeProcessFn,
-    user: *mut c_void,
-) -> i32 {
-    // SAFETY: as in `st_unit_range_reset`. A reentrant call from a callback also only forms a
-    // shared reference, which may coexist with the outer call's exclusive borrow of the state
-    // cell's *contents* because it never looks inside the cell: it fails `acquire` below.
-    let Some(cache) = (unsafe { cache.as_ref() }) else {
-        return ST_UNIT_RANGE_INVALID;
-    };
-    let Some(mut guard) = RenderGuard::acquire(cache) else {
-        // SAFETY: the caller's contract for `output`.
-        unsafe { silence(cache, frames, output) };
-        return ST_UNIT_RANGE_BUSY;
-    };
-    let state = guard.state();
-    // Every rejection records the error and clears the caller's output.
-    macro_rules! fail {
-        ($error:expr) => {{
-            let error = $error;
-            // SAFETY: the caller's contract for `output`.
-            unsafe { fail(cache, &mut state.stats, error, frames, output) }
-        }};
-    }
-    state.stats.requests = state.stats.requests.wrapping_add(1);
-    if frames == 0 || !unsafe { valid_output(cache, output) } {
-        return fail!(ST_UNIT_RANGE_INVALID);
-    }
-    if frames > cache.maximum_request {
-        return fail!(ST_UNIT_RANGE_OVERSIZE);
-    }
-    if graph_frame > i64::MAX - i64::from(frames) {
-        return fail!(ST_UNIT_RANGE_OVERFLOW);
-    }
-    if state.stats.latched_error != 0 {
-        return fail!(state.stats.latched_error);
-    }
-    let end = graph_frame + i64::from(frames);
-    let mut suffix_start = graph_frame;
-    if state.stats.anchored != 0 {
-        if graph_frame < state.stats.retained_start_frame {
-            return fail!(ST_UNIT_RANGE_EXPIRED);
+        if !(1..=65536).contains(&maximum_request_frames) {
+            return refuse("Unit request capacity must be 1..65536 frames.");
         }
-        if graph_frame > state.stats.rendered_end_frame {
-            return fail!(ST_UNIT_RANGE_GAP);
+        if history_frames < maximum_request_frames || history_frames > 131072 {
+            return refuse("Unit history must cover one maximum request and not exceed 131072 frames.");
         }
-        if end <= state.stats.rendered_end_frame {
-            // SAFETY: `output` was validated above, `frames <= maximum_request`, and the request
-            // lies within [retained_start_frame, rendered_end_frame).
-            unsafe { copy_cached(cache, state, graph_frame, frames, output) };
-            state.stats.cache_hits = state.stats.cache_hits.wrapping_add(1);
-            state.stats.successful_requests = state.stats.successful_requests.wrapping_add(1);
-            state.stats.last_error = ST_UNIT_RANGE_OK;
-            return ST_UNIT_RANGE_OK;
+        if maximum_child_frames < 1 || maximum_child_frames > maximum_request_frames {
+            return refuse("Child frame limit must fit the request capacity.");
         }
-        suffix_start = state.stats.rendered_end_frame;
-    }
-    let (Some(span), Some(process)) = (span, process) else {
-        return fail!(ST_UNIT_RANGE_INVALID);
-    };
-    // graph_frame <= suffix_start < end, so this is 1..=frames.
-    let suffix_frames = (end - suffix_start) as u32;
-
-    // The native provider must first retain the new audio/clock/event range. This
-    // is deliberately separate from per-child event dispatch in process below.
-    if let Some(prepare) = prepare {
-        // SAFETY: the caller's callback, called as the header documents.
-        let result = unsafe { prepare(user, suffix_start, suffix_frames) };
-        if result != 0 {
-            return fail!(result);
+        if !(1..=256).contains(&maximum_spans) {
+            return refuse("Unit span capacity must be 1..256.");
         }
-        state.stats.prepared_frames = state
-            .stats
-            .prepared_frames
-            .wrapping_add(u64::from(suffix_frames));
-    }
-
-    let mut span_count: usize = 0;
-    let mut planned: u32 = 0;
-    let mut sample_rate = state.sample_rate;
-    let mut content_offset = state.content_offset;
-    let mut have_format = state.stats.anchored != 0;
-    while planned < suffix_frames {
-        // The plan holds exactly maximumSpans entries.
-        let Some(part) = state.plan.get_mut(span_count) else {
-            return fail!(ST_UNIT_RANGE_SPAN_LIMIT);
+        if maximum_spans < maximum_request_frames.div_ceil(maximum_child_frames) {
+            return refuse("Unit span capacity cannot cover the maximum request at the child frame limit.");
+        }
+        const OUT_OF_MEMORY: UnitRangeConfigError = UnitRangeConfigError("Could not allocate bounded unit render storage.");
+        let channel_count = channels as usize;
+        let state = State {
+            write_position: 0,
+            content_offset: 0,
+            sample_rate: 0.0,
+            stats: UnitRangeStats::default(),
+            history: try_filled(channel_count * history_frames as usize).ok_or(OUT_OF_MEMORY)?,
+            scratch: try_filled(channel_count * maximum_request_frames as usize).ok_or(OUT_OF_MEMORY)?,
+            plan: try_filled(maximum_spans as usize).ok_or(OUT_OF_MEMORY)?,
         };
-        let cursor = suffix_start + i64::from(planned);
-        let requested = (suffix_frames - planned).min(cache.maximum_child);
-        *part = STClockSpan::default();
-        // SAFETY: the caller's callback, given a valid span to fill in. `part` is not used again
-        // until the callback has returned.
-        let result = unsafe { span(user, cursor, requested, part) };
-        if result != ST_CLOCK_OK {
-            let error = if result == ST_CLOCK_OUTSIDE_DOMAIN {
-                ST_UNIT_RANGE_DOMAIN_END
-            } else {
-                ST_UNIT_RANGE_CLOCK_ERROR
+        Ok(UnitRangeCache {
+            channels,
+            maximum_request: maximum_request_frames,
+            history_frames,
+            maximum_child: maximum_child_frames,
+            rendering: AtomicBool::new(false),
+            state: UnsafeCell::new(state),
+        })
+    }
+
+    pub fn channels(&self) -> u32 {
+        self.channels
+    }
+
+    /// The most frames one request may ask for.
+    pub fn maximum_request_frames(&self) -> u32 {
+        self.maximum_request
+    }
+
+    /// Forgets all retained audio, the anchor and any latched error, and clears the statistics.
+    /// [`UnitRangeError::Busy`] while another call is in progress.
+    pub fn reset(&self) -> Result<(), UnitRangeError> {
+        let Some(mut guard) = RenderGuard::acquire(self) else {
+            return Err(UnitRangeError::Busy);
+        };
+        let state = guard.state();
+        state.stats = UnitRangeStats::default();
+        state.write_position = 0;
+        state.content_offset = 0;
+        state.sample_rate = 0.0;
+        Ok(())
+    }
+
+    /// Bounded snapshot; [`UnitRangeError::Busy`] while another call is in progress.
+    pub fn stats(&self) -> Result<UnitRangeStats, UnitRangeError> {
+        let Some(mut guard) = RenderGuard::acquire(self) else {
+            return Err(UnitRangeError::Busy);
+        };
+        Ok(guard.state().stats)
+    }
+
+    /// Clears the caller's output: at most `maximum_request` samples per channel, which keeps
+    /// rejection work bounded. Uses only immutable configuration, so it is fine while busy.
+    fn silence(&self, frames: u32, output: &mut [&mut [f32]]) {
+        let bounded = frames.min(self.maximum_request) as usize;
+        for channel in output.iter_mut().take(self.channels as usize) {
+            let count = bounded.min(channel.len());
+            channel[..count].fill(0.0);
+        }
+    }
+
+    /// Renders `frames` frames at `graph_frame` into `output`: one buffer per channel, each at
+    /// least `frames` long (further buffers are ignored, further samples left alone).
+    ///
+    /// The first success anchors any clock-valid graph frame. Further requests may repeat
+    /// retained ranges, or overlap the retained prefix and append a contiguous suffix. Gaps,
+    /// expired history, bad spans, a changed content offset or sample rate, and arithmetic
+    /// overflow fail without changing good cached PCM. A request that lies entirely in the
+    /// retained range needs no `source` and calls none, also after the caller replaced its
+    /// clock; any other request without a source is [`UnitRangeError::Invalid`].
+    /// Revision/epoch changes at span boundaries are forwarded to the child, including within
+    /// one request; they do not invalidate old PCM. Changing the sample rate or the upstream
+    /// content-frame offset requires a quiescent reset. Spans must stay within their context's
+    /// `next_boundary_frame` and carry finite beat/bar/tempo values, a positive tempo and
+    /// numerator, and denominator 2/4/8/16.
+    ///
+    /// Failures clear the output; an oversized call clears only `maximum_request_frames`
+    /// samples per channel, keeping rejection work bounded. A concurrent or reentrant render is
+    /// rejected immediately. No render-time allocation, locks or waiting.
+    pub fn render(
+        &self,
+        graph_frame: i64,
+        frames: u32,
+        output: &mut [&mut [f32]],
+        source: Option<&mut dyn UnitRangeSource>,
+    ) -> Result<(), UnitRangeError> {
+        let Some(mut guard) = RenderGuard::acquire(self) else {
+            self.silence(frames, output);
+            return Err(UnitRangeError::Busy);
+        };
+        let state = guard.state();
+        // Every rejection records the error and clears the caller's output.
+        macro_rules! fail {
+            ($error:expr) => {{
+                let error: UnitRangeError = $error;
+                state.stats.last_error = error.code();
+                self.silence(frames, output);
+                Err(error)
+            }};
+        }
+        state.stats.requests = state.stats.requests.wrapping_add(1);
+        let channels = self.channels as usize;
+        let needed = frames.min(self.maximum_request) as usize;
+        let valid_output = output.len() >= channels && output.iter().take(channels).all(|channel| channel.len() >= needed);
+        if frames == 0 || !valid_output {
+            return fail!(UnitRangeError::Invalid);
+        }
+        if frames > self.maximum_request {
+            return fail!(UnitRangeError::Oversize);
+        }
+        if graph_frame > i64::MAX - i64::from(frames) {
+            return fail!(UnitRangeError::Overflow);
+        }
+        if let Some(latched) = UnitRangeError::from_code(state.stats.latched_error) {
+            return fail!(latched);
+        }
+        let end = graph_frame + i64::from(frames);
+        let mut suffix_start = graph_frame;
+        if state.stats.anchored != 0 {
+            if graph_frame < state.stats.retained_start_frame {
+                return fail!(UnitRangeError::Expired);
+            }
+            if graph_frame > state.stats.rendered_end_frame {
+                return fail!(UnitRangeError::Gap);
+            }
+            if end <= state.stats.rendered_end_frame {
+                copy_cached(self, state, graph_frame, frames, output);
+                state.stats.cache_hits = state.stats.cache_hits.wrapping_add(1);
+                state.stats.successful_requests = state.stats.successful_requests.wrapping_add(1);
+                state.stats.last_error = 0;
+                return Ok(());
+            }
+            suffix_start = state.stats.rendered_end_frame;
+        }
+        let Some(source) = source else {
+            return fail!(UnitRangeError::Invalid);
+        };
+        // graph_frame <= suffix_start < end, so this is 1..=frames.
+        let suffix_frames = (end - suffix_start) as u32;
+
+        // The native provider must first retain the new audio/clock/event range. This
+        // is deliberately separate from per-child event dispatch in process below.
+        if let Err(status) = source.prepare(suffix_start, suffix_frames) {
+            return fail!(UnitRangeError::Source(status));
+        }
+        state.stats.prepared_frames = state.stats.prepared_frames.wrapping_add(u64::from(suffix_frames));
+
+        let mut span_count: usize = 0;
+        let mut planned: u32 = 0;
+        let mut sample_rate = state.sample_rate;
+        let mut content_offset = state.content_offset;
+        let mut have_format = state.stats.anchored != 0;
+        while planned < suffix_frames {
+            // The plan holds exactly maximum_spans entries.
+            if span_count >= state.plan.len() {
+                return fail!(UnitRangeError::SpanLimit);
+            }
+            let cursor = suffix_start + i64::from(planned);
+            let requested = (suffix_frames - planned).min(self.maximum_child);
+            let part = match source.span(cursor, requested) {
+                Ok(part) => part,
+                Err(ClockQueryError::OutsideDomain) => return fail!(UnitRangeError::DomainEnd),
+                Err(ClockQueryError::Invalid) => return fail!(UnitRangeError::ClockError),
             };
-            return fail!(error);
+            if part.frames == 0 {
+                return fail!(UnitRangeError::DomainEnd);
+            }
+            if part.frames > requested {
+                return fail!(UnitRangeError::ContextMismatch);
+            }
+            let context = &part.context;
+            // cursor + part.frames <= end, which was checked against overflow above.
+            if context.graph_frame != cursor
+                || !context.sample_rate.is_finite()
+                || context.sample_rate <= 0.0
+                || context.content_graph_frame > context.graph_frame
+                || context.next_boundary_frame < cursor + i64::from(part.frames)
+                || !context.bpm.is_finite()
+                || context.bpm <= 0.0
+                || !context.beat.is_finite()
+                || !context.bar_start_beat.is_finite()
+                || !context.bar_end_beat.is_finite()
+                || context.numerator <= 0
+                || !matches!(context.denominator, 2 | 4 | 8 | 16)
+            {
+                return fail!(UnitRangeError::ContextMismatch);
+            }
+            let offset = (context.graph_frame as u64).wrapping_sub(context.content_graph_frame as u64);
+            if offset > 1 << 30 {
+                return fail!(UnitRangeError::ContextMismatch);
+            }
+            if !have_format {
+                sample_rate = context.sample_rate;
+                content_offset = offset as i64;
+                have_format = true;
+            } else if context.sample_rate != sample_rate || offset as i64 != content_offset {
+                return fail!(UnitRangeError::ContextMismatch);
+            }
+            state.plan[span_count] = part;
+            planned += part.frames;
+            span_count += 1;
         }
-        if part.frames == 0 {
-            return fail!(ST_UNIT_RANGE_DOMAIN_END);
-        }
-        if part.frames > requested {
-            return fail!(ST_UNIT_RANGE_CONTEXT_MISMATCH);
-        }
-        let context = &part.context;
-        // cursor + part.frames <= end, which was checked against overflow above.
-        if context.graph_frame != cursor
-            || !context.sample_rate.is_finite()
-            || context.sample_rate <= 0.0
-            || context.content_graph_frame > context.graph_frame
-            || context.next_boundary_frame < cursor + i64::from(part.frames)
-            || !context.bpm.is_finite()
-            || context.bpm <= 0.0
-            || !context.beat.is_finite()
-            || !context.bar_start_beat.is_finite()
-            || !context.bar_end_beat.is_finite()
-            || context.numerator <= 0
-            || !matches!(context.denominator, 2 | 4 | 8 | 16)
-        {
-            return fail!(ST_UNIT_RANGE_CONTEXT_MISMATCH);
-        }
-        let offset = (context.graph_frame as u64).wrapping_sub(context.content_graph_frame as u64);
-        if offset > 1 << 30 {
-            return fail!(ST_UNIT_RANGE_CONTEXT_MISMATCH);
-        }
-        if !have_format {
-            sample_rate = context.sample_rate;
-            content_offset = offset as i64;
-            have_format = true;
-        } else if context.sample_rate != sample_rate || offset as i64 != content_offset {
-            return fail!(ST_UNIT_RANGE_CONTEXT_MISMATCH);
-        }
-        planned += part.frames;
-        span_count += 1;
-    }
 
-    // Cache publication is transactional. A child may already have advanced when
-    // it reports failure, so its error is latched; scratch PCM is never committed.
-    let maximum_request = cache.maximum_request as usize;
-    for channel in state
-        .scratch
-        .chunks_exact_mut(maximum_request)
-        .take(cache.channels as usize)
-    {
-        // suffix_frames <= frames <= maximum_request.
-        channel[..suffix_frames as usize].fill(0.0);
-    }
-    let scratch = state.scratch.as_mut_ptr();
-    let mut processed: u32 = 0;
-    for part in state.plan.iter().take(span_count) {
-        // SAFETY: the plan's spans add up to suffix_frames <= maximum_request, so `processed` and
-        // `processed + part.frames` stay within one channel's block of `maximum_request` samples;
-        // with two channels the scratch storage holds two such blocks.
-        let buffers: [*mut f32; 2] = unsafe {
-            [
-                scratch.add(processed as usize),
-                if cache.channels == 2 {
-                    scratch.add(maximum_request + processed as usize)
-                } else {
-                    std::ptr::null_mut()
-                },
-            ]
-        };
-        state.stats.process_calls = state.stats.process_calls.wrapping_add(1);
-        // SAFETY: the caller's callback. It receives a read-only view of this span's context and
-        // buffers with room for `part.frames` samples per channel. The scratch storage is not
-        // accessed through `state` again until the callback has returned.
-        let result = unsafe {
-            process(
-                user,
-                &part.context,
-                part.context.graph_frame,
-                part.frames,
-                buffers.as_ptr(),
-            )
-        };
-        if result != 0 {
-            state.stats.latched_error = result;
-            return fail!(result);
+        // Cache publication is transactional. A child may already have advanced when
+        // it reports failure, so its error is latched; scratch PCM is never committed.
+        let maximum_request = self.maximum_request as usize;
+        for channel in state.scratch.chunks_exact_mut(maximum_request).take(channels) {
+            // suffix_frames <= frames <= maximum_request.
+            channel[..suffix_frames as usize].fill(0.0);
         }
-        state.stats.processed_frames = state
-            .stats
-            .processed_frames
-            .wrapping_add(u64::from(part.frames));
-        processed += part.frames;
+        let mut processed: usize = 0;
+        for index in 0..span_count {
+            let part = state.plan[index];
+            let count = part.frames as usize;
+            state.stats.process_calls = state.stats.process_calls.wrapping_add(1);
+            // The plan's spans add up to suffix_frames <= maximum_request, so
+            // `processed..processed + count` stays within each channel's block.
+            let mut blocks = state.scratch.chunks_exact_mut(maximum_request);
+            let mut buffers: [&mut [f32]; 2] = [&mut [], &mut []];
+            for buffer in buffers.iter_mut().take(channels) {
+                if let Some(block) = blocks.next() {
+                    *buffer = &mut block[processed..processed + count];
+                }
+            }
+            if let Err(status) = source.process(&part.context, part.context.graph_frame, part.frames, &mut buffers[..channels]) {
+                state.stats.latched_error = status.get();
+                return fail!(UnitRangeError::Source(status));
+            }
+            state.stats.processed_frames = state.stats.processed_frames.wrapping_add(u64::from(part.frames));
+            processed += count;
+        }
+        // suffix_frames >= 1, so at least one span was planned.
+        let last = state.plan.get(span_count.saturating_sub(1)).map_or_else(ClockContext::default, |part| part.context);
+        commit(self, state, end, suffix_frames, &last, sample_rate, content_offset);
+        // After the commit the request lies within the retained range.
+        copy_cached(self, state, graph_frame, frames, output);
+        state.stats.successful_requests = state.stats.successful_requests.wrapping_add(1);
+        state.stats.last_error = 0;
+        Ok(())
     }
-    // suffix_frames >= 1, so at least one span was planned.
-    let last = state
-        .plan
-        .get(span_count.saturating_sub(1))
-        .map_or_else(STClockContext::default, |part| part.context);
-    commit(
-        cache,
-        state,
-        end,
-        suffix_frames,
-        &last,
-        sample_rate,
-        content_offset,
-    );
-    // SAFETY: `output` was validated above, `frames <= maximum_request`, and after the commit the
-    // request lies within the retained range.
-    unsafe { copy_cached(cache, state, graph_frame, frames, output) };
-    state.stats.successful_requests = state.stats.successful_requests.wrapping_add(1);
-    state.stats.last_error = ST_UNIT_RANGE_OK;
-    ST_UNIT_RANGE_OK
 }

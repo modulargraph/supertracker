@@ -357,7 +357,7 @@ pub struct AudioClip {
     pub mapped_end: i64,
 }
 
-/// Pattern-mode clip (Track Freeze print of one pattern); see `st_engine_add_pattern_clip`.
+/// Pattern-mode clip (Track Freeze print of one pattern); see `add_pattern_clip`.
 #[derive(Clone, Copy)]
 pub struct PatternClip {
     pub head_asset: i32,
@@ -367,7 +367,7 @@ pub struct PatternClip {
     pub gain: f32,
 }
 
-/// Song-loop tail (Track Freeze print beyond its musical end); see `st_engine_add_song_tail_clip`.
+/// Song-loop tail (Track Freeze print beyond its musical end); see `add_song_tail_clip`.
 #[derive(Clone, Copy)]
 pub struct SongTailClip {
     pub asset: i32,
@@ -376,7 +376,7 @@ pub struct SongTailClip {
     pub gain: f32,
 }
 
-/// Per-track voice settings (`st_engine_set_track_voice`).
+/// Per-track voice settings (`set_track_voice`).
 #[derive(Clone, Copy)]
 pub struct TrackVoice {
     pub choke: i32,
@@ -452,11 +452,17 @@ pub struct Project {
     /// Identifies the published pattern content: 0 in a draft whose patterns were edited; commit
     /// then assigns a process-unique value. Unedited commits keep it.
     pub pattern_epoch: u64,
-    /// Host destination numbering of host lanes and host locks (`st_engine_set_host_automation_map`).
+    /// Host destination numbering of host lanes and host locks (`set_host_automation_map`).
     pub host_map: u64,
 }
 
 pub const AUDIO_ASSETS: usize = 256;
+
+impl Default for Project {
+    fn default() -> Self {
+        Project::new()
+    }
+}
 
 impl Project {
     pub fn new() -> Project {
@@ -519,11 +525,11 @@ impl Project {
     }
     #[inline(always)]
     pub fn return_bus(&self) -> i32 {
-        st_return_bus(self.track_count)
+        return_bus(self.track_count)
     }
     #[inline(always)]
     pub fn channels(&self) -> i32 {
-        st_channel_count(self.track_count)
+        channel_count(self.track_count)
     }
     #[inline]
     pub fn track_computational(&self, track: i32) -> bool {

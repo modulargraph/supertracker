@@ -1,5 +1,6 @@
-//! Port of `tests/drum_synth_tests.cpp`: the drum voices (`effects::drums`) and the `st_drum_*`
-//! C API. Same checks, tolerances and check count (5514) as the C++ program.
+//! Port of the former C++ test program `drum_synth_tests.cpp`: the drum voices, their metadata and the offline
+//! one-hit render (`effects::drums`). Same checks, tolerances and check count (5514) as the
+//! C++ program.
 // The index loops mirror the C++ loops they translate.
 #![allow(clippy::needless_range_loop)]
 
@@ -7,7 +8,6 @@ mod effects_support;
 
 use effects_support::{allocations, counted, reset_allocations};
 use std::ffi::CStr;
-use tracker_engine::effects::capi::*;
 use tracker_engine::effects::drums::{self, Voice};
 
 struct Checks {
@@ -88,14 +88,10 @@ fn frequency(v: &[f32], sr: f64) -> f64 {
     }
 }
 
+/// One offline drum hit: `None` controls are the model defaults, `None` output is a buffer
+/// that cannot hold a frame.
 fn drum_render(model: i32, controls: Option<&[f32]>, sr: f64, out: Option<&mut [f32]>) -> u32 {
-    let (pointer, count) = controls.map_or((std::ptr::null(), 0), |c| (c.as_ptr(), c.len() as u32));
-    let (out_pointer, capacity) = match out {
-        Some(buffer) => (buffer.as_mut_ptr(), buffer.len() as u32),
-        None => (std::ptr::null_mut(), 48000),
-    };
-    // SAFETY: the pointers come from live slices of the stated lengths (or are null).
-    unsafe { st_drum_render(model, pointer, count, sr, out_pointer, capacity) }
+    drums::render(model, controls.unwrap_or(&[]), sr, out.unwrap_or(&mut [])) as u32
 }
 
 #[test]
@@ -105,35 +101,32 @@ fn drum_synthesis() {
         failures: Vec::new(),
     };
     c.check(
-        st_drum_model_count() == 6,
+        drums::MODEL_COUNT == 6,
         "six drum model metadata entries",
     );
     for model in 1..=6i32 {
-        let info = st_drum_model_info((model - 1) as u32);
-        // SAFETY: a non-null info pointer refers to a static catalogue entry.
-        let info = unsafe { info.as_ref() };
+        let info = drums::model_info((model - 1) as u32);
         c.check(
-            info.is_some_and(|info| unsafe { st_drum_model_for_id(info.id().as_ptr()) } == model),
+            info.is_some_and(|info| drums::model_for_id(info.id()) == model),
             "drum model ID stable",
         );
         let info = info.expect("drum model info");
         let model_name = info.id().to_string_lossy().into_owned();
         let p = defaults(model);
         for i in 0..8u32 {
-            // SAFETY: as above.
-            let meta = unsafe { st_drum_parameter_info(model, i).as_ref() };
+            let meta = drums::parameter_info(model, i);
             c.check(
                 meta.is_some_and(|m| m.default_value >= m.minimum && m.default_value <= m.maximum),
                 "drum parameter range",
             );
             c.check(
-                (st_drum_parameter_default(model, i) - p[i as usize] as f64).abs() < 1e-7,
+                (meta.map_or(0.0, |m| m.default_normalized()) - p[i as usize] as f64).abs() < 1e-7,
                 "native default equals C++ default",
             );
             for n in 0..=100 {
-                let physical = st_drum_parameter_from_normalized(model, i, n as f64 / 100.0);
+                let physical = meta.map_or(0.0, |m| m.physical_or_default(n as f64 / 100.0));
                 c.check(
-                    (st_drum_parameter_to_normalized(model, i, physical) - n as f64 / 100.0).abs()
+                    (meta.map_or(0.0, |m| m.normalized(physical)) - n as f64 / 100.0).abs()
                         < 1e-9,
                     "drum mapping roundtrip",
                 );
@@ -247,12 +240,11 @@ fn drum_synthesis() {
         }
     }
     let unknown: &CStr = c"unknown";
-    // SAFETY: `unknown` is a valid C string.
-    let unknown_model = unsafe { st_drum_model_for_id(unknown.as_ptr()) };
+    let unknown_model = drums::model_for_id(unknown);
     c.check(
-        st_drum_model_info(6).is_null()
-            && st_drum_parameter_info(0, 0).is_null()
-            && st_drum_parameter_info(1, 8).is_null()
+        drums::model_info(6).is_none()
+            && drums::parameter_info(0, 0).is_none()
+            && drums::parameter_info(1, 8).is_none()
             && unknown_model == 0,
         "drum metadata invalid inputs rejected",
     );
@@ -301,6 +293,6 @@ fn drum_synthesis() {
     assert!(c.failures.is_empty(), "failed checks: {:?}", c.failures);
     assert_eq!(
         c.checks, 5514,
-        "same number of checks as tests/drum_synth_tests.cpp"
+        "same number of checks as the C++ program drum_synth_tests.cpp"
     );
 }

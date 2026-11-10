@@ -12,7 +12,6 @@ thread_local! {
 
 /// Counts heap allocations made on the current thread while counting is switched on: the
 /// equivalent of the C++ tests' replaced `operator new`.
-#[cfg(not(feature = "cxx-alloc"))]
 mod allocator {
     use super::{ALLOCATIONS, COUNTING};
     use std::alloc::{GlobalAlloc, Layout, System};

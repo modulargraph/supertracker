@@ -195,7 +195,8 @@ fn the_snapshot_and_the_mixer_report_follow_the_project() {
     let inserts = routing["inserts"].as_array().unwrap();
     assert_eq!((inserts[0]["instanceID"].clone(), inserts[0]["available"].clone()), (json!("comp"), json!(true)));
     assert_eq!((inserts[1]["instanceID"].clone(), inserts[1]["available"].clone()), (json!("vendor"), json!(false)));
-    assert!(inserts[1]["reason"].as_str().unwrap().contains("not hosted yet"));
+    // A descriptor that names no hostable plug-in passes through, with the reason.
+    assert!(inserts[1]["reason"].as_str().unwrap().contains("names a plug-in format this version does not host"), "{}", inserts[1]["reason"]);
 
     let snapshot = host.request("engine.snapshot", json!({})).unwrap();
     assert_eq!(snapshot["name"], "Midnight transmission");
@@ -218,9 +219,13 @@ fn a_sample_that_cannot_be_loaded_is_reported_once() {
     project["instruments"][0]["samplePath"] = json!("/no/such/file.wav");
     project["instruments"][0]["mode"] = json!("oneshot");
     host.request("engine.project", json!({ "project": project.clone() })).unwrap();
+    host.request("engine.project", json!({ "project": project.clone() })).unwrap();
+    // The file is looked for on a worker thread: its failure arrives a moment later.
+    let first = host.wait_for_event("sample.error", Duration::from_secs(10)).expect("the missing file is reported");
     host.request("engine.project", json!({ "project": project })).unwrap();
     std::thread::sleep(Duration::from_millis(100));
-    let errors: Vec<Value> = host.events().into_iter().filter(|(name, _)| name == "sample.error").map(|(_, payload)| payload).collect();
+    let mut errors: Vec<Value> = vec![first];
+    errors.extend(host.events().into_iter().filter(|(name, _)| name == "sample.error").map(|(_, payload)| payload));
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert_eq!((errors[0]["instrument"].clone(), errors[0]["path"].clone()), (json!(0), json!("/no/such/file.wav")));
     assert!(errors[0]["error"].is_string());

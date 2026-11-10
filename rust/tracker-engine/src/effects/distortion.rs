@@ -1,6 +1,6 @@
 //! Distortion processors: Distortion (feedback fuzz / analog), Lofi and Saturator.
 //!
-//! Replaces `Sources/TrackerEngine/EffectsDistortion.hpp` (namespace `stfx::distortion_detail`).
+//! Ported from the C++ `EffectsDistortion.hpp` (namespace `stfx::distortion_detail`).
 //!
 //! Independently written algorithms. The parameter vocabulary follows familiar
 //! studio effects; these processors do not model or reproduce proprietary DSP.

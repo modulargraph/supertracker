@@ -186,7 +186,9 @@ mod desktop {
         // The host and the commands only a window can serve.
         let dialogs: Arc<dyn Dialogs> = crate::scripted_dialogs(options).unwrap_or_else(|| Arc::new(NativeDialogs { poster: poster.clone() }));
         let mut bridge = Bridge::builder();
-        let host = install(&mut bridge, HostOptions::new(support, dialogs)).map_err(|error| error.to_string())?;
+        // On the main thread: the MIDI service is created here (CoreMIDI wants that).
+        let host = Arc::new(install(&mut bridge, HostOptions::new(support, dialogs)).map_err(|error| error.to_string())?);
+        crate::watch_signals(&host);
         {
             let poster = poster.clone();
             bridge.commands().register_deferred("ui.contextMenu", move |payload: ContextMenuPayload, reply: Reply<ContextMenuResult>| {
@@ -295,6 +297,8 @@ mod desktop {
             web_view_builder.build_gtk(container)
         };
         let web_view = web_view.map_err(|error| format!("The interface could not be shown: {error}."))?;
+        // The interface is attached: AI control may listen.
+        host.services.start_agent();
 
         let mut in_flight: Option<Instant> = None;
         let mut quit_deadline: Option<Instant> = None;
@@ -377,6 +381,7 @@ mod desktop {
                     // The loop ended without the handshake (the system is shutting down): keep what the host has.
                     if !finished {
                         let _ = host.session.save_recovery();
+                        host.services.shutdown();
                         bridge.shutdown(Duration::from_millis(500));
                     }
                     return;
@@ -418,6 +423,7 @@ mod desktop {
                 if let Err(error) = host.session.save_recovery() {
                     eprintln!("supertracker: the recovery copy could not be written: {error}");
                 }
+                host.services.shutdown();
                 bridge.shutdown(Duration::from_secs(2));
                 *control_flow = ControlFlow::Exit;
                 return;

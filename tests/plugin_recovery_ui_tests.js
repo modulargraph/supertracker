@@ -155,4 +155,30 @@ test('failed inspection reports unavailable, not an empty all-clear', async () =
   assert(h.document.html.includes('Cannot read recovery journal')); assert(!h.document.getElementById('plugin-recovery-retry'));
 });
 
+test('a plug-in lost while the project is open brings the review up, unless another dialog is open', () => {
+  // app-events.js with the few parts of the app it takes, and a recorder in place of the dialog.
+  const boot = (modal = null) => {
+    const shown = [], toasts = [], state = { modal, project: {}, audio: {} };
+    const noop = () => {};
+    const STApp = { $: () => null, state, toast: (message, kind) => toasts.push({ message, kind }), receiveSampleMetadata: noop, acceptProject: noop, refresh: noop, receiveNoteRecordingStatus: noop,
+      updateTransport: noop, receiveCountInStatus: noop, updatePlayhead: noop, pianoHighlight: noop, projectAction: noop, perform: noop, latencyNote: () => '', receiveAcknowledgedMIDI: noop,
+      endRecordTake: noop, liveRecordGroups: noop, recordIncomingMIDI: noop };
+    const window = { STApp, STNativeEvents: { consume: () => false }, STPluginRecovery: { show: value => shown.push(value) } };
+    const context = vm.createContext({ window, document: { querySelector: () => null }, setTimeout, clearTimeout });
+    vm.runInContext(web.source('app-events.js'), context, { filename: 'app-events.js' });
+    return { event: (type, payload) => window.nativeEvent({ type, payload }), shown, toasts };
+  };
+  const lost = { suspects: [suspect('A')], warnings: [], pendingInstances: 1 };
+  const page = boot();
+  page.event('plugin.error', { error: 'Synth A stopped working: its plug-in process crashed (signal 11).', lost: true });
+  page.event('plugins.recovery', lost);
+  assert.deepEqual(page.toasts, [{ message: 'Synth A stopped working: its plug-in process crashed (signal 11).', kind: 'error' }]);
+  assert.deepEqual(copy(page.shown), [lost], 'the report the host sent is the one reviewed');
+  // Nothing to review, or a dialog already open: the event shows nothing (the command still does).
+  page.event('plugins.recovery', { suspects: [suspect('B', { requiresReview: false })], warnings: [] });
+  assert.equal(page.shown.length, 1);
+  const busy = boot('export'); busy.event('plugins.recovery', lost);
+  assert.equal(busy.shown.length, 0);
+});
+
 (async () => { for (const item of tests) { await item.fn(); console.log(`PASS ${item.name}`); } console.log(`Plug-in recovery UI: ${tests.length} regression groups passed.`); })().catch(error => { console.error(error); process.exitCode = 1; });

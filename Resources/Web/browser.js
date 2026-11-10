@@ -826,9 +826,9 @@
         && (!query || `${plugin.name} ${plugin.manufacturer}`.toLocaleLowerCase().includes(query)));
     return (local.pluginFormat === 'all' ? preferredFormats(matches) : matches).sort((a, b) => a.name.localeCompare(b.name));
   }
-  // One entry per plug-in when showing all formats: Audio Unit, else VST3, else VST2.
+  // One entry per plug-in when showing all formats: Audio Unit, else VST3, else CLAP.
   // The format buttons still list every installed version.
-  const formatRank = { AU: 0, VST3: 1, VST2: 2 };
+  const formatRank = { AU: 0, VST3: 1, CLAP: 2 };
   const pluginKey = plugin => `${String(plugin.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '')}|${String(plugin.manufacturer || '').toLowerCase().replace(/[^a-z0-9 ]+/g, '').trim().split(/\s+/)[0]
       || ''}|${plugin.type}`;
   function preferredFormats(list) {
@@ -851,11 +851,11 @@
     return `<div class="browser-plugins-layout">
       <aside class="browser-sidebar panel"><div class="panel-head"><h2>Plug-ins</h2></div><p class="browser-small muted">${local.pluginScan?.scanning
           ?`Scanning plug-ins · ${local.pluginScan.completed||0} of ${local.pluginScan.total||'…'}`
-          :'AU, VST3 and VST2 instruments and effects installed on this Mac.'}</p>`
+          :'Audio Unit, VST3 and CLAP instruments and effects installed on this computer.'}</p>`
           + `<div class="browser-filter-group">${[['instrument', 'Instruments', '◈'], ['effect', 'Audio effects', '≋']].map(([kind, name, symbol]) => `<button class="browser-filter ${local.pluginKind === kind ? 'active' : ''}" id="browser-plugin-kind-${kind}" tabindex="${local.pluginKind===kind?0:-1}"`
           + ` aria-pressed="${local.pluginKind===kind}" data-browser-plugin-kind="${kind}"><span>${name}</span><span>${symbol}</span>`
           + `</button>`).join('')}</div>`
-          + `<div class="browser-plugin-formats" aria-label="Plug-in format">${[['all','All'],['AU','AU'],['VST3','VST3'],['VST2','VST2']].map(([value,label])=>`<button type="button" id="browser-plugin-format-${value}" tabindex="${local.pluginFormat===value?0:-1}" data-browser-plugin-format="${value}"`
+          + `<div class="browser-plugin-formats" aria-label="Plug-in format">${[['all','All'],['AU','AU'],['VST3','VST3'],['CLAP','CLAP']].map(([value,label])=>`<button type="button" id="browser-plugin-format-${value}" tabindex="${local.pluginFormat===value?0:-1}" data-browser-plugin-format="${value}"`
           + ` aria-pressed="${local.pluginFormat===value}">${label}</button>`).join('')}</div>`
           + `<button class="btn browser-scan-btn" id="browser-plugin-rescan">Refresh plug-ins</button><div class="browser-plugin-tip">`
           + `<span class="eyebrow">NKS presets</span><p class="browser-small muted">Browse NKS instruments and effects by product, bank, type and character `
@@ -864,7 +864,7 @@
       <section class="browser-results panel"><div class="browser-search-wrap"><span>⌕</span><input id="browser-plugin-search" class="browser-search"`
           + ` type="search" value="${html(local.pluginQuery)}" placeholder="Find an instrument or manufacturer…" aria-label="Search plug-ins"`
           + ` autocomplete="off"><kbd>⌘ F</kbd></div><div class="browser-result-summary"><span>${plugins.length} ${local.pluginKind === 'instrument' ? 'instruments' : 'effects'}</span>`
-          + `<span>${local.pluginFormat==='all'?'AU + VST3 + VST2':local.pluginFormat} · native host</span></div><div class="browser-plugin-list"`
+          + `<span>${local.pluginFormat==='all'?'AU + VST3 + CLAP':local.pluginFormat} · native host</span></div><div class="browser-plugin-list"`
           + ` id="browser-plugin-list" role="listbox" aria-label="Plug-ins" tabindex="0" ${plugin ? `aria-activedescendant="browser-plugin-${local.pluginSelected}"` : ''}>${plugins.length ? plugins.map((value, index) => `<div id="browser-plugin-${index}" class="browser-plugin-row ${index === local.pluginSelected ? 'selected' : ''}" data-browser-plugin="${index}"`
           + ` role="option" aria-selected="${index === local.pluginSelected}"><span class="browser-plugin-symbol">${local.pluginKind === 'instrument' ? '◈' : '≋'}</span>`
           + `<div><strong>${html(value.name)}</strong><small>${html(value.manufacturer)}</small></div><span class="browser-format-badge">${html(pluginFormat(value))}</span>`

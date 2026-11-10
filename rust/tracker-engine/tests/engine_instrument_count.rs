@@ -1,10 +1,10 @@
-//! Port of `tests/engine_instrument_count_tests.cpp`: instruments are sized per project, like
+//! Port of the former C++ test program `engine_instrument_count_tests.cpp`: instruments are sized per project, like
 //! tracks: more than 64 instruments, bounded indices.
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
 
-use engine_support_b::engine::{st_instrument_capacity, Engine};
+use engine_support_b::engine::Engine;
 use engine_support_b::tone::*;
 use tracker_engine::engine::*;
 
@@ -18,8 +18,8 @@ fn energy(e: &mut Engine, frames: usize) -> f64 {
 #[test]
 fn native_instrument_table_holds_exactly_the_projects_instruments() {
     assert!(
-        st_instrument_capacity(64) == 64
-            && st_instrument_capacity(ST_INSTRUMENT_SANITY_LIMIT) == ST_INSTRUMENT_SANITY_LIMIT
+        instrument_capacity(64) == 64
+            && instrument_capacity(ST_INSTRUMENT_SANITY_LIMIT) == ST_INSTRUMENT_SANITY_LIMIT
     );
 }
 

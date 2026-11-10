@@ -136,7 +136,7 @@ fn a_project_sample_is_decoded_in_the_background_and_announced() {
     // A session opened from disk: the page publishes a project whose samples the host has not seen.
     let mut opened = project(&path);
     opened["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "sample", "samplePath": "/no/such/file.wav", "mode": "oneshot" }));
-    opened["clips"] = json!([{ "id": "c1", "track": 0, "startBeat": 0, "durationBeats": 2, "path": path }]);
+    opened["audioClips"] = json!([{ "id": "c1", "track": 0, "startBeat": 0, "durationBeats": 2, "path": path }]);
     host.request("engine.project", json!({ "project": opened.clone() })).unwrap();
     let loaded = wait_for(host, "sample.loaded", |name, _| name == "sample.loaded");
     assert_eq!((loaded["instrument"].clone(), loaded["sample"]["path"].clone(), loaded["sample"]["frames"].clone()), (json!(0), json!(path), json!(48_000)));
@@ -152,7 +152,7 @@ fn a_project_sample_is_decoded_in_the_background_and_announced() {
     let errors: Vec<&Value> = events.iter().filter(|(name, _)| name == "sample.error").map(|(_, payload)| payload).collect();
     assert_eq!(errors.len(), 1, "the missing file is reported once: {errors:?}");
     assert_eq!((errors[0]["instrument"].clone(), errors[0]["path"].clone()), (json!(1), json!("/no/such/file.wav")));
-    assert!(events.iter().any(|(name, payload)| name == "audio.clipLoaded" && payload["path"] == json!(path)), "the clip's file is announced");
+    assert!(events.iter().any(|(name, payload)| name == "audio.clipLoaded" && payload["path"] == json!(path)), "the clip's file is announced: {:?}", events.iter().filter(|(name, _)| name != "status").map(|(name, payload)| format!("{name} {}", payload.to_string().chars().take(80).collect::<String>())).collect::<Vec<_>>());
     host.request("transport.play", json!({ "mode": "pattern", "fromStart": true })).unwrap();
     wait_for(host, "the sample is heard", |name, payload| name == "status" && payload["peakL"].as_f64().unwrap_or(0.0) > 0.05);
 }
@@ -232,4 +232,38 @@ fn playheads_follow_the_voices_of_the_watched_instrument() {
     host.request("note.on", json!({ "note": 60, "velocity": 100, "track": 0, "instrument": 0 })).unwrap();
     std::thread::sleep(Duration::from_millis(150));
     assert!(all_events(host)[before..].iter().all(|(name, _)| name != "sampler.playheads"), "no playheads once the editor is hidden");
+}
+
+#[test]
+fn previews_start_stop_and_are_prefetched() {
+    let fixture = start(TempDir::new("samples-preview"));
+    let host = &fixture.host;
+    let (first, second) = (fixture.folder.path().join("first.wav"), fixture.folder.path().join("second.wav"));
+    write_wav(&first);
+    std::fs::write(&second, st_audio::samples::wav_bytes(&[0.4; 4_800], None, 48_000)).unwrap();
+    let (first, second) = (first.to_string_lossy().into_owned(), second.to_string_lossy().into_owned());
+
+    assert_eq!(host.request("sample.prefetchPreviews", json!({ "items": [first, { "path": second }, { "kit": "/kits/a.stkit" }, 7] })).unwrap(), json!({ "queued": 2 }));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while host.request("sample.previewStatus", json!({})).unwrap()["cachedPreviews"] != 2 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let started = host.request("sample.preview", json!({ "path": first })).unwrap();
+    assert_eq!((started["playing"].clone(), started["cached"].clone()), (json!(true), json!(true)));
+    assert!((started["duration"].as_f64().unwrap() - 1.0).abs() < 1e-6 && started["startMs"].as_f64().unwrap() >= 0.0);
+    // The null device renders in real time: the voice is taken within a block or two.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while host.request("sample.previewStatus", json!({})).unwrap()["voices"] != 1 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(host.request("sample.previewStatus", json!({})).unwrap()["voices"], 1);
+    // The short one replaces it and plays to its end (a tenth of a second).
+    assert_eq!(host.request("sample.preview", json!({ "path": second, "volume": 0.2 })).unwrap()["playing"], true);
+    let ended = wait_for(host, "the preview ends", |name, _| name == "sample.previewEnded");
+    assert_eq!(ended, json!({ "path": second }));
+    assert_eq!(host.request("sample.stopPreview", json!({})).unwrap(), json!({ "playing": false }));
+    assert!(host.request("sample.preview", json!({})).unwrap_err().contains("Choose a sample"));
+    assert!(host.request("sample.preview", json!({ "path": "/no/such/preview.wav" })).is_err());
+    let status = host.request("sample.previewStatus", json!({})).unwrap();
+    assert_eq!((status["voices"].clone(), status["leakedVoices"].clone()), (json!(0), json!(0)));
 }

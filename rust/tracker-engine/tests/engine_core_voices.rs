@@ -1,4 +1,4 @@
-//! Port of `tests/engine_tests.cpp`, part 1 of 5: tone and release, chords/ratchets/microtiming,
+//! Port of the former C++ test program `engine_tests.cpp`, part 1 of 5: tone and release, chords/ratchets/microtiming,
 //! song swing and seek, probability, automation, sample modes, send buses, sample replacement
 //! under a concurrent render, zones and slices, mono/legato/choke/mute, effects-only cells, the
 //! long maximum-voice render, pitch bend/metronome/locks and the sampler/MIDI regressions.

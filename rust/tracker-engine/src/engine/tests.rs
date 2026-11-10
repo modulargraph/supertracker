@@ -1,125 +1,129 @@
-//! Unit tests of the engine through its C API (the acceptance tests are the C++ programs in
-//! `tests/`, linked against this library; these cover the same ground in miniature so that
-//! `cargo test` alone catches gross breakage).
+//! Unit tests of the engine through its handles (the acceptance tests are the integration tests
+//! in `tests/`; these cover the same ground in miniature and run first).
 
-use super::capi::*;
+use super::host::{ControlHalf, Engine, RenderHalf};
+use super::render_cache::SpanError;
 use super::*;
-use std::ptr::{null, null_mut};
 
 const RATE: f64 = 48000.0;
 
-/// An engine handle that is destroyed when the test ends.
-struct Engine(*mut STEngine);
-
-impl Engine {
-    fn new() -> Engine {
-        let engine = st_engine_create(RATE);
-        assert!(!engine.is_null());
-        Engine(engine)
-    }
-}
-
-impl Drop for Engine {
-    fn drop(&mut self) {
-        unsafe { st_engine_destroy(self.0) }
-    }
+fn engine() -> Engine {
+    Engine::new(RATE).expect("an engine at 48 kHz")
 }
 
 /// One track, one 16-row pattern at 120 BPM / 4 lines per beat: a row lasts 6000 frames.
-unsafe fn begin_project(e: *mut STEngine, instrument: STInstrument) {
-    unsafe {
-        st_engine_begin_update(e);
-        st_engine_clear_project(e);
-        assert_eq!(st_engine_set_track_count(e, 1), 1);
-        st_engine_set_timing(e, 120.0, 4, 0.0, 1.0);
-        st_engine_set_pattern(e, 0, 16);
-        let sequence = [0];
-        st_engine_set_sequence(e, sequence.as_ptr(), 1, 0, 0);
-        st_engine_set_instrument(e, 0, instrument);
-        st_engine_set_track(e, 0, st_default_track());
-    }
+fn begin_project(control: &mut ControlHalf, instrument: STInstrument) {
+    let (edit, shared, _) = control.parts();
+    edit.begin_update(shared);
+    edit.clear_project();
+    assert!(edit.set_track_count(1));
+    edit.set_timing(120.0, 4, 0.0, 1.0);
+    edit.set_pattern(0, 16);
+    edit.set_sequence(&[0], false, 0);
+    edit.set_instrument(0, instrument);
+    edit.set_track(0, default_track());
 }
 
-unsafe fn commit(e: *mut STEngine) {
-    let mut error = [0 as std::ffi::c_char; 256];
-    assert_eq!(unsafe { st_engine_commit_update_checked(e, error.as_mut_ptr(), 256) }, 1);
+fn commit(control: &mut ControlHalf) {
+    control.commit().expect("the project is accepted");
 }
 
-unsafe fn load_sine(e: *mut STEngine, instrument: i32) {
+fn load_sine(control: &mut ControlHalf, instrument: i32) {
     let wave: Vec<f32> = (0..4800).map(|n| (n as f32 * 0.05).sin() * 0.5).collect();
-    assert_eq!(unsafe { st_engine_set_sample(e, instrument, wave.as_ptr(), null(), wave.len() as u64, RATE) }, 1);
+    let (edit, shared, rate) = control.parts();
+    assert!(edit.set_sample(shared, rate, instrument, Some(edits::Pcm { left: &wave, right: None, rate: RATE })));
 }
 
-unsafe fn set_note(e: *mut STEngine, row: i32, note: i32) {
-    let mut step = st_default_step();
+fn set_note(control: &mut ControlHalf, row: i32, note: i32) {
+    let mut step = default_step();
     step.note = note;
     step.instrument = 0;
-    unsafe { st_engine_set_step(e, 0, 0, row, step, null(), 0) };
+    control.parts().0.set_step(0, 0, row, step, None);
 }
 
-unsafe fn render(e: *mut STEngine, frames: usize, block: usize) -> (Vec<f32>, Vec<f32>) {
+fn play(control: &mut ControlHalf) {
+    let (edit, shared, _) = control.parts();
+    edit.play(shared, 0);
+}
+
+fn render(render: &mut RenderHalf, frames: usize, block: usize) -> (Vec<f32>, Vec<f32>) {
     let (mut l, mut r) = (vec![0.0f32; frames], vec![0.0f32; frames]);
-    let mut done = 0;
-    while done < frames {
-        let count = block.min(frames - done);
-        unsafe { st_engine_render(e, l[done..].as_mut_ptr(), r[done..].as_mut_ptr(), count as u32) };
-        done += count;
+    for (left, right) in l.chunks_mut(block).zip(r.chunks_mut(block)) {
+        render.render(left, right);
     }
     (l, r)
 }
 
-unsafe fn events(e: *mut STEngine) -> Vec<STEvent> {
-    let mut list = Vec::new();
-    let mut event = STEvent::default();
-    while unsafe { st_engine_pop_event(e, &mut event) } != 0 {
-        list.push(event);
-    }
-    list
+fn events(render: &mut RenderHalf) -> Vec<STEvent> {
+    std::iter::from_fn(|| render.pop_event()).collect()
 }
 
 #[test]
 fn defaults_match_the_header() {
-    let track = st_default_track();
+    let track = default_track();
     assert_eq!((track.volume, track.pan, track.instrument), (0.8, 0.0, 0));
-    let instrument = st_default_instrument();
+    let instrument = default_instrument();
     assert_eq!(instrument.type_, ST_INSTRUMENT_SAMPLE);
     assert_eq!((instrument.root_note, instrument.slice_count, instrument.bit_depth), (60, 16, 16));
     assert_eq!((instrument.volume, instrument.end, instrument.loop_end, instrument.cutoff), (0.7, 1.0, 1.0, 18000.0));
     assert_eq!((instrument.grain_density, instrument.lfo_beats, instrument.lfo2_beats), (2, 1.0, 1.0));
-    let step = st_default_step();
+    let step = default_step();
     assert_eq!((step.note, step.instrument, step.velocity, step.gate), (60, -1, 100, 0.8));
-    assert_eq!(st_return_bus(8), 16);
-    assert_eq!(st_return_bus(40), 40);
-    assert_eq!(st_output_bus_count(8), 17);
+    assert_eq!(return_bus(8), 16);
+    assert_eq!(return_bus(40), 40);
+    assert_eq!(output_bus_count(8), 17);
+    assert_eq!((channel_count(8), channel_output_bus(8, 3), instrument_capacity(64)), (16, 3, 64));
 }
 
 #[test]
-fn rejects_invalid_engines_and_null_handles() {
-    assert!(st_engine_create(100.0).is_null());
-    assert!(st_engine_create(f64::NAN).is_null());
-    unsafe {
-        st_engine_destroy(null_mut());
-        st_engine_play(null_mut(), 1);
-        assert_eq!(st_engine_set_track_count(null_mut(), 4), 0);
-        assert_eq!(st_engine_status(null_mut()), STStatus::default());
-        let mut buffer = [1.0f32; 8];
-        st_engine_render(null_mut(), buffer.as_mut_ptr(), null_mut(), 8);
-        assert_eq!(buffer, [0.0; 8]);
-    }
+fn rejects_invalid_engines_and_foreign_shared_state() {
+    assert!(Engine::new(100.0).is_none());
+    assert!(Engine::new(f64::NAN).is_none());
+    assert!(host::split(400_000.0).is_none());
+    // The halves of one engine do nothing with the shared state of another.
+    let (mut one, mut other) = (engine(), engine());
+    let (control, render_half, status) = one.halves();
+    let (other_control, other_render, other_status) = other.halves();
+    let (_, foreign, _) = other_control.parts();
+    let (edit, _, rate) = control.parts();
+    assert!(edit.set_track_count(4));
+    assert_eq!(edit.commit(foreign, rate), Err(control::FOREIGN_ENGINE.to_string()));
+    edit.play(foreign, 1);
+    assert!(!edit.input_note(foreign, 1, ST_INPUT_NOTE_ON, 0, 0, 60, 100, 1));
+    assert!(!edit.set_instrument_parameter(foreign, 0, ST_TARGET_CUTOFF, 0.5));
+    assert!(edit.set_frozen_song_policy(foreign, 1, 7).is_err());
+    assert_eq!(other_status.status().transport_pending, 0, "the other engine received no command");
+    assert_eq!(status.status().transport_pending, 0);
+    let (render_state, _) = render_half.parts();
+    let mut buffer = [1.0f32; 8];
+    let mut second = [1.0f32; 8];
+    render_state.render(foreign, Some(&mut buffer), Some(&mut second), 8);
+    assert_eq!((buffer, second), ([0.0; 8], [0.0; 8]));
+    buffer = [1.0; 8];
+    render_state.render_bus(foreign, 0, 0, &mut buffer, &mut second);
+    assert_eq!(buffer, [0.0; 8]);
+    assert_eq!(render_state.render_block(foreign, 0, 64), 0);
+    assert_eq!(render_state.clock_span(foreign, 0, 1, 0), Err(SpanError::Invalid));
+    assert_eq!(render_state.forget_external_voices(foreign, 0), 0);
+    // Both engines still work with their own.
+    control.commit().expect("the first engine commits its own draft");
+    other_render.advance(16);
+    render_half.advance(16);
+    assert_eq!((status.status().track_count, other_status.status().track_count), (4, 8));
 }
 
 #[test]
 fn sampler_output_is_audible_and_independent_of_block_size() {
-    let render_with = |block: usize| unsafe {
-        let engine = Engine::new();
-        let e = engine.0;
-        begin_project(e, st_default_instrument());
-        load_sine(e, 0);
-        set_note(e, 0, 60);
-        set_note(e, 2, 67);
-        commit(e);
-        st_engine_play(e, 0);
-        render(e, 20000, block)
+    let render_with = |block: usize| {
+        let mut engine = engine();
+        let (control, audio, _) = engine.halves();
+        begin_project(control, default_instrument());
+        load_sine(control, 0);
+        set_note(control, 0, 60);
+        set_note(control, 2, 67);
+        commit(control);
+        play(control);
+        render(audio, 20000, block)
     };
     let (l, r) = render_with(20000);
     assert!(l.iter().any(|&x| x.abs() > 0.01) && r.iter().any(|&x| x.abs() > 0.01));
@@ -133,161 +137,201 @@ fn sampler_output_is_audible_and_independent_of_block_size() {
 
 #[test]
 fn external_notes_are_frame_exact() {
-    unsafe {
-        let engine = Engine::new();
-        let e = engine.0;
-        let mut instrument = st_default_instrument();
-        instrument.type_ = ST_INSTRUMENT_AU;
-        begin_project(e, instrument);
-        set_note(e, 0, 60);
-        set_note(e, 2, 64);
-        commit(e);
-        st_engine_play(e, 0);
-        let mut onsets = Vec::new();
-        let mut offs = Vec::new();
-        for block in 0..4 {
-            render(e, 5000, 5000);
-            for event in events(e) {
-                let frame = block * 5000 + event.frame_offset;
-                match event.type_ {
-                    ST_EVENT_NOTE_ON => onsets.push((frame, event.note, event.slot)),
-                    ST_EVENT_NOTE_OFF => offs.push((frame, event.note)),
-                    _ => {}
-                }
+    let mut engine = engine();
+    let (control, audio, status) = engine.halves();
+    let mut instrument = default_instrument();
+    instrument.type_ = ST_INSTRUMENT_AU;
+    begin_project(control, instrument);
+    set_note(control, 0, 60);
+    set_note(control, 2, 64);
+    commit(control);
+    play(control);
+    let mut onsets = Vec::new();
+    let mut offs = Vec::new();
+    for block in 0..4 {
+        render(audio, 5000, 5000);
+        for event in events(audio) {
+            let frame = block * 5000 + event.frame_offset;
+            match event.type_ {
+                ST_EVENT_NOTE_ON => onsets.push((frame, event.note, event.slot)),
+                ST_EVENT_NOTE_OFF => offs.push((frame, event.note)),
+                _ => {}
             }
         }
-        // Rows last 6000 frames; the default gate is 0.8 rows.
-        assert_eq!(onsets, vec![(0, 60, 1), (12000, 64, 1)]);
-        assert_eq!(offs, vec![(4800, 60), (16800, 64)]);
-        let status = st_engine_status(e);
-        assert_eq!((status.playing, status.row, status.track_count), (1, 3, 1));
     }
+    // Rows last 6000 frames; the default gate is 0.8 rows.
+    assert_eq!(onsets, vec![(0, 60, 1), (12000, 64, 1)]);
+    assert_eq!(offs, vec![(4800, 60), (16800, 64)]);
+    let status = status.status();
+    assert_eq!((status.playing, status.row, status.track_count), (1, 3, 1));
 }
 
 #[test]
 fn queued_transport_is_reported_until_rendered() {
-    unsafe {
-        let engine = Engine::new();
-        let e = engine.0;
-        st_engine_play(e, 0);
-        let status = st_engine_status(e);
-        assert_eq!((status.playing, status.transport_pending, status.requested_playing), (0, 1, 1));
-        render(e, 16, 16);
-        let status = st_engine_status(e);
-        assert_eq!((status.playing, status.transport_pending), (1, 0));
-        st_engine_stop(e);
-        assert_eq!(st_engine_status(e).transport_pending, 1);
-        render(e, 16, 16);
-        assert_eq!(st_engine_status(e).playing, 0);
-    }
+    let mut engine = engine();
+    let (control, audio, status) = engine.halves();
+    play(control);
+    let queued = status.status();
+    assert_eq!((queued.playing, queued.transport_pending, queued.requested_playing), (0, 1, 1));
+    assert!(queued.transport_playing(), "a queued Play already counts as playing");
+    render(audio, 16, 16);
+    let playing = status.status();
+    assert_eq!((playing.playing, playing.transport_pending), (1, 0));
+    assert!(playing.transport_playing());
+    let (edit, shared, _) = control.parts();
+    edit.stop(shared);
+    assert_eq!(status.status().transport_pending, 1);
+    assert!(!status.status().transport_playing());
+    render(audio, 16, 16);
+    assert_eq!(status.status().playing, 0);
+    let (edit, shared, _) = control.parts();
+    edit.play_count_in(shared, false, 1);
+    assert_eq!(status.status().count_in_shown(), 0, "nothing to show while the count-in is only queued");
+    render(audio, 16, 16);
+    let counting = status.status();
+    assert!(counting.count_in > 0 && counting.count_in_shown() == counting.count_in);
 }
 
 #[test]
 fn bus_history_is_not_rendered_twice() {
-    unsafe {
-        let engine = Engine::new();
-        let e = engine.0;
-        begin_project(e, st_default_instrument());
-        load_sine(e, 0);
-        set_note(e, 0, 60);
-        commit(e);
-        st_engine_play(e, 0);
-        let (mut first, mut again, mut tail) = (vec![0.0f32; 512], vec![9.0f32; 512], vec![0.0f32; 300]);
-        st_engine_render_bus(e, 0, 1000, first.as_mut_ptr(), null_mut(), 512);
-        assert!(first.iter().any(|&x| x != 0.0));
-        // The same range again, and an overlapping pull of another size: copies, not new audio.
-        st_engine_render_bus(e, 0, 1000, again.as_mut_ptr(), null_mut(), 512);
-        assert_eq!(first, again);
-        st_engine_render_channel(e, 0, 1300, tail.as_mut_ptr(), null_mut(), 300);
-        assert_eq!(&first[300..], &tail[..212]);
-        // The return bus of an 1-track project is bus 16; buses beyond it are silent.
-        let mut beyond = vec![5.0f32; 64];
-        st_engine_render_bus(e, 17, 1000, beyond.as_mut_ptr(), null_mut(), 64);
-        assert!(beyond.iter().all(|&x| x == 0.0));
-        let mut span = STClockSpan::default();
-        assert_eq!(st_engine_clock_span(e, 1000, 100, 0, &mut span), ST_CLOCK_OK);
-        assert_eq!((span.frames, span.context.graph_frame, span.context.bpm), (100, 1000, 120.0));
-        assert_eq!(st_engine_clock_span(e, 5000, 100, 0, &mut span), ST_ENGINE_CLOCK_NOT_PREPARED);
-        let mut freeze = STFreezeSpan::default();
-        assert_eq!(st_engine_freeze_span(e, 1000, 100, 0, &mut freeze), ST_FREEZE_NOT_CONFIGURED);
-    }
+    let mut engine = engine();
+    let (control, audio, status) = engine.halves();
+    begin_project(control, default_instrument());
+    load_sine(control, 0);
+    set_note(control, 0, 60);
+    commit(control);
+    play(control);
+    let (mut first, mut again, mut tail) = (vec![0.0f32; 512], vec![9.0f32; 512], vec![0.0f32; 300]);
+    let mut right = vec![0.0f32; 512];
+    audio.render_bus(0, 1000, &mut first, &mut right);
+    assert!(first.iter().any(|&x| x != 0.0));
+    // The same range again, and an overlapping pull of another size: copies, not new audio.
+    audio.render_bus(0, 1000, &mut again, &mut right);
+    assert_eq!(first, again);
+    audio.render_channel(0, 1300, &mut tail, &mut right[..300]);
+    assert_eq!(&first[300..], &tail[..212]);
+    // The return bus of an 1-track project is bus 16; buses beyond it are silent.
+    let mut beyond = vec![5.0f32; 64];
+    audio.render_bus(17, 1000, &mut beyond, &mut right[..64]);
+    assert!(beyond.iter().all(|&x| x == 0.0));
+    let span = audio.clock_span(1000, 100, 0).expect("rendered time has a clock");
+    assert_eq!((span.frames, span.context.graph_frame, span.context.bpm), (100, 1000, 120.0));
+    assert_eq!(audio.clock_span(5000, 100, 0), Err(SpanError::NotPrepared));
+    assert_eq!(audio.freeze_span(1000, 100, 0), Err(SpanError::NotConfigured));
+    assert_eq!(SpanError::NotPrepared.status(), ST_ENGINE_CLOCK_NOT_PREPARED);
+    // The argument rules: silence and no rendering for what the history cannot hold.
+    let mut refused = vec![5.0f32; 64];
+    audio.render_bus(-1, 1000, &mut refused, &mut right[..64]);
+    assert!(refused.iter().all(|&x| x == 0.0), "a negative bus is silent");
+    refused.fill(5.0);
+    audio.render_bus(0, u64::MAX - 10, &mut refused, &mut right[..64]);
+    assert!(refused.iter().all(|&x| x == 0.0), "a range past the last timestamp is silent");
+    let mut oversized = vec![5.0f32; tables::CACHE_CAPACITY + 1];
+    let mut oversized_right = vec![5.0f32; tables::CACHE_CAPACITY + 1];
+    audio.render_bus(0, 1000, &mut oversized, &mut oversized_right);
+    assert!(oversized.iter().chain(&oversized_right).all(|&x| x == 0.0), "more than the history holds is silent");
+    audio.render_bus(0, 1600, &mut [], &mut []);
+    assert_eq!(audio.clock_span(1600, 1, 0), Err(SpanError::NotPrepared), "zero frames render nothing");
+    audio.prepare_history(1600, 100);
+    assert_eq!(audio.clock_span(1600, 100, 0).map(|span| span.frames), Ok(100));
+    // A new timestamp epoch forgets the history.
+    status.reset_render_cache();
+    assert_eq!(audio.clock_span(1000, 100, 0), Err(SpanError::NotPrepared));
 }
 
 #[test]
 fn checked_commit_reports_problems_and_keeps_the_published_project() {
-    unsafe {
-        let engine = Engine::new();
-        let e = engine.0;
-        begin_project(e, st_default_instrument());
-        commit(e);
-        let duration = st_engine_duration(e, 1);
-        assert_eq!(duration, 2.0); // 16 rows at 8 rows per second
-        let mut error = [0 as std::ffi::c_char; 256];
-        let tempos = [STClockTempoEvent { beat: 0.0, bpm: 5.0 }];
-        let meters = [STClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
-        assert_eq!(st_engine_set_timing_map(e, tempos.as_ptr(), 1, meters.as_ptr(), 1, 1, error.as_mut_ptr(), 256), 0);
-        assert_ne!(error[0], 0);
-        assert_eq!(st_engine_set_frozen_song_policy(e, 1, 0, error.as_mut_ptr(), 256), 0);
-        assert_eq!(st_engine_set_frozen_song_policy(e, 1, 7, error.as_mut_ptr(), 256), 1);
-        // An extent shorter than the song is rejected at commit; the draft stays editable.
-        assert_eq!(st_engine_set_frozen_song_extent(e, 7, 1000, error.as_mut_ptr(), 256), 1);
-        assert_eq!(st_engine_commit_update_checked(e, error.as_mut_ptr(), 256), 0);
-        assert_ne!(error[0], 0);
-        assert_eq!(st_engine_duration(e, 1), duration);
-        st_engine_cancel_update(e);
-        let epoch = st_engine_pattern_epoch(e);
-        st_engine_begin_update(e);
-        st_engine_set_timing(e, 90.0, 4, 0.0, 1.0);
-        commit(e);
-        assert_eq!(st_engine_pattern_epoch(e), epoch, "a commit without pattern edits keeps the epoch");
-        st_engine_begin_update(e);
-        set_note(e, 1, 62);
-        commit(e);
-        assert_ne!(st_engine_pattern_epoch(e), epoch);
-    }
+    let mut engine = engine();
+    let control = engine.control();
+    begin_project(control, default_instrument());
+    commit(control);
+    let (edit, shared, rate) = control.parts();
+    let duration = edit.duration(rate, true);
+    assert_eq!(duration, 2.0); // 16 rows at 8 rows per second
+    let tempos = [ClockTempoEvent { beat: 0.0, bpm: 5.0 }];
+    let meters = [ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
+    assert!(edit.set_timing_map(rate, &tempos, &meters, 1).is_err_and(|problem| !problem.is_empty()));
+    assert!(edit.set_timing_map(rate, &[], &meters, 1).is_err(), "an empty event list is rejected");
+    assert!(edit.set_frozen_song_policy(shared, 1, 0).is_err());
+    assert!(edit.set_frozen_song_policy(shared, 1, 7).is_ok());
+    // An extent shorter than the song is rejected at commit; the draft stays editable.
+    assert!(edit.set_frozen_song_extent(7, 1000).is_ok());
+    assert!(edit.commit(shared, rate).is_err_and(|problem| !problem.is_empty()));
+    assert_eq!(edit.duration(rate, true), duration);
+    edit.cancel_update();
+    let epoch = edit.pattern_epoch();
+    edit.begin_update(shared);
+    edit.set_timing(90.0, 4, 0.0, 1.0);
+    commit(control);
+    assert_eq!(control.parts().0.pattern_epoch(), epoch, "a commit without pattern edits keeps the epoch");
+    let (edit, shared, _) = control.parts();
+    edit.begin_update(shared);
+    set_note(control, 1, 62);
+    commit(control);
+    assert_ne!(control.parts().0.pattern_epoch(), epoch);
+}
+
+/// Sample and asset PCM is validated before anything is stored; an asset slot opens the draft
+/// first, as it always did.
+#[test]
+fn pcm_is_validated_before_it_is_stored() {
+    let mut engine = engine();
+    let control = engine.control();
+    begin_project(control, default_instrument());
+    commit(control);
+    let (edit, shared, rate) = control.parts();
+    let pcm = |left: &'static [f32], rate: f64| Some(edits::Pcm { left, right: None, rate });
+    assert!(!edit.set_sample(shared, rate, 0, pcm(&[], RATE)), "no frames");
+    assert!(!edit.set_sample(shared, rate, 0, pcm(&[0.5], 10.0)), "an unusable rate");
+    assert!(!edit.set_sample(shared, rate, 0, Some(edits::Pcm { left: &[0.5, 0.5], right: Some(&[0.5]), rate: RATE })));
+    assert!(!edit.set_sample(shared, rate, 5000, pcm(&[0.5], RATE)), "no such instrument");
+    assert!(edit.draft.is_none(), "a rejected sample leaves no draft behind");
+    assert!(!edit.set_audio_asset(shared, rate, 256, pcm(&[0.5], RATE)), "no such asset slot");
+    assert!(edit.draft.is_none());
+    assert!(!edit.set_audio_asset(shared, rate, 0, pcm(&[], RATE)));
+    assert!(edit.draft.is_some(), "a valid slot opens the draft before the PCM is looked at");
+    edit.cancel_update();
+    assert!(edit.set_audio_asset(shared, rate, 0, pcm(&[0.5], RATE)));
+    assert!(edit.set_sample(shared, rate, 0, pcm(&[0.5], RATE)));
+    assert!(edit.set_sample(shared, rate, 0, None), "clearing a sample");
 }
 
 /// The control thread republishes the project and replaces PCM while the render thread plays:
 /// retired projects and samples are reclaimed by `collect` without disturbing the renderer.
 #[test]
 fn concurrent_publication_and_rendering() {
-    struct Handle(*mut STEngine);
-    // SAFETY: the engine's threading contract is exactly this split: one control thread, one
-    // render thread.
-    unsafe impl Send for Handle {}
-    unsafe {
-        let engine = Engine::new();
-        let e = engine.0;
-        begin_project(e, st_default_instrument());
-        load_sine(e, 0);
-        for row in 0..16 {
-            set_note(e, row, 48 + row);
-        }
-        commit(e);
-        st_engine_play(e, 0);
-        let handle = Handle(e);
-        let renderer = std::thread::spawn(move || {
-            let handle = handle;
-            let mut peak = 0.0f32;
-            for _ in 0..400 {
-                let (l, _) = render(handle.0, 256, 256);
-                assert!(l.iter().all(|x| x.is_finite()));
-                peak = l.iter().fold(peak, |m, x| m.max(x.abs()));
-                while st_engine_pop_event(handle.0, &mut STEvent::default()) != 0 {}
-            }
-            peak
-        });
-        for round in 0..200 {
-            st_engine_begin_update(e);
-            st_engine_set_timing(e, 100.0 + round as f64, 4, 0.0, 1.0);
-            set_note(e, round % 16, 50 + round % 20);
-            commit(e);
-            if round % 10 == 0 {
-                load_sine(e, 0);
-            }
-            st_engine_note_on(e, 0, 0, 72, 100);
-            st_engine_collect(e);
-        }
-        assert!(renderer.join().unwrap() > 0.0);
+    let mut engine = engine();
+    let control = engine.control();
+    begin_project(control, default_instrument());
+    load_sine(control, 0);
+    for row in 0..16 {
+        set_note(control, row, 48 + row);
     }
+    commit(control);
+    play(control);
+    let (mut control, mut audio, _) = engine.split();
+    let renderer = std::thread::spawn(move || {
+        let mut peak = 0.0f32;
+        for _ in 0..400 {
+            let (l, _) = render(&mut audio, 256, 256);
+            assert!(l.iter().all(|x| x.is_finite()));
+            peak = l.iter().fold(peak, |m, x| m.max(x.abs()));
+            while audio.pop_event().is_some() {}
+        }
+        peak
+    });
+    for round in 0..200 {
+        let (edit, shared, _) = control.parts();
+        edit.begin_update(shared);
+        edit.set_timing(100.0 + round as f64, 4, 0.0, 1.0);
+        set_note(&mut control, round % 16, 50 + round % 20);
+        commit(&mut control);
+        if round % 10 == 0 {
+            load_sine(&mut control, 0);
+        }
+        let (edit, shared, _) = control.parts();
+        edit.note_on(shared, 0, 0, 72, 100);
+        edit.collect(shared);
+    }
+    assert!(renderer.join().unwrap() > 0.0);
 }

@@ -1,4 +1,4 @@
-//! Port of `tests/engine_many_tracks_tests.cpp`: tracks are sized from the project: 200-track
+//! Port of the former C++ test program `engine_many_tracks_tests.cpp`: tracks are sized from the project: 200-track
 //! mixing/solo/mute, return bus renumbering when the track count grows past the legacy base,
 //! copy-on-write commits, silent-bus history, and zero render allocations. The C++ `--bench`
 //! mode (render CPU and commit latency) is the ignored test `bench`.
@@ -7,7 +7,7 @@
 mod engine_support_b;
 
 use engine_support_b::alloc::{realtime, render_allocations, reset_render_allocations};
-use engine_support_b::engine::{st_channel_output_bus, Engine};
+use engine_support_b::engine::Engine;
 use engine_support_b::tone::*;
 use std::time::Instant;
 use tracker_engine::engine::*;
@@ -107,8 +107,8 @@ fn mixing_solo_mute() {
             }
         }
         // The return bus follows the tracks; buses beyond it render silence, not garbage.
-        assert!(bus(&mut e, st_return_bus(count), 0, 512).energy(0, 0) == 0.0);
-        assert!(bus(&mut e, st_output_bus_count(count) + 3, 0, 512).energy(0, 0) == 0.0);
+        assert!(bus(&mut e, return_bus(count), 0, 512).energy(0, 0) == 0.0);
+        assert!(bus(&mut e, output_bus_count(count) + 3, 0, 512).energy(0, 0) == 0.0);
     }
     {
         let mut e = Engine::new();
@@ -174,15 +174,15 @@ fn return_bus_follows_track_count() {
     e.set_timing(120.0, 4, 0.0, 1.0);
     commit(&mut e);
     assert!(
-        st_return_bus(3) == 16
-            && st_channel_count(3) == 16
-            && st_output_bus_count(3) == 17
-            && st_channel_output_bus(3, 2) == 2
+        return_bus(3) == 16
+            && channel_count(3) == 16
+            && output_bus_count(3) == 17
+            && channel_output_bus(3, 2) == 2
     );
     e.begin_update();
     assert!(e.set_track_count(40));
     commit(&mut e);
-    assert!(st_return_bus(40) == 40 && st_channel_count(40) == 40 && st_output_bus_count(40) == 41);
+    assert!(return_bus(40) == 40 && channel_count(40) == 40 && output_bus_count(40) == 41);
     assert!(!e.set_track_count(0) && !e.set_track_count(ST_TRACK_SANITY_LIMIT + 1));
     println!("The return bus follows the track count (never below 16).");
     assert!(render_allocations() == 0);

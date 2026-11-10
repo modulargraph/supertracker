@@ -1,17 +1,27 @@
-//! The C types and constants of `Sources/TrackerEngine/include/TrackerEngine.h`, with identical
-//! layout. The clock structures the engine API exchanges (`STClockSpan`, `STClockTempoEvent`,
-//! ...) are those of `crate::clock`, re-exported here.
+//! The plain data and constants of the engine API: tracks, instruments, steps, events, status,
+//! transport checkpoints, and the bus arithmetic.
 //!
-//! Field order and types follow the header exactly; fields are spelled in snake_case (the C name
-//! is the same word in camelCase, e.g. `delay_send` for `delaySend`). The assertions at the end
-//! of this file pin `size_of`/`offset_of!` of every structure to the values a C++ program prints
-//! for the header.
+//! The names keep the `ST` prefix they have always had: the other crates of the workspace import
+//! this module wholesale. The clock structures the engine exchanges (`ClockSpan`,
+//! `ClockTempoEvent`, ...) are those of `crate::clock`, re-exported here.
 
 pub use crate::clock::{
-    STClockContext, STClockMeterEvent, STClockOrigin, STClockSpan, STClockTempoEvent, ST_CLOCK_BOUNDARY_BAR,
-    ST_CLOCK_BOUNDARY_DOMAIN, ST_CLOCK_BOUNDARY_LOOP, ST_CLOCK_BOUNDARY_ORIGIN, ST_CLOCK_DOMAIN_END,
-    ST_CLOCK_GRID_PROJECTION, ST_CLOCK_INVALID, ST_CLOCK_LOOPING, ST_CLOCK_MAX_SPAN, ST_CLOCK_OK,
-    ST_CLOCK_OUTSIDE_DOMAIN, ST_CLOCK_PLAYING, ST_CLOCK_PREROLL, ST_CLOCK_RECORDING,
+    ClockContext, ClockMeterEvent, ClockOrigin, ClockSpan, ClockTempoEvent, CLOCK_BOUNDARY_BAR,
+    CLOCK_BOUNDARY_DOMAIN, CLOCK_BOUNDARY_LOOP, CLOCK_BOUNDARY_ORIGIN, CLOCK_DOMAIN_END,
+    CLOCK_GRID_PROJECTION, CLOCK_INVALID, CLOCK_LOOPING, CLOCK_MAX_SPAN, CLOCK_OK,
+    CLOCK_OUTSIDE_DOMAIN, CLOCK_PLAYING, CLOCK_PREROLL, CLOCK_RECORDING,
+};
+// The clock's items under the names this module's `ST`-prefixed family had for them: the other
+// crates import this module wholesale.
+pub use crate::clock::{
+    ClockContext as STClockContext, ClockMeterEvent as STClockMeterEvent, ClockOrigin as STClockOrigin,
+    ClockSpan as STClockSpan, ClockTempoEvent as STClockTempoEvent, CLOCK_BOUNDARY_BAR as ST_CLOCK_BOUNDARY_BAR,
+    CLOCK_BOUNDARY_DOMAIN as ST_CLOCK_BOUNDARY_DOMAIN, CLOCK_BOUNDARY_LOOP as ST_CLOCK_BOUNDARY_LOOP,
+    CLOCK_BOUNDARY_ORIGIN as ST_CLOCK_BOUNDARY_ORIGIN, CLOCK_DOMAIN_END as ST_CLOCK_DOMAIN_END,
+    CLOCK_GRID_PROJECTION as ST_CLOCK_GRID_PROJECTION, CLOCK_INVALID as ST_CLOCK_INVALID,
+    CLOCK_LOOPING as ST_CLOCK_LOOPING, CLOCK_MAX_SPAN as ST_CLOCK_MAX_SPAN, CLOCK_OK as ST_CLOCK_OK,
+    CLOCK_OUTSIDE_DOMAIN as ST_CLOCK_OUTSIDE_DOMAIN, CLOCK_PLAYING as ST_CLOCK_PLAYING,
+    CLOCK_PREROLL as ST_CLOCK_PREROLL, CLOCK_RECORDING as ST_CLOCK_RECORDING,
 };
 
 pub const ST_MIN_RETURN_BUS: i32 = 16;
@@ -173,27 +183,44 @@ pub const ST_VOICE_POSITION_PREVIEW: i32 = 2;
 pub const ST_VOICE_POSITION_ZONE: i32 = 4;
 pub const ST_VOICE_POSITION_SEQUENCED: i32 = 8;
 
-/// `st_return_bus`: the stereo return/metronome bus follows the track buses, never below 16.
+/// The bus of the stereo return (send effects, metronome): it follows the track buses and is
+/// never below [`ST_MIN_RETURN_BUS`].
 #[inline]
-pub fn st_return_bus(track_count: i32) -> i32 {
+pub const fn return_bus(track_count: i32) -> i32 {
     if track_count > ST_MIN_RETURN_BUS {
         track_count
     } else {
         ST_MIN_RETURN_BUS
     }
 }
-/// `st_channel_count`
+
+/// Logical channels of a project with `track_count` tracks: every channel below the return bus
+/// can sound (tracks, and the unused channels up to the minimum return bus).
 #[inline]
-pub fn st_channel_count(track_count: i32) -> i32 {
-    st_return_bus(track_count)
-}
-/// `st_output_bus_count`
-#[inline]
-pub fn st_output_bus_count(track_count: i32) -> i32 {
-    st_return_bus(track_count) + 1
+pub const fn channel_count(track_count: i32) -> i32 {
+    return_bus(track_count)
 }
 
-#[repr(C)]
+/// Output buses of a project with `track_count` tracks: the channels and the return bus.
+#[inline]
+pub const fn output_bus_count(track_count: i32) -> i32 {
+    return_bus(track_count) + 1
+}
+
+/// The output bus of a logical channel: a channel's bus has the channel's own number, whatever
+/// the track count.
+#[inline]
+pub const fn channel_output_bus(_track_count: i32, channel: i32) -> i32 {
+    channel
+}
+
+/// Instrument slots the engine keeps for a project of `instrument_count` instruments: exactly
+/// that many (the table has no fixed size; see [`ST_INSTRUMENT_SANITY_LIMIT`]).
+#[inline]
+pub const fn instrument_capacity(instrument_count: i32) -> i32 {
+    instrument_count
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct STTrack {
     pub volume: f32,
@@ -205,7 +232,6 @@ pub struct STTrack {
     pub instrument: i32,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct STInstrument {
     pub type_: i32,
@@ -316,14 +342,12 @@ impl STInstrument {
     };
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct STStepFX {
     pub type_: i32,
     pub value: f32,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct STStep {
     pub note: i32,
@@ -336,7 +360,6 @@ pub struct STStep {
 
 /// hostMap: on `ST_EVENT_HOST_PARAMETER`, the host destination map of the project that emitted
 /// it; 0 on every other event.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct STEvent {
     pub type_: i32,
@@ -352,7 +375,6 @@ pub struct STEvent {
     pub host_map: u64,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct STInputAck {
     pub request_id: u64,
@@ -376,7 +398,6 @@ pub struct STInputAck {
     pub early: i32,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct STFreezeContext {
     pub publication_id: u64,
@@ -393,14 +414,12 @@ pub struct STFreezeContext {
     pub flags: u32,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct STFreezeSpan {
     pub context: STFreezeContext,
     pub frames: u32,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct STStatus {
     pub playing: i32,
@@ -423,7 +442,7 @@ pub struct STStatus {
     pub denominator: i32,
     pub timing_revision: u64,
     pub recording: i32,
-    /// Pending `st_engine_queue_jump` target, -1 none.
+    /// Pending `queue_jump` target, -1 none.
     pub queued_pattern: i32,
     pub queued_sequence: i32,
     /// Count-in clicks still to come (including the current one); 0 when not counting in.
@@ -435,7 +454,6 @@ pub struct STStatus {
 }
 
 /// Ephemeral checkpoint for the same engine/project, not a saved project format.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct STTransportState {
     pub playing: i32,
@@ -461,7 +479,6 @@ pub struct STTransportState {
     pub pattern_clip_valid: i32,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct STVoicePosition {
     pub instrument: i32,
@@ -481,12 +498,31 @@ pub struct STVoicePosition {
     pub grain_positions: [f64; ST_GRANULAR_MAX_GRAINS],
 }
 
-/// `st_default_track`
+impl STStatus {
+    /// Whether the transport plays as far as the control side is concerned: a Play, Stop or
+    /// count-in that the render half has not applied yet (`transport_pending`) already counts,
+    /// so a caller that just asked for Play sees `true` before the next block is rendered.
+    pub const fn transport_playing(&self) -> bool {
+        (if self.transport_pending != 0 { self.requested_playing } else { self.playing }) != 0
+    }
+
+    /// The count-in beat to display: `count_in`, or 0 while a transport request is pending
+    /// (the rendered value then belongs to the transport state being replaced).
+    pub const fn count_in_shown(&self) -> i32 {
+        if self.transport_pending != 0 {
+            0
+        } else {
+            self.count_in
+        }
+    }
+}
+
+/// A track at unity: volume 0.8, centered, no sends, instrument 0.
 pub const fn default_track() -> STTrack {
     STTrack { volume: 0.8, pan: 0.0, delay_send: 0.0, reverb_send: 0.0, mute: 0, solo: 0, instrument: 0 }
 }
 
-/// `st_default_instrument`
+/// A sample instrument with neutral settings (see the fields for each default).
 pub const fn default_instrument() -> STInstrument {
     let mut p = STInstrument::ZERO;
     p.type_ = ST_INSTRUMENT_SAMPLE;
@@ -513,7 +549,7 @@ pub const fn default_instrument() -> STInstrument {
     p
 }
 
-/// `st_default_step`
+/// A step as the tracker enters one: middle C, no instrument, velocity 100, gate 0.8 rows, no effects.
 pub const fn default_step() -> STStep {
     STStep {
         note: 60,
@@ -535,200 +571,3 @@ impl Default for STInstrument {
         STInstrument::ZERO
     }
 }
-
-// Layout of every structure in TrackerEngine.h, as printed by a C++ program (clang++, x86_64) using
-// sizeof/alignof/offsetof on the header; the same values hold on aarch64-apple-darwin.
-const _: () = {
-    use std::mem::{align_of, offset_of, size_of};
-
-    assert!(size_of::<STTrack>() == 28 && align_of::<STTrack>() == 4);
-    assert!(offset_of!(STTrack, volume) == 0);
-    assert!(offset_of!(STTrack, pan) == 4);
-    assert!(offset_of!(STTrack, delay_send) == 8);
-    assert!(offset_of!(STTrack, reverb_send) == 12);
-    assert!(offset_of!(STTrack, mute) == 16);
-    assert!(offset_of!(STTrack, solo) == 20);
-    assert!(offset_of!(STTrack, instrument) == 24);
-
-    assert!(size_of::<STInstrument>() == 196 && align_of::<STInstrument>() == 4);
-    assert!(offset_of!(STInstrument, type_) == 0);
-    assert!(offset_of!(STInstrument, mode) == 4);
-    assert!(offset_of!(STInstrument, root_note) == 8);
-    assert!(offset_of!(STInstrument, filter_type) == 12);
-    assert!(offset_of!(STInstrument, slice_count) == 16);
-    assert!(offset_of!(STInstrument, bit_depth) == 20);
-    assert!(offset_of!(STInstrument, volume) == 24);
-    assert!(offset_of!(STInstrument, pan) == 28);
-    assert!(offset_of!(STInstrument, tune) == 32);
-    assert!(offset_of!(STInstrument, start) == 36);
-    assert!(offset_of!(STInstrument, end) == 40);
-    assert!(offset_of!(STInstrument, loop_start) == 44);
-    assert!(offset_of!(STInstrument, loop_end) == 48);
-    assert!(offset_of!(STInstrument, attack) == 52);
-    assert!(offset_of!(STInstrument, decay) == 56);
-    assert!(offset_of!(STInstrument, sustain) == 60);
-    assert!(offset_of!(STInstrument, release) == 64);
-    assert!(offset_of!(STInstrument, cutoff) == 68);
-    assert!(offset_of!(STInstrument, resonance) == 72);
-    assert!(offset_of!(STInstrument, drive) == 76);
-    assert!(offset_of!(STInstrument, lfo_rate) == 80);
-    assert!(offset_of!(STInstrument, lfo_depth) == 84);
-    assert!(offset_of!(STInstrument, grain_size) == 88);
-    assert!(offset_of!(STInstrument, grain_position) == 92);
-    assert!(offset_of!(STInstrument, voice_mode) == 96);
-    assert!(offset_of!(STInstrument, choke_group) == 100);
-    assert!(offset_of!(STInstrument, filter_attack) == 104);
-    assert!(offset_of!(STInstrument, filter_decay) == 108);
-    assert!(offset_of!(STInstrument, filter_sustain) == 112);
-    assert!(offset_of!(STInstrument, filter_release) == 116);
-    assert!(offset_of!(STInstrument, filter_env_amount) == 120);
-    assert!(offset_of!(STInstrument, lfo_target) == 124);
-    assert!(offset_of!(STInstrument, lfo_shape) == 128);
-    assert!(offset_of!(STInstrument, lfo2_target) == 132);
-    assert!(offset_of!(STInstrument, lfo2_shape) == 136);
-    assert!(offset_of!(STInstrument, lfo2_rate) == 140);
-    assert!(offset_of!(STInstrument, lfo2_depth) == 144);
-    assert!(offset_of!(STInstrument, lfo_sync) == 148);
-    assert!(offset_of!(STInstrument, lfo2_sync) == 152);
-    assert!(offset_of!(STInstrument, lfo_beats) == 156);
-    assert!(offset_of!(STInstrument, lfo2_beats) == 160);
-    assert!(offset_of!(STInstrument, wavetable_position) == 164);
-    assert!(offset_of!(STInstrument, wavetable_frame_size) == 168);
-    assert!(offset_of!(STInstrument, grain_density) == 172);
-    assert!(offset_of!(STInstrument, grain_spray) == 176);
-    assert!(offset_of!(STInstrument, grain_pitch_spread) == 180);
-    assert!(offset_of!(STInstrument, grain_scan) == 184);
-    assert!(offset_of!(STInstrument, grain_reverse) == 188);
-    assert!(offset_of!(STInstrument, grain_stereo) == 192);
-
-    assert!(size_of::<STStepFX>() == 8 && align_of::<STStepFX>() == 4);
-    assert!(offset_of!(STStepFX, type_) == 0);
-    assert!(offset_of!(STStepFX, value) == 4);
-
-    assert!(size_of::<STStep>() == 32 && align_of::<STStep>() == 4);
-    assert!(offset_of!(STStep, note) == 0);
-    assert!(offset_of!(STStep, instrument) == 4);
-    assert!(offset_of!(STStep, velocity) == 8);
-    assert!(offset_of!(STStep, gate) == 12);
-    assert!(offset_of!(STStep, fx1) == 16);
-    assert!(offset_of!(STStep, fx2) == 24);
-
-    assert!(size_of::<STEvent>() == 56 && align_of::<STEvent>() == 8);
-    assert!(offset_of!(STEvent, type_) == 0);
-    assert!(offset_of!(STEvent, track) == 4);
-    assert!(offset_of!(STEvent, instrument) == 8);
-    assert!(offset_of!(STEvent, note) == 12);
-    assert!(offset_of!(STEvent, velocity) == 16);
-    assert!(offset_of!(STEvent, frame_offset) == 20);
-    assert!(offset_of!(STEvent, target) == 24);
-    assert!(offset_of!(STEvent, slot) == 28);
-    assert!(offset_of!(STEvent, address) == 32);
-    assert!(offset_of!(STEvent, value) == 40);
-    assert!(offset_of!(STEvent, host_map) == 48);
-
-    assert!(size_of::<STInputAck>() == 96 && align_of::<STInputAck>() == 8);
-    assert!(offset_of!(STInputAck, request_id) == 0);
-    assert!(offset_of!(STInputAck, run_id) == 8);
-    assert!(offset_of!(STInputAck, timing_revision) == 16);
-    assert!(offset_of!(STInputAck, render_frame) == 24);
-    assert!(offset_of!(STInputAck, graph_frame) == 32);
-    assert!(offset_of!(STInputAck, distance_beats) == 40);
-    assert!(offset_of!(STInputAck, edge) == 48);
-    assert!(offset_of!(STInputAck, track) == 52);
-    assert!(offset_of!(STInputAck, instrument) == 56);
-    assert!(offset_of!(STInputAck, note) == 60);
-    assert!(offset_of!(STInputAck, velocity) == 64);
-    assert!(offset_of!(STInputAck, apply_note) == 68);
-    assert!(offset_of!(STInputAck, status) == 72);
-    assert!(offset_of!(STInputAck, flags) == 76);
-    assert!(offset_of!(STInputAck, pattern) == 80);
-    assert!(offset_of!(STInputAck, row) == 84);
-    assert!(offset_of!(STInputAck, sequence) == 88);
-    assert!(offset_of!(STInputAck, early) == 92);
-
-    assert!(size_of::<STFreezeContext>() == 88 && align_of::<STFreezeContext>() == 8);
-    assert!(offset_of!(STFreezeContext, publication_id) == 0);
-    assert!(offset_of!(STFreezeContext, playback_id) == 8);
-    assert!(offset_of!(STFreezeContext, transition_id) == 16);
-    assert!(offset_of!(STFreezeContext, graph_frame) == 24);
-    assert!(offset_of!(STFreezeContext, content_graph_frame) == 32);
-    assert!(offset_of!(STFreezeContext, project_frame) == 40);
-    assert!(offset_of!(STFreezeContext, transition_content_graph_frame) == 48);
-    assert!(offset_of!(STFreezeContext, transition_project_frame) == 56);
-    assert!(offset_of!(STFreezeContext, sample_rate) == 64);
-    assert!(offset_of!(STFreezeContext, phase) == 72);
-    assert!(offset_of!(STFreezeContext, cause) == 76);
-    assert!(offset_of!(STFreezeContext, flags) == 80);
-
-    assert!(size_of::<STFreezeSpan>() == 96 && align_of::<STFreezeSpan>() == 8);
-    assert!(offset_of!(STFreezeSpan, context) == 0);
-    assert!(offset_of!(STFreezeSpan, frames) == 88);
-
-    assert!(size_of::<STStatus>() == 152 && align_of::<STStatus>() == 8);
-    assert!(offset_of!(STStatus, playing) == 0);
-    assert!(offset_of!(STStatus, pattern) == 4);
-    assert!(offset_of!(STStatus, row) == 8);
-    assert!(offset_of!(STStatus, sequence) == 12);
-    assert!(offset_of!(STStatus, track_count) == 16);
-    assert!(offset_of!(STStatus, peak_l) == 20);
-    assert!(offset_of!(STStatus, peak_r) == 24);
-    assert!(offset_of!(STStatus, position) == 32);
-    assert!(offset_of!(STStatus, seconds) == 40);
-    assert!(offset_of!(STStatus, dropped_commands) == 48);
-    assert!(offset_of!(STStatus, dropped_events) == 56);
-    assert!(offset_of!(STStatus, song_mode) == 64);
-    assert!(offset_of!(STStatus, beat) == 72);
-    assert!(offset_of!(STStatus, bpm) == 80);
-    assert!(offset_of!(STStatus, bar_start_beat) == 88);
-    assert!(offset_of!(STStatus, bar) == 96);
-    assert!(offset_of!(STStatus, numerator) == 104);
-    assert!(offset_of!(STStatus, denominator) == 108);
-    assert!(offset_of!(STStatus, timing_revision) == 112);
-    assert!(offset_of!(STStatus, recording) == 120);
-    assert!(offset_of!(STStatus, queued_pattern) == 124);
-    assert!(offset_of!(STStatus, queued_sequence) == 128);
-    assert!(offset_of!(STStatus, count_in) == 132);
-    assert!(offset_of!(STStatus, transport_pending) == 136);
-    assert!(offset_of!(STStatus, requested_playing) == 140);
-    assert!(offset_of!(STStatus, transport_seek_revision) == 144);
-
-    assert!(size_of::<STTransportState>() == 136 && align_of::<STTransportState>() == 8);
-    assert!(offset_of!(STTransportState, playing) == 0);
-    assert!(offset_of!(STTransportState, song_mode) == 4);
-    assert!(offset_of!(STTransportState, pattern) == 8);
-    assert!(offset_of!(STTransportState, row) == 12);
-    assert!(offset_of!(STTransportState, sequence) == 16);
-    assert!(offset_of!(STTransportState, row_has_started) == 20);
-    assert!(offset_of!(STTransportState, sequence_finished) == 24);
-    assert!(offset_of!(STTransportState, row_remaining) == 32);
-    assert!(offset_of!(STTransportState, row_duration) == 40);
-    assert!(offset_of!(STTransportState, transport_frames) == 48);
-    assert!(offset_of!(STTransportState, timing_version) == 56);
-    assert!(offset_of!(STTransportState, timing_revision) == 64);
-    assert!(offset_of!(STTransportState, beat) == 72);
-    assert!(offset_of!(STTransportState, pattern_origin_beat) == 80);
-    assert!(offset_of!(STTransportState, loop_beat_offset) == 88);
-    assert!(offset_of!(STTransportState, loop_iteration) == 96);
-    assert!(offset_of!(STTransportState, recording) == 104);
-    assert!(offset_of!(STTransportState, pattern_clip_frame) == 112);
-    assert!(offset_of!(STTransportState, pattern_clip_pattern) == 120);
-    assert!(offset_of!(STTransportState, pattern_clip_looped) == 124);
-    assert!(offset_of!(STTransportState, pattern_clip_valid) == 128);
-
-    assert!(size_of::<STVoicePosition>() == 168 && align_of::<STVoicePosition>() == 8);
-    assert!(offset_of!(STVoicePosition, instrument) == 0);
-    assert!(offset_of!(STVoicePosition, track) == 4);
-    assert!(offset_of!(STVoicePosition, note) == 8);
-    assert!(offset_of!(STVoicePosition, mode) == 12);
-    assert!(offset_of!(STVoicePosition, direction) == 16);
-    assert!(offset_of!(STVoicePosition, flags) == 20);
-    assert!(offset_of!(STVoicePosition, grain_count) == 24);
-    assert!(offset_of!(STVoicePosition, reserved) == 28);
-    assert!(offset_of!(STVoicePosition, position) == 32);
-    assert!(offset_of!(STVoicePosition, window_start) == 40);
-    assert!(offset_of!(STVoicePosition, window_end) == 48);
-    assert!(offset_of!(STVoicePosition, sample_frames) == 56);
-    assert!(offset_of!(STVoicePosition, level) == 64);
-    assert!(offset_of!(STVoicePosition, grain_levels) == 68);
-    assert!(offset_of!(STVoicePosition, grain_positions) == 104);
-};

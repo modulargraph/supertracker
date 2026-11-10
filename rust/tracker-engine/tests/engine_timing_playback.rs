@@ -1,4 +1,4 @@
-//! Port of `tests/engine_timing_tests.cpp`, part 1 of 2: mapped playback (rows and gates across
+//! Port of the former C++ test program `engine_timing_tests.cpp`, part 1 of 2: mapped playback (rows and gates across
 //! a tempo change, exact post-tempo onsets, microtiming and ratchets, repeated odd patterns and
 //! the song loop, pattern origin and loop), live map edits, clip placement and source time,
 //! exact PCM equivalence across block sizes and overlapping bus pulls, and draft publication
@@ -19,15 +19,15 @@ mod engine_support_a;
 use engine_support_a::timing_helpers::*;
 use engine_support_a::tone::*;
 use engine_support_a::{assert_zero_render_allocations, Engine};
-use tracker_engine::clock::{STClockMeterEvent, STClockTempoEvent, ST_CLOCK_MAX_EVENTS};
+use tracker_engine::clock::{ClockMeterEvent, ClockTempoEvent, CLOCK_MAX_EVENTS};
 use tracker_engine::engine::*;
 
-fn tempo(beat: f64, bpm: f64) -> STClockTempoEvent {
-    STClockTempoEvent { beat, bpm }
+fn tempo(beat: f64, bpm: f64) -> ClockTempoEvent {
+    ClockTempoEvent { beat, bpm }
 }
 
-fn meter(beat: f64, numerator: i32, denominator: i32) -> STClockMeterEvent {
-    STClockMeterEvent { beat, numerator, denominator }
+fn meter(beat: f64, numerator: i32, denominator: i32) -> ClockMeterEvent {
+    ClockMeterEvent { beat, numerator, denominator }
 }
 
 #[test]
@@ -362,7 +362,7 @@ fn test_draft_publication_and_invalid_atomicity() {
     // C++ `rejects(tempos,tempoCount,meters,meterCount)`: the map is refused with a message.
     // (The C++ check that the message was NUL-terminated inside its 128-byte buffer has no Rust
     // counterpart.)
-    let rejects = |engine: &mut Engine, tempos: &[STClockTempoEvent], meters: &[STClockMeterEvent]| {
+    let rejects = |engine: &mut Engine, tempos: &[ClockTempoEvent], meters: &[ClockMeterEvent]| {
         let result = engine.set_timing_map(tempos, meters, 3);
         assert!(result.is_err());
         assert!(result.is_err_and(|error| !error.is_empty()));
@@ -370,14 +370,14 @@ fn test_draft_publication_and_invalid_atomicity() {
     // C++ passed a null tempo pointer, then a count of zero: both are "no tempo events" here.
     rejects(&mut engine, &[], &valid_meter);
     rejects(&mut engine, &valid_tempo[..0], &valid_meter);
-    // C++ passed a count of ST_CLOCK_MAX_EVENTS+1 with a one-event array; a slice has to hold
+    // C++ passed a count of CLOCK_MAX_EVENTS+1 with a one-event array; a slice has to hold
     // that many events, so they are valid ones and only their number is wrong.
-    let too_many_tempos: Vec<STClockTempoEvent> = (0..ST_CLOCK_MAX_EVENTS + 1).map(|n| tempo(n as f64, 120.0)).collect();
+    let too_many_tempos: Vec<ClockTempoEvent> = (0..CLOCK_MAX_EVENTS + 1).map(|n| tempo(n as f64, 120.0)).collect();
     rejects(&mut engine, &too_many_tempos, &valid_meter);
     rejects(&mut engine, &valid_tempo, &[]);
     rejects(&mut engine, &valid_tempo, &valid_meter[..0]);
-    let too_many_meters: Vec<STClockMeterEvent> =
-        (0..ST_CLOCK_MAX_EVENTS + 1).map(|n| meter(n as f64 * 4.0, 4, 4)).collect();
+    let too_many_meters: Vec<ClockMeterEvent> =
+        (0..CLOCK_MAX_EVENTS + 1).map(|n| meter(n as f64 * 4.0, 4, 4)).collect();
     rejects(&mut engine, &valid_tempo, &too_many_meters);
     for bad in [tempo(0.25, 120.0), tempo(0.0, 19.0), tempo(0.0, 401.0), tempo(0.0, f64::NAN), tempo(f64::INFINITY, 120.0)] {
         rejects(&mut engine, &[bad], &valid_meter);

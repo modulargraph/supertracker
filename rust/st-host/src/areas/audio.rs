@@ -83,11 +83,14 @@ pub struct Audio {
     sustain: Mutex<(bool, Vec<(i32, i32)>)>,
     /// Sample problems already reported, so a publication repeats none.
     reported: Mutex<Vec<st_audio::SampleProblem>>,
+    /// Called on `transport.stop` and `engine.panic`: Stop also cancels a running export.
+    stop_hooks: Mutex<Vec<Box<dyn Fn() + Send + Sync>>>,
 }
 
 impl ProjectAudio for Audio {
-    fn prepare(&self, project: &Project, _options: &PublishOptions) -> Result<Value> {
-        let report = self.engine.publish(project).map_err(Error::new)?;
+    fn prepare(&self, project: &Project, options: &PublishOptions) -> Result<Value> {
+        // An opened or replaced project loads every plug-in's saved state again.
+        let report = self.engine.publish_with(project, options.force_plugin_state).map_err(Error::new)?;
         self.report_samples(report);
         crate::areas::samples::retain_for(&self.samples, project);
         Ok(self.engine.status())
@@ -168,6 +171,13 @@ struct ConfigurePayload {
     output_system_default: bool,
     buffer_size: Option<f64>,
     sample_rate: Option<f64>,
+    /// The input: its `uid`, or its id; the source channels (one or two); monitoring; the meter.
+    input: Option<String>,
+    input_device: Option<f64>,
+    input_channels: Option<Vec<f64>>,
+    monitor: Option<bool>,
+    monitor_volume: Option<f64>,
+    input_meter: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -208,7 +218,12 @@ impl Audio {
                 }
             }
         }
-        *reported = report.problems;
+        // What stays reported: the failures of this report, and earlier failures of samples this
+        // report (made while they were decoded again, or before their failure was known to it)
+        // lists as pending.
+        let mut kept: Vec<st_audio::SampleProblem> = reported.iter().filter(|known| report.problems.iter().any(|problem| problem.error.is_none() && problem.instrument == known.instrument && problem.path == known.path)).cloned().collect();
+        kept.extend(report.problems.into_iter().filter(|problem| problem.error.is_some()));
+        *reported = kept;
     }
 
     /// Decoded samples arrived (or changed on disk): installs them in the engine and reports
@@ -226,7 +241,19 @@ impl Audio {
         Ok(self.engine.status())
     }
 
+    /// Adds something Stop (and panic) also does: cancelling a running export.
+    pub fn on_stop(&self, hook: impl Fn() + Send + Sync + 'static) {
+        self.stop_hooks.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(Box::new(hook));
+    }
+
+    fn run_stop_hooks(&self) {
+        for hook in self.stop_hooks.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).iter() {
+            hook();
+        }
+    }
+
     fn stop(&self, _: NoPayload) -> Result<Value> {
+        self.run_stop_hooks();
         self.engine.stop();
         Ok(self.engine.status())
     }
@@ -269,7 +296,9 @@ impl Audio {
 
     fn panic(&self, _: NoPayload) -> Result<Value> {
         *self.sustain.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = (false, Vec::new());
+        self.run_stop_hooks();
         self.engine.panic();
+        self.engine.live().preview().stop(true);
         Ok(self.engine.status())
     }
 
@@ -376,8 +405,12 @@ impl Audio {
     }
 
     fn devices_value(&self, status: st_audio::DevicesStatus) -> Value {
+        // The input follows the engine's format; the null input is offered with the null output.
+        let live = self.engine.live();
+        live.inputs().set_format(status.sample_rate, status.buffer_size, status.output_uid == st_audio::device::NULL_DEVICE);
         let mut value = serde_json::to_value(status).unwrap_or(Value::Null);
-        // Line inputs are not ported yet; the interface reads these keys.
+        live.decorate_devices(&mut value);
+        // Line inputs into track strips are not ported yet; the interface reads these keys.
         value["lineInputs"] = json!([]);
         value["lineInputError"] = Value::Null;
         value
@@ -388,6 +421,19 @@ impl Audio {
     }
 
     fn configure(&self, payload: ConfigurePayload) -> Result<Value> {
+        let live = self.engine.live();
+        let changes_output = payload.output.is_some() || payload.output_device.is_some() || payload.output_system_default || payload.buffer_size.is_some() || payload.sample_rate.is_some();
+        if changes_output && live.is_recording() {
+            fail!("Finish recording before reconfiguring audio.");
+        }
+        let input = st_audio::inputs::InputRequest {
+            uid: payload.input.clone(),
+            id: whole(payload.input_device).map(|id| id.clamp(0, u32::MAX as i64) as u32),
+            channels: payload.input_channels.as_ref().map(|channels| channels.iter().filter_map(|channel| whole(Some(*channel))).map(|channel| channel.clamp(0, 4096) as u32).collect()),
+            monitor: payload.monitor,
+            monitor_volume: payload.monitor_volume.map(|volume| volume as f32),
+            meter: payload.input_meter,
+        };
         let request = DeviceRequest {
             output_id: whole(payload.output_device).map(|id| id.clamp(0, u32::MAX as i64) as u32),
             output_uid: payload.output,
@@ -403,6 +449,9 @@ impl Audio {
             DeviceChoice::SystemDefault | DeviceChoice::None => None,
         };
         self.settings.set(SETTINGS_SECTION, &DeviceSettings { output, buffer_size: Some(buffer_size), sample_rate: Some(status.sample_rate) })?;
+        // The input after the output: it runs at the engine's (possibly new) sample rate.
+        live.inputs().set_format(status.sample_rate, status.buffer_size, status.output_uid == st_audio::device::NULL_DEVICE);
+        live.inputs().configure(&input).map_err(Error::new)?;
         Ok(self.devices_value(status))
     }
 }
@@ -424,7 +473,7 @@ pub fn install(commands: &mut Commands, session: &crate::Session, settings: &Arc
         device,
     })
     .map_err(Error::new)?;
-    let audio = Arc::new(Audio { engine, samples, events: events.clone(), settings: settings.clone(), sustain: Mutex::default(), reported: Mutex::default() });
+    let audio = Arc::new(Audio { engine, samples, events: events.clone(), settings: settings.clone(), sustain: Mutex::default(), reported: Mutex::default(), stop_hooks: Mutex::default() });
     session.attach_audio(audio.clone());
     commands
         .with(&audio)
@@ -460,6 +509,9 @@ pub fn install(commands: &mut Commands, session: &crate::Session, settings: &Arc
 
 impl Drop for Audio {
     fn drop(&mut self) {
+        // A take in progress is closed as it is; the input device is released.
+        let _ = self.engine.live().stop_record();
+        self.engine.live().inputs().close();
         self.engine.shutdown();
     }
 }

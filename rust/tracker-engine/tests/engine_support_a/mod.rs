@@ -1,16 +1,13 @@
 //! Shared helpers for the engine integration tests `tests/engine_core_*.rs` and
-//! `tests/engine_timing_*.rs`: ports of the C++ programs `tests/engine_tests.cpp` and
-//! `tests/engine_timing_tests.cpp`.
+//! `tests/engine_timing_*.rs`: ports of the former C++ programs `engine_tests.cpp` and
+//! `engine_timing_tests.cpp`.
 //!
-//! * `Engine`: an owned engine whose methods carry the names and argument order of the
-//!   `st_engine_*` functions the C++ tests called, implemented on the engine's safe Rust API
-//!   (`Control` / `Render` / `Shared` methods). No `extern "C"` function is used.
+//! * `Engine`: an owned engine (`tracker_engine::engine::Engine`) whose methods carry the names
+//!   and argument order the C++ tests used, each a forward to the engine's Rust API.
 //! * `realtime` and `assert_zero_render_allocations`: the C++ tests' replaced `operator new`
 //!   with its thread-local "render in progress" flag.
-//! * `tone`: `tests/engine_test_tone.hpp`.
+//! * `tone`: the C++ tests' `engine_test_tone.hpp`.
 //! * `core_helpers`, `timing_helpers`: the fixtures and helpers of the two C++ programs.
-//!
-//! Places where the safe API lacked something the C API had are marked `TODO(api)`.
 #![allow(dead_code, clippy::too_many_arguments)]
 
 pub mod core_helpers;
@@ -19,12 +16,10 @@ pub mod tone;
 
 use std::cell::Cell;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tracker_engine::clock::{STClockMeterEvent, STClockSpan, STClockTempoEvent};
-use tracker_engine::engine::control::Control;
+use tracker_engine::clock::{ClockMeterEvent, ClockSpan, ClockTempoEvent, CLOCK_OK};
 use tracker_engine::engine::edits::Pcm;
-use tracker_engine::engine::state::{Render, Shared};
-use tracker_engine::engine::tables::CACHE_CAPACITY;
-use tracker_engine::engine::{STEngine, STEvent, STInstrument, STStatus, STStep, STTrack, STTransportState};
+use tracker_engine::engine::host;
+use tracker_engine::engine::{STEvent, STInstrument, STStatus, STStep, STTrack, STTransportState};
 
 // ---------------------------------------------------------------------------------------------
 // Allocation counting: the C++ tests' `operator new` with `thread_local bool realtime`.
@@ -44,7 +39,6 @@ static REALTIME_ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
 /// allocates or frees") covers them, and the count is asserted as well.
 static REALTIME_FREES: AtomicU64 = AtomicU64::new(0);
 
-#[cfg(not(feature = "cxx-alloc"))]
 mod allocator {
     use super::{REALTIME, REALTIME_ALLOCATIONS, REALTIME_FREES};
     use std::alloc::{GlobalAlloc, Layout, System};
@@ -131,7 +125,7 @@ impl Drop for SetOnDrop<'_> {
 
 /// C++ `struct Engine`: an engine at 48 kHz that is destroyed with the test.
 pub struct Engine {
-    engine: Box<STEngine>,
+    engine: host::Engine,
 }
 
 impl Default for Engine {
@@ -140,67 +134,46 @@ impl Default for Engine {
     }
 }
 
-/// The control-thread half of an engine: every "ordinary control function" of the C API.
+/// The control-thread half of an engine: project edits, commit, transport and note commands.
 pub struct ControlHalf<'a> {
-    control: &'a mut Control,
-    shared: &'a Shared,
-    sample_rate: f64,
+    half: &'a mut host::ControlHalf,
 }
 
 /// The render-thread half of an engine: render, bus pulls, clock queries, event consumption and
 /// the exclusive stopped-graph operations.
 pub struct RenderHalf<'a> {
-    render: &'a mut Render,
-    shared: &'a Shared,
+    half: &'a mut host::RenderHalf,
+    status: &'a host::StatusHandle,
 }
 
 /// The part of an engine any thread may use: status, peaks and the refresh/reset mailboxes.
 #[derive(Clone, Copy)]
 pub struct SharedHalf<'a> {
-    shared: &'a Shared,
+    status: &'a host::StatusHandle,
 }
 
-// TODO(api): the engine has no way to hand its halves to different threads. `Shared` is not
-// `Sync` (the voice-snapshot seqlock is an `UnsafeCell`) and `Control`/`Render` are not `Send`
-// (they hold raw project pointers), although the engine's threading contract (one control
-// thread, one render thread, any thread for `Shared`) is exactly what these impls state. The C
-// API reached the same thing through `*mut STEngine`.
-//
-// SAFETY: each half is used by one thread at a time (the tests move a half into one scoped
-// thread); `Shared` is the engine's lock-free cross-thread state (atomics, SPSC rings, the
-// seqlock-guarded voice snapshot) and is designed to be shared between exactly these threads.
-unsafe impl Send for ControlHalf<'_> {}
-unsafe impl Send for RenderHalf<'_> {}
-unsafe impl Send for SharedHalf<'_> {}
-unsafe impl Sync for SharedHalf<'_> {}
-
 impl Engine {
-    /// C++ `Engine e;` (`st_engine_create(48000)` with `assert(e)`).
+    /// C++ `Engine e;`: an engine at 48 kHz, asserted to exist.
     pub fn new() -> Engine {
         Engine::at(48000.0)
     }
 
-    /// `st_engine_create(rate)` with `assert(e)`.
+    /// An engine at `rate`, asserted to exist.
     pub fn at(rate: f64) -> Engine {
         let engine = Engine::create(rate);
         assert!(engine.is_some());
         engine.unwrap()
     }
 
-    /// `st_engine_create(rate)`: `None` where the C function returned a null handle.
+    /// An engine at `rate`: `None` where the engine refuses the rate.
     pub fn create(rate: f64) -> Option<Engine> {
-        STEngine::create(rate).map(|engine| Engine { engine })
+        host::Engine::new(rate).map(|engine| Engine { engine })
     }
 
     /// The three thread-owned parts, for tests that drive the engine from several threads.
     pub fn split(&mut self) -> (ControlHalf<'_>, RenderHalf<'_>, SharedHalf<'_>) {
-        let STEngine { sample_rate, shared, control, render } = &mut *self.engine;
-        let shared: &Shared = shared;
-        (
-            ControlHalf { control: control.get_mut(), shared, sample_rate: *sample_rate },
-            RenderHalf { render: render.get_mut(), shared },
-            SharedHalf { shared },
-        )
+        let (control, render, status) = self.engine.halves();
+        (ControlHalf { half: control }, RenderHalf { half: render, status }, SharedHalf { status })
     }
 
     fn control_half(&mut self) -> ControlHalf<'_> {
@@ -212,7 +185,7 @@ impl Engine {
     }
 
     fn shared_half(&self) -> SharedHalf<'_> {
-        SharedHalf { shared: &self.engine.shared }
+        SharedHalf { status: self.engine.status() }
     }
 }
 
@@ -239,141 +212,178 @@ fn chord_list(chord: &[i32]) -> Option<&[i32]> {
 half_methods! { ControlHalf, control_half;
     // ---- update transactions ----
 
-    /// `st_engine_begin_update`
     fn begin_update(&mut self) {
-        self.control.begin_update(self.shared);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.begin_update(shared);
     }
-    /// `st_engine_clear_project`
     fn clear_project(&mut self) {
-        self.control.clear_project();
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.clear_project();
     }
-    /// `st_engine_commit_update`: a rejected draft stays unpublished, silently.
+    /// `commit_update`: a rejected draft stays unpublished, silently.
     fn commit_update(&mut self) {
-        let _ = self.control.commit(self.shared, self.sample_rate);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        let _ = control.commit(shared, sample_rate);
     }
-    /// `st_engine_commit_update_checked`: the error is the text the C function wrote into its
+    /// `commit_update_checked`: the error is the text the C function wrote into its
     /// error buffer.
     fn commit_update_checked(&mut self) -> Result<(), String> {
-        self.control.commit(self.shared, self.sample_rate)
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.commit(shared, sample_rate)
     }
-    /// `st_engine_cancel_update`
     fn cancel_update(&mut self) {
-        self.control.cancel_update();
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.cancel_update();
     }
-    /// `st_engine_collect`
     fn collect(&mut self) {
-        self.control.collect(self.shared);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.collect(shared);
     }
 
     // ---- project settings ----
 
-    /// `st_engine_set_timing`
     fn set_timing(&mut self, bpm: f64, lines_per_beat: i32, swing: f32, master_volume: f32) {
-        self.control.set_timing(bpm, lines_per_beat, swing, master_volume);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_timing(bpm, lines_per_beat, swing, master_volume);
     }
-    /// `st_engine_set_timing_map`
-    fn set_timing_map(&mut self, tempos: &[STClockTempoEvent], meters: &[STClockMeterEvent], revision: u64) -> Result<(), String> {
-        self.control.set_timing_map(self.sample_rate, tempos, meters, revision)
+    fn set_timing_map(&mut self, tempos: &[ClockTempoEvent], meters: &[ClockMeterEvent], revision: u64) -> Result<(), String> {
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_timing_map(sample_rate, tempos, meters, revision)
     }
-    /// `st_engine_clear_timing_map`
     fn clear_timing_map(&mut self) {
-        self.control.clear_timing_map();
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.clear_timing_map();
     }
-    /// `st_engine_set_pattern_timing_origin`
     fn set_pattern_timing_origin(&mut self, beat: f64) -> bool {
-        self.control.set_pattern_timing_origin(beat)
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_pattern_timing_origin(beat)
     }
-    /// `st_engine_set_metronome`
     fn set_metronome(&mut self, enabled: i32, numerator: i32, denominator: i32, volume: f32) {
-        self.control.set_metronome(enabled != 0, numerator, denominator, volume);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_metronome(enabled != 0, numerator, denominator, volume);
     }
-    /// `st_engine_set_track_count`
     fn set_track_count(&mut self, count: i32) -> bool {
-        self.control.set_track_count(count)
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_track_count(count)
     }
-    /// `st_engine_set_track`
     fn set_track(&mut self, index: i32, track: STTrack) {
-        self.control.set_track(index, track);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_track(index, track);
     }
-    /// `st_engine_set_host_mixing`
     fn set_host_mixing(&mut self, enabled: i32, computational_mask: u32) {
-        self.control.set_host_mixing(enabled != 0, computational_mask);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_host_mixing(enabled != 0, computational_mask);
     }
-    /// `st_engine_set_instrument`
     fn set_instrument(&mut self, index: i32, instrument: STInstrument) {
-        self.control.set_instrument(index, instrument);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_instrument(index, instrument);
     }
-    /// `st_engine_set_sequence`
     fn set_sequence(&mut self, patterns: &[i32], loop_song: i32, active_pattern: i32) {
-        self.control.set_sequence(patterns, loop_song != 0, active_pattern);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_sequence(patterns, loop_song != 0, active_pattern);
     }
-    /// `st_engine_set_effects`
     fn set_effects(&mut self, delay_seconds: f32, delay_feedback: f32, delay_mix: f32, reverb_size: f32, reverb_damping: f32, reverb_mix: f32) {
-        self.control.set_effects(delay_seconds, delay_feedback, delay_mix, reverb_size, reverb_damping, reverb_mix);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_effects(delay_seconds, delay_feedback, delay_mix, reverb_size, reverb_damping, reverb_mix);
     }
-    /// `st_engine_set_host_automation_map`
     fn set_host_automation_map(&mut self, map: u64) {
-        self.control.set_host_automation_map(map);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_host_automation_map(map);
     }
 
     // ---- patterns, steps and automation ----
 
-    /// `st_engine_set_pattern`
     fn set_pattern(&mut self, index: i32, length: i32) {
-        self.control.set_pattern(index, length);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_pattern(index, length);
     }
-    /// `st_engine_reuse_pattern`
     fn reuse_pattern(&mut self, index: i32) -> bool {
-        self.control.reuse_pattern(index)
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.reuse_pattern(index)
     }
-    /// `st_engine_set_step`; an empty `chord` is the C call's `nullptr, 0`.
+    /// `set_step`; an empty `chord` is the C call's `nullptr, 0`.
     fn set_step(&mut self, pattern: i32, track: i32, row: i32, step: STStep, chord: &[i32]) {
-        self.control.set_step(pattern, track, row, step, chord_list(chord));
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_step(pattern, track, row, step, chord_list(chord));
     }
-    /// `st_engine_set_step_column`
     fn set_step_column(&mut self, pattern: i32, track: i32, row: i32, column: i32, step: STStep) {
-        self.control.set_step_column(pattern, track, row, column, step);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_step_column(pattern, track, row, column, step);
     }
-    /// `st_engine_clear_step`
     fn clear_step(&mut self, pattern: i32, track: i32, row: i32) {
-        self.control.clear_step(pattern, track, row);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.clear_step(pattern, track, row);
     }
-    /// `st_engine_clear_automation`
     fn clear_automation(&mut self, pattern: i32) {
-        self.control.clear_automation(pattern);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.clear_automation(pattern);
     }
-    /// `st_engine_add_automation_point`
     fn add_automation_point(&mut self, pattern: i32, track: i32, target: i32, slot: i32, address: u64, interpolation: i32, row: f64, value: f64) {
-        self.control.add_automation_point(pattern, track, target, slot, address, interpolation, row, value);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.add_automation_point(pattern, track, target, slot, address, interpolation, row, value);
     }
-    /// `st_engine_add_host_automation_point`
     fn add_host_automation_point(&mut self, pattern: i32, destination: i32, address: u64, interpolation: i32, row: f64, value: f64) {
-        self.control.add_host_automation_point(pattern, destination, address, interpolation, row, value);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.add_host_automation_point(pattern, destination, address, interpolation, row, value);
     }
 
     // ---- samples, zones and timeline audio ----
 
-    /// `st_engine_set_sample(e, instrument, left, nullptr, frames, rate)`: mono PCM.
+    /// `set_sample(e, instrument, left, nullptr, frames, rate)`: mono PCM.
     fn set_sample(&mut self, instrument: i32, left: &[f32], rate: f64) -> bool {
-        self.control.set_sample(self.shared, self.sample_rate, instrument, Some(Pcm { left, right: None, rate }))
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_sample(shared, sample_rate, instrument, Some(Pcm { left, right: None, rate }))
     }
-    /// `st_engine_set_sample(e, instrument, nullptr, nullptr, 0, rate)`: remove the sample.
+    /// `set_sample(e, instrument, nullptr, nullptr, 0, rate)`: remove the sample.
     fn clear_sample(&mut self, instrument: i32) -> bool {
-        self.control.set_sample(self.shared, self.sample_rate, instrument, None)
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_sample(shared, sample_rate, instrument, None)
     }
-    /// `st_engine_set_slice_points`
     fn set_slice_points(&mut self, instrument: i32, positions: &[f32]) {
-        self.control.set_slice_points(instrument, positions);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_slice_points(instrument, positions);
     }
-    /// `st_engine_clear_zones`
     fn clear_zones(&mut self, instrument: i32) {
-        self.control.clear_zones(instrument);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.clear_zones(instrument);
     }
-    /// `st_engine_add_sample_zone` with mono PCM.
+    /// `add_sample_zone` with mono PCM.
     fn add_sample_zone(&mut self, instrument: i32, left: &[f32], rate: f64, key_low: i32, key_high: i32, velocity_low: i32, velocity_high: i32, root_note: i32, tune: f32, volume: f32) -> bool {
-        self.control.add_sample_zone(
-            self.shared,
-            self.sample_rate,
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.add_sample_zone(
+            shared,
+            sample_rate,
             instrument,
             Pcm { left, right: None, rate },
             key_low,
@@ -385,184 +395,165 @@ half_methods! { ControlHalf, control_half;
             volume,
         )
     }
-    /// `st_engine_set_audio_asset` with mono PCM.
+    /// `set_audio_asset` with mono PCM.
     fn set_audio_asset(&mut self, asset: i32, left: &[f32], rate: f64) -> bool {
-        self.control.set_audio_asset(self.shared, self.sample_rate, asset, Some(Pcm { left, right: None, rate }))
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_audio_asset(shared, sample_rate, asset, Some(Pcm { left, right: None, rate }))
     }
-    /// `st_engine_clear_audio_clips`
     fn clear_audio_clips(&mut self) {
-        self.control.clear_audio_clips();
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.clear_audio_clips();
     }
-    /// `st_engine_add_audio_clip`
     fn add_audio_clip(&mut self, asset: i32, track: i32, start_beat: f64, duration_beats: f64, source_offset: f64, gain: f32, fade_in: f32, fade_out: f32, muted: i32) {
-        self.control.add_audio_clip(asset, track, start_beat, duration_beats, source_offset, gain, fade_in, fade_out, muted != 0);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.add_audio_clip(asset, track, start_beat, duration_beats, source_offset, gain, fade_in, fade_out, muted != 0);
     }
-    /// `st_engine_duration`
     fn duration(&mut self, song_mode: i32) -> f64 {
-        self.control.duration(self.sample_rate, song_mode != 0)
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.duration(sample_rate, song_mode != 0)
     }
 
     // ---- commands ----
 
-    /// `st_engine_play`
     fn play(&mut self, song_mode: i32) {
-        self.control.play(self.shared, song_mode);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.play(shared, song_mode);
     }
-    /// `st_engine_stop`
     fn stop(&mut self) {
-        self.control.stop(self.shared);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.stop(shared);
     }
-    /// `st_engine_play_count_in`
     fn play_count_in(&mut self, song_mode: i32, bars: i32) {
-        self.control.play_count_in(self.shared, song_mode != 0, bars);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.play_count_in(shared, song_mode != 0, bars);
     }
-    /// `st_engine_set_recording`
     fn set_recording(&mut self, enabled: i32) {
-        self.control.set_recording(self.shared, enabled != 0);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_recording(shared, enabled != 0);
     }
-    /// `st_engine_seek`
     fn seek(&mut self, pattern: i32, row: i32, sequence: i32) {
-        self.control.seek(self.shared, pattern, row, sequence);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.seek(shared, pattern, row, sequence);
     }
-    /// `st_engine_set_pattern_loop`
     fn set_pattern_loop(&mut self, start_row: i32, end_row: i32) {
-        self.control.set_pattern_loop(self.shared, start_row, end_row);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_pattern_loop(shared, start_row, end_row);
     }
-    /// `st_engine_queue_jump`
     fn queue_jump(&mut self, pattern: i32, sequence: i32) {
-        self.control.queue_jump(self.shared, pattern, sequence);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.queue_jump(shared, pattern, sequence);
     }
-    /// `st_engine_queue_mode`
     fn queue_mode(&mut self, song_mode: i32, pattern: i32, sequence: i32) {
-        self.control.queue_mode(self.shared, song_mode != 0, pattern, sequence);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.queue_mode(shared, song_mode != 0, pattern, sequence);
     }
-    /// `st_engine_note_on`
     fn note_on(&mut self, track: i32, instrument: i32, note: i32, velocity: i32) {
-        self.control.note_on(self.shared, track, instrument, note, velocity);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.note_on(shared, track, instrument, note, velocity);
     }
-    /// `st_engine_note_off`
     fn note_off(&mut self, track: i32, note: i32) {
-        self.control.note_off(self.shared, track, note);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.note_off(shared, track, note);
     }
-    /// `st_engine_preview_step`; an empty `chord` is the C call's null pointer or zero count.
+    /// `preview_step`; an empty `chord` is the C call's null pointer or zero count.
     fn preview_step(&mut self, track: i32, step: STStep, chord: &[i32], duration_seconds: f32) {
-        self.control.preview_step(self.shared, track, step, chord_list(chord), duration_seconds);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.preview_step(shared, track, step, chord_list(chord), duration_seconds);
     }
-    /// `st_engine_panic`
     fn panic(&mut self) {
-        self.control.panic(self.shared);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.panic(shared);
     }
-    /// `st_engine_pitch_bend`
     fn pitch_bend(&mut self, track: i32, semitones: f32) {
-        self.control.pitch_bend(self.shared, track, semitones);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.pitch_bend(shared, track, semitones);
     }
-    /// `st_engine_mod_wheel`
     fn mod_wheel(&mut self, track: i32, value: f32) {
-        self.control.mod_wheel(self.shared, track, value);
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.mod_wheel(shared, track, value);
     }
 }
 
 half_methods! { RenderHalf, render_half;
-    /// `st_engine_render` into two buffers of equal length, counted as a render-thread call.
+    /// A direct render into two buffers of equal length, counted as a render-thread call.
     fn render_into(&mut self, left: &mut [f32], right: &mut [f32]) {
-        let frames = left.len() as u32;
-        realtime(|| self.render.render(self.shared, Some(left), Some(right), frames));
+        realtime(|| self.half.render(left, right));
     }
-    /// `st_engine_render(e, nullptr, nullptr, 0)`: apply queued commands without audio.
+    /// A render of no frames: apply queued commands without audio.
     fn render_nothing(&mut self) {
-        realtime(|| self.render.render(self.shared, None, None, 0));
+        realtime(|| self.half.advance(0));
     }
-    /// `st_engine_render_bus`, counted as a render-thread call.
-    ///
-    // TODO(api): the argument checks of `renderCached` (a negative bus, more frames than the
-    // bus history holds, a timestamp that overflows, zero frames) exist only in `capi.rs`;
-    // `Render::render_cached` documents that "the caller has already rejected" them. They are
-    // repeated here so the tests call it under the same contract as `st_engine_render_bus`.
+    /// One output bus at a graph time, counted as a render-thread call.
     fn render_bus_into(&mut self, bus: i32, sample_time: u64, left: &mut [f32], right: &mut [f32]) {
-        let frames = left.len() as u32;
-        if bus < 0 || frames as usize > CACHE_CAPACITY || sample_time > u64::MAX - frames as u64 {
-            left.fill(0.0);
-            right.fill(0.0);
-            return;
-        }
-        if frames != 0 {
-            realtime(|| self.render.render_cached(self.shared, bus, false, sample_time, Some(left), Some(right), frames));
+        realtime(|| self.half.render_bus(bus, sample_time, left, right));
+    }
+    /// The clock span as a status: `out` is written only when the result is `CLOCK_OK`.
+    fn clock_span(&mut self, graph_frame: i64, requested_frames: u32, upstream_latency_frames: i64, out: &mut ClockSpan) -> i32 {
+        match realtime(|| self.half.clock_span(graph_frame, requested_frames, upstream_latency_frames)) {
+            Ok(span) => {
+                *out = span;
+                CLOCK_OK
+            }
+            Err(error) => error.status(),
         }
     }
-    /// `st_engine_clock_span`: `out` is written only when the result is `ST_CLOCK_OK`.
-    fn clock_span(&mut self, graph_frame: i64, requested_frames: u32, upstream_latency_frames: i64, out: &mut STClockSpan) -> i32 {
-        realtime(|| self.render.clock_span(self.shared, graph_frame, requested_frames, upstream_latency_frames, out))
-    }
-    /// `st_engine_capture_transport`
     fn capture_transport(&mut self) -> STTransportState {
-        realtime(|| self.render.capture_transport(self.shared))
+        realtime(|| self.half.capture_transport())
     }
-    /// `st_engine_restore_transport`
     fn restore_transport(&mut self, state: STTransportState, resume: i32) {
-        realtime(|| self.render.restore_transport(self.shared, &state, resume != 0));
+        realtime(|| self.half.restore_transport(&state, resume != 0));
     }
-    /// `st_engine_forget_external_voices`
     fn forget_external_voices(&mut self, channel: i32) -> i32 {
-        self.render.forget_external_voices(self.shared, channel)
+        self.half.forget_external_voices(channel)
     }
-    /// `st_engine_pop_event` (the render thread's serialized consumer).
+    /// The next event (the render thread is the serialized consumer).
     fn pop_event(&mut self) -> Option<STEvent> {
-        self.shared.events.pop()
+        self.half.pop_event()
     }
-    /// `st_engine_reset_render_cache`, as the audio thread calls it between graph runs.
+    /// A new timestamp epoch, as the audio thread asks for it between graph runs.
     fn reset_render_cache(&mut self) {
-        self.shared.reset_render_cache();
+        self.status.reset_render_cache();
     }
 }
 
 impl SharedHalf<'_> {
-    /// `st_engine_status`
     pub fn status(&self) -> STStatus {
-        self.shared.status()
+        self.status.status()
     }
-    /// `st_engine_track_peak`
     pub fn track_peak(&self, track: i32) -> f32 {
-        self.shared.track_peak(track)
+        self.status.track_peak(track)
     }
-    /// `st_engine_refresh_automation`
     pub fn refresh_automation(&self) {
-        self.shared.refresh_automation();
+        self.status.refresh_automation();
     }
 }
 
 impl Engine {
-    /// `st_engine_status`
     pub fn status(&self) -> STStatus {
         self.shared_half().status()
     }
-    /// `st_engine_track_peak`
     pub fn track_peak(&self, track: i32) -> f32 {
         self.shared_half().track_peak(track)
     }
-    /// `st_engine_refresh_automation`
     pub fn refresh_automation(&self) {
         self.shared_half().refresh_automation();
-    }
-}
-
-// TODO(api): `st_status_transport_playing` and `st_status_count_in` are `static inline`
-// functions of `TrackerEngine.h` with no Rust counterpart (they would be methods of
-// `STStatus`); these are their bodies.
-
-/// `st_status_transport_playing`: the transport as the control thread requested it.
-pub fn status_transport_playing(status: &STStatus) -> i32 {
-    if status.transport_pending != 0 {
-        status.requested_playing
-    } else {
-        status.playing
-    }
-}
-
-/// `st_status_count_in`
-pub fn status_count_in(status: &STStatus) -> i32 {
-    if status.transport_pending != 0 {
-        0
-    } else {
-        status.count_in
     }
 }

@@ -2510,6 +2510,7 @@ version = "0.1.0"
 dependencies = [
  "getrandom",
  "gtk",
+ "libc",
  "muda",
  "rfd",
  "serde",
@@ -2528,6 +2529,7 @@ dependencies = [
  "serde_json",
  "st-project",
  "st-samples",
+ "stpc-client",
  "tracker-engine",
 ]
 
@@ -2537,7 +2539,11 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "st-agent",
  "st-audio",
+ "st-library",
+ "st-midi",
+ "st-mk3",
  "st-project",
  "st-samples",
 ]
@@ -2605,6 +2611,21 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "stpc-client"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "stpc-transport",
+]
+
+[[package]]
+name = "stpc-transport"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "strength_reduce"

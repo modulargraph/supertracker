@@ -1,4 +1,4 @@
-//! Port of `tests/engine_reverse_continuity_tests.cpp`: reverse playback: polyphony, loop
+//! Port of the former C++ test program `engine_reverse_continuity_tests.cpp`: reverse playback: polyphony, loop
 //! crossfades, repeated reversals, release tails, block invariance, reverse start and lead-in
 //! turnarounds.
 #![cfg(feature = "engine")]

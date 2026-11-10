@@ -639,6 +639,10 @@ Nothing below has run on macOS. `cargo check --target aarch64-apple-darwin --all
 * **Architectures.** A container is a separate executable, so an x86-64 build of it could host Intel-only plug-ins under Rosetta next to an arm64 host. Whether shared address waits work between a translated and a native process is unknown; pipe mode avoids the question.
 * **Sandbox.** An App Sandbox host cannot spawn an arbitrary helper with inherited rights in the way assumed here; this design is for a non-sandboxed (Developer ID) application.
 
+## In the application
+
+The application's host uses the client through `st_audio::plugins` (`rust/st-audio/src/plugins/`, `cargo doc -p st-audio`): a `PluginManager` owns the `Supervisor` and one instance per plug-in of the project, `PluginInsert` puts an instance into the mixer graph as an effect or an instrument (one `process_raw` call per block, parameter changes and notes as timed events, the time left in the device callback as the deadline, no deadline in the offline copy used for exports), `Catalog` wraps the `Scanner`, and a recovery store holds back plug-ins that crash twice in a row while loading. The bridge commands are in `st_host::areas::plugins` (`docs/RUST_PORT_STATUS.md`).
+
 ## Open points and risks
 
 * Nothing has run on macOS (see above). The first thing to do there is to run the test suite itself: it has no Linux-only logic except the `/proc` checks in `tests/common/mod.rs` (process existence, children), which need a macOS equivalent.
@@ -652,4 +656,6 @@ Nothing below has run on macOS. `cargo check --target aarch64-apple-darwin --all
 * The scanner trusts the fingerprint: a plug-in replaced by a file of the same size and modification time is not rescanned (`rescan_all` does it).
 * Sysex, MIDI 2 and parameter ramps are not carried end to end (the event has a ramp field; no backend uses it yet).
 * Windows: `channel.rs` and `shm.rs` are Unix only; the wake-up abstraction would get a third implementation (`WaitOnAddress` does not work across processes; an event object or a named pipe would).
+* CLAP: an untimed `set_parameter` on an active plug-in waits for the next block, is not flushed when no block arrives (`clap_plugin_params.flush` is not called for an active plug-in whose host has stopped sending blocks), and is not discarded by a state or preset load that follows it, so it lands on top of the loaded state. The VST3 backend handles both cases itself. The application's host works around it (`st_audio::plugins::Hosted`: a value reads as set at once, and state reads and loads wait for the block that delivers pending values); the backend should do it.
+* Restoring an instance replays the parameter values set through `set_parameter` since the last known state. A value that made the plug-in crash is replayed too.
 * The container binary honours `STPC_TEST_PROTOCOL_VERSION` (announces another protocol version); it exists for the version-mismatch test.

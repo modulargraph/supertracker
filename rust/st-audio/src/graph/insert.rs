@@ -1,10 +1,11 @@
 //! Inserts: the processors of a strip's insert chain, behind one trait.
 //!
 //! The graph renders whatever implements [`InsertProcessor`]. Built-in effects implement it
-//! here, on top of `tracker_engine::effects`. A plug-in instance in a container process will
-//! implement it in the plug-in integration (its real-time `process` call through the client);
-//! until then an insert that names a plug-in passes its signal through and is reported as
-//! unavailable. Processors come from an [`InsertFactory`], on the control thread.
+//! here, on top of `tracker_engine::effects`. A plug-in instance in a container process
+//! implements it in [`crate::plugins::insert`] (its real-time `process` call through the
+//! client, one call per block with timed parameter changes); an insert whose plug-in cannot be
+//! made passes its signal through and is reported as unavailable. Processors come from an
+//! [`InsertFactory`], on the control thread.
 //!
 //! # Threads
 //!

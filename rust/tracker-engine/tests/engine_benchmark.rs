@@ -1,4 +1,4 @@
-//! Port of `tests/engine_benchmark.cpp`: an independent deterministic DSP benchmark with no
+//! Port of the former C++ test program `engine_benchmark.cpp`: an independent deterministic DSP benchmark with no
 //! absolute timing pass threshold (CPU time distinguishes engine work from competing builds / OS
 //! scheduling).
 //!

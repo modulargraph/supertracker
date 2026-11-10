@@ -1,6 +1,6 @@
 //! Dynamics processors: compressor, gate, transient shaper, peak limiter and maximizer.
 //!
-//! Replaces `Sources/TrackerEngine/EffectsDynamics.hpp` (namespace `stfx::dynamics`).
+//! Ported from the C++ `EffectsDynamics.hpp` (namespace `stfx::dynamics`).
 
 use super::common::{
     clamp, clean, core_accessors, db_gain, fast_db_gain, frame_buffers, gain_db, max, min, mix,

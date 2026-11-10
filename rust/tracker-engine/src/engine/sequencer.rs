@@ -1,4 +1,4 @@
-//! The tracker sequencer of `STEngine` in `TrackerEngine.cpp`: row triggering (`triggerRow`,
+//! The tracker sequencer (ported from the C++ engine's `TrackerEngine.cpp`): row triggering (`triggerRow`,
 //! `triggerStep`, `triggerColumns`), step effects and row locks (`applyFX`), delayed hits and
 //! ratchets (`schedule*`, `repeatRatchet`), plug-in parameter locks, and automation lanes
 //! (`laneValue`, `emitLaneAutomation`, `automation`, `emitMixState`).

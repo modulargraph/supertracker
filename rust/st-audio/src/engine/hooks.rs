@@ -49,4 +49,35 @@ impl AudioEngine {
     pub fn with_project<R>(&self, read: impl FnOnce(Option<&Project>) -> R) -> R {
         read(self.lock().project.as_ref())
     }
+
+    /// Gives the renderer in use the stage that runs on the live output (preview voices). The
+    /// stage it replaces is dropped here, on a control thread.
+    pub(super) fn attach_live(&self) {
+        let mut renderer = self.renderer.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let stage = self.live.stage(renderer.sample_rate());
+        let previous = renderer.set_output_stage(Some(stage));
+        drop(renderer);
+        drop(previous);
+    }
+
+    /// The live output stage's control side: browser previews.
+    pub fn live(&self) -> &std::sync::Arc<crate::live::Live> {
+        &self.live
+    }
+
+    /// A private engine for an offline render (export, bounce, render selection, freeze): no
+    /// device, this engine's insert factory, an offline copy of its plug-in manager (its own
+    /// containers; instances start from the state their descriptors carry) and `samples`.
+    pub fn offline_copy(&self, samples: std::sync::Arc<dyn crate::samples::SampleSource>, sample_rate: f64) -> Result<std::sync::Arc<AudioEngine>, String> {
+        let engine = AudioEngine::new(super::EngineOptions { sample_rate, buffer_size: 512, samples, inserts: self.inserts.clone(), device: super::DeviceChoice::None })?;
+        if let Some(manager) = self.plugins() {
+            engine.set_plugins(manager.offline()?);
+        }
+        Ok(engine)
+    }
+
+    /// Whether the transport plays, as the render thread last reported it.
+    pub fn is_playing(&self) -> bool {
+        self.lock().core.status.status().playing != 0
+    }
 }

@@ -319,17 +319,26 @@
   /** The host asks whether it may quit (the window is closing): the `app.quitRequested` event. The page
       answers with `app.quitAnswer`: 'deciding' at once (it is alive), then 'stay' (an operation must
       finish, or the person cancelled) or 'proceed' with the final project, which the host secures in
-      its recovery copy before it quits. */
+      its recovery copy before it quits. AI control is suspended meanwhile (agent-api.js). */
   async function hostQuitRequested() {
     if (app.quitDecision) return;
     const answer = payload => request('app.quitAnswer', payload);
+    // Staying reopens AI control, which is fenced while quitting is being decided (the host refuses new
+    // requests from its side until it hears 'stay').
+    const stay = (payload = {}) => {
+      window.STAgent?.resumeAfterTermination?.();
+      return answer({ state: 'stay', ...payload });
+    };
     app.quitDecision = (async () => {
       await answer({ state: 'deciding' });
+      // No further AI command starts; the one that is running gets three seconds to finish.
+      const agentSettled = await (window.STAgent?.suspendForTermination?.(3000) ?? true);
       await flushEditsForQuit();
-      const blocked = quitBlocker();
+      const blocked = agentSettled ? quitBlocker()
+        : 'An AI command is still running. Keep working and finish or cancel it before quitting.';
       if (blocked) {
         toast(blocked, 'error');
-        await answer({ state: 'stay', reason: blocked });
+        await stay({ reason: blocked });
         return;
       }
       // Unsaved changes: Save, Discard or Cancel, exactly as before New and Open.
@@ -341,7 +350,7 @@
         app.sessionTransition = false;
       }
       if (!proceed) {
-        await answer({ state: 'stay' });
+        await stay();
         return;
       }
       const project = app.startupPending ? {} : { project: clone(state.project) };
@@ -350,9 +359,12 @@
       } catch (error) {
         const quitAnyway = await app.confirmChoice('Your latest changes could not be secured',
             error.message + ' The last automatic recovery copy is kept either way.', 'Quit Anyway');
-        await answer(quitAnyway ? { state: 'proceed', force: true } : { state: 'stay' });
+        await (quitAnyway ? answer({ state: 'proceed', force: true }) : stay());
       }
-    })().catch(error => toast(error.message, 'error')).finally(() => {
+    })().catch(error => {
+      window.STAgent?.resumeAfterTermination?.();
+      toast(error.message, 'error');
+    }).finally(() => {
       app.quitDecision = null;
     });
   }

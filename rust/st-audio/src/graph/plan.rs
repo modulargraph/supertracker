@@ -240,6 +240,9 @@ pub struct Plan {
     track_targets: Vec<TrackTargets>,
     destinations: Vec<DestinationTarget>,
     master_buffer: usize,
+    /// Per strip (in the spec's order): its post-fader buffer and that signal's arrival (how
+    /// many frames it lags the engine). For offline stem capture, see [`Plan::strip_output`].
+    taps: Vec<(usize, u64)>,
     meters: Arc<MeterBank>,
     delay: Arc<RtCell<DelayReturn>>,
     reverb: Arc<RtCell<ReverbReturn>>,
@@ -328,6 +331,11 @@ impl Compiler {
             None => values.push((address, normalized)),
         }
         self.insert_targets.get(key).copied()
+    }
+
+    /// Forgets the live values of one insert (a state was loaded into it).
+    pub fn clear_live_values_of(&mut self, key: &str) {
+        self.live_values.remove(key);
     }
 
     /// Forgets live values (the project's saved states are current again).
@@ -726,6 +734,7 @@ impl Compiler {
             track_targets,
             destinations,
             master_buffer: strip_buffers[master].2,
+            taps: (0..spec.strips.len()).map(|strip| (strip_buffers[strip].2, latency.arrival[nodes[strip].post])).collect(),
             meters: Arc::new(MeterBank::new(spec.strips.iter().map(|strip| strip.id.clone()).collect())),
             delay: self.delay.clone(),
             reverb: self.reverb.clone(),
@@ -840,6 +849,17 @@ impl Plan {
 
     pub fn meters(&self) -> &Arc<MeterBank> {
         &self.meters
+    }
+
+    /// The post-fader signal of strip `strip` (the spec's order) as the last [`Plan::process`]
+    /// left it, and its arrival: how many frames it lags the engine. The signal is `None`
+    /// while the strip is silent. An offline render captures stems here, after the fader and
+    /// before the strip's output bus; the render thread owns the plan, so this is for the
+    /// thread that drives the renderer.
+    pub fn strip_output(&self, strip: usize) -> Option<(Option<(&[f32], &[f32])>, u64)> {
+        let (buffer, arrival) = *self.taps.get(strip)?;
+        let buffer = self.buffers.get(buffer)?;
+        Some(((!buffer.silent).then_some((&buffer.left[..], &buffer.right[..])), arrival))
     }
 
     /// Automation events dropped by this plan's queue.

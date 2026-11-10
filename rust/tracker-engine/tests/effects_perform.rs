@@ -1,4 +1,4 @@
-//! Port of `tests/effects_perform_tests.cpp`: the Perform processors exercised directly
+//! Port of the former C++ test program `effects_perform_tests.cpp`: the Perform processors exercised directly
 //! through `effects::perform` (no C API). Same checks, tolerances and check count (197764)
 //! as the C++ program.
 // The index loops mirror the C++ loops they translate.
@@ -651,6 +651,6 @@ fn perform_dsp() {
     println!("Perform DSP tests passed ({} checks)", c.count);
     assert_eq!(
         c.count, 197764,
-        "same number of checks as tests/effects_perform_tests.cpp"
+        "same number of checks as the C++ program effects_perform_tests.cpp"
     );
 }

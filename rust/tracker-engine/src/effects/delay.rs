@@ -1,6 +1,6 @@
 //! Delay processors: Beat Delay, Grain Delay, Grain Stretch and Resochord.
 //!
-//! Replaces `Sources/TrackerEngine/EffectsDelay.hpp` (namespace `stfx::delay`).
+//! Ported from the C++ `EffectsDelay.hpp` (namespace `stfx::delay`).
 
 use super::common::{
     core_accessors, frame_buffers, max, min, pow2, Core, Descriptor, Label, ParameterInfo as P,

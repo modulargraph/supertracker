@@ -1,4 +1,4 @@
-//! Port of `tests/engine_tests.cpp`, part 5 of 5: pattern loop ranges, queued jumps and mode
+//! Port of the former C++ test program `engine_tests.cpp`, part 5 of 5: pattern loop ranges, queued jumps and mode
 //! switches, count-in, the transport status that follows queued commands, the seek status
 //! revision (with a concurrent status reader), the mod wheel, forgetting external voices with
 //! the sequenced flag, and note columns.
@@ -14,9 +14,9 @@ mod engine_support_a;
 
 use engine_support_a::core_helpers::*;
 use engine_support_a::tone::*;
-use engine_support_a::{assert_zero_render_allocations, status_count_in, status_transport_playing, Engine, SetOnDrop};
+use engine_support_a::{assert_zero_render_allocations, Engine, SetOnDrop};
 use std::sync::atomic::{AtomicBool, Ordering};
-use tracker_engine::clock::{STClockMeterEvent, STClockSpan, STClockTempoEvent, ST_CLOCK_LOOPING, ST_CLOCK_OK};
+use tracker_engine::clock::{ClockMeterEvent, ClockSpan, ClockTempoEvent, CLOCK_LOOPING, CLOCK_OK};
 use tracker_engine::engine::*;
 
 // Pattern loop range: rows 0..15 each carry note 60+row; one row is 6000 frames at 120 BPM, 4 LPB.
@@ -118,8 +118,8 @@ fn test_pattern_loop_range() {
         let mut e = Engine::new();
         configure_loop_music(&mut e, 0.0);
         e.begin_update();
-        let tempos = [STClockTempoEvent { beat: 0.0, bpm: 120.0 }];
-        let meters = [STClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
+        let tempos = [ClockTempoEvent { beat: 0.0, bpm: 120.0 }];
+        let meters = [ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
         assert!(e.set_timing_map(&tempos, &meters, 5).is_ok());
         assert!(e.commit_update_checked().is_ok());
         e.set_pattern_loop(4, 7);
@@ -133,11 +133,11 @@ fn test_pattern_loop_range() {
         note_ons(&mut e, 1000);
         let status = e.status();
         assert!(status.row == 4 && status.beat >= 1.0 && status.beat < 1.1);
-        let mut span = STClockSpan::default();
+        let mut span = ClockSpan::default();
         let mut a = Audio::new(512);
         bus_render(&mut e, 0, 0, &mut a);
-        assert!(e.clock_span(100, 64, 0, &mut span) == ST_CLOCK_OK);
-        assert!(span.context.flags & ST_CLOCK_LOOPING != 0);
+        assert!(e.clock_span(100, 64, 0, &mut span) == CLOCK_OK);
+        assert!(span.context.flags & CLOCK_LOOPING != 0);
         assert!((span.context.loop_start_beat - 1.0).abs() < 1e-9 && (span.context.loop_end_beat - 2.0).abs() < 1e-9);
     }
     assert_zero_render_allocations();
@@ -315,8 +315,8 @@ fn test_queued_jumps() {
         let mut e = Engine::new();
         configure_queue_music(&mut e, &[0]);
         e.begin_update();
-        let tempos = [STClockTempoEvent { beat: 0.0, bpm: 120.0 }];
-        let meters = [STClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
+        let tempos = [ClockTempoEvent { beat: 0.0, bpm: 120.0 }];
+        let meters = [ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
         assert!(e.set_timing_map(&tempos, &meters, 9).is_ok());
         assert!(e.commit_update_checked().is_ok());
         e.play(0);
@@ -430,11 +430,11 @@ fn test_count_in() {
 fn test_transport_status_follows_queued_commands() {
     let playing = |e: &Engine| -> bool {
         let s = e.status();
-        status_transport_playing(&s) != 0
+        s.transport_playing()
     };
     let count_in = |e: &Engine| -> i32 {
         let s = e.status();
-        status_count_in(&s)
+        s.count_in_shown()
     };
     {
         let mut e = Engine::new();
@@ -620,7 +620,7 @@ fn test_forget_external_voices_and_sequenced_flag() {
         assert!(ev.len() == 1 && ev[0].e.type_ == ST_EVENT_NOTE_ON && ev[0].e.slot == 0);
         assert!(
             e.forget_external_voices(-1) == 0
-                && e.forget_external_voices(st_channel_count(ST_MIN_RETURN_BUS)) == 0
+                && e.forget_external_voices(channel_count(ST_MIN_RETURN_BUS)) == 0
                 && e.forget_external_voices(1) == 0
         );
         assert!(e.forget_external_voices(0) == 1);
@@ -650,7 +650,7 @@ fn test_forget_external_voices_and_sequenced_flag() {
 }
 
 // Note columns: each extra column of a track is its own lane on the track's channel
-// (st_engine_set_step_column).
+// (`Control::set_step_column`).
 
 /// C++ `columnNote(note,gate)` (default gate 0).
 fn column_note(note: i32, gate: f32) -> STStep {

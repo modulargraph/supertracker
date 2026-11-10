@@ -1,4 +1,4 @@
-//! Port of `tests/engine_step_effect_tests.cpp`: step effect playback regressions (sticky
+//! Port of the former C++ test program `engine_step_effect_tests.cpp`: step effect playback regressions (sticky
 //! ratchets, gateless note lifetime, probability, sample commands, live tempo changes).
 #![cfg(feature = "engine")]
 // The index loops mirror the C++ loops they translate.
@@ -112,8 +112,8 @@ fn note_events(f: &mut Fixture, frames: i32, block: i32) -> Notes {
 }
 
 fn fixed_map(f: &mut Fixture) {
-    let tempo = [STClockTempoEvent { beat: 0.0, bpm: 120.0 }];
-    let meter = [STClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
+    let tempo = [ClockTempoEvent { beat: 0.0, bpm: 120.0 }];
+    let meter = [ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
     assert!(f.e.set_timing_map(&tempo, &meter, 1).is_ok());
 }
 

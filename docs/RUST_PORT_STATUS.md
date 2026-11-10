@@ -13,7 +13,12 @@ runs today, how to run and test it, and every bridge command with the crate that
 | `--serve`: HTTP + WebSocket on 127.0.0.1 | `st-app` | done, tested end to end in Chromium |
 | Window: tao + wry + muda, menus, native context menus, file choosers, quit handshake | `st-app` | runs on Linux (GTK/WebKitGTK, checked in a virtual display); macOS code type-checks, **not yet run on a Mac** |
 | Audio playback core: project to engine, the mixer graph (strips, inserts with built-in effects, sends, sidechains, buses, master, delay compensation, automation, meters), transport, live notes, devices (cpal and the null device), offline render | `st-audio` on `tracker-engine`, registered in `st-host` (`areas/audio.rs`) | done, tested on Linux (offline renders, allocation-free render path, null device, Chromium end to end); CoreAudio only type-checked |
-| Sample commands, recording and line inputs, export / bounce / freeze / render selection, plug-in instances, library, MIDI devices, Maschine MK3, AI control | `st-audio` (with `st-samples`), `st-plugin-*`, `st-library`, `st-midi`, `st-mk3`, `st-agent` | no commands registered in the host yet: they answer "not implemented" |
+| Plug-ins: instances in container processes as inserts and instruments of the mixer (latency into delay compensation, sidechains, automation and step locks with frame offsets, notes of plug-in instruments, state in the project), the catalogue (scanned by container processes, blocklist), crash recovery (`plugin.*`, `plugins.*`) | `st-audio` (`plugins`) on the container client (`rust/plugin-host`), registered in `st-host` (`areas/plugins.rs`) | done, tested on Linux with the CLAP and VST3 test plug-ins and the real container process (offline renders compared bit for bit, allocation-free render path with plug-ins, the bridge on the null device, Chromium end to end). Audio Units, editor windows of VST3 and Audio Units, and yielding activation to a container before its editor is focused are macOS only: type-checked, **not yet run on a Mac**. No third-party plug-in has been loaded yet |
+| Sample commands, recording and line inputs, export / bounce / freeze / render selection | `st-audio` (with `st-samples`) | no commands registered in the host yet: they answer "not implemented" |
+| Sound library: folders, index and search, favorites and labels, NKS catalogue, kits (`library.*`, `kit.*`) | `st-library`, registered in `st-host` (`areas/library.rs`) | done, tested on Linux (bridge tests on generated audio files; the Browser workspace in Chromium end to end). The standard content folders and NKS registrations of macOS are named in code that has not run on a Mac |
+| MIDI: devices with hot-plug, input to the engine (with recording captures), output of external-MIDI instruments from the render thread, MIDI clock and transport out (`midi.*`) | `st-midi`, connected to `st-audio` in `st-host` (`areas/midi.rs`; the audio side's seam is `st_audio::midi`) | done, tested on Linux with in-memory ports (note times, clock against tempo, input acknowledgements). **No real MIDI device has been opened** (ALSA sequencer, CoreMIDI) |
+| Maschine MK3 (`mk3.*`), off unless turned on in Settings; `--mk3-probe` | `st-mk3`, registered in `st-host` (`areas/mk3.rs`) | commands tested through the bridge against the in-memory controller; **never run with a controller** (see `cargo doc -p st-mk3`) |
+| AI control: the local control socket, `supertracker --mcp` and `--ctl` (`agent.*`) | `st-agent`, registered in `st-host` (`areas/agent.rs`); the page answers `agent.call` events | done, tested on Linux (bridge tests; MCP session and `--ctl` against the page in Chromium end to end). Unix sockets only; no screenshots (`app.screenshot` answers with a message) |
 
 The interface (`Resources/Web`) reaches its host through `host-transport.js`. It no longer talks to
 the Swift host: the page does not use `window.webkit.messageHandlers` and does not define
@@ -24,14 +29,24 @@ the Swift host: the page does not use `window.webkit.messageHandlers` and does n
 ```sh
 cd rust
 cargo build -p st-app                      # the `supertracker` executable
+# The plug-in container is a workspace of its own; built into the same folder it lands next to `supertracker`,
+# where the host looks for it (else: `$STPC_CONTAINER_PATH`, or `container` in the settings section `plugins`).
+# Without it the host runs, lists and loads built-in effects, and says why a plug-in cannot be loaded.
+CARGO_TARGET_DIR=target cargo build --manifest-path plugin-host/Cargo.toml -p stpc-container
 cargo test -p st-host -p st-app            # no display or audio hardware needed
 target/debug/supertracker                  # the window; the interface is found in ../Resources/Web
 target/debug/supertracker --serve          # no window: prints http://127.0.0.1:<port>/?token=<token>
+target/debug/supertracker --mcp            # MCP server on stdin/stdout for an AI client (needs the application running)
+target/debug/supertracker --ctl summary    # one call through the application's control socket; `--ctl help` lists the methods
+target/debug/supertracker --mk3-probe 10   # Maschine MK3 hardware diagnostic ([--exclusive] [--raw])
 target/debug/supertracker --help
 ```
 
 Linux build packages (Ubuntu 24.04): `libgtk-3-dev libwebkit2gtk-4.1-dev libasound2-dev pkg-config`
-(and a C toolchain; `libasound2-dev` is for `cpal`, the audio device layer of `st-audio`). To run the
+(and a C toolchain; `libasound2-dev` is for `cpal`, the audio device layer of `st-audio`, and for
+`midir`, the MIDI device layer of `st-midi`). At run time MIDI devices need the ALSA sequencer
+(`/dev/snd/seq`); without it the host runs without MIDI devices and `midi.devices` says why. The
+Maschine MK3 needs access to its `hidraw` and USB device nodes (a udev rule). To run the
 window without a display: `xvfb`; the window smoke test also needs `xdotool`.
 
 Type-checking the macOS code from Linux (no SDK needed; one dependency compiles a small Objective-C
@@ -49,6 +64,14 @@ Environment: `SUPERTRACKER_SUPPORT_DIR` (absolute path) replaces the support fol
 `SUPERTRACKER_AUDIO_DEVICE=null` makes the host render to the null audio device whatever is connected
 and whatever the settings say (tests, servers). Without it the host uses the output chosen in
 Settings, else the system's default output, and the null device while none is connected.
+`SUPERTRACKER_MIDI=off` opens no MIDI device. `SUPERTRACKER_CONTROL_SOCKET` (absolute path) replaces
+the AI control socket, which is otherwise `control.sock` in the support folder (or, when that path is
+too long for a socket, `SuperTracker-<hash>.sock` in the user's temporary folder); the application
+and `--mcp` / `--ctl` find it by the same rule, so they meet whenever they agree on the support folder.
+`SUPERTRACKER_NO_MK3` keeps the host from connecting to the controller at launch;
+`SUPERTRACKER_MK3_SCREEN_DUMP=<folder>` writes every controller screen frame as PNG. `SUPERTRACKER_PLUGIN_PATH` names folders (separated like `$PATH`) searched for
+plug-ins besides the settings' and the standard ones; `SUPERTRACKER_PLUGIN_STANDARD_FOLDERS=0` leaves
+the standard folders out.
 
 ### Tests
 
@@ -57,6 +80,10 @@ Settings, else the system's default output, and the null device while none is co
 | Bridge guarantees, session and settings commands, catalogue; the audio commands on the null device (`tests/audio.rs`) | `cargo test -p st-host` |
 | The audio core: unit tests, offline renders against the mixer's rules (`tests/offline.rs`), the demo song, transport, devices (`tests/playback.rs`), no allocation on the render path (`tests/realtime.rs`) | `cargo test -p st-audio` |
 | Render cost of the demo song and of a 64-track project | `cargo run --release -p st-audio --example bench` |
+| The library through the bridge, on generated audio files: add a folder, scan, search, favorites and browser state across a restart, kits, the seams to the plug-in list and the kit preview (`tests/library.rs`) | `cargo test -p st-host` |
+| MIDI with in-memory ports: a pattern's notes for an external instrument at their times, all-notes-off on stop and panic, clock against the tempo, a keyboard note that sounds and is acknowledged for recording, MIDI Start/Stop, hot-plug, shutdown (`tests/midi.rs`); no allocation on the render path with MIDI output connected (`tests/midi_realtime.rs`) | `cargo test -p st-host` |
+| The audio core's MIDI seam with a recording hook: blocks with the transport position, notes of external instruments at their frames, all-notes-off on stop and panic, nothing during an offline render (`tests/midi.rs`) | `cargo test -p st-audio` |
+| The Maschine MK3 through the bridge against `st_mk3::fake` (`tests/mk3.rs`); AI control through the bridge with a control-socket client, the setting and the quit fence (`tests/agent.rs`) | `cargo test -p st-host` |
 | Command line, WebSocket framing, file serving, menus, window helpers | `cargo test -p st-app` |
 | The page's bridge, transport and quit handshake | `node tests/host_transport_tests.js`, `node tests/host_quit_tests.js`, and every `tests/*_tests.js` (they play the host through `tests/helpers/host.js`) |
 | The real page against the real host, in Chromium | `node tests/host_e2e/run.js` ([README](../tests/host_e2e/README.md)) |
@@ -90,6 +117,15 @@ bridge.commands().with(&service)
   `st_host::areas::audio` does (the engine is `Host::audio`, for the areas that build on it:
   samples through `st_audio::SampleSource`, plug-in inserts through `st_audio::graph::insert::InsertFactory`,
   export and freeze through `AudioEngine::render_offline`).
+- Areas that follow the project without being part of the audio engine observe publications with
+  `Session::observe_projects` (MIDI routes do). Work that must not start while a quit is being
+  decided hangs on `Lifecycle::set_fence` (AI control does).
+- The library, MIDI, the Maschine MK3 and AI control are installed together
+  (`st_host::areas::services`, options in `HostOptions::services`, the running services in
+  `Host::services`). The executable calls `host.services.start_agent()` once its transport is up and
+  `host.services.shutdown()` when it quits and on SIGINT, SIGTERM and SIGHUP (`st-app/src/signals.rs`):
+  the control socket is closed, the controller is left dark with Native Instruments' agents restored,
+  external MIDI instruments are silenced, the library's index is written.
 - `st_host::testing::TestHost` runs commands as the page would, for each area's tests.
 - After adding or finishing a command, change its entry in `rust/st-host/src/catalog_table.rs` and
   run `UPDATE_PORT_STATUS=1 cargo test -p st-host --test port_status`, which rewrites the tables
@@ -126,6 +162,13 @@ the recovery copy of at most 20 seconds ago.
 - Quit: the host sends the event `app.quitRequested`; `app-session.js` flushes pending edits, asks
   about unsaved changes with the page's own Save / Discard / Cancel dialog, and answers with
   `app.quitAnswer`. The host no longer evaluates scripts in the page to collect the project.
+  AI control is fenced for the duration: the page calls `STAgent.suspendForTermination` first (a
+  command that does not finish within three seconds answers `stay`) and
+  `STAgent.resumeAfterTermination` with every `stay`; the host refuses new control-socket requests
+  between `app.quitRequested` and `stay`.
+- AI control: `agent-api.js` answers the event `agent.call` `{id, method, params}` by running
+  `STAgent.dispatch` and sending the outcome with the command `agent.reply` `{id, reply}`, and passes
+  `agent.status` events to `STAgent.setConnection` (the host no longer evaluates scripts for either).
 
 ## Commands
 
@@ -140,16 +183,16 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the Swif
 <!-- commands:begin (generated from rust/st-host/src/catalog_table.rs; see rust/st-host/tests/port_status.rs) -->
 | Crate | Commands | Implemented | Partial | Not yet |
 |---|---:|---:|---:|---:|
-| `st-host` | 15 | 12 | 3 | 0 |
+| `st-host` | 15 | 15 | 0 | 0 |
 | `st-app` | 2 | 2 | 0 | 0 |
 | `st-project` | 9 | 9 | 0 | 0 |
-| `st-audio` | 56 | 13 | 4 | 39 |
-| `st-plugin-*` | 4 | 0 | 0 | 4 |
-| `st-library` | 21 | 0 | 0 | 21 |
-| `st-midi` | 4 | 0 | 0 | 4 |
-| `st-mk3` | 6 | 0 | 0 | 6 |
-| `st-agent` | 2 | 0 | 0 | 2 |
-| **all** | **119** | **36** | **7** | **76** |
+| `st-audio` | 56 | 45 | 3 | 8 |
+| `st-plugin-*` | 4 | 4 | 0 | 0 |
+| `st-library` | 21 | 20 | 1 | 0 |
+| `st-midi` | 4 | 4 | 0 | 0 |
+| `st-mk3` | 6 | 6 | 0 | 0 |
+| `st-agent` | 3 | 3 | 0 | 0 |
+| **all** | **120** | **108** | **4** | **8** |
 
 ### `st-host`
 
@@ -160,13 +203,13 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the Swif
 | `dialog.export` | `{mode?: "stems", name?}` | {path} or {path, mode: "stems"} or {cancelled: true} | implemented | Stems: choose a folder; a new "<name> stems" folder is reserved in it. |
 | `dialog.openSample` | `{}` | {path} or {cancelled: true} | implemented | Open panel for audio files. |
 | `engine.project` | `{project, replace?, forcePluginState?, awaitPlugins?}` | the status (as in status events); {audio: false} in a host without an audio engine | implemented | Validation, dirty flag and the st-project session (st-host), then the engine and the mixer through st_host::ProjectAudio (st-audio): unchanged patterns are not sent again, and a mixer that did not change is not recompiled. Samples that cannot be loaded are reported in sample.error events. |
-| `library.chooseRoot` | `{}` | library.scan result, or {cancelled: true} | partial | The folder chooser is done; the scan it starts is library.scan (st-library), so it fails with that command's "not implemented" until then. |
+| `library.chooseRoot` | `{}` | library.scan result, or {cancelled: true} | implemented | The folder chooser, then library.scan with the chosen folder. |
 | `project.autosave` | `{project?}` | {saved: true} or {saved: false, deferred: true} | implemented | Recovery copy; deferred while a save or session change is in flight. The host also writes it every 20 s. |
 | `project.media.chooseRoot` | `{}` | {path} or {cancelled: true} | implemented | Folder chooser. |
 | `project.new` | `{templateID?, blank?}` | {project} from a template, or null (the page uses its blank project) | implemented | Uses the default template unless blank. |
 | `project.open` | `{path?}` | {project, path, dirty} or {cancelled: true} | implemented | Open panel without a path. Projects in a retired layout are refused with st-project's message. |
-| `project.save` | `{project?, path?, collectSamples?}` | {project, path, saved: true, recoveryWarning?} or {cancelled: true} | partial | Complete for the document and its media folder. Plug-in state is captured through engine.snapshot once st-audio registers it; until then the project keeps the states it carries. |
-| `project.saveAs` | `{project?, path?, collectSamples?}` | as project.save | partial | Always asks where unless a path is given. Same plug-in state note as project.save. |
+| `project.save` | `{project?, path?, collectSamples?}` | {project, path, saved: true, recoveryWarning?} or {cancelled: true} | implemented | The document and its media folder. Plug-in state is captured through engine.snapshot first; a plug-in whose state cannot be read fails the save with its name. |
+| `project.saveAs` | `{project?, path?, collectSamples?}` | as project.save | implemented | Always asks where unless a path is given. |
 | `ready` | `{}` | {version, commands, project, dirty, path, roots, plugins, audio, midi, pluginRecovery?, warning?, audioError?, openPath?} | implemented | The handshake. roots, plugins, audio, midi and pluginRecovery come from library.roots, plugins.list, audio.devices, midi.devices and plugins.recovery when those are registered, and are empty until then. |
 | `settings.get` | `{key?}` | {value} or {values: {…}} | implemented | New in the Rust host: interface preferences in settings.json (section `interface`). Not used by the page yet. |
 | `settings.set` | `{key, value} (null removes)` | {} | implemented | See settings.get. |
@@ -196,55 +239,55 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the Swif
 
 | Command | Payload | Result | State | Notes |
 |---|---|---|---|---|
-| `audio.bounceTrack` | `{track, path?, format fields of audio.export}` | {path, clip: {id, name, path, track, startBeat, durationBeats, …}, sourceTrack, sourceTrackIndex, duration} | not yet | Offline render of one track to a file (default: Renders folder in the support directory). |
-| `audio.clipInfo` | `{path}` | sample info: {path, frames, sampleRate, channels, duration, peaks…} | not yet | Decodes an audio clip's file once and caches its metadata. File work in st-samples (decode_file, DecodedSample::info). |
-| `audio.configure` | `{output?, outputDevice?, outputSystemDefault?, bufferSize?, sampleRate?, input?, inputDevice?, inputChannels?, monitor?, inputMeter?}` | audio.devices result | partial | Selects the output (by id, by uid in `output`, or outputSystemDefault), the buffer size and the sample rate; remembered in the settings section audio.devices. A device that cannot be opened leaves the null device running (fallback: true, deviceError). Input fields (input, inputDevice, inputChannels, monitor, inputMeter) are ignored until recording is ported. |
-| `audio.devices` | `{}` | {devices, inputs, outputs: [{id, uid, name, inputChannels, outputChannels, sampleRate, bufferSize}], defaultInput, defaultOutput, outputDevice, outputUid, sampleRate, bufferSize, bufferSizes, running, fallback, deviceError?, …} | implemented | Part of the ready handshake (`audio`). Devices come from cpal; the null device (id 0, uid "null") is always among the outputs and is what runs while no output is connected. Also sent as an event when the output changes by itself. |
-| `audio.export` | `{path, mode: "mix" or "stems" or "track", owners?, tail?, format fields (sampleRate, bitDepth, …)}` | {path or paths, duration, …}; progress in audio.exportProgress events | not yet | Offline render through the same graph; Stop cancels it. |
+| `audio.bounceTrack` | `{track, path?, tail?}` | {path, clip: {id, name, path, track, startBeat, durationBeats, sourceOffset, gain, fadeIn, fadeOut, muted}, sourceTrack, sourceTrackIndex, duration} | implemented | A track-mode export (the track after its fader, 32-bit float at 48 kHz) to path, or to Renders in the support folder. |
+| `audio.clipInfo` | `{path}` | sample info: {path, frames, sampleRate, channels, duration, peaks…} | implemented | Decodes an audio clip's file on the command's worker thread (once: the engine's sample cache keeps it). |
+| `audio.configure` | `{output?, outputDevice?, outputSystemDefault?, bufferSize?, sampleRate?, input?, inputDevice?, inputChannels?, monitor?, inputMeter?}` | audio.devices result | implemented | Selects the output (by id, by uid in `output`, or outputSystemDefault), the buffer size and the sample rate; remembered in the settings section audio.devices. A device that cannot be opened leaves the null device running (fallback: true, deviceError). Input: `input` (uid) or `inputDevice` (id), `inputChannels` (one for mono, two for stereo), `monitor` + `monitorVolume` (the input mixed into the output) and `inputMeter`; the input stream is open only while the meter, monitoring or a take uses it, runs at the engine's sample rate, and is not remembered in the settings. Refused for the output while a take runs. |
+| `audio.devices` | `{}` | {devices, inputs, outputs: [{id, uid, name, inputChannels, outputChannels, sampleRate, bufferSize}], defaultInput, defaultOutput, outputDevice, outputUid, sampleRate, bufferSize, bufferSizes, running, fallback, deviceError?, …} | implemented | Part of the ready handshake (`audio`). Devices come from cpal; the null device (id 0, uid "null") is always among the outputs and is what runs while no output is connected; while it runs, a null input (silence) is offered too. Also carries the input's state (inputDevice, inputUid, inputChannels, inputMetering, monitoring, monitorVolume, inputRunning, inputError). Also sent as an event when the output changes by itself or the input is lost. |
+| `audio.export` | `{path, mode?: "song" (default) or "pattern" or "stems" or "track", owners?: [owner], track?, pattern?, tail? (0..30 s, default 3), encoding?: "pcm16" / "pcm24" / "float32", sampleRate?: 44100 / 48000 / 96000, dither?}` | {path, paths, mode, frames, musicalFrames, tailFrames, sourceFrames, duration, container, encoding, sampleRate, bitDepth, isFloat, dither, renderSampleRate, latencyCompensation, stems: [{owner, name, path, boundary, frames, arrivalFrames, …}], renderPasses, stemPolicy}; progress in audio.exportProgress {progress, path, phase} events, audio.exported at the end | implemented | st_audio::export on a private offline engine at 48 kHz (live playback is not paused): one pass through the complete graph, stems captured after each chosen channel's fader and delay-compensated; files through st-samples' transaction (published with one rename; stems in a folder). transport.stop or engine.panic cancels it and nothing is published. Refused while a track has a live line input. |
 | `audio.inputs` | `{inputs?: [...], input?, track?}` | line input configuration and status | not yet | Same handler as audio.inputs.configure. |
 | `audio.inputs.configure` | `{inputs?: [...], input?, track?}` | line input configuration and status | not yet | Live line inputs routed into tracks. |
 | `audio.kitPreview` | `{groupID, path}` | {path, warning?} | not yet | Not sent by the page: kit.save calls it to render a kit's audio preview. |
-| `audio.record` | `{source, instrument?, owner?, monitor?, monitorVolume?}` | recording status; progress in audio.recording events | not yet | Starts recording an input to a sample. |
+| `audio.record` | `{source?: "master" or "input" (default), path?, name?, instrument?, owner?, monitor?, monitorVolume?}` | {recording: true, path, channels}; also an audio.recording event | implemented | Starts a take into a new 24-bit WAV (path, or Recordings in the support folder): the master output (what the device gets), or the chosen channels of the input device with the input's and output's latency left out of the start. st_audio::recording: the audio thread copies into a ring, a writer thread writes the file. |
 | `audio.renderDiagnostics` | `{}` | {units, inputCapture, renderClock, heartbeat, sampleRates, …} | not yet | Not sent by the page: diagnostics for tests and the agent. |
-| `audio.stopRecord` | `{}` | {path, duration, …} of the recorded file | not yet | Ends audio.record. |
-| `builtin.drumModels` | `{}` | [{id, name, parameters…}] | not yet | Not sent by the page today. Metadata of the built-in drum models (tracker-engine). |
+| `audio.stopRecord` | `{}` | {recording: false, path, duration, frames, channels, sampleRate, partial, source, sourceStartFrame, sourceEndFrame, latencyCompensation, instrument?, owner?} (also an audio.recording event); {recording: false} when no take runs | implemented | Ends the take on its source's clock: the file holds exactly the frames between Record and Stop. |
+| `builtin.drumModels` | `{}` | [{id, model, name, parameters: [{index, id, name, unit, min, max, defaultValue, defaultPhysical, logarithmic, stepCount}]}] | implemented | Not sent by the page today. Metadata of the built-in drum models (tracker-engine). |
 | `builtin.effects` | `{}` | [{id: "stfx:<effect>", name, category, sidechain, parameters: [{address, id, name, unit, min, max, defaultValue, logarithmic, integer, toggle, labels}]}] | implemented | Metadata of the built-in effects (tracker-engine); a parameter's index is its address. |
 | `engine.instrumentParameter` | `{instrument, target, value}` | {ok: bool} | implemented | Live change of one built-in instrument parameter (cutoff, resonance, automation targets). |
 | `engine.panic` | `{}` | transport status | implemented | All sound off: voices, effect tails, held sustain. project.new calls it when present. |
-| `engine.snapshot` | `{}` | the project as the engine holds it, with audioPlugins: [{…, state}] captured now | partial | The published project with the state of built-in effects captured (base64 JSON, format SuperTracker.BuiltinFX). Plug-in instances are not hosted yet: their descriptors keep the state they carry. |
-| `freeze.status` | `{}` | {tracks: [{track, state, stale?, …}]} | not yet | Freeze state of every track. |
-| `freeze.track` | `{track, tail?, maxTail?, method?, patterns?, monitor?}` | {project or track freeze record, media: [...]}; progress in freeze.progress events | not yet | Long: the page sends it with ST.longRequest (no time limit). |
-| `freeze.unfreeze` | `{track}` | {track, project?} | not yet | Long, like freeze.track. |
-| `midi.expression` | `{kind: pitch bend, controller, aftertouch or sustain; track, note?, controller?, value}` | {sent: bool, track, instrument} | partial | Reaches the engine: pitch bend (value -1..1 is ±2 semitones), the mod wheel (cc 1) and sustain (cc 64 or kind sustain). Other controllers and aftertouch answer sent: false until plug-in instruments and MIDI outputs exist. |
+| `engine.snapshot` | `{}` | the project as the engine holds it, with audioPlugins: [{…, state}] captured now | implemented | Built-in effects are captured from the mixer (base64 JSON, format SuperTracker.BuiltinFX). Every hosted plug-in is asked for its state (base64 of the container's state bytes; an unchanged plug-in gives the identical text) and gets latency and tailTime; a descriptor whose state could not be read carries stateError; one without a hosted instance (not installed, held back) keeps what it carries, a lost one its last known state. |
+| `freeze.status` | `{}` | {tracks: [{track, id, available, stale, path, dormantPlugins, patternPrints, patternPlayback, unprintedPatterns}], busy} | implemented | stale: the fingerprint of what the print was made from changed (media files by SHA-256 of their content, so Save As and relinking do not make a print stale); available: every print file is readable. |
+| `freeze.track` | `{track, tail? (fixed, 0..30 s), maxTail? (auto tail bound, default 10 s), method?}` | {track, record (the object the page stores as tracks[i].frozen: version, id, path, sha256, sampleRate, frames, musicalFrames, tailFrames, musicalEndBeat, tailSeconds, dormantPluginIDs, fingerprint, mixMode, createdAt, patternPrints, unprintedPatterns, printGain, tailMode, method), audioPlugins, releasedPlugins, unprintedPatterns, notes}; progress in freeze.progress {track, progress, phase, recording} events | partial | Long: the page sends it with ST.longRequest. st_audio::freeze on a private offline engine: the song print and a head and loop print of every pattern the track uses, 32-bit float WAV in Freezes of the support folder. Offline only: method "record" (freeze by recording a hardware return) is refused. The fingerprint counts media by content hash, not by path. |
+| `freeze.unfreeze` | `{track}` | {track, audioPlugins} | implemented | The page removes tracks[i].frozen and publishes; the engine then plays the live chain again and the track's plug-ins load from their descriptors. |
+| `midi.expression` | `{kind: pitch bend, controller, aftertouch or sustain; track, note?, controller?, value}` | {sent: bool, track, instrument} | partial | Reaches the engine: pitch bend (value -1..1 is ±2 semitones), the mod wheel (cc 1) and sustain (cc 64 or kind sustain). A track whose instrument is a plug-in gets the pitch bend and the mod wheel as MIDI too (sustain holds its notes in the host). Other controllers and aftertouch answer sent: false. |
 | `note.off` | `{note, track?, instrument?, applyNote?, captureInput?, …}` | {ok: true, sustained?, inputAcknowledgement?} | implemented | With captureInput the reply waits for the audio thread and carries inputAcknowledgement. A held sustain pedal defers the release (sustained: true). |
 | `note.on` | `{note, velocity?, track?, instrument?, captureInput?, …}` | {ok: true, inputAcknowledgement?} | implemented | Quick command: order with note.off matters. With captureInput (and inputOwner) the reply waits for the audio thread and carries inputAcknowledgement {status, applied, pattern, row, sequence, recordingClock?, …}. |
 | `plugin.captureBasePatch` | `{owner or track, kind, slot, instanceID?}` | the plug-in descriptor with its new base patch | not yet | Only while stopped. |
-| `plugin.editor` | `{owner or track, kind, slot, instanceID?, open?}` | {open: bool, …} | not yet | Opens the plug-in's own window (in its container process). |
-| `plugin.load` | `{owner or track, kind: "instrument" or "effect", slot, id/component, state?, …}` | the loaded plug-in's descriptor {instanceID, name, kind, owner, slot, parameters…} | not yet | Long. The instance lives in a container (st-plugin-*). |
-| `plugin.loadNKS` | `plugin.load target + {path of the NKS preset}` | the loaded plug-in's descriptor | not yet | Long. |
-| `plugin.move` | `{owner or track, fromSlot, toSlot, …}` | {plugins, slotMap, audioPlugins, routing?} | not yet | Reorders a strip's insert effects and remaps their automation. |
-| `plugin.parameter` | `{owner or track, kind, slot, address, value, normalized?}` | {address, value, display?} \| | not yet |  |
-| `plugin.parameters` | `{owner or track, kind, slot, instanceID?}` | {parameters: [{address, name, value, min, max, unit, …}]} \| | not yet |  |
-| `plugin.preset` | `{owner or track, kind, slot, preset or index}` | the plug-in's descriptor after the change \| | not yet |  |
-| `plugin.remove` | `{owner or track, kind, slot}` | {removed: bool, …} | not yet | Also removes sidechains into the instance. |
-| `plugin.state` | `{} for all, or a target, or a target + {state: string} to restore` | [descriptors with state] or one descriptor (stateError when capture failed) | not yet | The page rejects a reply whose result has stateError. |
-| `render.cancelSelection` | `{}` | {cancelled: bool} | not yet | Cancels render.selection. |
-| `render.selection` | `{tracks, startBeat, endBeat or rows, tail?, destination…}` | {path, clip or sample, duration}; progress in render.selectionProgress events | not yet | Long: sent with ST.longRequest. |
+| `plugin.editor` | `{owner or track, kind, slot, instanceID?, open?: false to close}` | {shown, open, name, custom, width, height, windowID} | implemented | Opens the plug-in's own window in its container process, or brings the open one to the front. Built-in effects have none. On Linux only CLAP plug-ins with floating windows have editors; macOS windows (and yielding activation to the container) are type-checked only. |
+| `plugin.load` | `{owner or track, kind: "instrument" or "effect", slot, component (or id): "clap:<id>", "vst3:<class id>", "au:<type:subtype:manufacturer>" or "stfx:<effect>", bundlePath?, state?, name?, bypass?, instanceID?, nks?}` | the descriptor {owner, track?, kind, slot, instanceID, component, format, bundlePath, name, manufacturer, bypass, latency, tailTime, presets, hostStatus, parameters} | implemented | Long. Creates the instance in a container (or the built-in effect), replaces what the slot held in the engine's project, and answers once it is audible; the interface stores the descriptor and publishes. A failed load leaves the engine as it was. |
+| `plugin.loadNKS` | `plugin.load target + {path of the .nksf / .nksfx preset}` | the descriptor, with nks: {name, path, identity, pages, warnings} | implemented | Long. The preset's VST3 class (or the VST3 a vendor ships for its VST2 identity) is looked up in the catalogue, loaded with the preset's exact state bytes, and the controller pages are bound to the parameters the plug-in has. |
+| `plugin.move` | `{owner or track, fromSlot, toSlot}` | {moved: true, owner, track?, fromSlot, toSlot, previousPlugins, plugins, slotMap: [{fromSlot, toSlot, instanceID}], audioPlugins, routing?} | implemented | The effect in fromSlot takes the chain position of toSlot; the effects between shift, the slot numbers in use stay. Automation lanes of the owner follow their effect. previousPlugins carry the states captured before the move. No instance is reloaded. |
+| `plugin.parameter` | `{owner or track, kind, slot, address, value, normalized?: true} or {…, bypass: bool}` | the parameter {address, name, value, normalized, display, written, …}; for bypass the descriptor | implemented | Values are normalized 0..1 unless normalized is false. An effect of an instrument's chain is set on every track that plays it. Bypass is applied to the engine's project at once. |
+| `plugin.parameters` | `{owner or track, kind, slot, instanceID?, addresses?: [string]}` | {parameters: [{address, id, name, group, min, max, value, normalized, display, unitName, writable, automatable, hidden, stepCount?, normalizedStep?, valueStrings?}]} | implemented | address is the parameter id as a decimal string. display is the plug-in's own text (asked for the first 512 parameters). A lost plug-in answers with its last known values; one that is not loaded with the reason. |
+| `plugin.preset` | `{owner or track, kind, slot, number?}` | the descriptor with parameters and currentPreset; without number [{number, name}] | implemented | Factory presets of the plug-in (VST3 program lists, Audio Unit presets). |
+| `plugin.remove` | `{owner or track, kind, slot}` | {removed: bool, owner, kind, slot, instanceIDs} | implemented | Removes the descriptor and the sidechains into it from the engine's project; the instance is destroyed off the audio thread once no render plan uses it. |
+| `plugin.state` | `{} for all, or a target, or a target + {state: string} to restore` | [descriptors with state] or one descriptor (stateError when capture failed) | implemented | The page rejects a reply whose result has stateError. Only the targeted plug-in is asked for its state. |
+| `render.cancelSelection` | `{}` | {cancelled: bool} | implemented | Cancels the running render.selection, which then fails with "The render was cancelled." |
+| `render.selection` | `{pattern, tracks: [index], firstRow, lastRow, mode?: "master" or "track", tail? (maximum, 0..60 s, default 10), thresholdDB?, holdSeconds?, sampleRate?, channels?, normalize?, name?, path?}` | {path, name, frames, sampleRate, channels, musicalFrames, renderedFrames, tailFrames, tailEnd: "silence" or "maximum", peak, normalizeGain, mode, latencyFrames, plugins, rootNote, warnings?}; progress in render.selectionProgress {job, phase, progress} events | implemented | Long: sent with ST.longRequest. st_audio::render_selection on a private engine while the live one plays; the sample is a 32-bit float WAV in Recordings of the support folder (or path). |
 | `routing.apply` | `{project}` | {project, routing, status} | not yet | Validates and applies a routing change with the complete project. |
 | `routing.capabilities` | `{}` | {maxBuses, sidechain support, …, audioExport: formats} \| | not yet |  |
-| `routing.status` | `{}` | {projectUnavailable?: bool, failure?, strips…} | partial | The compiled mixer: {standard, strips, inserts: [{owner, slot, instanceID, component, available, reason?, latencyFrames}], unavailableSidechains, latencyFrames}. A project the mixer cannot render is refused at publication, so projectUnavailable is always false and failure null. |
+| `routing.status` | `{}` | {projectUnavailable?: bool, failure?, strips…} | partial | The compiled mixer: {standard, strips, inserts: [{owner, slot, instanceID, component, available, reason?, latencyFrames, instrument?, format?, lost?}], unavailableSidechains, latencyFrames, pluginsRestoring}. An insert whose plug-in could not be loaded, is held back or was lost while running is unavailable with the reason and passes its signal through. A project the mixer cannot render is refused at publication, so projectUnavailable is always false and failure null. |
 | `routing.validate` | `{project}` | validation report {valid, errors, latency…} \| | not yet |  |
-| `sample.analyzeSlices` | `{instrument, path?, sensitivity…}` | {slices: [frame], …} | not yet | Transient detection; up to 180 s. File work in st-samples (analyze_slices). |
-| `sample.edit` | `{instrument, path?, operation, start, end, …}` | sample info of the edited sample | not yet | Writes edits into the support folder's Edits directory. File work in st-samples (edit_to_file). |
-| `sample.info` | `{instrument, path}` | sample info, or {available: false} \| | not yet |  |
-| `sample.load` | `{path, instrument}` | sample info {path, frames, sampleRate, channels, duration, …} | not yet | Decoding on a worker; a newer load for the instrument supersedes it. File work in st-samples (decode_file); st-audio installs the result in the engine. |
-| `sample.peaks` | `{instrument, path?, start?, end?, width?}` | {peaks: [...], frames, …} | not yet | Waveform overview for the sample editor. File work in st-samples (DecodedSample::inspect). |
-| `sample.prefetchPreviews` | `{items: [path or {path}]}` | {queued: number} | not yet | Warms the preview cache. |
-| `sample.preview` | `{path, volume?}` | {playing: true, duration, cached, startMs} or {playing: false, superseded: true} | not yet | Browser audition. |
-| `sample.previewStatus` | `{}` | preview player status | not yet | Not sent by the page. |
-| `sample.stopPreview` | `{}` | {playing: false} \| | not yet |  |
-| `sample.wavetables` | `{}` | [{name, path, frames…}] built-in wavetables \| | not yet | From st-samples (builtin::wavetable_list). |
-| `sampler.playheads` | `{enabled: bool, instrument?}` | {ok: true, watching: instrument}; positions in sampler.playheads events (30 per second, emit_latest) \| | not yet |  |
+| `sample.analyzeSlices` | `{instrument, path?, sensitivity?, minimumGapSeconds?, maximumSlices?, start?, end?}` | {method, slicePoints, slices, sliceCount, …} | implemented | Transient detection (st-samples analyze_slices) on the command's worker thread. |
+| `sample.edit` | `{instrument, path?, operation, start, end, peak?, decibels?, curve?, ratio?, sourceBPM?, targetBPM?, outputDirectory?}` | sample info of the edited sample (its path is the new file) | implemented | st-samples edit_to_file: a new 24-bit WAV in Edits of the support folder; the source file is never modified. The result is in the sample cache at once. |
+| `sample.info` | `{instrument, path}` | sample info, or {available: false} | implemented | Answers from the cache when the published instrument plays that path; never decodes. |
+| `sample.load` | `{path, instrument}` | sample info {path, name, duration, sampleRate, channels, frames, peaks (512), wavetableFrameSize, loops, rootNote} | implemented | Decodes on the command's worker thread (st-samples load_sample; builtin: references too) into the engine's sample cache; the publication that names the path installs it. A newer load for the instrument supersedes one still decoding. |
+| `sample.peaks` | `{instrument, path?, start?, end?, bins?, snap?: [position], direction?, window?}` | {path, frames, sampleRate, start, end, min: [...], max: [...], snapped?} | implemented | Waveform columns and zero-crossing snapping for the sample editor (DecodedSample::inspect). Fails with "still loading" while the sample is not decoded. |
+| `sample.prefetchPreviews` | `{items: [path or {path}]}` | {queued: number} | implemented | Warms the preview cache (at most 8 files; each request replaces the previous queue). {kit} items are skipped until the library resolves a kit's preview file. |
+| `sample.preview` | `{path, volume? (default 0.35)}` | {playing: true, duration, cached, startMs} or {playing: false, superseded: true} | implemented | Browser audition on the engine's preview mixer (st-audio preview): head from st-samples' PreviewCache, the tail of a long file streamed; consecutive previews crossfade. Mixed after the master fader. sample.previewEnded {path} when it has played to its end. |
+| `sample.previewStatus` | `{}` | {cachedPreviews, cacheBytes, cacheHits, cacheMisses, voices, lastStartMs, underruns, leakedVoices} | implemented | Not sent by the page. |
+| `sample.stopPreview` | `{}` | {playing: false} \| | implemented | Fades the preview out. engine.panic stops it too. |
+| `sample.wavetables` | `{}` | [{group, name, path, frames, frameSize, wavetable}] built-in wavetables \| | implemented | From st-samples (builtin::wavetable_list). |
+| `sampler.playheads` | `{enabled: bool, instrument?}` | {ok: true, watching: instrument (-1 all, -2 off)}; positions in sampler.playheads events {instrument, voices: [{instrument, track, note, mode, direction, releasing, zone, preview, position, windowStart, windowEnd, frames, level, grains}]} (30 per second, emit_latest, only when the engine's snapshot changed) \| | implemented |  |
 | `step.preview` | `{step: {note, instrument, velocity, chord?…}, track?, duration?}` | {auditioning: bool} | implemented | Audition of one tracker step. |
 | `transport.loop` | `{loop: {start, end} or null} (or the range itself)` | transport status \| | implemented | Pattern-mode row loop; anything that is not a range clears it. |
 | `transport.play` | `{mode?: "pattern" or "song", songMode?, fromStart?, loop?, countIn?}` | transport status | implemented | mode "pattern" or songMode: false plays the active pattern; loop is a row range for Pattern mode; countIn is bars (0..4). Then status events, 20 per second (emit_latest). |
@@ -257,63 +300,64 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the Swif
 
 | Command | Payload | Result | State | Notes |
 |---|---|---|---|---|
-| `plugins.list` | `{}` | [{id, name, vendor, format, kind, …}] | not yet | Part of the ready handshake (`plugins`). Formats: CLAP, VST3, Audio Units (macOS). |
-| `plugins.recovery` | `{}` | {suspects: [{id, name, requiresReview, …}]} | not yet | Part of the ready handshake (`pluginRecovery`) when registered. |
-| `plugins.recovery.retry` | `{ids?: [...]}` | recovery report after the retry | not yet | Long. |
-| `plugins.scan` | `{}` | {scanning: true}; progress in plugins.catalogue events | not yet | Discovery runs in isolated scanner processes. |
+| `plugins.list` | `{details?: bool}` | [{id, name, manufacturer, vendor, version, format: "CLAP" or "VST3" or "AU" or "Builtin", kind, type, category, isInstrument, bundlePath?}]; with details {plugins, scanning, progress, blocklist: [{format, path, status, reason, blocklisted}], folders, error} | implemented | Part of the ready handshake (`plugins`). Answers from the scan cache and the built-in effects: no plug-in is loaded and no process started. |
+| `plugins.recovery` | `{}` | {suspects: [{identity: {key, format, componentID, name, bundlePath?}, reasons, requiresReview, retryAuthorized, loadCrashes, lostInstances, heldBack}], warnings, pendingInstances, …} | implemented | Part of the ready handshake (`pluginRecovery`). Lists plug-ins held back after crashing twice in a row while loading (plugin-recovery.json) and plug-ins lost while running; also sent as the event plugins.recovery when a plug-in is lost. |
+| `plugins.recovery.retry` | `{keys?: [identity key]}` | the recovery report + retryErrors: [{name, message}] | implemented | Long. Restores lost instances with their last state and loads held-back plug-ins of the project again. |
+| `plugins.scan` | `{rescan?, retryFailed?, folders?: [path], wait?}` | {scanning: true}; with wait {scanning: false, result, plugins, blocklist}; progress in plugins.catalogue events {scanning, completed, total, path, scanned, cached, failed, plugins, blocklist} | implemented | Each plug-in file is read by a short-lived container process; one that crashes or hangs is blocklisted. folders replaces the user's folders (settings section plugins). Also runs once at start for what changed. |
 
 ### `st-library`
 
 | Command | Payload | Result | State | Notes |
 |---|---|---|---|---|
-| `kit.detail` | `{path}` | {name, sounds: [{slot, id, name, type, plugin, empty, missing}], compatibility: {summary, loadable, warnings, missingPlugins}, path, previewPath?} | not yet | Reads a .stkit package (Maschine .mxgrp import is not ported: no legacy). |
-| `kit.read` | `{path}` | {project, metadata, warnings, groupProject} | not yet | A kit as a track group to insert. |
-| `kit.save` | `{groupID, name?, path?, overwrite?, copySamples?, previewPath?, generatePreview?}` | {path, name, warnings} or {exists: true, path, name} or {needsName: true, path} | not yet | Needs engine.snapshot (plug-in state) and audio.kitPreview. |
-| `library.cancel` | `{}` | {scanning: false, count, cancelled: true, errors, rootReports} | not yet | Stops the running scan. |
-| `library.diagnostics` | `{roots?: [path]}` | [{path, readable, …}] per root | not yet | Not sent by the page. |
-| `library.favorite` | `{path, favorite?: bool}` | {path, favorite}; also a library.favorite event | not yet | Favourites were favorites.json in the library cache. |
-| `library.kit` | `{path}` | kit metadata | not yet | Not sent by the page. |
-| `library.kits.browse` | `{query?, offset?, limit?, filters?, favorites?, pack?, user?}` | {items: [...], total, facets…} | not yet | Kit browser page. |
-| `library.metadata.edit` | `{paths: [path], changes: {…}}` | {updated, items?} | not yet | Edits library metadata of samples. |
-| `library.nks` | `{path}` | NKS preset metadata: {name, vendor, product, bank, types, modes, plugin id, …} | not yet | .nksf / .nksfx only. |
-| `library.nks.artwork` | `{keys: [string], variant?: "tile"}` | {images: {key: data URL}, variant} | not yet | Up to 400 keys. |
-| `library.nks.browse` | `{query?, product?, bank?, subBank?, kind?, filters?, favorites?, offset?, limit?, hideOffline?}` | {items, total, products, banks, …} | not yet | NKS browser page. |
-| `library.nks.rescan` | `{}` | NKS catalogue status | not yet | Progress in library.nks.progress events. |
-| `library.nks.status` | `{}` | NKS catalogue status | not yet | Not sent by the page. |
-| `library.removeRoot` | `{path}` | library.roots result | not yet | Also drops the root's items from the index. |
-| `library.roots` | `{}` | [{path, name, count, available, …}] | not yet | Part of the ready handshake (`roots`). |
-| `library.scan` | `{roots?: [path]}` | {scanning: true, …}; progress in library.progress events | not yet | library.chooseRoot calls it. |
-| `library.search` | `{query?, category?, kind?, roots?, favorites?, offset?, limit?, filters?}` | {items: [...], total, categories, scanning} | not yet | Newer searches supersede queued ones. |
-| `library.state.get` | `{}` | the browser's remembered state object, or {} | not yet | Was browser-state.json (256 KiB limit). |
-| `library.state.set` | `{state: object}` | {saved: true} | not yet | See library.state.get. |
-| `library.status` | `{}` | {scanning, count, errors, rootReports} | not yet | Not sent by the page. |
+| `kit.detail` | `{path, availableComponents?}` | {name, sounds: [{slot, id, name, type, plugin, empty, missing}], compatibility: {summary, loadable, warnings, missingPlugins}, path, previewPath?} | implemented | Reads a .stkit package or a Maschine group. The installed plug-ins come from plugins.list (st-plugin-*) when that is registered; without it plug-in availability is not judged. |
+| `kit.read` | `{path}` | {path, metadata, groupProject, sounds, warnings, report?} | implemented | A kit as a track group to insert. |
+| `kit.save` | `{project, groupID, name?, path?, overwrite?, copySamples?, previewPath?, generatePreview?}` | {path, name, warnings} or {exists: true, path, name} or {needsName: true, path} | partial | Complete for the package: the project is the one in the payload (the page publishes with plug-in state captured first), the session's file resolves relative sample paths, the kit folder is rescanned. The audio preview is rendered by audio.kitPreview (st-audio) once that command is registered; until then a kit is saved without one unless the payload carries previewPath. |
+| `library.cancel` | `{}` | {scanning: false, count, cancelled: true, errors, rootReports} | implemented | Stops the running scan. |
+| `library.diagnostics` | `{roots?: [path]}` | [{path, readable, …}] per root | implemented | Not sent by the page. |
+| `library.favorite` | `{path, favorite?: bool}` | {path, favorite}; also a library.favorite event | implemented | favorites.json in the Library folder of the support directory. |
+| `library.kit` | `{path}` | kit metadata | implemented | Not sent by the page. |
+| `library.kits.browse` | `{query?, offset?, limit?, filters?, favorites?, pack?, user?}` | {items: [...], total, facets…} | implemented | Kit browser page. |
+| `library.metadata.edit` | `{paths: [path], changes: {…}}` | {updated, items?} | implemented | Edits library metadata of samples. |
+| `library.nks` | `{path}` | NKS preset metadata: {name, vendor, product, bank, types, modes, plugin id, …} | implemented | .nksf / .nksfx only. |
+| `library.nks.artwork` | `{keys: [string], variant?: "tile"}` | {images: {key: data URL}, variant} | implemented | Up to 400 keys. |
+| `library.nks.browse` | `{query?, product?, bank?, subBank?, kind?, filters?, favorites?, offset?, limit?, hideOffline?}` | {items, total, products, banks, …} | implemented | NKS browser page. |
+| `library.nks.rescan` | `{}` | NKS catalogue status | implemented | Progress in library.nks.progress events. |
+| `library.nks.status` | `{}` | NKS catalogue status | implemented | Not sent by the page. |
+| `library.removeRoot` | `{path}` | library.roots result | implemented | Also drops the root's items from the index. |
+| `library.roots` | `{}` | [{path, name, source, available, scanStatus, scanErrors, indexedCount}] | implemented | Part of the ready handshake (`roots`). |
+| `library.scan` | `{roots?: [path]}` | {scanning: true, …}; progress in library.progress and library.results events | implemented | Returns at once. library.chooseRoot calls it. |
+| `library.search` | `{query?, category?, kind?, roots?, favorites?, offset?, limit?, filters?}` | {items: [...], total, categories, scanning} | implemented | On a worker thread; searches run one at a time and one that a newer search overtook answers {cancelled: true}. |
+| `library.state.get` | `{}` | the browser's remembered state object, or {} | implemented | browser-state.json in the Library folder (256 KiB limit). |
+| `library.state.set` | `{state: object}` | {saved: true} | implemented | See library.state.get. |
+| `library.status` | `{}` | {scanning, count, errors, rootReports} | implemented | Not sent by the page. |
 
 ### `st-midi`
 
 | Command | Payload | Result | State | Notes |
 |---|---|---|---|---|
-| `midi.clock` | `{enabled?, devices?: [id], leadMilliseconds?} or {} to read` | {enabled, devices, leadMilliseconds, …} | not yet | MIDI clock output; was midi-clock.json (settings section midi.clock). |
-| `midi.configure` | `{enabled?, input?, inputID?, inputIDs?, inputs?, inputChannel?, track?, instrument?, output fields}` | MIDI settings and device lists | not yet | Routes MIDI input to a track/instrument; starts the audio engine when enabled. |
-| `midi.devices` | `{}` | {inputs: [...], outputs: [...], settings…} | not yet | Part of the ready handshake (`midi`). |
-| `midi.performance` | `{map: object or null}` | {active: bool} | not yet | Chord/scale map applied to incoming MIDI notes. |
+| `midi.clock` | `{enabled?, devices?: [{id, clock?, transport?}], leadMilliseconds?} or {} to read` | {enabled, running, leadMilliseconds, automaticLeadMilliseconds, devices: [{id, name, offline, clock, transport}]} | implemented | MIDI clock and Start/Stop/Continue from the transport position, generated on the render thread; settings section midi.clock (was midi-clock.json). |
+| `midi.configure` | `{enabled?, inputID?, inputIDs?, inputChannel?, outputID?, channel?, track?, instrument?}` | midi.devices result | implemented | Device selection, and the track and instrument MIDI input plays. Input reaches the engine through st_host::areas::midi (recording captures included); notes of instruments of type midi leave through their output. |
+| `midi.devices` | `{}` | {inputs: [{id, name, manufacturer, offline, connected}], outputs: [{id, name, manufacturer, offline, selected}], enabled, inputIDs, allInputs, outputID, requestedInputIDs, requestedOutputID, channel, inputChannel, error?} | implemented | Part of the ready handshake (`midi`). `error` says why no device can be used (no MIDI service on this system). Changes arrive as midi.status events. |
+| `midi.performance` | `{map: [[note]] (128 rows) or null}` | {active: bool} | implemented | Chord/scale map applied to incoming MIDI notes. |
 
 ### `st-mk3`
 
 | Command | Payload | Result | State | Notes |
 |---|---|---|---|---|
-| `mk3.configure` | `{enabled: bool}` | controller status + {enabled} | not yet | Was maschine-mk3.json (settings section mk3). |
-| `mk3.connect` | `{exclusive?: bool}` | controller status + {enabled} | not yet | Refused while support is off in Settings. |
-| `mk3.disconnect` | `{}` | controller status + {enabled} \| | not yet |  |
-| `mk3.leds` | `LED state delta` | {ok: true} \| | not yet |  |
-| `mk3.screen` | `{left?, right?} screen images` | {screens: …} \| | not yet |  |
-| `mk3.status` | `{diagnostics?: bool}` | {connected, exclusive, …, enabled} | not yet | Input arrives as mk3.input events. |
+| `mk3.configure` | `{enabled: bool}` | controller status + {enabled} | implemented | Settings section mk3 (was maschine-mk3.json); off by default. |
+| `mk3.connect` | `{exclusive?: bool}` | controller status + {enabled} | implemented | Refused while support is off in Settings. |
+| `mk3.disconnect` | `{}` | controller status + {enabled} | implemented | Releases the controller to other software. |
+| `mk3.leds` | `LED state delta` | {ok: true} | implemented |  |
+| `mk3.screen` | `{left?, right?} display lists` | {screens: bool} | implemented | screens is false while the displays are not taken over (mk3.connect {exclusive: true}). |
+| `mk3.status` | `{diagnostics?: bool}` | {connected, exclusive, screens, …, enabled, diagnostics?} | implemented | Input arrives as mk3.input events, changes as mk3.status events. |
 
 ### `st-agent`
 
 | Command | Payload | Result | State | Notes |
 |---|---|---|---|---|
-| `agent.configure` | `{enabled?: bool}` | {available, enabled, clients, …} (same as agent.status) | not yet | Turns the local AI control socket on or off; the setting was ai-control.json. |
-| `agent.status` | `{}` | {available: bool, enabled: bool, clients: number, …} | not yet | The old host answered {available:false, enabled:false, clients:0} when the control server was absent. |
+| `agent.configure` | `{enabled?: bool}` | {available, enabled, listening, clients, socket, suspendedForTermination, error?} (same as agent.status) | implemented | Turns the local AI control socket on or off (settings section agent, was ai-control.json). Off closes every client connection at once. |
+| `agent.reply` | `{id, reply}` | null | implemented | New in the Rust host: the page's answer to the event agent.call {id, method, params}; reply is what STAgent.dispatch returned (its JSON text or the object). |
+| `agent.status` | `{}` | {available: true, enabled, listening, clients, socket, suspendedForTermination, error?} | implemented | Also sent as the event agent.status on every change (the page passes it to STAgent.setConnection). The socket opens once the executable has its transport up. |
 
 <!-- commands:end -->
 
@@ -329,12 +373,13 @@ Events the page handles today, and who will emit them.
 | `project.media.progress` | `st-host` (`st-project` search) |
 | `error` `{message}` | any area; `st-host` uses it for a failed recovery save |
 | `status` (sent 20 times a second with `emit_latest`), `audio.devices` (the output changed by itself), `sample.error` (a sample of the published project could not be loaded) | `st-audio`: sent today |
-| `transport.status`, `sampler.playheads` (`emit_latest`), `audio.latency`, `audio.recording`, `audio.exportProgress`, `audio.clipLoaded`, `audio.clipsLoaded`, `audio.clipError`, `sample.loaded`, `sample.previewEnded`, `sample.preview.stopped`, `freeze.progress`, `render.selectionProgress`, `routing.changed`, `routing.error`, `plugin.changed`, `plugin.error`, `plugins.changed`, `audioPlugins.changed` | `st-audio`: not sent yet |
-| `plugins.catalogue` | `st-plugin-*` (scan progress) |
-| `library.progress`, `library.results`, `library.metadata`, `library.favorite`, `library.error`, `library.kits.progress`, `library.nks.progress` | `st-library` |
-| `midi.note`, `midi.message`, `midi.status` | `st-midi` |
-| `mk3.input`, `mk3.status` | `st-mk3` |
-| `project.loaded`, `project.changed`, `project.sequence` | `st-agent` (a client replaced or edited the project) |
+| `transport.status`, `sampler.playheads` (`emit_latest`), `audio.latency`, `audio.recording`, `audio.exportProgress`, `audio.clipLoaded`, `audio.clipsLoaded`, `audio.clipError`, `sample.loaded`, `sample.previewEnded`, `sample.preview.stopped`, `freeze.progress`, `render.selectionProgress`, `routing.changed`, `routing.error`, `plugins.changed`, `audioPlugins.changed` | `st-audio`: not sent yet (the page still handles the two plug-in list events; the host has no use for them: a publication loads its plug-ins before it answers) |
+| `plugins.catalogue` (scan progress `{scanning, completed, total, path, scanned, cached, failed, plugins}`, and `blocklist` when done), `plugin.parameter` `{owner, kind, slot, instanceID, track?, address, value (normalized), plainValue, source: "editor"}` and `plugin.gesture` `{…, address, begin}` (a value changed, a control grabbed or released, in a plug-in's editor; changes are coalesced, values a plug-in only reports are not sent), `plugin.changed` `{…, what: "parameters" or "latency" or "state" or "editor" or "restored"}`, `plugin.error` `{error, name, lost?}` (a plug-in could not be loaded, or stopped working), `plugins.recovery` (the recovery report, when a plug-in was lost while running: the page opens the review) | `st_host::areas::plugins` from `st_audio::plugins`: sent today |
+| `library.progress`, `library.results`, `library.metadata`, `library.favorite`, `library.error`, `library.kits.progress`, `library.nks.progress` | `st-library`: sent today (from the library's worker threads) |
+| `midi.note` (a key played on a device; with `inputOwner` and `recordingPending` / `recordingOnly` + `inputAcknowledgement` while note recording is armed, `recordingCancelled` when a capture ends without its release), `midi.message` (control changes), `midi.status` (`midiConfiguration`, `midiDevicesChanged`, `midiError`) | `st-midi` and `st_host::areas::midi`: sent today |
+| `mk3.input`, `mk3.status` | `st-mk3`: sent today |
+| `agent.call` `{id, method, params}` (answered with the command `agent.reply`), `agent.status` | `st-agent`: sent today |
+| `project.loaded`, `project.changed`, `project.sequence` | not sent by the Rust host: an AI client's edits are made by the page itself (`STAgent.dispatch`), which was their only source |
 
 ## Settings
 
@@ -347,13 +392,18 @@ which are not read (no migration):
 | `window` | `st-app` (size, position, maximised) | the window frame autosave in UserDefaults (`SuperTrackerMain`) |
 | `interface` | the page, through `settings.get` / `settings.set` | (new; the page still uses `localStorage`, which a `--serve` page loses with each new port) |
 | `audio.devices` | `st-audio` (`{output: uid, absent for the system default; bufferSize; sampleRate}`) | `audio-devices.json` |
+| `plugins` | `st_host::areas::plugins` (`{folders: [path], standardFolders, grouping: "plugin" or "manufacturer" or "shared" or "instance", container?: path}`) | (new; the Swift host scanned fixed folders and hosted in process) |
 | `midi.clock` | `st-midi` | `midi-clock.json` |
 | `mk3` | `st-mk3` | `maschine-mk3.json` (`{enabled}`) |
 | `agent` | `st-agent` | `ai-control.json` |
 
 `st-project` keeps its own files in the same folder: `Recovery.supertracker`, `Recovery-session.json`,
-`Recovery Backups/`, `Templates/`, `ProjectTemplates.json`. The library's `browser-state.json` and
-`favorites.json` belong to `st-library` (`library.state.*`, `library.favorite`).
+`Recovery Backups/`, `Templates/`, `ProjectTemplates.json`. The library keeps its files in `Library/`
+there (`roots.json`, `index.bin`, `metadata.json`, `favorites.json`, `browser-state.json`,
+`diagnostics.json` and the NKS and kit caches; see `cargo doc -p st-library`). Kits are saved to
+`Documents/SuperTracker/Kits`, or to `Kits/` in the support folder when `SUPERTRACKER_SUPPORT_DIR`
+names it. The AI control socket is `control.sock`; on macOS `st-mk3` keeps the record of stopped
+Native Instruments agents there too.
 
 ## What has and has not been exercised
 
@@ -365,7 +415,24 @@ Exercised on Linux (Ubuntu 24.04, x86-64):
 - `tests/host_e2e/run.js`: Chromium against `supertracker --serve` (boot against the real host, save
   through a scripted Save chooser, reload, New, open through a scripted Open chooser, unimplemented
   commands, token and origin checks, clean quit, session and settings restored by a second process,
-  and audio: the demo song played from the page on the null device, a note edited while playing).
+  and audio: the demo song played from the page on the null device, a note edited while playing;
+  the library: a folder of generated WAV files added from the Browser through the scripted folder
+  chooser, scanned, searched, shown in the result list, a favorite set and found again after the
+  host restarted; AI control: `supertracker --ctl` and an MCP session over `supertracker --mcp` read
+  the song and write steps that appear in the page, turning AI control off in Settings disconnects
+  them, turning it on lets the session reconnect).
+- Plug-ins, with the container process and the CLAP and VST3 test plug-ins of `rust/plugin-host`
+  (`cargo test -p st-audio --test plugins --test plugins_realtime`, `cargo test -p st-host --test
+  plugins`; the tests build the container and the plug-ins when they are missing): an effect in
+  the graph bit for bit, delay compensation following a latency change, automation lanes and step
+  locks on their frames, a plug-in instrument playing a pattern, a sidechain, state into
+  `engine.snapshot` and back from a reopened project, an offline copy equal to the live render, a
+  crash inside `process` during playback (pass-through, report, restore with state), a plug-in
+  that crashes while loading held back at the next start, no allocation on the render path; and
+  in Chromium (`run.js`): a folder scanned, the plug-in added from the mixer's rack, its gain
+  heard on its track's meter, the project saved and opened again with the state intact.
+- Termination: `supertracker --serve` ends on SIGTERM with its services shut down (checked by hand:
+  the control socket is removed, exit status 143).
 - `tests/host_e2e/window_smoke.sh` under Xvfb: the GTK window with WebKitGTK loads the page from the
   custom scheme, the message channel works both ways, a menu shortcut reaches the page, a native
   context menu and the native file chooser open and are answered, Quit runs the handshake and exits 0.
@@ -381,6 +448,24 @@ Not exercised anywhere yet:
   and whether a key the page handles also triggers its menu shortcut (in the Swift host WKWebView
   offered keys to the page first). The code type-checks for `aarch64-apple-darwin`; it has not been
   linked or run.
+- **Plug-ins beyond the test plug-ins**: no third-party plug-in has been loaded through the host.
+  Audio Units (macOS only), the editor windows of VST3 and Audio Units, yielding activation to
+  the container before an editor is focused (`st_audio::plugins::manager::yield_activation`; the
+  window layer has not installed the AppKit call yet), and the short socket directory chosen on
+  macOS are type-checked only. Real-time deadlines have only met the null device: a block may
+  take what is left of its render call, at least half a millisecond.
+- **MIDI devices**: no port of the ALSA sequencer or of CoreMIDI has been opened (the container has
+  no sequencer; the host then runs without devices and says so in `midi.devices`). Everything above
+  the device layer is tested with in-memory ports. The timing of scheduled MIDI against the audio
+  output is unverified: a block's MIDI time is the time of the render call, so external
+  instruments lead the engine's own sound by the audio device's output latency until the device
+  layer reports it (`st_audio::midi::RenderMidi::set_playback_delay`).
+- **The Maschine MK3**: never run with a controller (`cargo doc -p st-mk3` lists what that leaves
+  unverified); `--mk3-probe` ran only as far as "no Maschine MK3 found". A signal during
+  `--mk3-probe --exclusive` ends the process without restoring Native Instruments' agents; the next
+  launch of the application restores them from the record.
+- **AI control on macOS and Windows**: Unix sockets on Linux only so far; Windows has no transport
+  (named pipes are not written). `app.screenshot` has no implementation in the Rust host.
 - The hung-page path of the quit handshake in a real window (covered in `st-host` tests only).
 - Windows: `--serve` should work; the window is not implemented there.
 
@@ -392,14 +477,36 @@ Known differences from the Swift host:
   to" is not consulted.
 - The page reserves room for the traffic lights (`body.native .topbar`) under every host, also where
   the window has its own title bar and in a browser.
-- No migration of old project layouts (`st-project` refuses them with its own message), no Maschine
-  group (`.mxgrp`) import, no VST2.
+- No migration of old project layouts (`st-project` refuses them with its own message), no VST2,
+  no kit packages of the retired kit-lane layout (`st-library` refuses them with a message).
+- A termination signal (SIGINT, SIGTERM, SIGHUP) ends the host through the same shutdown as Quit,
+  without asking about unsaved changes (the recovery copy is written first). What `midir` cannot
+  do that CoreMIDI could is listed in `cargo doc -p st-midi` (`midir_backend`).
+- AI control: the socket is `control.sock` in the support folder, not the Swift host's path;
+  the screenshot tool answers that screenshots are not available.
 - Audio: one mix model (every project is mixed as "standard" routing; a project without `routing` is
   the same mixer without buses). The delay and reverb returns are the engine's own DSP run as mixer
   returns, not Apple's delay and reverb units. Built-in effect state is base64 JSON
   (`SuperTracker.BuiltinFX`), not a binary property list: states saved by the Swift host are refused
   per effect and the effect starts from its defaults. Play does not wait for samples (they are
   loaded when the project is published). See `cargo doc -p st-audio` for the design and the seams.
+- Plug-ins: every plug-in runs in a `supertracker-plugin-container` process (CLAP, VST3, Audio
+  Units through the container; no VST2, no in-process hosting). Components are named
+  `clap:<id>`, `vst3:<class id>`, `au:<type>:<subtype>:<manufacturer>`; descriptors saved by the
+  Swift host (decimal Audio Unit ids, its state encodings) are reported as not installed or not
+  readable, per plug-in, and keep their bytes. The interface owns the project: `plugin.load`,
+  `.remove` and `.move` change the engine's copy and answer with descriptors; nothing is pushed
+  back with `plugins.changed`. A publication loads its plug-ins before it answers (there is no
+  "plug-ins restoring" phase, and `awaitPlugins` has nothing to wait for). The recovery store
+  holds a plug-in back after two crashes at load in a row (or a load the host did not survive),
+  not after any interrupted session; a crash while playing costs one container and is restored
+  with Retry. `plugin.captureBasePatch` and the base-patch capability are not ported (they
+  belonged to the in-process VST3 adapter); `plugin.duplicate` never was a command (the page
+  duplicates with `plugin.state`, `plugin.load` and `plugin.move`). Events `plugin.parameter`
+  and `plugin.gesture` from plug-in editors are new (the Swift host sent none; the page reads
+  the parameters again when they arrive). Pitch bend and the mod wheel reach a plug-in
+  instrument as MIDI; sustain holds its notes in the host; other controllers and aftertouch do
+  not reach it yet.
 - The self-test modes, the hidden UI script runner (`DevHarness.swift`) and the keyboard acceptance
   session of the Swift executable have no counterpart; the end-to-end tests above take their place
   for what is ported.

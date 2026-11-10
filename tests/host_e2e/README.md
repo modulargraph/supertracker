@@ -27,8 +27,8 @@ Needs Node 22 and Playwright with Chromium (`require('playwright')`). It starts
    host's version and command list), not in browser-preview mode;
 3. a note entered in the page is saved to a file through `project.save`, whose Save chooser is answered
    from the answers file; the file on disk contains the note;
-4. an unimplemented command (`plugin.load`) is refused with "… is not implemented in the Rust host
-   yet …" and later requests still work;
+4. a command the host has not ported yet (the test takes one that is missing from `ready.commands`)
+   is refused with "… is not implemented in the Rust host yet …" and later requests still work;
 5. after a reload the page gets the session back; New clears it; `project.open` through the (scripted)
    Open chooser brings the note back;
 6. `quit` on the host's standard input ends it with status 0, and the page reports the lost connection
@@ -36,10 +36,37 @@ Needs Node 22 and Playwright with Chromium (`require('playwright')`). It starts
 7. a second host process restores the session from the recovery copy, with its file and the settings;
 8. audio: the page loads the demo song and presses Play; the position advances from the host's real
    `status` events and the host reports non-silent master and track peaks; a note edited while playing
-   reaches the engine (`engine.snapshot`) without stopping playback or raising an error; Stop stops.
+   reaches the engine (`engine.snapshot`) without stopping playback or raising an error; Stop stops;
+9. the library: in the Browser workspace, Add folder (the scripted folder chooser answers with a folder
+   of WAV files the test generated) adds a library root and scans it; searches show its sounds in the
+   result list; a sound is made a favorite with its star. After the host was restarted (check 7) the
+   Browser finds the sounds again from the index cache and the star is still set;
+10. AI control: `supertracker --ctl summary` and an MCP session over `supertracker --mcp` (initialize,
+    tools/list, `get_song`, `write_steps`, `read_pattern`) reach the page through the host's control
+    socket; the written steps are in the page's project as one undo step each, and the page shows its
+    "AI connected" badge. Unchecking "Allow AI control" in Settings disconnects the clients (the MCP
+    tool answers with an error, `--ctl` exits with 1); checking it again lets the same MCP session
+    reconnect;
+11. SIGTERM, SIGINT and SIGHUP each end a host with status 128 + the signal's number, after the
+    recovery copy was written and the control socket closed and removed (the same shutdown as Quit,
+    which also leaves a Maschine MK3 dark and silences external MIDI instruments).
 
-The host runs with `SUPERTRACKER_AUDIO_DEVICE=null`: the null audio device renders in real time to
-nowhere, so the run is the same with and without a sound card.
+The host runs with `SUPERTRACKER_AUDIO_DEVICE=null` (the null audio device renders in real time to
+nowhere) and `SUPERTRACKER_MIDI=off` (no MIDI device is opened), so the run is the same on every
+machine. The control socket follows the run's support folder, so a run never meets an application
+that is open on the same machine.
+
+Plug-ins (after the audio checks): the run needs `supertracker-plugin-container` and the CLAP test
+plug-in of `rust/plugin-host` next to the host executable and builds them there when they are
+missing (`cargo build --manifest-path rust/plugin-host/Cargo.toml -p stpc-container -p
+stpc-clap-test-plugin` with the same target directory). It then checks that a folder holding the
+plug-in is scanned by container processes (`plugins.scan`) and listed with the built-in effects
+without the plug-in being mapped into the host (`/proc/<pid>/maps`); that the mixer's "Add
+plug-in" loads it onto the busiest track of the demo song and puts its descriptor with its state
+into the project; that its gain is heard on that track's meter (zero is silence, half brings it
+back) while the song plays on; and that Save As stores the state captured at save, an unsaved edit
+of the plug-in is noticed before New (the Discard question), and opening the file again restores
+the plug-in with the saved state.
 
 ## `window_smoke.sh`: the window in a virtual display (Linux)
 

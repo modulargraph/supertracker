@@ -62,8 +62,8 @@ impl LibraryOptions {
     ///   starts with the platform's standard content folders.
     /// - A support folder named by `SUPERTRACKER_SUPPORT_DIR` (a development session): the same
     ///   content folders, but its own index, favorites, labels and kits (`Kits/` in that folder).
-    /// - Any other folder (a test, an embedded host): nothing but `Kits/` in that folder; the
-    ///   system's content is not looked at.
+    /// - Any other folder (a test, an embedded host): `Kits/` in that folder is the kit folder and
+    ///   the only library root; the system's content is not looked at.
     pub fn for_support(support: &Path) -> LibraryOptions {
         let overridden = std::env::var_os("SUPERTRACKER_SUPPORT_DIR").is_some();
         let own = crate::support_dir().is_ok_and(|folder| folder == support);
@@ -72,7 +72,7 @@ impl LibraryOptions {
             config.user_kits_dir = Some(support.join("Kits"));
         }
         if !own {
-            config.default_roots = Some(Vec::new());
+            config.default_roots = Some(config.user_kits_dir.iter().cloned().collect());
         }
         LibraryOptions { config }
     }
@@ -203,6 +203,10 @@ fn preview_scratch() -> PathBuf {
 
 /// Opens the library, forwards its events and registers the `library.*` and `kit.*` commands.
 pub fn install(commands: &mut Commands, session: &Arc<Session>, calls: Calls, events: EventSink, options: &LibraryOptions) -> Result<Arc<LibraryArea>> {
+    // The kit folder is a library root from the first launch on (kits are saved into it later).
+    if let Some(kits) = &options.config.user_kits_dir {
+        let _ = std::fs::create_dir_all(kits);
+    }
     let library = Arc::new(Library::open(options.config.clone())?);
     library.set_event_sink(move |name, payload| events.emit(name, payload));
     commands

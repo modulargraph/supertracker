@@ -1,4 +1,4 @@
-//! Port of `tests/engine_input_ack_tests.cpp`: acknowledged input notes (`input_note` /
+//! Port of the former C++ test program `engine_input_ack_tests.cpp`: acknowledged input notes (`input_note` /
 //! `pop_input_ack`): where the render thread applied each edge, run identity across transport
 //! and project changes, early placement, capacity, and concurrent delivery.
 //!
@@ -9,7 +9,7 @@
 mod engine_support_b;
 
 use engine_support_b::alloc::{realtime, render_allocations};
-use engine_support_b::engine::{st_instrument_capacity, Engine};
+use engine_support_b::engine::Engine;
 use engine_support_b::tone::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tracker_engine::engine::*;
@@ -18,18 +18,18 @@ fn render(e: &mut Engine, count: u32) {
     realtime(|| e.render_null(count));
 }
 
-fn tempos() -> [STClockTempoEvent; 3] {
+fn tempos() -> [ClockTempoEvent; 3] {
     [
-        STClockTempoEvent { beat: 0.0, bpm: 120.0 },
-        STClockTempoEvent { beat: 0.5, bpm: 60.0 },
-        STClockTempoEvent { beat: 1.5, bpm: 180.0 },
+        ClockTempoEvent { beat: 0.0, bpm: 120.0 },
+        ClockTempoEvent { beat: 0.5, bpm: 60.0 },
+        ClockTempoEvent { beat: 1.5, bpm: 180.0 },
     ]
 }
 
-fn meters() -> [STClockMeterEvent; 2] {
+fn meters() -> [ClockMeterEvent; 2] {
     [
-        STClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 },
-        STClockMeterEvent { beat: 0.75, numerator: 7, denominator: 8 },
+        ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 },
+        ClockMeterEvent { beat: 0.75, numerator: 7, denominator: 8 },
     ]
 }
 
@@ -318,10 +318,10 @@ fn ordinary_publication_and_identical_timing_retain_run_semantic_map_edits_break
     render(&mut collision, 1);
     prior = ack(&mut collision);
     let same_length = [
-        STClockTempoEvent { beat: 0.0, bpm: 120.0 },
-        STClockTempoEvent { beat: 0.5, bpm: 80.0 },
-        STClockTempoEvent { beat: 1.0, bpm: 48.0 },
-        STClockTempoEvent { beat: 1.5, bpm: 180.0 },
+        ClockTempoEvent { beat: 0.0, bpm: 120.0 },
+        ClockTempoEvent { beat: 0.5, bpm: 80.0 },
+        ClockTempoEvent { beat: 1.0, bpm: 48.0 },
+        ClockTempoEvent { beat: 1.5, bpm: 180.0 },
     ];
     collision.begin_update();
     assert!(collision.set_timing_map(&same_length, &m, 91).is_ok());
@@ -476,8 +476,8 @@ fn strict_tokens_argument_bounds_and_reserved_ack_capacity_with_command_failure_
     let mut e = Engine::new();
     assert!(!edge(&mut e, 0));
     assert!(!e.input_note(1, 3, 0, 0, 60, 100, 1));
-    assert!(!e.input_note(1, 1, st_channel_count(ST_MIN_RETURN_BUS), 0, 60, 100, 1));
-    assert!(!e.input_note(1, 1, 0, st_instrument_capacity(64), 60, 100, 1));
+    assert!(!e.input_note(1, 1, channel_count(ST_MIN_RETURN_BUS), 0, 60, 100, 1));
+    assert!(!e.input_note(1, 1, 0, instrument_capacity(64), 60, 100, 1));
     assert!(!e.input_note(1, 1, 0, 0, 128, 100, 1));
     assert!(!e.input_note(1, 1, 0, 0, 60, 0, 1));
     assert!(!e.input_note(1, 1, 0, 0, 60, 100, 2));
@@ -517,9 +517,19 @@ fn strict_tokens_argument_bounds_and_reserved_ack_capacity_with_command_failure_
     zero_render_allocations();
 }
 
-/// The engine's own threading model, through `engine::host::split`: the control half moves to a
-/// producer thread while this thread, holding the render half, renders and consumes the ACKs
-/// (the C++ test's "single-producer/audio-consumer").
+/// Ends the audio thread's loop when dropped, also when an assertion fails on this thread.
+struct Finish<'a>(&'a AtomicBool);
+
+impl Drop for Finish<'_> {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
+/// The engine's own threading model, through `engine::host::split`: the render half moves to
+/// an audio thread while this thread, holding the control half, queues the edges and consumes
+/// their ACKs (the C++ test's "single-producer/audio-consumer"; in the Rust API the ACK ring's
+/// single consumer is the control half, which is where the host reads them).
 #[test]
 fn concurrent_single_producer_audio_consumer_20000_edge_delivery_without_lost_acks() {
     let halves = host::split(48000.0);
@@ -527,32 +537,41 @@ fn concurrent_single_producer_audio_consumer_20000_edge_delivery_without_lost_ac
     let (mut control, mut render, _status) = halves.unwrap();
     let done = AtomicBool::new(false);
     let mut expected: u64 = 1;
-    std::thread::scope(|scope| {
+    let mut render = std::thread::scope(|scope| {
         let done = &done;
-        let producer = scope.spawn(move || {
+        let audio = scope.spawn(move || {
+            while !done.load(Ordering::Acquire) {
+                realtime(|| render.advance(1));
+            }
+            render
+        });
+        {
+            let _finished = Finish(done);
+            let consume = |control: &mut host::ControlHalf, expected: &mut u64| {
+                while let Some(a) = control.pop_input_ack() {
+                    assert!(a.request_id == *expected && a.status == ST_INPUT_ACK_APPLIED);
+                    *expected += 1;
+                }
+            };
             for id in 1..=20000u64 {
                 loop {
                     let (c, shared, _) = control.parts();
                     if c.input_note(shared, id, ST_INPUT_NOTE_ON, 0, 0, 60, 100, 0) {
                         break;
                     }
+                    consume(&mut control, &mut expected);
                     std::thread::yield_now();
                 }
             }
-            done.store(true, Ordering::Release);
-            control
-        });
-        while !done.load(Ordering::Acquire) || expected <= 20000 {
-            let (r, shared) = render.parts();
-            realtime(|| r.render(shared, None, None, 1));
-            while let Some(a) = shared.pop_input_ack() {
-                assert!(a.request_id == expected && a.status == ST_INPUT_ACK_APPLIED);
-                expected += 1;
+            while expected <= 20000 {
+                consume(&mut control, &mut expected);
+                std::thread::yield_now();
             }
         }
-        let _control = producer.join().expect("producer thread");
+        audio.join().expect("audio thread")
     });
     assert!(expected == 20001);
-    assert!(render.parts().1.pop_input_ack().is_none());
+    realtime(|| render.advance(1));
+    assert!(control.pop_input_ack().is_none());
     zero_render_allocations();
 }

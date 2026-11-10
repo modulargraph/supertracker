@@ -1,4 +1,4 @@
-//! Control-thread side of `STEngine` in `TrackerEngine.cpp`: the editable draft, the published
+//! Control-thread side of the engine: the editable draft, the published
 //! control copy, commit (`commit`, `normalize`, `buildTables`), reclamation (`collect`) and engine
 //! construction/destruction.
 //!
@@ -8,7 +8,7 @@
 
 use super::timing::EngineTiming;
 use super::project::{Project, Sample};
-use super::state::{Render, Rt, STEngine, Shared};
+use super::state::{Command, Render, Rt, EngineCore, Shared};
 use super::tables::{BusRing, ChannelTables, PeakStore};
 use super::abi::default_track;
 use super::util::{cmax, try_box_with};
@@ -16,31 +16,58 @@ use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-/// Source of process-unique pattern content identities (`st_engine_pattern_epoch`).
+/// Source of process-unique pattern content identities (`pattern_epoch`).
 static PATTERN_EPOCHS: AtomicU64 = AtomicU64::new(0);
 
 pub const BAD_ALLOC: &str = "std::bad_alloc";
 
+/// The error of a control operation that was handed another engine's `Shared`.
+pub const FOREIGN_ENGINE: &str = "The shared state belongs to another engine.";
+
 pub struct Control {
+    /// The engine this control state belongs to (`Shared::engine_id`).
+    pub(crate) engine_id: u64,
     /// The project being edited inside (or implicitly outside) an update; `None` when there are
     /// no unpublished edits. Declared before `samples`: projects release their sample
     /// references when dropped, so they must go first.
-    pub draft: Option<Box<Project>>,
+    pub(crate) draft: Option<Box<Project>>,
     /// The control thread's copy of the last published project.
-    pub control: Box<Project>,
-    pub updating: bool,
-    pub samples: Vec<Box<Sample>>,
-    pub timing_maps: Vec<Arc<EngineTiming>>,
+    pub(crate) control: Box<Project>,
+    pub(crate) updating: bool,
+    pub(crate) samples: Vec<Box<Sample>>,
+    pub(crate) timing_maps: Vec<Arc<EngineTiming>>,
     /// Control-owned bus history, keyed by logical bus so renumbering keeps it.
-    pub track_rings: Vec<Option<Arc<BusRing>>>,
-    pub return_ring: Option<Arc<BusRing>>,
-    pub peak_stores: Vec<Box<PeakStore>>,
-    pub last_input_request_id: u64,
+    pub(crate) track_rings: Vec<Option<Arc<BusRing>>>,
+    pub(crate) return_ring: Option<Arc<BusRing>>,
+    pub(crate) peak_stores: Vec<Box<PeakStore>>,
+    pub(crate) last_input_request_id: u64,
 }
 
 impl Control {
+    /// Whether `sh` is the shared state of this control state's own engine. Projects, samples
+    /// and commands only ever travel between the two halves of one engine: every method that
+    /// takes a `&Shared` does nothing (or fails) when handed another engine's.
+    #[inline]
+    pub(crate) fn owns(&self, sh: &Shared) -> bool {
+        sh.engine_id == self.engine_id
+    }
+
+    /// Queue a command for this engine's render half.
+    pub(crate) fn queue(&self, sh: &Shared, command: &Command) {
+        if self.owns(sh) {
+            sh.queue(command);
+        }
+    }
+
+    /// Queue Play/Stop/count-in for this engine's render half.
+    pub(crate) fn queue_transport(&self, sh: &Shared, command: Command, playing_after: bool) {
+        if self.owns(sh) {
+            sh.queue_transport(command, playing_after);
+        }
+    }
+
     /// The draft, created from the published project on first use.
-    pub fn edit(&mut self) -> &mut Project {
+    pub(crate) fn edit(&mut self) -> &mut Project {
         let control = &self.control;
         self.draft.get_or_insert_with(|| Box::new((**control).clone()))
     }
@@ -48,7 +75,7 @@ impl Control {
     /// `edit()` for the setters that report an allocation failure instead of dying (the C++
     /// functions with a `catch`): the draft's storage is reserved first, so a failed allocation
     /// leaves the engine unchanged.
-    pub fn try_edit(&mut self) -> Result<&mut Project, String> {
+    pub(crate) fn try_edit(&mut self) -> Result<&mut Project, String> {
         if self.draft.is_none() {
             let control = &self.control;
             self.draft = Some(try_box_with(|| (**control).clone()).ok_or(BAD_ALLOC)?);
@@ -57,7 +84,7 @@ impl Control {
     }
 
     /// The project control-thread edits apply to, without creating a draft.
-    pub fn view(&self) -> &Project {
+    pub(crate) fn view(&self) -> &Project {
         match &self.draft {
             Some(draft) => draft,
             None => &self.control,
@@ -65,7 +92,7 @@ impl Control {
     }
 
     /// The draft for a pattern edit: its pattern content no longer matches any published epoch.
-    pub fn edit_patterns(&mut self) -> &mut Project {
+    pub(crate) fn edit_patterns(&mut self) -> &mut Project {
         let project = self.edit();
         project.pattern_epoch = 0;
         project
@@ -73,6 +100,9 @@ impl Control {
 
     /// Destroy retired projects, then samples and timing maps nothing refers to any more.
     pub fn collect(&mut self, sh: &Shared) {
+        if !self.owns(sh) {
+            return;
+        }
         let mut retired = sh.retired.swap(std::ptr::null_mut(), Ordering::AcqRel);
         while !retired.is_null() {
             // SAFETY: every pointer on the retired list came from `Box::into_raw` at commit and
@@ -141,6 +171,9 @@ impl Control {
     /// Compile, validate and publish the draft. On failure the previous published project stays
     /// and the draft is retained for further edits.
     pub fn commit(&mut self, sh: &Shared, sample_rate: f64) -> Result<(), String> {
+        if !self.owns(sh) {
+            return Err(FOREIGN_ENGINE.into());
+        }
         let Some(mut draft) = self.draft.take() else { return Ok(()) };
         match self.prepare(sh, sample_rate, &mut draft) {
             Ok(()) => {}
@@ -190,14 +223,15 @@ impl Control {
     }
 }
 
-impl STEngine {
-    /// `st_engine_create`: `None` for an unsupported sample rate or when memory is exhausted.
-    pub fn create(rate: f64) -> Option<Box<STEngine>> {
+impl EngineCore {
+    /// `None` for an unsupported sample rate or when memory is exhausted.
+    pub fn create(rate: f64) -> Option<Box<EngineCore>> {
         if !rate.is_finite() || rate < 8000.0 || rate > 384000.0 {
             return None;
         }
         let shared = Shared::new();
         let mut control = Control {
+            engine_id: shared.engine_id,
             draft: None,
             control: Box::new(Project::new()),
             updating: false,
@@ -214,14 +248,14 @@ impl STEngine {
         let mut current = Box::new(Project::new());
         current.tables = control.control.tables.clone();
         let tb = current.tables.as_ref()?.state_ptr();
-        let render = Render::new(rate, Box::into_raw(current), tb);
-        let mut engine = Box::new(STEngine {
+        let render = Render::new(shared.engine_id, rate, Box::into_raw(current), tb);
+        let mut engine = Box::new(EngineCore {
             sample_rate: rate,
             shared,
             control: UnsafeCell::new(control),
             render: UnsafeCell::new(render),
         });
-        let STEngine { shared, render, .. } = &mut *engine;
+        let EngineCore { shared, render, .. } = &mut *engine;
         // SAFETY: the engine is not shared yet, so this thread stands in for the render thread;
         // no project adoption can happen while the view exists.
         unsafe { Rt::attach(render.get_mut(), shared) }.reset_track_state(false);
@@ -229,15 +263,15 @@ impl STEngine {
     }
 }
 
-impl Drop for STEngine {
-    /// `~STEngine`. The engine must be destroyed only after the audio graph has stopped calling
-    /// it, so this thread owns both halves.
+impl Drop for EngineCore {
+    /// Runs when the last handle of the engine is dropped, so no borrow of either half exists
+    /// and this thread owns both.
     fn drop(&mut self) {
-        let STEngine { shared, render, control, .. } = self;
+        let EngineCore { shared, render, control, .. } = self;
         let render = render.get_mut();
         let history = shared.freeze_history.swap(std::ptr::null_mut(), Ordering::AcqRel);
         if !history.is_null() {
-            // SAFETY: the history was leaked from a Box by `st_engine_set_frozen_song_policy`
+            // SAFETY: the history was leaked from a Box by `set_frozen_song_policy`
             // and is freed only here.
             drop(unsafe { Box::from_raw(history) });
         }

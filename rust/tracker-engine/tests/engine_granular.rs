@@ -1,4 +1,4 @@
-//! Port of `tests/engine_granular_tests.cpp`: sampler Granular parameters, live instrument
+//! Port of the former C++ test program `engine_granular_tests.cpp`: sampler Granular parameters, live instrument
 //! parameters and the voice playhead snapshot.
 #![cfg(feature = "engine")]
 

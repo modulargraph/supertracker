@@ -26,6 +26,7 @@ use tracker_engine::engine::tables::MAX_BLOCK;
 
 mod hooks;
 mod midi;
+mod plugins;
 
 /// Which output the engine renders to.
 #[derive(Debug, Clone, PartialEq)]
@@ -109,6 +110,9 @@ struct Core {
     sync: ProjectSync,
     spec: GraphSpec,
     meters: Arc<MeterBank>,
+    /// Compile at the next publication although the mixer's description did not change
+    /// (a plug-in's processor must be made anew).
+    recompile: bool,
 }
 
 impl Core {
@@ -127,7 +131,7 @@ impl Core {
         let meters = plan.meters().clone();
         let shared = Arc::new(RenderShared::new());
         let renderer = Renderer::new(render, status.clone(), shared.clone(), plan);
-        Ok((Core { control, status, shared, compiler, sync: ProjectSync::new(samples), spec, meters }, renderer))
+        Ok((Core { control, status, shared, compiler, sync: ProjectSync::new(samples), spec, meters, recompile: false }, renderer))
     }
 }
 
@@ -161,6 +165,10 @@ pub struct AudioEngine {
     service_stop: Arc<std::sync::atomic::AtomicBool>,
     /// MIDI output for the renderers of this engine (`engine/midi.rs`).
     midi: crate::midi::SharedMidiOutput,
+    /// Preview voices and what else runs on the live output (`live.rs`, `engine/hooks.rs`).
+    live: Arc<crate::live::Live>,
+    /// The plug-in manager, once attached (`engine/plugins.rs`).
+    plugins: std::sync::OnceLock<Arc<crate::plugins::PluginManager>>,
 }
 
 /// What `audio.devices` answers.
@@ -237,7 +245,10 @@ impl AudioEngine {
             inserts: options.inserts,
             service_stop: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             midi: Default::default(),
+            live: Default::default(),
+            plugins: std::sync::OnceLock::new(),
         });
+        engine.attach_live();
         engine.open_device(&mut engine.lock())?;
         Ok(engine)
     }
@@ -255,7 +266,19 @@ impl AudioEngine {
     /// Applies a published project to the engine and the mixer. On an error both keep what
     /// they had.
     pub fn publish(&self, project: &Project) -> Result<ApplyReport, String> {
+        self.publish_with(project, false)
+    }
+
+    /// As [`AudioEngine::publish`]. With `force_plugin_state` every plug-in's saved state is
+    /// loaded again (a project was opened or replaced), not only the states that changed.
+    pub fn publish_with(&self, project: &Project, force_plugin_state: bool) -> Result<ApplyReport, String> {
+        // Plug-in instances follow the project before the mixer is compiled, outside the lock.
+        let remade = self.reconcile_plugins(project, force_plugin_state);
         let mut state = self.lock();
+        for key in &remade {
+            state.core.compiler.invalidate_insert(key);
+        }
+        state.core.recompile |= !remade.is_empty();
         let report = Self::publish_locked(&mut state, project)?;
         state.project = Some(project.clone());
         state.input_generation += 1;
@@ -264,10 +287,13 @@ impl AudioEngine {
     }
 
     fn publish_locked(state: &mut State, project: &Project) -> Result<ApplyReport, String> {
+        // Frozen tracks play their prints (`crate::freeze`).
+        let project = &*crate::freeze::playback_project(project);
         let core = &mut state.core;
         let spec = GraphSpec::from_project(project);
         // Compile first: routing that cannot be rendered must not reach the engine either.
-        let plan = if spec != core.spec { Some(core.compiler.compile(&spec)?) } else { None };
+        let plan = if spec != core.spec || core.recompile { Some(core.compiler.compile(&spec)?) } else { None };
+        core.recompile = false;
         let Core { control, compiler, sync, .. } = core;
         let compiler = &*compiler;
         let defaults = |destination: &Destination, address: u64| -> Option<f64> {
@@ -392,6 +418,9 @@ impl AudioEngine {
         let (control, shared, _) = state.core.control.parts();
         control.panic(shared);
         state.core.shared.request_clear_tails();
+        if let Some(plugins) = self.plugins.get() {
+            plugins.panic();
+        }
     }
 
     // ---- live notes ----------------------------------------------------------------------
@@ -552,15 +581,23 @@ impl AudioEngine {
     }
 
     pub fn pitch_bend(&self, track: i32, semitones: f32) {
-        let mut state = self.lock();
-        let (control, shared, _) = state.core.control.parts();
-        control.pitch_bend(shared, track, semitones);
+        {
+            let mut state = self.lock();
+            let (control, shared, _) = state.core.control.parts();
+            control.pitch_bend(shared, track, semitones);
+        }
+        // A plug-in instrument gets the bend as MIDI (the engine's range is two semitones).
+        let bend = (8192.0 + (semitones / 2.0).clamp(-1.0, 1.0) * 8191.0).round() as u16;
+        self.plugin_midi(track, [0xE0, (bend & 0x7F) as u8, (bend >> 7) as u8 & 0x7F]);
     }
 
     pub fn mod_wheel(&self, track: i32, value: f32) {
-        let mut state = self.lock();
-        let (control, shared, _) = state.core.control.parts();
-        control.mod_wheel(shared, track, value);
+        {
+            let mut state = self.lock();
+            let (control, shared, _) = state.core.control.parts();
+            control.mod_wheel(shared, track, value);
+        }
+        self.plugin_midi(track, [0xB0, 1, (value.clamp(0.0, 1.0) * 127.0).round() as u8]);
     }
 
     /// A knob drag heard on sounding voices at once, without republishing the project.
@@ -599,7 +636,8 @@ impl AudioEngine {
         control.collect(shared);
         let meters = core.meters.clone();
         state.display.read(&meters);
-        self.watch_device(&mut state)
+        let input_lost = self.live.collect();
+        self.watch_device(&mut state) | input_lost
     }
 
     /// The status the interface animates from (`status` events and transport replies).
@@ -621,7 +659,7 @@ impl AudioEngine {
         let dropped_mix = core.shared.dropped_events();
         let sample_rate = core.compiler.sample_rate();
         let latency = core.shared.latency_frames();
-        json!({
+        let mut status = json!({
             "playing": playing, "songMode": engine.song_mode != 0, "pattern": engine.pattern, "row": engine.row, "sequence": engine.sequence,
             "position": engine.position, "seconds": engine.seconds, "beat": engine.beat, "bpm": engine.bpm, "bar": engine.bar,
             "barStartBeat": engine.bar_start_beat, "numerator": engine.numerator, "denominator": engine.denominator,
@@ -638,12 +676,17 @@ impl AudioEngine {
             "droppedCommands": engine.dropped_commands, "droppedEvents": engine.dropped_events + dropped_mix, "engineDroppedEvents": engine.dropped_events,
             "latencyCompensation": { "frames": latency, "seconds": latency as f64 / sample_rate },
             "pluginsRestoring": false, "playPreparing": false, "previewPreparing": false, "graphMutationsPending": 0,
-        })
+        });
+        // Exporting, recording and input meters are the live stage's to report.
+        self.live.decorate_status(&mut status);
+        status
     }
 
     /// The mixer as compiled: strips, inserts (with the unavailable ones) and unconnected sidechains.
     pub fn routing_status(&self) -> Value {
-        routing_status(&self.lock().core)
+        let mut routing = routing_status(&self.lock().core);
+        self.overlay_plugins(&mut routing);
+        routing
     }
 
     /// The inserts of the mixer in use.
@@ -652,10 +695,24 @@ impl AudioEngine {
     }
 
     /// The project as the engine holds it, with the state of every insert captured now
-    /// (`engine.snapshot`). Built-in effects are captured; plug-ins keep the state they carry.
+    /// (`engine.snapshot`). Built-in effects are captured from the mixer; plug-ins are asked
+    /// for their state (without the engine's lock: a plug-in may take its time), and a
+    /// descriptor whose state could not be read carries `stateError`.
     pub fn snapshot(&self) -> Value {
+        let (mut value, project) = self.snapshot_builtin();
+        if let (Some(project), Some(items)) = (project, value.get_mut("audioPlugins").and_then(Value::as_array_mut)) {
+            for (descriptor, item) in project.plugin_list().iter().zip(items.iter_mut()) {
+                if !descriptor.component.as_deref().is_some_and(|component| component.starts_with("stfx:") || component.starts_with("builtin:")) {
+                    self.capture_plugin_state(descriptor, item);
+                }
+            }
+        }
+        value
+    }
+
+    fn snapshot_builtin(&self) -> (Value, Option<Project>) {
         let state = self.lock();
-        let Some(project) = &state.project else { return json!({ "audioPlugins": [] }) };
+        let Some(project) = &state.project else { return (json!({ "audioPlugins": [] }), None) };
         let mut value = project.to_value();
         let spec = &state.core.spec;
         let mut plugins = Vec::new();
@@ -673,7 +730,7 @@ impl AudioEngine {
             plugins.push(item);
         }
         value["audioPlugins"] = Value::Array(plugins);
-        value
+        (value, Some(project.clone()))
     }
 
     // ---- devices -------------------------------------------------------------------------
@@ -714,11 +771,13 @@ impl AudioEngine {
     /// device must be stopped (no stream).
     fn restart_engine(&self, state: &mut State, sample_rate: f64) -> Result<(), String> {
         let samples = self.samples.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
-        let (core, renderer) = Core::new(sample_rate, samples, self.inserts.clone())?;
+        let (core, renderer) = Core::new(sample_rate, samples, self.insert_factory())?;
+        self.plugins_format_changed(sample_rate);
         // The old renderer (and with it the old engine's render half) is dropped here, on the
         // control thread; no device thread exists at this point.
         *self.renderer.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = renderer;
         self.attach_midi();
+        self.attach_live();
         state.core = core;
         state.display.reset();
         state.pending_inputs.clear();

@@ -108,7 +108,7 @@
 //! | [`settings`] | the settings file |
 //! | [`dialogs`] | the file chooser trait, and scripted answers for tests |
 //! | [`app`] | `ready`, `app.external`, the quit handshake, and [`install`] |
-//! | [`areas`] | the commands of the other crates: [`areas::audio`] (engine, mixer, transport, devices) |
+//! | [`areas`] | the commands of the other crates: [`areas::audio`] (engine, mixer, transport, devices); [`areas::services`] installs the service crates: [`areas::library`] (the sound library), [`areas::midi`] (devices, input to the engine, output and clock from the render thread), [`areas::mk3`] (the Maschine MK3) and [`areas::agent`] (the AI control socket) |
 //! | [`testing`] | [`testing::TestHost`] for testing commands as the interface would call them |
 
 pub mod app;

@@ -1,4 +1,4 @@
-//! Port of `tests/engine_debug_regressions.cpp`: targeted regressions from the 660cfb9 engine
+//! Port of the former C++ test program `engine_debug_regressions.cpp`: targeted regressions from the 660cfb9 engine
 //! audit. Renders and transport restores run as the render thread; every group ends with the C++
 //! program's final "zero render allocations" check for its own thread.
 #![cfg(feature = "engine")]
@@ -37,8 +37,8 @@ fn setup(e: &mut Engine, mapped: bool, rows: i32) {
     e.set_pattern(0, rows);
     e.set_sequence(&[0], false, 0);
     if mapped {
-        let tempo = [STClockTempoEvent { beat: 0.0, bpm: 120.0 }];
-        let meter = [STClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
+        let tempo = [ClockTempoEvent { beat: 0.0, bpm: 120.0 }];
+        let meter = [ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
         let result = e.set_timing_map(&tempo, &meter, 55);
         require(result.is_ok(), result.as_ref().err().map_or("", |error| error.as_str()));
     }
@@ -112,8 +112,8 @@ fn section_clock(mapped: bool) {
     let mut l = vec![0.0f32; 16000];
     let mut r = vec![0.0f32; l.len()];
     realtime(|| e.render_bus(0, 0, &mut l, &mut r));
-    let mut span = STClockSpan::default();
-    require(e.clock_span(6000, 1, 0, &mut span) == ST_CLOCK_OK, "Retained section context");
+    let mut span = ClockSpan::default();
+    require(e.clock_span(6000, 1, 0, &mut span) == CLOCK_OK, "Retained section context");
     if span.context.next_boundary_frame != 12000 {
         println!("section mapped={} boundary={} expected=12000", mapped as i32, span.context.next_boundary_frame);
     }
@@ -121,10 +121,10 @@ fn section_clock(mapped: bool) {
         span.context.next_boundary_frame == 12000,
         "Section loop context predicts actual loop boundary, not song end",
     );
-    require(span.context.next_boundary_kinds & ST_CLOCK_BOUNDARY_LOOP != 0, "Section loop boundary kind");
+    require(span.context.next_boundary_kinds & CLOCK_BOUNDARY_LOOP != 0, "Section loop boundary kind");
     require(span.context.next_quarter_beat_frame == i64::MAX, "No integer beat is reachable in a .25-.5 beat loop");
     require(
-        e.clock_span(12000, 1, 0, &mut span) == ST_CLOCK_OK && span.context.song_frame == 6000,
+        e.clock_span(12000, 1, 0, &mut span) == CLOCK_OK && span.context.song_frame == 6000,
         "Section wraps exact project frame",
     );
 }
@@ -142,12 +142,12 @@ fn section_next_quarter(mapped: bool) {
     let mut l = vec![0.0f32; 31000];
     let mut r = vec![0.0f32; l.len()];
     realtime(|| e.render_bus(0, 0, &mut l, &mut r));
-    let mut span = STClockSpan::default();
-    require(e.clock_span(27000, 1, 0, &mut span) == ST_CLOCK_OK, "Section next-beat context");
+    let mut span = ClockSpan::default();
+    require(e.clock_span(27000, 1, 0, &mut span) == CLOCK_OK, "Section next-beat context");
     require(span.context.next_boundary_frame == 30000, "Quarter query loop boundary");
     require(span.context.next_quarter_beat_frame == 48000, "Next quarter after wrap must subtract nonzero loop origin");
     require(
-        e.clock_span(27127, 1, 127, &mut span) == ST_CLOCK_OK && span.context.next_quarter_beat_frame == 48127,
+        e.clock_span(27127, 1, 127, &mut span) == CLOCK_OK && span.context.next_quarter_beat_frame == 48127,
         "Upstream PDC shifts next quarter exactly once",
     );
 }

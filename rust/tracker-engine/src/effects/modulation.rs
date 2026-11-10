@@ -1,6 +1,6 @@
 //! Modulation processors: chorus, flanger, audio-rate FM, frequency shifter and phaser.
 //!
-//! Replaces `Sources/TrackerEngine/EffectsModulation.hpp` (namespace `stfx::modulation`).
+//! Ported from the C++ `EffectsModulation.hpp` (namespace `stfx::modulation`).
 
 use super::common::{
     clamp, clean, core_accessors, fast_cos_2pi, fast_exp, fast_sin_2pi, fast_tanh, frame_buffers,

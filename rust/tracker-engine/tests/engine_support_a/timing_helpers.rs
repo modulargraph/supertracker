@@ -1,4 +1,4 @@
-//! The fixtures and helpers of `tests/engine_timing_tests.cpp`. Each function keeps the C++
+//! The fixtures and helpers of the former C++ program `engine_timing_tests.cpp`. Each function keeps the C++
 //! helper's name (in snake case), statements and assertions.
 //!
 //! Standalone core regression suite: no plug-in, host graph or audio device. At 48 kHz the
@@ -7,7 +7,7 @@
 
 use super::tone::{load_test_tone, test_tone_instrument, TEST_SINE};
 use super::{ControlHalf, Engine, RenderHalf};
-use tracker_engine::clock::{STClockContext, STClockMeterEvent, STClockSpan, STClockTempoEvent, ST_CLOCK_OK};
+use tracker_engine::clock::{ClockContext, ClockMeterEvent, ClockSpan, ClockTempoEvent, CLOCK_OK};
 use tracker_engine::engine::*;
 
 /// C++ `struct Note`: a note event with its absolute frame. Equality is the C++ `key()`.
@@ -38,7 +38,7 @@ impl Rendered {
 /// thread.
 pub trait RenderSide {
     fn pop(&mut self) -> Option<STEvent>;
-    fn span(&mut self, frame: i64, requested: u32, latency: i64, out: &mut STClockSpan) -> i32;
+    fn span(&mut self, frame: i64, requested: u32, latency: i64, out: &mut ClockSpan) -> i32;
     fn bus(&mut self, bus: i32, sample_time: u64, left: &mut [f32], right: &mut [f32]);
 }
 
@@ -46,7 +46,7 @@ impl RenderSide for Engine {
     fn pop(&mut self) -> Option<STEvent> {
         self.pop_event()
     }
-    fn span(&mut self, frame: i64, requested: u32, latency: i64, out: &mut STClockSpan) -> i32 {
+    fn span(&mut self, frame: i64, requested: u32, latency: i64, out: &mut ClockSpan) -> i32 {
         self.clock_span(frame, requested, latency, out)
     }
     fn bus(&mut self, bus: i32, sample_time: u64, left: &mut [f32], right: &mut [f32]) {
@@ -58,7 +58,7 @@ impl RenderSide for RenderHalf<'_> {
     fn pop(&mut self) -> Option<STEvent> {
         self.pop_event()
     }
-    fn span(&mut self, frame: i64, requested: u32, latency: i64, out: &mut STClockSpan) -> i32 {
+    fn span(&mut self, frame: i64, requested: u32, latency: i64, out: &mut ClockSpan) -> i32 {
         self.clock_span(frame, requested, latency, out)
     }
     fn bus(&mut self, bus: i32, sample_time: u64, left: &mut [f32], right: &mut [f32]) {
@@ -124,10 +124,10 @@ pub fn expect_frames(notes: &[Note], type_: i32, expected: &[u64]) {
 /// C++ `setMap(engine,revision)` (default revision 1): 120 BPM in 4/4, then 60 BPM in 7/8 from
 /// beat 0.375.
 pub fn set_map(engine: &mut Engine, revision: u64) {
-    let tempos = [STClockTempoEvent { beat: 0.0, bpm: 120.0 }, STClockTempoEvent { beat: 0.375, bpm: 60.0 }];
+    let tempos = [ClockTempoEvent { beat: 0.0, bpm: 120.0 }, ClockTempoEvent { beat: 0.375, bpm: 60.0 }];
     let meters = [
-        STClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 },
-        STClockMeterEvent { beat: 0.375, numerator: 7, denominator: 8 },
+        ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 },
+        ClockMeterEvent { beat: 0.375, numerator: 7, denominator: 8 },
     ];
     // C++ also asserted that the error buffer stayed empty; `Ok(())` carries no text.
     assert!(engine.set_timing_map(&tempos, &meters, revision) == Ok(()));
@@ -200,33 +200,33 @@ pub fn start(engine: &mut Engine, song_mode: i32) {
 }
 
 /// C++ `clockSpan`: the query, counted as a render-thread call.
-pub fn clock_span(engine: &mut impl RenderSide, frame: i64, requested: u32, latency: i64, span: &mut STClockSpan) -> i32 {
+pub fn clock_span(engine: &mut impl RenderSide, frame: i64, requested: u32, latency: i64, span: &mut ClockSpan) -> i32 {
     engine.span(frame, requested, latency, span)
 }
 
 /// C++ `preparedSpan(engine,frame,requested,latency)` (defaults: 64 frames, no latency).
 #[track_caller]
-pub fn prepared_span_at(engine: &mut impl RenderSide, frame: i64, requested: u32, latency: i64) -> STClockSpan {
-    let mut span = STClockSpan::default();
-    assert!(clock_span(engine, frame, requested, latency, &mut span) == ST_CLOCK_OK);
+pub fn prepared_span_at(engine: &mut impl RenderSide, frame: i64, requested: u32, latency: i64) -> ClockSpan {
+    let mut span = ClockSpan::default();
+    assert!(clock_span(engine, frame, requested, latency, &mut span) == CLOCK_OK);
     span
 }
 
 /// C++ `preparedSpan(engine,frame)`.
 #[track_caller]
-pub fn prepared_span(engine: &mut impl RenderSide, frame: i64) -> STClockSpan {
+pub fn prepared_span(engine: &mut impl RenderSide, frame: i64) -> ClockSpan {
     prepared_span_at(engine, frame, 64, 0)
 }
 
 /// A span whose every field holds the C++ test's `memset(...,0x5a,...)` pattern.
-fn sentinel_span() -> STClockSpan {
+fn sentinel_span() -> ClockSpan {
     const I64: i64 = 0x5a5a_5a5a_5a5a_5a5a;
     const U64: u64 = 0x5a5a_5a5a_5a5a_5a5a;
     const I32: i32 = 0x5a5a_5a5a;
     const U32: u32 = 0x5a5a_5a5a;
     let f64_ = f64::from_bits(U64);
-    STClockSpan {
-        context: STClockContext {
+    ClockSpan {
+        context: ClockContext {
             revision: U64,
             epoch: U64,
             graph_frame: I64,
@@ -273,7 +273,7 @@ pub fn prepare_bus(engine: &mut impl RenderSide, start_frame: u64, frames: u32) 
 /// C++ `contextKey`: every field of the context, in the C++ order.
 #[allow(clippy::type_complexity)]
 pub fn context_key(
-    c: &STClockContext,
+    c: &ClockContext,
 ) -> ((u64, u64, i64, i64, i64, i64, i64), (f64, f64, f64, f64, f64), (i32, i32, i32, i64, u32), (f64, f64, i64, i64)) {
     (
         (c.revision, c.epoch, c.graph_frame, c.content_graph_frame, c.song_frame, c.loop_iteration, c.bar),

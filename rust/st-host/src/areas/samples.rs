@@ -10,12 +10,15 @@
 //! | `sample.analyzeSlices` `{instrument, path?, sensitivity?, …}` | `st_samples::analyze_slices` |
 //! | `sample.wavetables`, `builtin.drumModels` | the built-in tables and drum models |
 //! | `audio.clipInfo` `{path}` | the summary of a timeline clip's file |
+//! | `sample.preview` `{path, volume?}` | browser audition: the head of the file is decoded (or taken from the preview cache) on the command's worker thread and started on the engine's preview mixer, fading out the previous preview; `{playing: true, duration, cached, startMs}`, or `{playing: false, superseded: true}` when a newer preview or a stop arrived first |
+//! | `sample.stopPreview`, `sample.prefetchPreviews` `{items: [path or {path}]}`, `sample.previewStatus` | fade out; warm the preview cache around the browser's selection (each request replaces the previous queue; `{kit}` items need the library and are skipped); cache and voice counters |
 //! | `sampler.playheads` `{enabled, instrument?}` | while enabled, a 30 Hz poll of the engine's voice positions sends `sampler.playheads` events (`emit_latest`), only when the snapshot changed |
 //!
 //! Events: `sample.loaded` `{instrument, sample}` when a sample the published project waited
 //! for is decoded (also when its file changed on disk and was decoded again),
 //! `sample.zonesLoaded` `{instrument, count}`, `audio.clipLoaded` (the clip file's summary);
 //! failures arrive as `sample.error` / `audio.clipError` through [`Audio::samples_changed`].
+//! `sample.previewEnded` `{path}` when the newest preview has played to its end.
 //!
 //! Threads: the commands that touch files are blocking commands (a worker thread each);
 //! project samples are decoded by the workers of [`st_audio::DecodedSamples`], whose listener
@@ -52,7 +55,8 @@ pub(crate) fn retain_for(samples: &DecodedSamples, project: &Project) {
         named.extend(instrument.zones.as_deref().unwrap_or(&[]).iter().filter_map(|zone| zone.file()));
     }
     named.extend(project.clip_list().iter().filter_map(|clip| clip.file()));
-    samples.retain(&|path| named.contains(path), GRACE);
+    // The built-in wavetables stay: they are small, and a new wavetable synth sounds at once.
+    samples.retain(&|path| named.contains(path) || path.starts_with("builtin:wavetables/"), GRACE);
 }
 
 /// The sample service of the host.
@@ -173,6 +177,35 @@ impl Samples {
         Ok(st_audio::samples_async::drum_models_metadata())
     }
 
+    // ---- previews -------------------------------------------------------------------------
+
+    fn preview(&self, payload: Value) -> Result<Value> {
+        let Some(path) = text(&payload, "path") else { fail!("Choose a sample to preview.") };
+        let volume = payload.get("volume").and_then(Value::as_f64).filter(|volume| volume.is_finite()).unwrap_or(0.35);
+        Ok(match self.audio.engine().live().preview().play(path, volume as f32).map_err(Error::new)? {
+            Some(started) => json!({ "playing": true, "duration": started.duration, "cached": started.cached, "startMs": started.start_ms }),
+            None => json!({ "playing": false, "superseded": true }),
+        })
+    }
+
+    fn stop_preview(&self, _: NoPayload) -> Result<Value> {
+        self.audio.engine().live().preview().stop(true);
+        Ok(json!({ "playing": false }))
+    }
+
+    fn prefetch_previews(&self, payload: Value) -> Result<Value> {
+        let paths: Vec<String> = payload
+            .get("items")
+            .and_then(Value::as_array)
+            .map(|items| items.iter().filter_map(|item| item.as_str().or_else(|| item.get("path").and_then(Value::as_str))).map(str::to_string).collect())
+            .unwrap_or_default();
+        Ok(json!({ "queued": self.audio.engine().live().preview().prefetch(paths) }))
+    }
+
+    fn preview_status(&self, _: NoPayload) -> Result<Value> {
+        Ok(self.audio.engine().live().preview().status())
+    }
+
     // ---- decodes the project waited for ----------------------------------------------------
 
     /// On a decode worker: one sample of the published project is ready, or failed.
@@ -282,12 +315,15 @@ pub fn install(commands: &mut Commands, audio: &Arc<Audio>, support: &std::path:
         playheads: Mutex::default(),
         last_apply: Mutex::new(Instant::now()),
     });
+    service.samples.prewarm(st_samples::builtin::wavetable_list().into_iter().map(|table| table.path));
     let listener = Arc::downgrade(&service);
     service.samples.set_listener(move |event| {
         if let Some(service) = listener.upgrade() {
             service.decoded(event);
         }
     });
+    let ended = service.events.clone();
+    audio.engine().live().preview().on_ended(move |path| ended.emit("sample.previewEnded", json!({ "path": path })));
     let playheads = service.clone();
     commands
         .with(&service)
@@ -297,6 +333,10 @@ pub fn install(commands: &mut Commands, audio: &Arc<Audio>, support: &std::path:
         .register_blocking("sample.edit", Samples::edit)
         .register_blocking("sample.analyzeSlices", Samples::analyze_slices)
         .register_blocking("audio.clipInfo", Samples::clip_info)
+        .register_blocking("sample.preview", Samples::preview)
+        .register("sample.stopPreview", Samples::stop_preview)
+        .register("sample.prefetchPreviews", Samples::prefetch_previews)
+        .register("sample.previewStatus", Samples::preview_status)
         .register("sample.wavetables", Samples::wavetables)
         .register("builtin.drumModels", Samples::drum_models);
     commands.register("sampler.playheads", move |payload: Value| playheads.playheads(payload));

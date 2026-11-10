@@ -1,4 +1,4 @@
-//! Port of `tests/engine_freeze_extent_tests.cpp`: the frozen song's exact extent
+//! Port of the former C++ test program `engine_freeze_extent_tests.cpp`: the frozen song's exact extent
 //! (`set_frozen_song_extent`): admission, exact ends, removed clips, checked commits, loops,
 //! restores and the admitted maximum.
 //!
@@ -47,7 +47,7 @@ fn render(e: &mut Engine, at: u64, n: u32) {
 fn span_with(e: &mut Engine, at: i64, n: u32, latency: i64) -> STFreezeSpan {
     let mut s = STFreezeSpan::default();
     let status = realtime(|| e.freeze_span(at, n, latency, &mut s));
-    assert!(status == ST_CLOCK_OK && s.frames > 0);
+    assert!(status == CLOCK_OK && s.frames > 0);
     s
 }
 
@@ -87,13 +87,13 @@ fn fixture_with(e: &mut Engine, mapped: bool, loop_song: bool, bpm: f64, rows: i
     }
     if mapped {
         let tempos = [
-            STClockTempoEvent { beat: 0.0, bpm: 120.0 },
-            STClockTempoEvent { beat: 0.25, bpm: 60.0 },
-            STClockTempoEvent { beat: 0.5, bpm: 180.0 },
+            ClockTempoEvent { beat: 0.0, bpm: 120.0 },
+            ClockTempoEvent { beat: 0.25, bpm: 60.0 },
+            ClockTempoEvent { beat: 0.5, bpm: 180.0 },
         ];
         let meters = [
-            STClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 },
-            STClockMeterEvent { beat: 0.75, numerator: 7, denominator: 8 },
+            ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 },
+            ClockMeterEvent { beat: 0.75, numerator: 7, denominator: 8 },
         ];
         assert!(e.set_timing_map(&tempos, &meters, 51).is_ok());
     }
@@ -309,8 +309,8 @@ fn exact_multi_loop_span_clock_boundaries_preserve_independent_continuous_input_
         render(&mut e, 18022, 1);
         let last = e.pop_input_ack();
         assert!(last.is_some_and(|last| last.run_id == first.run_id && last.distance_beats > first.distance_beats));
-        let mut clock = STClockSpan::default();
-        assert!(e.clock_span(6006, 1, 0, &mut clock) == ST_CLOCK_OK);
+        let mut clock = ClockSpan::default();
+        assert!(e.clock_span(6006, 1, 0, &mut clock) == CLOCK_OK);
         let expected = if mapped { 0.25 + 7.0 / 48000.0 } else { 6007.0 / 24000.0 };
         assert!((clock.context.loop_end_beat - expected).abs() < 1e-12);
     }

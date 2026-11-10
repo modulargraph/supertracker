@@ -369,4 +369,42 @@ test('built-in sample references load, prototype names are not parameters, and s
   assert.match(JSON.parse(await h.agent.dispatch('summary', '{}')).error, /^Internal error in summary/);
 });
 
+test('the host reaches the agent API through agent.call events and gets agent.reply; agent.status sets the connection', async () => {
+  const h = harness();
+  const replies = () => h.calls.filter(message => message.command === 'agent.reply').map(message => message.payload);
+  const settle = async () => { for (let i = 0; i < 200 && replies().length < expected; i++) await new Promise(resolve => setImmediate(resolve)); };
+  let expected = 1;
+  // A read: the reply is what dispatch resolves to (JSON text), under the call's id.
+  h.window.nativeEvent({ type: 'agent.call', payload: { id: 7, method: 'summary', params: { _host: { projectPath: null } } } });
+  await settle();
+  assert.equal(replies().length, 1, 'one reply per call');
+  assert.equal(replies()[0].id, 7);
+  assert.equal(typeof replies()[0].reply, 'string');
+  const summary = JSON.parse(replies()[0].reply);
+  assert.equal(summary.ok, true, summary.error); assert.equal(summary.result.name, h.state.project.name);
+  // An edit: it lands in the project as one undo step, like a direct dispatch.
+  const undo = h.state.undo.length; expected = 2;
+  h.window.nativeEvent({ type: 'agent.call', payload: { id: 8, method: 'writeSteps', params: { steps: [{ track: 0, row: 3, note: 'D-4' }] } } });
+  await settle();
+  const edit = JSON.parse(replies()[1].reply);
+  assert.equal(replies()[1].id, 8); assert.equal(edit.ok, true, edit.error);
+  assert.equal(h.state.project.patterns[0].steps[0][3].note, 62); assert.equal(h.state.undo.length, undo + 1);
+  // A failure is an answer too, and calls run in the order they arrived.
+  expected = 4;
+  h.window.nativeEvent(JSON.stringify({ type: 'agent.call', payload: { id: 9, method: 'noSuchMethod', params: {} } }));
+  h.window.nativeEvent({ type: 'agent.call', payload: { id: 10, method: 'readPattern' } });
+  await settle();
+  assert.deepEqual(replies().slice(2).map(reply => reply.id), [9, 10]);
+  assert.match(JSON.parse(replies()[2].reply).error, /Unknown method "noSuchMethod"/);
+  assert.equal(JSON.parse(replies()[3].reply).ok, true, 'missing params are an empty object');
+  // The connection status arrives as an event (and is not handed on to the other modules).
+  h.window.nativeEvent({ type: 'agent.status', payload: { available: true, enabled: true, listening: true, clients: 1, socket: '/tmp/control.sock', suspendedForTermination: false } });
+  h.ST.refresh();
+  assert.match(h.app.innerHTML, /<span id="agent-status" class="agent-status"[^>]*title="[^"]*"\s*><i class="agent-led"><\/i>AI connected<\/span>/);
+  h.window.nativeEvent({ type: 'agent.status', payload: { available: true, enabled: false, listening: false, clients: 0 } });
+  h.ST.refresh();
+  assert.match(h.app.innerHTML, /<span id="agent-status"[^>]* hidden>/);
+  assert.doesNotMatch(h.agent.settingsField(), /checked/);
+});
+
 (async () => { let failures = 0; for (const { name, run } of tests) { try { await run(); console.log('PASS ' + name); } catch (error) { failures++; console.error('FAIL ' + name + '\n' + error.stack); } } console.log(`Agent API: ${tests.length - failures}/${tests.length} groups passed.`); if (failures) process.exitCode = 1; })();

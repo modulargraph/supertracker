@@ -1,9 +1,8 @@
-//! The control thread's operations as safe methods of [`Control`]: the project setters and the
-//! command producers behind the `st_engine_*` functions of `TrackerEngine.cpp`'s `extern "C"`
-//! block. `capi.rs` only converts C pointers and calls these; a Rust host can call them directly.
+//! The control thread's operations as methods of [`Control`]: the project setters and the
+//! command producers. A host reaches them through `host::ControlHalf::parts`.
 //!
-//! Every setter sanitizes its input exactly as the C++ function did (clamping, finite fallbacks,
-//! silently ignoring out-of-range indices) and edits the draft; nothing here touches the render
+//! Every setter sanitizes its input (clamping, finite fallbacks, silently ignoring out-of-range
+//! indices) and edits the draft; nothing here touches the render
 //! thread except through the published project and the command ring, whose single producer is
 //! the control thread (hence `&mut self` on the producers).
 
@@ -51,7 +50,7 @@ impl Pcm<'_> {
     }
 }
 
-/// The step's note fields as the engine stores them (`st_engine_set_step`'s sanitizing).
+/// The step's note fields as the engine stores them (`set_step`'s sanitizing).
 fn sanitize_step_note(step: &mut STStep, instruments: usize) {
     step.instrument = clamp(step.instrument, -1, instruments as i32 - 1);
     step.velocity = clamp(step.velocity, 0, 127);
@@ -113,14 +112,15 @@ fn add_lane_point(target: &mut Pattern, host: bool, key: impl Fn(&Lane) -> bool,
 impl Control {
     // ---- update transactions ----
 
-    /// `st_engine_begin_update`
+    /// Opens an update: a fresh draft of the published project. Edits made until `commit` are
+    /// published together.
     pub fn begin_update(&mut self, sh: &Shared) {
         self.collect(sh);
         self.draft = Some(Box::new((*self.control).clone()));
         self.updating = true;
     }
 
-    /// `st_engine_clear_project`: a fresh draft that keeps instruments and timeline assets.
+    /// A fresh draft that keeps instruments and timeline assets.
     pub fn clear_project(&mut self) {
         let mut fresh = Box::new(Project::new());
         fresh.pattern_epoch = 0;
@@ -130,7 +130,7 @@ impl Control {
         self.updating = true;
     }
 
-    /// `st_engine_cancel_update`
+    /// Discards the draft: every edit since the last commit is dropped.
     pub fn cancel_update(&mut self) {
         self.draft = None;
         self.updating = false;
@@ -152,7 +152,8 @@ impl Control {
 
     // ---- project settings ----
 
-    /// `st_engine_set_timing`
+    /// Tempo (20..999 BPM), lines per beat (1..32), swing (0..0.95) and master volume (0..2), each
+    /// clamped; non-finite values fall back to the defaults.
     pub fn set_timing(&mut self, bpm: f64, lines_per_beat: i32, swing: f32, master_volume: f32) {
         let p = self.edit();
         p.bpm = clamp(finite64(bpm, 120.0), 20.0, 999.0);
@@ -161,12 +162,15 @@ impl Control {
         p.master = clamp(finite(master_volume, 0.7), 0.0, 2.0);
     }
 
-    /// `st_engine_set_frozen_song_policy`. Errors leave the policy unchanged.
+    /// Errors leave the policy unchanged.
     pub fn set_frozen_song_policy(&mut self, sh: &Shared, enabled: i32, publication_id: u64) -> Result<(), String> {
         if (enabled != 0 && enabled != 1) || (enabled != 0 && publication_id == 0) {
             return Err(
                 "Frozen song policy requires a valid engine, boolean enable flag and nonzero publication ID.".into()
             );
+        }
+        if !self.owns(sh) {
+            return Err(super::control::FOREIGN_ENGINE.into());
         }
         // Allocate on control before publishing the policy. Storage lives until quiescent engine
         // destruction, including rejected/discarded drafts.
@@ -183,7 +187,7 @@ impl Control {
         Ok(())
     }
 
-    /// `st_engine_set_frozen_song_extent`
+    /// The exact musical length, in frames, of the frozen publication `publication_id`. Errors leave the extent unchanged.
     pub fn set_frozen_song_extent(&mut self, publication_id: u64, musical_frames: i64) -> Result<(), String> {
         if publication_id == 0 || musical_frames < 1 || musical_frames > 100000000 {
             return Err("Frozen song extent requires a valid engine, nonzero publication and1..100000000 frames.".into());
@@ -199,12 +203,12 @@ impl Control {
         Ok(())
     }
 
-    /// `st_engine_set_timing_map`: failure leaves the draft map unchanged.
+    /// Failure leaves the draft map unchanged.
     pub fn set_timing_map(
         &mut self,
         sample_rate: f64,
-        tempos: &[STClockTempoEvent],
-        meters: &[STClockMeterEvent],
+        tempos: &[ClockTempoEvent],
+        meters: &[ClockMeterEvent],
         revision: u64,
     ) -> Result<(), String> {
         let map = Arc::new(EngineTiming::new(sample_rate, tempos, meters, revision)?);
@@ -219,12 +223,13 @@ impl Control {
         Ok(())
     }
 
-    /// `st_engine_clear_timing_map`
+    /// Back to the single project tempo of `set_timing`.
     pub fn clear_timing_map(&mut self) {
         self.edit().timing = None;
     }
 
-    /// `st_engine_set_pattern_timing_origin`
+    /// The quarter beat of the timing map at which the pattern timeline starts. False (and no
+    /// change) for a beat outside 0..=1000000.
     pub fn set_pattern_timing_origin(&mut self, beat: f64) -> bool {
         if !beat.is_finite() || beat < 0.0 || beat > 1000000.0 {
             return false;
@@ -233,7 +238,7 @@ impl Control {
         true
     }
 
-    /// `st_engine_set_metronome`
+    /// The metronome: on/off, the meter that places its accents, and its volume.
     pub fn set_metronome(&mut self, enabled: bool, numerator: i32, denominator: i32, volume: f32) {
         let p = self.edit();
         p.metronome = enabled;
@@ -242,7 +247,7 @@ impl Control {
         p.metronome_volume = clamp(finite(volume, 0.3), 0.0, 1.0);
     }
 
-    /// `st_engine_set_track_count`
+    /// Number of tracks (1..=`ST_TRACK_SANITY_LIMIT`); false for a count out of range.
     pub fn set_track_count(&mut self, count: i32) -> bool {
         if count < 1 || count > ST_TRACK_SANITY_LIMIT {
             return false;
@@ -256,7 +261,7 @@ impl Control {
         true
     }
 
-    /// `st_engine_set_track`
+    /// Mixer settings of one track (clamped); an index outside 0..`ST_TRACK_SANITY_LIMIT` is ignored.
     pub fn set_track(&mut self, index: i32, mut track: STTrack) {
         if index < 0 || index >= ST_TRACK_SANITY_LIMIT {
             return;
@@ -274,7 +279,8 @@ impl Control {
         p.tracks[index] = track;
     }
 
-    /// `st_engine_set_track_voice`
+    /// Per-track voice settings: choke group (0..=127), its scope and the voice mode (-1..=2).
+    /// False for values out of range.
     pub fn set_track_voice(&mut self, track: i32, choke_group: i32, choke_scope: i32, voice_mode: i32) -> bool {
         if track < 0
             || track >= ST_TRACK_SANITY_LIMIT
@@ -296,7 +302,7 @@ impl Control {
         true
     }
 
-    /// `st_engine_set_host_mixing`: bit t of `computational_mask` is track t for t<32; tracks
+    /// Bit t of `computational_mask` is track t for t<32; tracks
     /// from 32 on are enabled.
     pub fn set_host_mixing(&mut self, enabled: bool, computational_mask: u32) {
         let p = self.edit();
@@ -306,7 +312,7 @@ impl Control {
         p.computational_beyond = true;
     }
 
-    /// `st_engine_set_host_mixing_tracks`
+    /// Host mixing with the computational mask as 64-bit words (bit t of word t/64 is track t); tracks beyond the words follow `enabled_beyond`.
     pub fn set_host_mixing_tracks(&mut self, enabled: bool, words: &[u64], enabled_beyond: bool) {
         let p = self.edit();
         p.host_mixing = enabled;
@@ -316,7 +322,7 @@ impl Control {
         p.computational_beyond = enabled_beyond;
     }
 
-    /// `st_engine_set_instrument_count`
+    /// Number of instrument slots (1..=`ST_INSTRUMENT_SANITY_LIMIT`); false for a count out of range.
     pub fn set_instrument_count(&mut self, count: i32) -> bool {
         if count < 1 || count > ST_INSTRUMENT_SANITY_LIMIT {
             return false;
@@ -325,7 +331,8 @@ impl Control {
         true
     }
 
-    /// `st_engine_set_instrument`
+    /// Settings of one instrument (clamped to their ranges); an index beyond the instrument count
+    /// is ignored.
     pub fn set_instrument(&mut self, index: i32, instrument: STInstrument) {
         if !self.view().has_instrument(index) {
             return;
@@ -391,7 +398,7 @@ impl Control {
         }
     }
 
-    /// `st_engine_set_sequence`
+    /// The song: up to 4096 pattern indices, whether it loops, and the pattern Pattern mode plays.
     pub fn set_sequence(&mut self, patterns: &[i32], loop_song: bool, active_pattern: i32) {
         let p = self.edit();
         let last = p.patterns.len() as i32 - 1;
@@ -404,7 +411,8 @@ impl Control {
         p.active_pattern = clamp(active_pattern, 0, last);
     }
 
-    /// `st_engine_set_effects`
+    /// The engine's own send effects: delay time, feedback and level; reverb size, damping and
+    /// level (each clamped).
     pub fn set_effects(
         &mut self,
         delay_seconds: f32,
@@ -423,7 +431,8 @@ impl Control {
         p.reverb_mix = clamp(finite(reverb_mix, 0.25), 0.0, 1.0);
     }
 
-    /// `st_engine_set_song_loop`
+    /// Loops a section of the song sequence (inclusive indices); a negative start, or an end before
+    /// the start, removes the loop.
     pub fn set_song_loop(&mut self, mut start_index: i32, mut end_index: i32) {
         if start_index < 0 || end_index < start_index {
             start_index = -1;
@@ -434,7 +443,8 @@ impl Control {
         p.song_loop_end = cmin(end_index, 4095);
     }
 
-    /// `st_engine_set_send_effects`
+    /// Further send settings: delay time in beats (1/64..16; 0 keeps the time in seconds), delay
+    /// tone (0..1, 1 open) and reverb pre-delay in seconds (0..0.5).
     pub fn set_send_effects(&mut self, sample_rate: f64, delay_beats: f64, delay_tone: f32, reverb_predelay: f32) {
         let p = self.edit();
         p.delay_beats = if delay_beats.is_finite() && delay_beats > 0.0 { clamp(delay_beats, 1.0 / 64.0, 16.0) } else { 0.0 };
@@ -448,14 +458,15 @@ impl Control {
         p.reverb_predelay = clamp(finite(reverb_predelay, 0.0), 0.0, 0.5);
     }
 
-    /// `st_engine_set_host_automation_map`
+    /// The host's identifier for its current numbering of automation destinations; host parameter
+    /// events carry it (`STEvent::host_map`).
     pub fn set_host_automation_map(&mut self, map: u64) {
         self.edit().host_map = map;
     }
 
     // ---- patterns, steps and automation ----
 
-    /// `st_engine_set_pattern`
+    /// Creates or resizes pattern `index` (length clamped to 1..=`ST_MAX_ROWS` rows).
     pub fn set_pattern(&mut self, index: i32, length: i32) {
         if index < 0 || index >= ST_MAX_PATTERNS {
             return;
@@ -468,7 +479,7 @@ impl Control {
         p.patterns[index].resize(clamp(length, 1, ST_MAX_ROWS));
     }
 
-    /// `st_engine_reuse_pattern`: share pattern `index` with the last published project.
+    /// Share pattern `index` with the last published project.
     pub fn reuse_pattern(&mut self, index: i32) -> bool {
         if index < 0 || index >= ST_MAX_PATTERNS {
             return false;
@@ -483,12 +494,15 @@ impl Control {
         true
     }
 
-    /// `st_engine_pattern_epoch`
+    /// The identity of the published pattern content: a commit that publishes pattern edits gives
+    /// it a new, process-unique value; a commit without pattern edits keeps it.
     pub fn pattern_epoch(&self) -> u64 {
         self.control.pattern_epoch
     }
 
-    /// `st_engine_set_step`
+    /// Writes column 0 of a row: note, instrument, velocity, gate, both step effects and an
+    /// optional chord (up to `ST_MAX_CHORD` semitone offsets; `None` or an empty list for a single
+    /// note). Rows and tracks out of range are ignored.
     pub fn set_step(&mut self, pattern: i32, track: i32, row: i32, step: STStep, chord: Option<&[i32]>) {
         if pattern < 0 || track < 0 || track >= ST_TRACK_SANITY_LIMIT || row < 0 {
             return;
@@ -511,7 +525,9 @@ impl Control {
         (v.count, v.chord) = sanitize_chord(chord);
     }
 
-    /// `st_engine_set_plugin_step_fx`
+    /// A plug-in parameter lock on a row that has a step: `column` 0 or 1, the plug-in slot or host
+    /// destination, the parameter address and its normalized value (0..=1). False when an argument
+    /// is out of range or the row has no step.
     #[allow(clippy::too_many_arguments)]
     pub fn set_plugin_step_fx(
         &mut self,
@@ -550,7 +566,7 @@ impl Control {
         true
     }
 
-    /// `st_engine_clear_step`: clears column 0 and every extra note column of the row.
+    /// Clears column 0 and every extra note column of the row.
     pub fn clear_step(&mut self, pattern: i32, track: i32, row: i32) {
         if pattern < 0 || track < 0 || track >= ST_TRACK_SANITY_LIMIT || row < 0 {
             return;
@@ -570,7 +586,9 @@ impl Control {
         }
     }
 
-    /// `st_engine_set_step_column`
+    /// Writes a note column of a row. Column 0 is `set_step` without a chord; the extra columns
+    /// (1..`ST_MAX_NOTE_COLUMNS`) hold note, instrument, velocity and gate only, and a note outside
+    /// -2..=127 clears the cell.
     pub fn set_step_column(&mut self, pattern: i32, track: i32, row: i32, column: i32, step: STStep) {
         if pattern < 0 || track < 0 || track >= ST_TRACK_SANITY_LIMIT || row < 0 || column < 0 || column > EXTRA_COLUMNS {
             return;
@@ -601,7 +619,7 @@ impl Control {
         v.p = s;
     }
 
-    /// `st_engine_clear_automation`: clears native and host lanes.
+    /// Clears native and host lanes.
     pub fn clear_automation(&mut self, pattern: i32) {
         if pattern < 0 {
             return;
@@ -613,7 +631,8 @@ impl Control {
         }
     }
 
-    /// `st_engine_add_automation_point`
+    /// Adds a point to the native or plug-in lane `(track, target, slot, address)` of a pattern,
+    /// creating the lane on first use (at most 256 lanes per pattern and 4096 points per lane).
     #[allow(clippy::too_many_arguments)]
     pub fn add_automation_point(
         &mut self,
@@ -628,7 +647,7 @@ impl Control {
     ) {
         if pattern < 0
             || track < 0
-            || track >= st_channel_count(ST_TRACK_SANITY_LIMIT)
+            || track >= channel_count(ST_TRACK_SANITY_LIMIT)
             || target < 0
             || target > ST_TARGET_LAST_INSTRUMENT
             || !row.is_finite()
@@ -648,7 +667,8 @@ impl Control {
         );
     }
 
-    /// `st_engine_add_host_automation_point`
+    /// Adds a point to the host lane `(destination, address)` of a pattern; the engine reports
+    /// its values as `ST_EVENT_HOST_PARAMETER` events and applies them to nothing itself.
     pub fn add_host_automation_point(
         &mut self,
         pattern: i32,
@@ -683,7 +703,7 @@ impl Control {
 
     // ---- samples, zones and timeline audio ----
 
-    /// `st_engine_set_sample`: `None` clears the instrument's sample. Publishes at once outside
+    /// `None` clears the instrument's sample. Publishes at once outside
     /// an update.
     pub fn set_sample(&mut self, sh: &Shared, sample_rate: f64, instrument: i32, pcm: Option<Pcm>) -> bool {
         if !self.view().has_instrument(instrument) {
@@ -704,7 +724,7 @@ impl Control {
         self.publish_outside_update(sh, sample_rate)
     }
 
-    /// `st_engine_set_slice_points`: an empty list clears the manual slices.
+    /// An empty list clears the manual slices.
     pub fn set_slice_points(&mut self, instrument: i32, positions: &[f32]) {
         if !self.view().has_instrument(instrument) {
             return;
@@ -719,7 +739,8 @@ impl Control {
         }
     }
 
-    /// `st_engine_set_sample_cycle`
+    /// Frames per wavetable cycle of an instrument's sample (0, or
+    /// `ST_WAVETABLE_MIN_FRAME`..=`ST_WAVETABLE_MAX_FRAME`). Publishes at once outside an update.
     pub fn set_sample_cycle(&mut self, sh: &Shared, sample_rate: f64, instrument: i32, frames: i32) -> bool {
         if !self.view().has_instrument(instrument)
             || frames < 0
@@ -731,14 +752,16 @@ impl Control {
         self.publish_outside_update(sh, sample_rate)
     }
 
-    /// `st_engine_clear_zones`
+    /// Removes every key/velocity zone of an instrument.
     pub fn clear_zones(&mut self, instrument: i32) {
         if self.view().has_instrument(instrument) {
             self.edit().instruments[instrument as usize].zones.clear();
         }
     }
 
-    /// `st_engine_add_sample_zone`
+    /// Adds a key/velocity zone with its own PCM, root note, tuning and gain (up to 128 per
+    /// instrument). False for PCM the engine rejects or a full zone list. Publishes at once outside
+    /// an update.
     #[allow(clippy::too_many_arguments)]
     pub fn add_sample_zone(
         &mut self,
@@ -774,7 +797,8 @@ impl Control {
         self.publish_outside_update(sh, sample_rate)
     }
 
-    /// `st_engine_set_sample_zone_region`
+    /// Start, end and loop points of one zone as fractions of its sample (0..=1), and its pan.
+    /// False, changing nothing, when a value is out of range or the zone does not exist.
     #[allow(clippy::too_many_arguments)]
     pub fn set_sample_zone_region(
         &mut self,
@@ -818,7 +842,8 @@ impl Control {
         }
     }
 
-    /// `st_engine_set_sample_zone_loop_enabled`
+    /// Whether one zone loops: 1 loops it, 0 plays it once, -1 follows the instrument's play mode.
+    /// False for an unknown zone or another value.
     pub fn set_sample_zone_loop_enabled(&mut self, instrument: i32, zone_index: i32, enabled: i32) -> bool {
         if !self.view().has_instrument(instrument) || zone_index < 0 || enabled < -1 || enabled > 1 {
             return false;
@@ -832,7 +857,7 @@ impl Control {
         }
     }
 
-    /// `st_engine_set_audio_asset`: `None` clears the slot. Publishes at once outside an update.
+    /// `None` clears the slot. Publishes at once outside an update.
     pub fn set_audio_asset(&mut self, sh: &Shared, sample_rate: f64, asset: i32, pcm: Option<Pcm>) -> bool {
         if asset < 0 || asset >= AUDIO_ASSETS as i32 {
             return false;
@@ -853,7 +878,7 @@ impl Control {
         self.publish_outside_update(sh, sample_rate)
     }
 
-    /// `st_engine_clear_audio_clips`: song clips, pattern clips and song tail clips.
+    /// Song clips, pattern clips and song tail clips.
     pub fn clear_audio_clips(&mut self) {
         let p = self.edit();
         p.audio_clips.clear();
@@ -861,7 +886,8 @@ impl Control {
         p.song_tail_clips.clear();
     }
 
-    /// `st_engine_add_audio_clip`
+    /// Places a timeline asset on a track: start and duration in quarter beats, source offset in
+    /// seconds, gain, fades in seconds and mute. At most 256 clips; further ones are ignored.
     #[allow(clippy::too_many_arguments)]
     pub fn add_audio_clip(
         &mut self,
@@ -897,7 +923,7 @@ impl Control {
         });
     }
 
-    /// `st_engine_add_pattern_clip`
+    /// A Pattern-mode clip: the printed head and loop assets of one pattern on a track.
     pub fn add_pattern_clip(&mut self, head_asset: i32, loop_asset: i32, track: i32, pattern: i32, gain: f32) {
         if head_asset < 0
             || head_asset >= AUDIO_ASSETS as i32
@@ -922,7 +948,8 @@ impl Control {
         });
     }
 
-    /// `st_engine_add_song_tail_clip`
+    /// A song-loop tail: an asset on a track with the song frame at which it starts (see
+    /// `SongTailClip`). At most 64.
     pub fn add_song_tail_clip(&mut self, asset: i32, track: i32, start_frame: i64, gain: f32) {
         if asset < 0 || asset >= AUDIO_ASSETS as i32 || track < 0 || track >= ST_TRACK_SANITY_LIMIT || start_frame < 0 {
             return;
@@ -934,7 +961,7 @@ impl Control {
         p.song_tail_clips.push(SongTailClip { asset, track, start: start_frame, gain: clamp(finite(gain, 1.0), 0.0, 4.0) });
     }
 
-    /// `st_engine_duration`: excludes release/send tails; Pattern mode uses the active pattern.
+    /// Excludes release/send tails; Pattern mode uses the active pattern.
     pub fn duration(&self, sample_rate: f64, song_mode: bool) -> f64 {
         let p = &self.control;
         if song_mode {
@@ -949,38 +976,41 @@ impl Control {
 
     // ---- commands (the control thread is the command ring's single producer) ----
 
-    /// `st_engine_play`
+    /// Queues Play: `song_mode` nonzero plays the song sequence, zero the active pattern. Like every
+    /// command below it takes effect when the render half starts its next block; until then the
+    /// status reports it as pending (`STStatus::transport_playing`).
     pub fn play(&mut self, sh: &Shared, song_mode: i32) {
-        sh.queue_transport(Command::new(CMD_PLAY, song_mode, 0, 0, 0, 0.0), true);
+        self.queue_transport(sh, Command::new(CMD_PLAY, song_mode, 0, 0, 0, 0.0), true);
     }
 
-    /// `st_engine_stop`
+    /// Queues Stop.
     pub fn stop(&mut self, sh: &Shared) {
-        sh.queue_transport(Command::new(CMD_STOP, 0, 0, 0, 0, 0.0), false);
+        self.queue_transport(sh, Command::new(CMD_STOP, 0, 0, 0, 0, 0.0), false);
     }
 
-    /// `st_engine_play_count_in`
+    /// Queues Play after a count-in of 1..=4 bars.
     pub fn play_count_in(&mut self, sh: &Shared, song_mode: bool, bars: i32) {
-        sh.queue_transport(Command::new(CMD_COUNT_IN, song_mode as i32, clamp(bars, 1, 4), 0, 0, 0.0), false);
+        self.queue_transport(sh, Command::new(CMD_COUNT_IN, song_mode as i32, clamp(bars, 1, 4), 0, 0, 0.0), false);
     }
 
-    /// `st_engine_set_recording`
+    /// Queues the recording flag of the transport (`STStatus::recording`, `CLOCK_RECORDING`).
     pub fn set_recording(&mut self, sh: &Shared, enabled: bool) {
-        sh.queue(&Command::new(CMD_RECORDING, enabled as i32, 0, 0, 0, 0.0));
+        self.queue(sh, &Command::new(CMD_RECORDING, enabled as i32, 0, 0, 0, 0.0));
     }
 
-    /// `st_engine_seek`
+    /// Queues a seek to a row of a pattern, at an entry of the song sequence.
     pub fn seek(&mut self, sh: &Shared, pattern: i32, row: i32, sequence: i32) {
-        sh.queue(&Command::new(CMD_SEEK, pattern, row, sequence, 0, 0.0));
+        self.queue(sh, &Command::new(CMD_SEEK, pattern, row, sequence, 0, 0.0));
     }
 
-    /// `st_engine_set_pattern_loop`
+    /// Queues a row loop for Pattern mode (inclusive rows); a negative start, or an end before the
+    /// start, removes the loop.
     pub fn set_pattern_loop(&mut self, sh: &Shared, mut start_row: i32, mut end_row: i32) {
         if start_row < 0 || end_row < start_row {
             start_row = -1;
             end_row = -1;
         }
-        sh.queue(&Command::new(
+        self.queue(sh, &Command::new(
             CMD_PATTERN_LOOP,
             cmin(start_row, ST_MAX_ROWS - 1),
             cmin(end_row, ST_MAX_ROWS - 1),
@@ -990,9 +1020,10 @@ impl Control {
         ));
     }
 
-    /// `st_engine_queue_jump`
+    /// Queues a jump to another pattern or sequence entry, which the transport takes when the
+    /// current pattern ends (`STStatus::queued_pattern`, `queued_sequence`; -1 for "none").
     pub fn queue_jump(&mut self, sh: &Shared, pattern: i32, sequence: i32) {
-        sh.queue(&Command::new(
+        self.queue(sh, &Command::new(
             CMD_QUEUE_JUMP,
             if pattern < 0 { -1 } else { cmin(pattern, ST_MAX_PATTERNS - 1) },
             if sequence < 0 { -1 } else { cmin(sequence, 4095) },
@@ -1002,9 +1033,10 @@ impl Control {
         ));
     }
 
-    /// `st_engine_queue_mode`
+    /// Queues a switch between Song and Pattern mode, continuing at the given pattern or sequence
+    /// entry (-1 for "none").
     pub fn queue_mode(&mut self, sh: &Shared, song_mode: bool, pattern: i32, sequence: i32) {
-        sh.queue(&Command::new(
+        self.queue(sh, &Command::new(
             CMD_QUEUE_MODE,
             song_mode as i32,
             if pattern < 0 { -1 } else { cmin(pattern, ST_MAX_PATTERNS - 1) },
@@ -1014,17 +1046,17 @@ impl Control {
         ));
     }
 
-    /// `st_engine_note_on`
+    /// Queues a live note (keyboard, MIDI input) on a track with an instrument.
     pub fn note_on(&mut self, sh: &Shared, track: i32, instrument: i32, note: i32, velocity: i32) {
-        sh.queue(&Command::new(CMD_NOTE_ON, track, instrument, note, velocity, 0.0));
+        self.queue(sh, &Command::new(CMD_NOTE_ON, track, instrument, note, velocity, 0.0));
     }
 
-    /// `st_engine_note_off`
+    /// Queues the release of the live note of this pitch on a track.
     pub fn note_off(&mut self, sh: &Shared, track: i32, note: i32) {
-        sh.queue(&Command::new(CMD_NOTE_OFF, track, note, 0, 0, 0.0));
+        self.queue(sh, &Command::new(CMD_NOTE_OFF, track, note, 0, 0, 0.0));
     }
 
-    /// `st_engine_input_note`: true only when both command and ACK capacity are reserved.
+    /// True only when both command and ACK capacity are reserved.
     #[allow(clippy::too_many_arguments)]
     pub fn input_note(
         &mut self,
@@ -1052,6 +1084,9 @@ impl Control {
         {
             return false;
         }
+        if !self.owns(sh) {
+            return false;
+        }
         let outstanding = sh.input_outstanding.fetch_add(1, Ordering::Relaxed);
         if outstanding >= ST_INPUT_ACK_CAPACITY as u32 - 1 {
             sh.input_outstanding.fetch_sub(1, Ordering::Relaxed);
@@ -1077,7 +1112,8 @@ impl Control {
         true
     }
 
-    /// `st_engine_preview_step`
+    /// Queues an audition of a step (with an optional chord) for 0.03..2 seconds, without moving
+    /// the transport.
     pub fn preview_step(&mut self, sh: &Shared, track: i32, step: STStep, chord: Option<&[i32]>, duration_seconds: f32) {
         let mut command = Command { kind: CMD_PREVIEW, a: track, step, ..Command::default() };
         command.step.note = clamp(step.note, -3, 127);
@@ -1085,25 +1121,25 @@ impl Control {
         command.step.velocity = clamp(step.velocity, 0, 127);
         command.value = clamp(finite(duration_seconds, 0.35), 0.03, 2.0);
         (command.chord_count, command.chord) = sanitize_chord(chord);
-        sh.queue(&command);
+        self.queue(sh, &command);
     }
 
-    /// `st_engine_panic`
+    /// Queues Panic: every voice and pending note ends.
     pub fn panic(&mut self, sh: &Shared) {
-        sh.queue(&Command::new(CMD_PANIC, 0, 0, 0, 0, 0.0));
+        self.queue(sh, &Command::new(CMD_PANIC, 0, 0, 0, 0, 0.0));
     }
 
-    /// `st_engine_pitch_bend`
+    /// Queues a live pitch bend of a track, in semitones (clamped to +-48).
     pub fn pitch_bend(&mut self, sh: &Shared, track: i32, semitones: f32) {
-        sh.queue(&Command::new(CMD_PITCH_BEND, track, 0, 0, 0, clamp(finite(semitones, 0.0), -48.0, 48.0)));
+        self.queue(sh, &Command::new(CMD_PITCH_BEND, track, 0, 0, 0, clamp(finite(semitones, 0.0), -48.0, 48.0)));
     }
 
-    /// `st_engine_mod_wheel`
+    /// Queues the live modulation wheel of a track (clamped to 0..1).
     pub fn mod_wheel(&mut self, sh: &Shared, track: i32, value: f32) {
-        sh.queue(&Command::new(CMD_MOD_WHEEL, track, 0, 0, 0, clamp(finite(value, 0.0), 0.0, 1.0)));
+        self.queue(sh, &Command::new(CMD_MOD_WHEEL, track, 0, 0, 0, clamp(finite(value, 0.0), 0.0, 1.0)));
     }
 
-    /// `st_engine_set_instrument_parameter`: false for an invalid instrument/target or a full
+    /// False for an invalid instrument/target or a full
     /// queue.
     pub fn set_instrument_parameter(&mut self, sh: &Shared, instrument: i32, target: i32, value: f32) -> bool {
         if instrument < 0 || instrument >= ST_INSTRUMENT_SANITY_LIMIT || !value.is_finite() {
@@ -1115,11 +1151,14 @@ impl Control {
         {
             return false;
         }
+        if !self.owns(sh) {
+            return false;
+        }
         if sh.commands.available() == 0 {
             sh.dropped_commands.fetch_add(1, Ordering::Relaxed);
             return false;
         }
-        sh.queue(&Command::new(CMD_LIVE_PARAM, instrument, target, 0, 0, value));
+        self.queue(sh, &Command::new(CMD_LIVE_PARAM, instrument, target, 0, 0, value));
         true
     }
 }

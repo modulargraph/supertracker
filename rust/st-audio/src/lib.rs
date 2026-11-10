@@ -19,6 +19,7 @@
 //! | [`graph`] | the mixer: spec, compiler and render plan, delay compensation, automation, inserts, send effects, meters, the renderer |
 //! | [`device`] | outputs: `cpal` devices and the null device |
 //! | [`midi`] | the MIDI seam: what the render thread tells MIDI output (external instruments, clock) |
+//! | [`plugins`] | plug-in hosting: the plug-ins of a project as instances in container processes ([`plugins::PluginManager`]), as processors of the graph ([`plugins::PluginInsert`]), the catalogue of installed plug-ins and the recovery store |
 //!
 //! # Real-time rules
 //!
@@ -33,8 +34,9 @@
 //! | Follow-up | Seam |
 //! |---|---|
 //! | Sample decoding (`st-samples`) | [`SampleSource`]; [`AudioEngine::samples_changed`] when a decode finishes |
-//! | Plug-in instances (container client) | [`graph::insert::InsertFactory`] / [`graph::insert::InsertProcessor`]; an insert the factory cannot make passes through and is reported unavailable |
-//! | Plug-in instruments, MIDI outputs | [`graph::render::ExternalEvents`] receives the engine's note events on the render thread |
+//! | Other insert processors | [`graph::insert::InsertFactory`] / [`graph::insert::InsertProcessor`]; an insert the factory cannot make passes through and is reported unavailable. Plug-ins are made by [`plugins::PluginFactory`] once a manager is attached ([`AudioEngine::set_plugins`]) |
+//! | Other consumers of note events | [`graph::render::ExternalEvents`] receives the engine's note events on the render thread (a track's plug-in instrument gets its notes inside the plan, through [`graph::insert::InsertProcessor::midi`]) |
+//! | MIDI outputs, MIDI clock | [`midi`]: [`AudioEngine::set_midi_output`] puts a [`midi::MidiRender`] on the render thread (the host implements it over `st-midi`) |
 //! | Export, bounce, freeze, render selection | [`AudioEngine::render_offline`] on an engine made with [`DeviceChoice::None`]; `Plan::latency_frames` is the pre-roll to trim |
 //! | Recording, line inputs | the device layer has outputs only; input enumeration is in [`device::system::list`] |
 //!
@@ -48,9 +50,18 @@
 
 pub mod device;
 pub mod engine;
+pub mod export;
+pub mod freeze;
 pub mod graph;
+pub mod inputs;
+pub mod live;
 pub mod midi;
+pub mod offline;
+pub mod plugins;
+pub mod preview;
 pub mod project_sync;
+pub mod recording;
+pub mod render_selection;
 pub mod samples;
 pub mod samples_async;
 

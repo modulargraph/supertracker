@@ -1,4 +1,4 @@
-//! Port of `tests/engine_track_choke_tests.cpp`: choke groups and voice modes as per-track
+//! Port of the former C++ test program `engine_track_choke_tests.cpp`: choke groups and voice modes as per-track
 //! properties (`set_track_voice`): an open hat on one track chokes a closed hat on another track
 //! of the same group, never a track of another group, and a track's voice mode overrides its
 //! instrument's.

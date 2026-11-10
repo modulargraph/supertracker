@@ -1,4 +1,4 @@
-//! Transport and command handling of `STEngine` in `TrackerEngine.cpp`: project adoption and the
+//! Transport and command handling (ported from the C++ engine's `TrackerEngine.cpp`): project adoption and the
 //! command queue (`refresh`), Play/Stop/Seek/count-in, the musical clock (`updateClock`), timeline
 //! resolution, row advance with song/pattern loops and queued jumps, input acknowledgements,
 //! freeze transitions, status publication and the quiescent flush used by transport checkpoints.
@@ -76,30 +76,55 @@ impl Render {
         }
     }
 
-    /// `st_engine_render`: direct stereo render (standalone/offline); invalidates bus history.
-    pub fn render(&mut self, sh: &Shared, left: Option<&mut [f32]>, right: Option<&mut [f32]>, frames: u32) {
+    /// Whether `sh` is the shared state of this render state's own engine (see
+    /// `Control::owns`); the render entry points do nothing with another engine's.
+    #[inline]
+    pub(crate) fn owns(&self, sh: &Shared) -> bool {
+        sh.engine_id == self.engine_id
+    }
+
+    /// Direct stereo render of the whole mix (standalone and offline use): `frames` frames
+    /// into whichever of the two buffers are given (a buffer shorter than `frames` receives
+    /// what fits). Without buffers the engine still advances, so `render(sh, None, None, 0)`
+    /// applies queued commands and a new project. Invalidates the bus history.
+    pub fn render(&mut self, sh: &Shared, mut left: Option<&mut [f32]>, mut right: Option<&mut [f32]>, frames: u32) {
+        if !self.owns(sh) {
+            for out in [left.as_deref_mut(), right.as_deref_mut()].into_iter().flatten() {
+                out.fill(0.0);
+            }
+            return;
+        }
         self.cache_valid = false;
         self.release_clock_origin();
         self.process(sh, left, right, frames, false, 0, 0);
     }
 
-    /// `st_engine_capture_transport`: exclusive stopped-graph operation.
+    /// Exclusive stopped-graph operation.
     pub fn capture_transport(&mut self, sh: &Shared) -> STTransportState {
+        if !self.owns(sh) {
+            return STTransportState::default();
+        }
         self.flush_quiescent(sh);
         // SAFETY: `&mut self` is the render half and no adoption happens while the view exists.
         unsafe { Rt::attach(self, sh) }.capture_transport()
     }
 
-    /// `st_engine_restore_transport`: exclusive stopped-graph operation.
+    /// Exclusive stopped-graph operation.
     pub fn restore_transport(&mut self, sh: &Shared, state: &STTransportState, resume: bool) {
+        if !self.owns(sh) {
+            return;
+        }
         self.flush_quiescent(sh);
         // SAFETY: as in `capture_transport`.
         unsafe { Rt::attach(self, sh) }.restore_transport(state, resume);
     }
 
-    /// `st_engine_forget_external_voices`: end every AU/external-MIDI voice on `channel`
+    /// End every AU/external-MIDI voice on `channel`
     /// without emitting its note-off. Returns the number of voices ended.
     pub fn forget_external_voices(&mut self, sh: &Shared, channel: i32) -> i32 {
+        if !self.owns(sh) {
+            return 0;
+        }
         // SAFETY: `tb` points to the tables of the project in use; `&mut self` is the render
         // half, their only accessor.
         let channels = unsafe { &*self.tb }.channels;
@@ -120,7 +145,7 @@ impl Render {
 
     /// `refresh`: adopt the latest published project, then apply queued commands and a pending
     /// automation refresh. Called at the start of every newly rendered block.
-    pub fn refresh(&mut self, sh: &Shared) {
+    pub(crate) fn refresh(&mut self, sh: &Shared) {
         let next = sh.pending.swap(std::ptr::null_mut(), Ordering::AcqRel);
         if !next.is_null() {
             self.adopt_project(sh, next);
@@ -357,7 +382,7 @@ impl Render {
 
     /// `flushQuiescent`: adopt pending project/control changes at zero audio time (transport
     /// capture/restore). Discards queued events and invalidates cached audio.
-    pub fn flush_quiescent(&mut self, sh: &Shared) {
+    pub(crate) fn flush_quiescent(&mut self, sh: &Shared) {
         self.out.suppress_events = true;
         self.out.frame_offset = 0;
         self.refresh(sh);
@@ -800,8 +825,8 @@ impl<'a> Rt<'a> {
                 p.pattern_origin_beat
             };
             let beat = base + p.beat_for_row(r);
-            let mut context = STClockContext::default();
-            if timing.context(timing.frame(beat), &mut context) == ST_CLOCK_OK && context.bpm > 0.0 {
+            let mut context = ClockContext::default();
+            if timing.context(timing.frame(beat), &mut context) == CLOCK_OK && context.bpm > 0.0 {
                 bpm = context.bpm;
                 numerator = context.numerator;
                 denominator = context.denominator;
@@ -951,8 +976,8 @@ impl<'a> Rt<'a> {
         let rate = self.e.sample_rate;
         if let Some(timing) = &p.timing {
             let frame = clamp(self.e.transport_frames, 0.0, timing.maximum_frame as f64) as i64;
-            if timing.context(frame, &mut self.e.musical_context) != ST_CLOCK_OK {
-                self.e.musical_context = STClockContext::default();
+            if timing.context(frame, &mut self.e.musical_context) != CLOCK_OK {
+                self.e.musical_context = ClockContext::default();
             }
             self.e.musical_beat = self.e.musical_context.beat;
             self.e.effective_bpm = self.e.musical_context.bpm;
@@ -969,13 +994,13 @@ impl<'a> Rt<'a> {
             self.e.musical_beat = self.e.musical_context.beat;
         }
         let song_mode = self.e.song_mode;
-        let mut flags = (self.e.musical_context.flags & ST_CLOCK_DOMAIN_END)
-            | (if self.e.playing { ST_CLOCK_PLAYING } else { 0 })
-            | (if self.e.recording { ST_CLOCK_RECORDING } else { 0 });
+        let mut flags = (self.e.musical_context.flags & CLOCK_DOMAIN_END)
+            | (if self.e.playing { CLOCK_PLAYING } else { 0 })
+            | (if self.e.recording { CLOCK_RECORDING } else { 0 });
         self.e.musical_context.epoch = self.e.timing_epoch;
         self.e.musical_context.loop_iteration = self.e.clock_loop_iteration;
         if (song_mode && p.loop_song) || (!song_mode && p.timing.is_some()) {
-            flags |= ST_CLOCK_LOOPING;
+            flags |= CLOCK_LOOPING;
             let (start, end) = if song_mode {
                 let end = match &p.timing {
                     Some(timing) => timing.beat(self.e.song_end_frames as i64),
@@ -992,7 +1017,7 @@ impl<'a> Rt<'a> {
             self.e.musical_context.loop_end_beat = end;
         }
         if self.song_loop_active() {
-            flags |= ST_CLOCK_LOOPING;
+            flags |= CLOCK_LOOPING;
             self.e.musical_context.loop_start_beat = self.occurrence_beat(p.song_loop_start);
             self.e.musical_context.loop_end_beat = self.occurrence_beat(self.song_loop_last() + 1);
         }
@@ -1003,7 +1028,7 @@ impl<'a> Rt<'a> {
             context.next_quarter_beat_frame = i64::MAX;
         }
         if context.next_quarter_beat_frame == i64::MAX {
-            flags |= ST_CLOCK_GRID_PROJECTION;
+            flags |= CLOCK_GRID_PROJECTION;
         }
         context.flags = flags;
     }
@@ -1408,7 +1433,7 @@ impl<'a> Rt<'a> {
         self.reset_track_state(true);
     }
 
-    /// `st_engine_capture_transport` after the quiescent flush: the exact frame-domain cursor.
+    /// `capture_transport` after the quiescent flush: the exact frame-domain cursor.
     pub fn capture_transport(&self) -> STTransportState {
         let e = &*self.e;
         let timing = self.p.timing.as_ref();
@@ -1437,7 +1462,7 @@ impl<'a> Rt<'a> {
         }
     }
 
-    /// `st_engine_restore_transport` after the quiescent flush: clear temporary voices, effects
+    /// `restore_transport` after the quiescent flush: clear temporary voices, effects
     /// and schedules, restore the cursor/mode, resume only if `state.playing && resume`.
     pub fn restore_transport(&mut self, state: &STTransportState, resume: bool) {
         let p = self.p;
@@ -1502,9 +1527,9 @@ impl<'a> Rt<'a> {
                 self.e.row_end_beat = self.row_base_beat() + p.beat_for_row(self.e.row + 1);
             }
             self.update_clock();
-            let mut previous = STClockContext::default();
+            let mut previous = ClockContext::default();
             if self.e.transport_frames > 0.0
-                && timing.context((self.e.transport_frames as i64).wrapping_sub(1), &mut previous) == ST_CLOCK_OK
+                && timing.context((self.e.transport_frames as i64).wrapping_sub(1), &mut previous) == CLOCK_OK
             {
                 self.e.click_beat = previous.bar.wrapping_mul(32).wrapping_add(
                     ((previous.beat - previous.bar_start_beat) * previous.denominator as f64 / 4.0).floor() as i64,

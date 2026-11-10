@@ -49,6 +49,14 @@ pub trait ExternalEvents: Send {
     fn event(&mut self, event: &STEvent, block_start: u64);
 }
 
+/// What runs on the mixed output, after the master strip: preview voices, the recording tap,
+/// input monitoring ([`crate::live`]). Called on the render thread once per [`Renderer::render`]
+/// call: no allocation, no locks, no frees.
+pub trait OutputStage: Send {
+    /// `time` is the graph time of the first frame of `left`/`right`.
+    fn process(&mut self, time: u64, left: &mut [f32], right: &mut [f32]);
+}
+
 /// What the control side and the render side of one engine share.
 pub struct RenderShared {
     pending: AtomicPtr<Plan>,
@@ -230,6 +238,8 @@ pub struct Renderer {
     sample_rate: f64,
     /// MIDI output: the hook and its block state (see [`crate::midi`]).
     midi: crate::midi::RenderMidi,
+    /// What runs on the output after the mixer (see [`OutputStage`]).
+    output_stage: Option<Box<dyn OutputStage>>,
 }
 
 impl Renderer {
@@ -239,7 +249,7 @@ impl Renderer {
         shared.adopted_serial.store(plan.serial, Ordering::Relaxed);
         shared.latency_frames.store(plan.latency_frames, Ordering::Relaxed);
         let sample_rate = engine.sample_rate();
-        Renderer { engine, status, shared, plan, time: 0, seen_epoch: 0, external: None, sample_rate, midi: Default::default() }
+        Renderer { engine, status, shared, plan, time: 0, seen_epoch: 0, external: None, sample_rate, midi: Default::default(), output_stage: None }
     }
 
     /// The MIDI output hook of this renderer (set, suspend for offline work).
@@ -251,6 +261,18 @@ impl Renderer {
     /// outputs); `None` drops them.
     pub fn set_external_events(&mut self, sink: Option<Box<dyn ExternalEvents>>) {
         self.external = sink;
+    }
+
+    /// The plan in use, for the thread that drives this renderer offline (stem capture reads
+    /// the strips' signals between render calls).
+    pub fn plan(&self) -> &Plan {
+        &self.plan
+    }
+
+    /// What runs on the output after the mixer; `None` for nothing (offline renders). The
+    /// stage replaced is returned, to be dropped by the caller on a control thread.
+    pub fn set_output_stage(&mut self, stage: Option<Box<dyn OutputStage>>) -> Option<Box<dyn OutputStage>> {
+        std::mem::replace(&mut self.output_stage, stage)
     }
 
     pub fn sample_rate(&self) -> f64 {
@@ -316,6 +338,7 @@ impl Renderer {
         let started = std::time::Instant::now();
         // Plug-ins in containers get the time left in this call as their deadline.
         let cycle_end_ns = super::insert::monotonic_ns() + (frames as f64 / self.sample_rate * 1e9) as u64;
+        let stage_time = self.time;
         let mut at = 0;
         while at < frames {
             self.adopt_pending();
@@ -355,6 +378,9 @@ impl Renderer {
             self.plan.process(&block, count, &mut left[at..at + count], &mut right[at..at + count]);
             self.time += count as u64;
             at += count;
+        }
+        if let Some(stage) = self.output_stage.as_mut() {
+            stage.process(stage_time, &mut left[..frames], &mut right[..frames]);
         }
         self.shared.frames.store(self.time, Ordering::Relaxed);
         let spent = started.elapsed().as_secs_f64() * self.sample_rate / frames as f64;
