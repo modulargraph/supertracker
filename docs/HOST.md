@@ -444,16 +444,16 @@ Not exercised anywhere yet:
   linked or run.
 - **Plug-ins beyond the test plug-ins**: no third-party plug-in has been loaded through the host.
   Audio Units (macOS only), the editor windows of VST3 and Audio Units, yielding activation to
-  the container before an editor is focused (`st_audio::plugins::manager::yield_activation`; the
-  window layer has not installed the AppKit call yet), and the short socket directory chosen on
+  the container before an editor is focused (`yieldActivationToApplication:`, called by the window
+  through `st_audio::plugins::manager::yield_activation`), and the short socket directory chosen on
   macOS are type-checked only. Real-time deadlines have only met the null device: a block may
   take what is left of its render call, at least half a millisecond.
 - **MIDI devices**: no port of the ALSA sequencer or of CoreMIDI has been opened (the container has
   no sequencer; the host then runs without devices and says so in `midi.devices`). Everything above
   the device layer is tested with in-memory ports. The timing of scheduled MIDI against the audio
-  output is unverified: a block's MIDI time is the time of the render call, so external
-  instruments lead the engine's own sound by the audio device's output latency until the device
-  layer reports it (`st_audio::midi::RenderMidi::set_playback_delay`).
+  output is unverified: a block's messages are delayed by the output latency the device reports
+  with each callback (`st_audio::midi::RenderMidi::set_playback_delay`), which has only ever been
+  zero (the null device).
 - **The Maschine MK3**: never run with a controller (`cargo doc -p st-mk3` lists what that leaves
   unverified); `--mk3-probe` ran only as far as "no Maschine MK3 found". A signal during
   `--mk3-probe --exclusive` ends the process without restoring Native Instruments' agents; the next

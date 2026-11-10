@@ -27,12 +27,14 @@
 //! ([`RenderMidi::suspend`]): an export never plays external instruments or sends clock. An
 //! engine made for offline work (no [`MidiOutput`] set) has no hook at all.
 //!
-//! # Not here yet
+//! # When a block is heard
 //!
-//! The time at which a block is heard: [`MidiBlock::playback_delay`] is what the device says
-//! lies between the callback and the sound ([`RenderMidi::set_playback_delay`]). The device
-//! layer does not report it yet (`cpal`'s `OutputCallbackInfo` has it), so it is zero and
-//! scheduled MIDI leads the engine's own sound by the output latency of the audio device.
+//! [`MidiBlock::playback_delay`] is what the device says lies between the callback and the
+//! sound. The device layer sets it before every block ([`RenderMidi::set_playback_delay`], from
+//! `cpal`'s callback timestamps; zero on the null device), and the MIDI layer schedules a
+//! block's messages that much later, so external instruments sound with the engine's own
+//! output. Not verified on a real device: how accurate the reported delay is depends on the
+//! driver.
 
 use std::sync::Arc;
 use std::time::Duration;

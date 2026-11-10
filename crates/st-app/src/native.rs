@@ -44,6 +44,31 @@ pub fn confirm(title: &str, detail: &str, confirm: &str, cancel: &str) -> bool {
     }
 }
 
+/// Lets the process `pid` (a plug-in container about to show an editor) become the active
+/// application: `-[NSApplication yieldActivationToApplication:]`, macOS 14 and later. Without it
+/// the container's `activate` request is ignored while this application is active, and the editor
+/// opens behind the main window without keyboard focus. Main thread only.
+#[cfg(target_os = "macos")]
+pub fn yield_activation_to(pid: u32) {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send, sel};
+
+    let Ok(pid) = i32::try_from(pid) else { return };
+    // SAFETY: plain message sends to AppKit singletons on the main thread; both objects are
+    // checked for nil, and the selector is checked before it is sent.
+    unsafe {
+        let application: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+        let container: *mut AnyObject = msg_send![class!(NSRunningApplication), runningApplicationWithProcessIdentifier: pid];
+        if application.is_null() || container.is_null() {
+            return;
+        }
+        let supported: bool = msg_send![application, respondsToSelector: sel!(yieldActivationToApplication:)];
+        if supported {
+            let _: () = msg_send![application, yieldActivationToApplication: container];
+        }
+    }
+}
+
 /// Shows a file chooser. Call on the main thread on Linux; on any thread on macOS.
 #[cfg(target_os = "linux")]
 pub fn choose_file(dialog: &FileDialog, parent: &gtk::Window) -> Option<PathBuf> {

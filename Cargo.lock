@@ -2512,6 +2512,7 @@ dependencies = [
  "gtk",
  "libc",
  "muda",
+ "objc2",
  "rfd",
  "serde",
  "serde_json",

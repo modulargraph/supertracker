@@ -127,9 +127,12 @@ fn build<T: cpal::SizedSample + cpal::FromSample<f32>>(device: &cpal::Device, co
     let (mut left, mut right) = (vec![0.0f32; 8192], vec![0.0f32; 8192]);
     device.build_output_stream(
         config,
-        move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+        move |data: &mut [T], info: &cpal::OutputCallbackInfo| {
             let frames = data.len() / channels;
-            super::render_blocks(&renderer, &mut left, &mut right, frames, |offset, l, r| write_interleaved(data, channels, offset, l, r));
+            // The time from this callback to the moment its first frame leaves the device.
+            let timestamp = info.timestamp();
+            let playback_delay = timestamp.playback.duration_since(&timestamp.callback).unwrap_or_default();
+            super::render_blocks(&renderer, &mut left, &mut right, frames, playback_delay, |offset, l, r| write_interleaved(data, channels, offset, l, r));
         },
         move |_error| lost.store(true, Ordering::Release),
         None,

@@ -68,6 +68,10 @@ mod desktop {
         Quit(QuitProgress),
         #[cfg(target_os = "macos")]
         TitleBar { double_click: bool },
+        /// A plug-in container (by process id) is about to show an editor window and must be
+        /// allowed to take the keyboard; the sender is answered once AppKit has been told.
+        #[cfg(target_os = "macos")]
+        YieldActivation(u32, std::sync::mpsc::Sender<()>),
     }
 
     /// Posts events to the window's loop from any thread.
@@ -203,6 +207,19 @@ mod desktop {
                 poster.post(UserEvent::TitleBar { double_click: payload.double_click });
                 Ok(())
             });
+        }
+        #[cfg(target_os = "macos")]
+        {
+            // Plug-in editors are windows of a container process. Since macOS 14 this application
+            // has to yield activation to that process before the window can become key. The
+            // request comes from a bridge thread and waits (briefly) for the main thread.
+            let poster = poster.clone();
+            st_host::areas::plugins::set_activation_yielder(Box::new(move |container_pid| {
+                let (done, wait) = std::sync::mpsc::channel();
+                if poster.post(UserEvent::YieldActivation(container_pid, done)) {
+                    let _ = wait.recv_timeout(Duration::from_millis(500));
+                }
+            }));
         }
         if let Some(project) = &options.open {
             host.session.request_open(std::path::absolute(project).unwrap_or_else(|_| project.clone()));
@@ -360,6 +377,11 @@ mod desktop {
                     } else {
                         let _ = window.drag_window();
                     }
+                }
+                #[cfg(target_os = "macos")]
+                Event::UserEvent(UserEvent::YieldActivation(container_pid, done)) => {
+                    crate::native::yield_activation_to(container_pid);
+                    let _ = done.send(());
                 }
                 Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => begin_quit(&host.lifecycle, &mut quit_deadline, &mut finish),
                 Event::WindowEvent { event: WindowEvent::Resized(size), .. } => remember_size(&window, size, &mut frame),

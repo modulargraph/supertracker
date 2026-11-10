@@ -33,7 +33,7 @@ impl NullDevice {
                 let mut start = Instant::now();
                 let mut blocks: u32 = 0;
                 while !flag.load(Ordering::Acquire) {
-                    super::render_blocks(&renderer, &mut left, &mut right, frames, |_, _, _| {});
+                    super::render_blocks(&renderer, &mut left, &mut right, frames, Duration::ZERO, |_, _, _| {});
                     blocks += 1;
                     let deadline = start + period * blocks;
                     let now = Instant::now();

@@ -43,6 +43,9 @@ use st_audio::graph::spec::track_owner;
 use st_audio::plugins::catalog::is_instrument;
 use st_audio::plugins::client::{ParameterInfo, PARAM_AUTOMATABLE, PARAM_BOOLEAN, PARAM_HIDDEN, PARAM_READ_ONLY, PARAM_STEPPED};
 use st_audio::plugins::manager::{default_socket_dir, grouping_policy, yield_activation};
+
+/// The window layer installs the macOS call that lets a container's editor take the keyboard.
+pub use st_audio::plugins::manager::set_activation_yielder;
 use st_audio::plugins::{Catalog, CatalogOptions, Hosted, Lookup, PluginEvent, PluginManager, PluginOptions};
 use st_audio::AudioEngine;
 use st_project::Project;

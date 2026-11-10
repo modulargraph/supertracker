@@ -29,6 +29,10 @@ rfd = { version = "0.18", default-features = false }
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
 
+# Activation hand-over to plug-in containers (src/native.rs).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+
 # Termination signals (src/signals.rs).
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

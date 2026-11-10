@@ -1199,10 +1199,10 @@ pub fn automatable(info: &ParameterInfo) -> bool {
 }
 
 /// macOS 14 and later: the host application must yield activation to the container's
-/// process before that process can make its editor window key. Type-checked only; a no-op
-/// elsewhere. (The call itself, `-[NSApplication yieldActivationToApplication:]`, needs the
-/// application object, which lives in `st-app`: this function is the documented place for it
-/// and is given the container's process id.)
+/// process before that process can make its editor window key. A no-op elsewhere, and in a
+/// host without a window. The AppKit call (`-[NSApplication yieldActivationToApplication:]`)
+/// is made by the window layer, which installs it with [`set_activation_yielder`]; it has not
+/// run on a Mac yet.
 pub fn yield_activation(_container_pid: u32) {
     #[cfg(target_os = "macos")]
     {

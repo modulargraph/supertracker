@@ -39,7 +39,7 @@
 //! | Controllers, program changes and aftertouch from a keyboard for a track's plug-in | [`Midi::set_plugin_receiver`]; until the plug-in area sets one they go nowhere (pitch bend reaches the engine's own voices either way) |
 //! | `midi.expression` (the audio area's command) for external MIDI instruments | `MidiService::send_to_instrument` through [`Midi::service`] |
 //! | Line inputs: the latency of a synth heard back through its track | `MidiService::set_return_compensation` through [`Midi::service`] |
-//! | The device's output latency | `st_audio::midi::MidiBlock::playback_delay` (the device layer does not report it yet) |
+//! | The device's output latency | `st_audio::midi::MidiBlock::playback_delay` (from the device's callback timestamps) |
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};

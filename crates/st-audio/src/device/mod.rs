@@ -71,15 +71,27 @@ pub trait OutputStream: Send {
 pub const BUFFER_SIZES: [u32; 6] = [64, 128, 256, 512, 1024, 2048];
 
 /// Renders `frames` frames into planar scratch buffers and hands them to `write`, block by
-/// block. A renderer that is busy elsewhere gives silence. Real-time safe.
+/// block. A renderer that is busy elsewhere gives silence. `playback_delay` is what the device
+/// says lies between this callback and the moment its first frame is heard; scheduled MIDI is
+/// delayed by it so external instruments sound with the engine. Real-time safe.
 #[inline]
-pub(crate) fn render_blocks(renderer: &SharedRenderer, left: &mut [f32], right: &mut [f32], frames: usize, mut write: impl FnMut(usize, &[f32], &[f32])) {
+pub(crate) fn render_blocks(
+    renderer: &SharedRenderer,
+    left: &mut [f32],
+    right: &mut [f32],
+    frames: usize,
+    playback_delay: std::time::Duration,
+    mut write: impl FnMut(usize, &[f32], &[f32]),
+) {
     let capacity = left.len().min(right.len()).max(1);
     let mut done = 0;
     while done < frames {
         let count = (frames - done).min(capacity);
         match renderer.try_lock() {
-            Ok(mut renderer) => renderer.render(&mut left[..count], &mut right[..count]),
+            Ok(mut renderer) => {
+                renderer.midi().set_playback_delay(playback_delay);
+                renderer.render(&mut left[..count], &mut right[..count]);
+            }
             Err(_) => {
                 left[..count].fill(0.0);
                 right[..count].fill(0.0);
