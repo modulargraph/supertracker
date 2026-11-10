@@ -206,6 +206,33 @@ impl HostHandle {
         self.0.instance
     }
 
+    /// A handle that leads nowhere: notifications are dropped, callback requests are
+    /// only noted, there is no real-time thread to exclude. For driving a backend's
+    /// `Plugin` and `Processor` inside a test process, without a host (see
+    /// [`crate::TestBlock`]).
+    pub fn detached() -> HostHandle {
+        HostHandle(Arc::new(HostLink {
+            instance: 0,
+            current: AtomicPtr::new(std::ptr::null_mut()),
+            keep: Mutex::new(Vec::new()),
+            idle_requested: AtomicBool::new(false),
+            shared: Arc::new(Shared {
+                tasks: Mutex::new(VecDeque::new()),
+                cond: Condvar::new(),
+                waker: Mutex::new(None),
+                writer: Mutex::new(None),
+                idle_requested: AtomicBool::new(false),
+            }),
+            rt: Mutex::new(None),
+        }))
+    }
+
+    /// Whether [`HostHandle::request_main_callback`] was called since the last call of
+    /// this function. For tests with a detached handle, which call `Plugin::idle` themselves.
+    pub fn take_callback_request(&self) -> bool {
+        self.0.idle_requested.swap(false, Ordering::AcqRel)
+    }
+
     /// Runs `f` while the instance's real-time thread is kept out of `Processor::process`
     /// (blocks requested meanwhile are answered "busy" and the host plays its fallback),
     /// so `f` may do what must not overlap processing, e.g. hand the plug-in a parameter
@@ -214,6 +241,10 @@ impl HostHandle {
     /// `Plugin::activate`, `deactivate` and `set_offline` processing is excluded already
     /// and `f` simply runs.
     pub fn with_processing_excluded<R>(&self, f: impl FnOnce() -> R) -> Option<R> {
+        if self.0.current.load(Ordering::Acquire).is_null() && self.0.keep.lock().unwrap().is_empty() {
+            // A detached handle (tests): nothing processes concurrently.
+            return Some(f());
+        }
         let rt = self.0.rt.lock().unwrap().clone()?;
         // Only the main thread sets the exclusive state, and this is the main thread: if
         // the gate is exclusive, the caller is already inside an exclusive section.
@@ -505,10 +536,7 @@ impl Runtime {
             }),
             Request::Scan { format, path } => match self.scanners.get(&format) {
                 Some(scanner) => scanner(&path).map(|plugins| Response::Scan { plugins }).map_err(plugin_error),
-                None => Err((
-                    ERR_UNKNOWN_FORMAT,
-                    format!("this container has no scanner for the format \"{format}\""),
-                )),
+                None => Err((ERR_UNKNOWN_FORMAT, format!("this container has no scanner for the format \"{format}\""))),
             },
         };
         result.unwrap_or_else(|(code, message)| Response::Error { code, message })

@@ -16,10 +16,15 @@
 //! remembers each instance's configuration and last known state, so
 //! [`Supervisor::restart_container`] / [`Instance::restore`] can rebuild lost instances.
 //!
+//! A [`Scanner`] lists the installed plug-ins (VST3, CLAP, Audio Units) without loading
+//! any of them into this process: each plug-in file is read by a short-lived container.
+//!
 //! See `docs/PLUGIN_CONTAINER.md` in the repository for the design.
 
 mod connection;
 mod instance;
+mod scanner;
+mod spawn;
 mod supervisor;
 
 use std::fmt;
@@ -31,11 +36,19 @@ pub use instance::{
     PROCESS_INACTIVE, PROCESS_INVALID, PROCESS_LATE, PROCESS_LOST, PROCESS_OK, PROCESS_OUT_EVENTS_DROPPED,
     PROCESS_PLUGIN_ERROR, PROCESS_RESYNCED,
 };
+pub use scanner::{
+    fingerprint, standard_search_paths, FileOutcome, ScanEvent, ScanOptions, ScanReport, ScanStatus, ScannedFile,
+    Scanner, ScannerConfig, CACHE_MAGIC, CACHE_VERSION,
+};
 pub use stpc_transport as transport;
 pub use stpc_transport::messages::{
     BusInfo, EditorInfo, InstanceInfo, ParameterInfo, ParameterValue, PresetInfo, INFO_HAS_BYPASS, INFO_HAS_EDITOR,
     INFO_INSTRUMENT, INFO_PRODUCES_MIDI, INFO_WANTS_MIDI, PARAM_AUTOMATABLE, PARAM_BOOLEAN, PARAM_BYPASS, PARAM_HIDDEN,
     PARAM_READ_ONLY, PARAM_STEPPED,
+};
+pub use stpc_transport::messages::{
+    PluginDescription, SCAN_AUDIO_INPUT, SCAN_AUDIO_OUTPUT, SCAN_EDITOR_KNOWN, SCAN_EFFECT, SCAN_HAS_EDITOR,
+    SCAN_INSTRUMENT, SCAN_NOTE_EFFECT, SCAN_PRODUCES_MIDI, SCAN_SIDECHAIN, SCAN_WANTS_MIDI,
 };
 pub use stpc_transport::region::{
     Event, Transport, EVENT_FLAG_SEQUENCED, EVENT_MIDI, EVENT_PARAM, TRANSPORT_LOOPING, TRANSPORT_PLAYING,

@@ -168,7 +168,7 @@ fn present<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Option<f
 #[serde(default)]
 pub struct ClockDeviceRequest {
     /// The output's device id.
-    pub id: Option<i64>,
+    pub id: Option<f64>,
     /// Send clock pulses to it.
     pub clock: Option<bool>,
     /// Send Start, Stop and Continue to it.
@@ -199,7 +199,7 @@ impl ClockSettings {
             _ => {}
         }
         for item in request.devices.iter().flatten() {
-            let Some(id) = item.id.and_then(|id| i32::try_from(id).ok()) else { continue };
+            let Some(id) = item.id.filter(|id| id.fract() == 0.0 && id.abs() <= f64::from(i32::MAX)).map(|id| id as i32) else { continue };
             let mut entry = self.device(id);
             if let Some(clock) = item.clock {
                 entry.clock = clock;

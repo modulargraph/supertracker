@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// Separates a type from its sub-type in sub-type keys ("Bass<US>Sub Bass").
+/// Separates a type from its sub-type in sub-type keys (`Bass\u{1f}Sub Bass`).
 pub const SUBTYPE_SEPARATOR: &str = "\u{1f}";
 
 /// One preset of the catalogue.
@@ -103,7 +103,7 @@ pub struct NksStatus {
 /// A value of a browse facet.
 #[derive(Debug, Clone, PartialEq, Default, Serialize)]
 pub struct BrowseFacet {
-    /// The value (for sub-types "Type<US>Sub-type").
+    /// The value (for sub-types `Type\u{1f}Sub-type`).
     pub name: String,
     /// Presets or kits with it.
     pub count: usize,
@@ -431,7 +431,7 @@ impl Shared {
                         record_unavailable(root, format!("NKS folder scan limit reached: {root}. Previously indexed presets have been retained."));
                         break 'walk;
                     }
-                    if visited % 512 == 0 && !self.pause.is_zero() {
+                    if visited.is_multiple_of(512) && !self.pause.is_zero() {
                         std::thread::sleep(self.pause * 2);
                     }
                     let name = entry.file_name().to_string_lossy().into_owned();

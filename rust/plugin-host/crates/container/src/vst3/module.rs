@@ -9,9 +9,9 @@
 //! | macOS | the bundle executable (`Contents/MacOS/…`), through `CFBundle` | `bundleEntry(CFBundleRef)` / `bundleExit()` |
 //! | Windows | `Contents/<arch>-win/Name.vst3` | `InitDll()` / `ExitDll()` |
 //!
-//! Every library exports `GetPluginFactory()`. Only the Linux path has run; the macOS path
-//! is type-checked, the Windows path is written from the SDK documentation (this
-//! workspace does not build for Windows at all).
+//! Every library exports `GetPluginFactory()`. Only the Linux path has run. The macOS path
+//! is type-checked with the workspace; the Windows path is type-checked on its own (this
+//! file alone, `--target x86_64-pc-windows-gnu`), because the workspace is Unix only.
 //!
 //! This file depends on `std`, `libc` and the `vst3` bindings only.
 
@@ -405,7 +405,8 @@ mod imp {
     impl Library {
         pub unsafe fn open(path: &Path) -> Result<Library, String> {
             let bytes = path.as_os_str().as_bytes();
-            let url = CFURLCreateFromFileSystemRepresentation(std::ptr::null(), bytes.as_ptr(), bytes.len() as CFIndex, 1);
+            let url =
+                CFURLCreateFromFileSystemRepresentation(std::ptr::null(), bytes.as_ptr(), bytes.len() as CFIndex, 1);
             if url.is_null() {
                 return Err(format!("bad VST3 bundle path {}", path.display()));
             }
@@ -476,7 +477,8 @@ mod imp {
 
 #[cfg(target_os = "windows")]
 mod imp {
-    //! Written from the SDK documentation; never compiled (the workspace is Unix only).
+    //! Written from the SDK documentation. Type-checked on its own only: the workspace
+    //! is Unix only.
     use super::*;
     use std::os::windows::ffi::OsStrExt;
 

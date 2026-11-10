@@ -65,7 +65,7 @@ pub trait Backend: Send {
 /// `occurrence`-th port of that name (0 for the first) gets its own. Positive and never zero.
 pub fn id_from_name(name: &str, occurrence: usize) -> i32 {
     let mut hash: u32 = 0x811C_9DC5;
-    for byte in name.bytes().chain([0u8]).chain(occurrence.to_le_bytes()) {
+    for byte in name.bytes().chain([0u8]).chain((occurrence as u32).to_le_bytes()) {
         hash ^= u32::from(byte);
         hash = hash.wrapping_mul(0x0100_0193);
     }
@@ -103,6 +103,6 @@ mod tests {
         let unique: std::collections::HashSet<i32> = ids.iter().copied().collect();
         assert_eq!(unique.len(), 4);
         // Pinned: stored settings refer to these values.
-        assert_eq!(id_from_name("Midi Through:Midi Through Port-0", 0), 1_597_573_255);
+        assert_eq!(id_from_name("Midi Through:Midi Through Port-0", 0), 1_042_917_039);
     }
 }

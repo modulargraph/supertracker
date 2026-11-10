@@ -8,9 +8,7 @@
 //! "indexed" with integer bounds, or a label list that covers the whole integer range);
 //! labels are passed on only when they describe every step.
 
-use stpc_runtime::{
-    ParameterInfo, PARAM_AUTOMATABLE, PARAM_BOOLEAN, PARAM_HIDDEN, PARAM_READ_ONLY, PARAM_STEPPED,
-};
+use stpc_runtime::{ParameterInfo, PARAM_AUTOMATABLE, PARAM_BOOLEAN, PARAM_HIDDEN, PARAM_READ_ONLY, PARAM_STEPPED};
 
 // `AudioUnitParameterUnit` values (AudioUnitProperties.h).
 pub const UNIT_GENERIC: u32 = 0;

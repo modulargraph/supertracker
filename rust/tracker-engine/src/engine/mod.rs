@@ -30,11 +30,13 @@
 //! | [`render_cache`] | `renderCached`, bus rings, retained clock/freeze history and span queries |
 //! | [`edits`] | the setters and command producers of the `extern "C"` block, as safe methods |
 //! | [`capi`] | the `extern "C"` functions (pointer conversion only) |
+//! | [`host`] | (no C++ counterpart) the engine for a Rust host: owned thread halves and a per-bus block render |
 
 pub mod abi;
 pub mod capi;
 pub mod control;
 pub mod edits;
+pub mod host;
 pub mod mixer;
 pub mod project;
 pub mod render_cache;

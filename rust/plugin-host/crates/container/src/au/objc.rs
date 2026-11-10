@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use objc2::rc::Retained;
-use objc2_core_foundation::{kCFRunLoopDefaultMode, CFRunLoop};
+use objc2_core_foundation::{kCFRunLoopDefaultMode, CFRunLoop, CFRunLoopRunResult};
 use objc2_foundation::{NSError, NSString};
 use stpc_runtime::PluginError;
 
@@ -57,7 +57,11 @@ pub(super) fn spin_until(done: &AtomicBool, timeout: Duration) -> bool {
         if Instant::now() >= deadline {
             return false;
         }
-        CFRunLoop::run_in_mode(mode, 0.02, true);
+        if CFRunLoop::run_in_mode(mode, 0.02, true) == CFRunLoopRunResult::Finished {
+            // Nothing is scheduled in this mode (not the case under the AppKit loop):
+            // do not spin.
+            std::thread::sleep(Duration::from_millis(2));
+        }
     }
     true
 }

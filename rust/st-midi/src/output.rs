@@ -33,6 +33,12 @@ const BACKLOG_CAPACITY: usize = 16_384;
 const POLL: Duration = Duration::from_millis(1);
 /// The sender wakes this long before a message is due and spins until its time.
 const SPIN: Duration = Duration::from_micros(150);
+/// Messages to send at once that can wait for the sender's attention.
+const URGENT_CAPACITY: usize = 4096;
+/// The furthest a message may be scheduled ahead, in ticks. An audio block is never further than
+/// this from being heard, so a later time is an error upstream; the message is sent after this long
+/// instead of being held indefinitely.
+const MAXIMUM_AHEAD: u64 = 2_000_000_000;
 
 /// The time base of scheduled output: nanoseconds on the system's monotonic clock, counted from
 /// the creation of the clock. Reading it is safe on the audio thread. A time is never zero (zero
@@ -283,6 +289,9 @@ struct SenderLoop {
     failing: [bool; MAX_OUTPUTS],
     queues: Vec<Consumer<TimedMessage>>,
     schedule: Schedule,
+    /// Messages to send now. Kept apart from the backlog so that a backlog full of scheduled
+    /// messages can never hold up a panic.
+    urgent: std::collections::VecDeque<TimedMessage>,
 }
 
 impl SenderLoop {
@@ -297,6 +306,7 @@ impl SenderLoop {
             failing: [false; MAX_OUTPUTS],
             queues: Vec::new(),
             schedule: Schedule::new(BACKLOG_CAPACITY),
+            urgent: std::collections::VecDeque::with_capacity(URGENT_CAPACITY),
         }
     }
 
@@ -358,7 +368,9 @@ impl SenderLoop {
             }
             Command::Close { slot } => {
                 self.ports[usize::from(slot) % MAX_OUTPUTS] = None;
-                let lost = self.schedule.remove_output(slot);
+                let before = self.urgent.len();
+                self.urgent.retain(|message| message.output != slot);
+                let lost = self.schedule.remove_output(slot) + (before - self.urgent.len());
                 self.published.dropped.fetch_add(lost as u64, Ordering::Relaxed);
             }
             Command::Send(message) => self.enqueue(message),
@@ -372,8 +384,18 @@ impl SenderLoop {
         true
     }
 
-    fn enqueue(&mut self, message: TimedMessage) {
-        if !self.schedule.push(message) {
+    fn enqueue(&mut self, mut message: TimedMessage) {
+        let accepted = if message.time == 0 {
+            let room = self.urgent.len() < URGENT_CAPACITY;
+            if room {
+                self.urgent.push_back(message);
+            }
+            room
+        } else {
+            message.time = message.time.min(self.clock.now() + MAXIMUM_AHEAD);
+            self.schedule.push(message)
+        };
+        if !accepted {
             self.published.dropped.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -388,7 +410,7 @@ impl SenderLoop {
     }
 
     fn send_due(&mut self) {
-        while let Some(timed) = self.schedule.pop_due(self.clock.now()) {
+        while let Some(timed) = self.urgent.pop_front().or_else(|| self.schedule.pop_due(self.clock.now())) {
             let slot = usize::from(timed.output) % MAX_OUTPUTS;
             let Some(port) = self.ports[slot].as_mut() else {
                 self.published.dropped.fetch_add(1, Ordering::Relaxed);

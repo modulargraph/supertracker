@@ -19,13 +19,13 @@
 use std::fmt;
 
 pub use stpc_transport::messages::{
-    PluginDescription, SCAN_AUDIO_INPUT, SCAN_AUDIO_OUTPUT, SCAN_EDITOR_KNOWN, SCAN_EFFECT, SCAN_HAS_EDITOR,
-    SCAN_INSTRUMENT, SCAN_NOTE_EFFECT, SCAN_PRODUCES_MIDI, SCAN_SIDECHAIN, SCAN_WANTS_MIDI,
-};
-pub use stpc_transport::messages::{
     BusInfo, EditorInfo, InstanceInfo, ParameterInfo, PresetInfo, INFO_HAS_BYPASS, INFO_HAS_EDITOR, INFO_INSTRUMENT,
     INFO_PRODUCES_MIDI, INFO_WANTS_MIDI, PARAM_AUTOMATABLE, PARAM_BOOLEAN, PARAM_BYPASS, PARAM_HIDDEN, PARAM_READ_ONLY,
     PARAM_STEPPED,
+};
+pub use stpc_transport::messages::{
+    PluginDescription, SCAN_AUDIO_INPUT, SCAN_AUDIO_OUTPUT, SCAN_EDITOR_KNOWN, SCAN_EFFECT, SCAN_HAS_EDITOR,
+    SCAN_INSTRUMENT, SCAN_NOTE_EFFECT, SCAN_PRODUCES_MIDI, SCAN_SIDECHAIN, SCAN_WANTS_MIDI,
 };
 pub use stpc_transport::region::{
     Event, Notification, Transport, EVENT_FLAG_SEQUENCED, EVENT_MIDI, EVENT_PARAM, TRANSPORT_LOOPING,
@@ -272,6 +272,107 @@ impl<'a> ProcessData<'a> {
         unsafe { self.out_events.add(self.out_event_count).write(event) };
         self.out_event_count += 1;
         true
+    }
+}
+
+/// The buffers of one instance outside of a container: lets a test drive a backend's
+/// [`Processor`] in its own process (for example under a counting allocator), the way the
+/// runtime's real-time thread would. Pair it with [`HostHandle::detached`].
+pub struct TestBlock {
+    in_spans: Vec<BusSpan>,
+    out_spans: Vec<BusSpan>,
+    inputs: Vec<Vec<f32>>,
+    outputs: Vec<Vec<f32>>,
+    in_ptrs: Vec<*const f32>,
+    out_ptrs: Vec<*mut f32>,
+    out_events: Vec<Event>,
+    out_event_count: usize,
+    /// The plug-in's output silence mask of the last block.
+    pub output_silence: u64,
+    max_frames: usize,
+}
+
+impl TestBlock {
+    pub fn new(input_buses: &[u32], output_buses: &[u32], max_frames: usize, out_event_capacity: usize) -> TestBlock {
+        let spans = |buses: &[u32]| -> Vec<BusSpan> {
+            let mut first = 0;
+            buses
+                .iter()
+                .map(|&channels| {
+                    let span = BusSpan { first, channels: channels as usize };
+                    first += channels as usize;
+                    span
+                })
+                .collect()
+        };
+        let channels = |buses: &[u32]| -> Vec<Vec<f32>> {
+            (0..buses.iter().sum::<u32>()).map(|_| vec![0.0; max_frames]).collect()
+        };
+        let mut inputs = channels(input_buses);
+        let mut outputs = channels(output_buses);
+        TestBlock {
+            in_spans: spans(input_buses),
+            out_spans: spans(output_buses),
+            in_ptrs: inputs.iter_mut().map(|channel| channel.as_ptr()).collect(),
+            out_ptrs: outputs.iter_mut().map(|channel| channel.as_mut_ptr()).collect(),
+            inputs,
+            outputs,
+            out_events: vec![Event::default(); out_event_capacity],
+            out_event_count: 0,
+            output_silence: 0,
+            max_frames,
+        }
+    }
+
+    /// One input channel (flat numbering over all input buses), to fill before a block.
+    pub fn input_mut(&mut self, channel: usize) -> &mut [f32] {
+        &mut self.inputs[channel]
+    }
+
+    /// One output channel (flat numbering) as the last block left it.
+    pub fn output(&self, channel: usize) -> &[f32] {
+        &self.outputs[channel]
+    }
+
+    /// The events the plug-in emitted in the last block.
+    pub fn out_events(&self) -> &[Event] {
+        &self.out_events[..self.out_event_count]
+    }
+
+    /// Runs one block as the runtime does: outputs zeroed, then `Processor::process`.
+    /// Allocates nothing.
+    pub fn process(
+        &mut self,
+        processor: &mut dyn Processor,
+        frames: usize,
+        events: &[Event],
+        transport: &Transport,
+    ) -> ProcessStatus {
+        assert!(frames <= self.max_frames);
+        for channel in &mut self.outputs {
+            channel[..frames].fill(0.0);
+        }
+        let mut data = ProcessData {
+            frames,
+            offline: false,
+            discontinuity: false,
+            transport: *transport,
+            events,
+            input_silence: 0,
+            output_silence: 0,
+            in_spans: &self.in_spans,
+            out_spans: &self.out_spans,
+            in_ptrs: &self.in_ptrs,
+            out_ptrs: &self.out_ptrs,
+            out_events: self.out_events.as_mut_ptr(),
+            out_event_capacity: self.out_events.len(),
+            out_event_count: 0,
+            out_events_dropped: false,
+        };
+        let status = processor.process(&mut data);
+        self.out_event_count = data.out_event_count;
+        self.output_silence = data.output_silence;
+        status
     }
 }
 

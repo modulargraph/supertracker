@@ -18,7 +18,9 @@ fn name(index: usize) -> String {
     format!("Sample_{index:08}")
 }
 
-fn synthetic(count: usize, root: String) -> impl Iterator<Item = (String, String, String, String, String, Vec<String>, Option<f64>, Option<String>, Option<f64>)> {
+type Synthetic = (String, String, String, String, String, Vec<String>, Option<f64>, Option<String>, Option<f64>);
+
+fn synthetic(count: usize, root: String) -> impl Iterator<Item = Synthetic> {
     (0..count).map(move |index| {
         let pack = format!("Pack-{}", index % 100);
         (

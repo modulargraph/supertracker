@@ -17,6 +17,14 @@ pub const IMMEDIATE: i64 = -4_294_967_296;
 /// Offsets that may be added to [`IMMEDIATE`].
 pub const IMMEDIATE_OFFSET_LIMIT: i64 = 4096;
 
+/// The other documented way to time an event: "immediately" plus an offset into the render
+/// call that follows. `absolute` is the event's absolute time, `slice_time` the time stamp
+/// of that render call. Only used when `STPC_AU_EVENT_TIME=immediate` is set (a switch for
+/// comparing the two on a Mac); offsets are limited to what the constant allows.
+pub fn immediate_time(absolute: i64, slice_time: i64) -> i64 {
+    IMMEDIATE + absolute.saturating_sub(slice_time).clamp(0, IMMEDIATE_OFFSET_LIMIT - 1)
+}
+
 /// One call of a schedule block.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Scheduled {
@@ -195,9 +203,147 @@ pub fn sort_by_offset(events: &mut [Event]) {
     }
 }
 
+// ---- host transport as an Audio Unit asks for it ------------------------------------------
+
+// `AUHostTransportStateFlags`.
+pub const AU_TRANSPORT_CHANGED: usize = 1;
+pub const AU_TRANSPORT_MOVING: usize = 2;
+pub const AU_TRANSPORT_RECORDING: usize = 4;
+pub const AU_TRANSPORT_CYCLING: usize = 8;
+
+/// The protocol's transport flags as `AUHostTransportStateFlags`. `changed`: the state
+/// (playing or not, or the position, discontinuously) differs from the previous block.
+pub fn au_transport_flags(flags: u32, changed: bool) -> usize {
+    use stpc_runtime::{TRANSPORT_LOOPING, TRANSPORT_PLAYING, TRANSPORT_RECORDING};
+    let mut out = 0;
+    if changed {
+        out |= AU_TRANSPORT_CHANGED;
+    }
+    if flags & TRANSPORT_PLAYING != 0 {
+        out |= AU_TRANSPORT_MOVING;
+    }
+    if flags & TRANSPORT_RECORDING != 0 {
+        out |= AU_TRANSPORT_RECORDING;
+    }
+    if flags & TRANSPORT_LOOPING != 0 {
+        out |= AU_TRANSPORT_CYCLING;
+    }
+    out
+}
+
+/// `sampleOffsetToNextBeat` of the musical context: frames from a position (in quarter
+/// notes) to the next whole beat; 0 on a beat and for nonsense input.
+pub fn samples_to_next_beat(position: f64, tempo_bpm: f64, sample_rate: f64) -> i64 {
+    if !position.is_finite()
+        || !tempo_bpm.is_finite()
+        || !sample_rate.is_finite()
+        || tempo_bpm <= 0.0
+        || sample_rate <= 0.0
+    {
+        return 0;
+    }
+    let beats = position.ceil() - position;
+    let samples = (beats * 60.0 / tempo_bpm * sample_rate).round();
+    if samples.is_finite() && samples >= 0.0 && samples < i64::MAX as f64 {
+        samples as i64
+    } else {
+        0
+    }
+}
+
+/// Tracks the transport from block to block to tell a unit when it "changed".
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TransportTracker {
+    started: bool,
+    playing: bool,
+    expected_position: i64,
+}
+
+impl TransportTracker {
+    /// Call once per block. True for the first block, after [`TransportTracker::reset`],
+    /// on `discontinuity`, when playback starts or stops, and when the position is not
+    /// where the previous block left it.
+    pub fn advance(&mut self, playing: bool, sample_position: i64, frames: u32, discontinuity: bool) -> bool {
+        let changed = !self.started
+            || discontinuity
+            || playing != self.playing
+            || (playing && sample_position != self.expected_position);
+        self.started = true;
+        self.playing = playing;
+        self.expected_position = if playing { sample_position.saturating_add(frames as i64) } else { sample_position };
+        changed
+    }
+
+    pub fn reset(&mut self) {
+        *self = TransportTracker::default();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transport_flags_and_beats() {
+        use stpc_runtime::{TRANSPORT_LOOPING, TRANSPORT_PLAYING, TRANSPORT_RECORDING, TRANSPORT_TEMPO_VALID};
+        assert_eq!(au_transport_flags(0, false), 0);
+        assert_eq!(au_transport_flags(TRANSPORT_PLAYING | TRANSPORT_TEMPO_VALID, false), AU_TRANSPORT_MOVING);
+        assert_eq!(
+            au_transport_flags(TRANSPORT_PLAYING | TRANSPORT_RECORDING | TRANSPORT_LOOPING, true),
+            AU_TRANSPORT_CHANGED | AU_TRANSPORT_MOVING | AU_TRANSPORT_RECORDING | AU_TRANSPORT_CYCLING
+        );
+        assert_eq!(au_transport_flags(0, true), AU_TRANSPORT_CHANGED);
+
+        // 120 BPM at 48 kHz: a beat is 24000 frames.
+        assert_eq!(samples_to_next_beat(0.0, 120.0, 48000.0), 0);
+        assert_eq!(samples_to_next_beat(0.5, 120.0, 48000.0), 12000);
+        assert_eq!(samples_to_next_beat(3.75, 120.0, 48000.0), 6000);
+        assert_eq!(samples_to_next_beat(-0.25, 60.0, 44100.0), 11025);
+        for (position, tempo, rate) in [
+            (f64::NAN, 120.0, 48000.0),
+            (1.5, 0.0, 48000.0),
+            (1.5, -3.0, 48000.0),
+            (1.5, 120.0, 0.0),
+            (1.5, f64::INFINITY, 48000.0),
+        ] {
+            assert_eq!(samples_to_next_beat(position, tempo, rate), 0);
+        }
+        assert_eq!(samples_to_next_beat(0.5, 1.0e-300, 48000.0), 0);
+    }
+
+    #[test]
+    fn immediate_times() {
+        assert_eq!(immediate_time(1000, 1000), IMMEDIATE);
+        assert_eq!(immediate_time(1017, 1000), IMMEDIATE + 17);
+        // Late events land at the start, far ones at the last representable offset.
+        assert_eq!(immediate_time(900, 1000), IMMEDIATE);
+        assert_eq!(immediate_time(1000 + 10_000, 1000), IMMEDIATE + 4095);
+        assert_eq!(immediate_time(i64::MAX, i64::MIN), IMMEDIATE + 4095);
+        // Round trip with the output side.
+        assert_eq!(output_offset(immediate_time(1017, 1000), 1000, 64), 17);
+    }
+
+    #[test]
+    fn transport_changes() {
+        let mut tracker = TransportTracker::default();
+        // First block: always a change.
+        assert!(tracker.advance(false, 0, 64, false));
+        assert!(!tracker.advance(false, 0, 64, false));
+        // Start.
+        assert!(tracker.advance(true, 0, 64, false));
+        assert!(!tracker.advance(true, 64, 64, false));
+        assert!(!tracker.advance(true, 128, 100, false));
+        // A jump (loop, seek).
+        assert!(tracker.advance(true, 0, 64, false));
+        assert!(!tracker.advance(true, 64, 64, false));
+        // Dropped blocks.
+        assert!(tracker.advance(true, 128, 64, true));
+        // Stop; the position while stopped may move without a "change" per block.
+        assert!(tracker.advance(false, 192, 64, false));
+        assert!(!tracker.advance(false, 500, 64, false));
+        tracker.reset();
+        assert!(tracker.advance(false, 500, 64, false));
+    }
 
     const MIDI: Target<'static> = Target { accepts_midi: true, cables: 1, rampable: &[] };
 
@@ -243,10 +389,16 @@ mod tests {
     fn midi_is_validated() {
         // Program change: two bytes, even if the event carries a third.
         let mut event = Event::midi(0, &[0xC1, 5, 99]);
-        assert_eq!(translate(&event, 0, 64, &MIDI), Some(Scheduled::Midi { time: 0, cable: 0, len: 2, bytes: [0xC1, 5, 0] }));
+        assert_eq!(
+            translate(&event, 0, 64, &MIDI),
+            Some(Scheduled::Midi { time: 0, cable: 0, len: 2, bytes: [0xC1, 5, 0] })
+        );
         // Real-time byte.
         event = Event::midi(3, &[0xF8]);
-        assert_eq!(translate(&event, 0, 64, &MIDI), Some(Scheduled::Midi { time: 3, cable: 0, len: 1, bytes: [0xF8, 0, 0] }));
+        assert_eq!(
+            translate(&event, 0, 64, &MIDI),
+            Some(Scheduled::Midi { time: 3, cable: 0, len: 1, bytes: [0xF8, 0, 0] })
+        );
         // Truncated, data byte as status, sysex, empty.
         assert_eq!(translate(&Event::midi(0, &[0x90, 60]), 0, 64, &MIDI), None);
         assert_eq!(translate(&Event::midi(0, &[0x40, 1, 2]), 0, 64, &MIDI), None);
@@ -254,7 +406,10 @@ mod tests {
         assert_eq!(translate(&Event::midi(0, &[]), 0, 64, &MIDI), None);
         // Data bytes with the top bit set are masked, not passed on.
         let event = Event::midi(0, &[0x90, 0xC0, 0xFF]);
-        assert_eq!(translate(&event, 0, 64, &MIDI), Some(Scheduled::Midi { time: 0, cable: 0, len: 3, bytes: [0x90, 0x40, 0x7F] }));
+        assert_eq!(
+            translate(&event, 0, 64, &MIDI),
+            Some(Scheduled::Midi { time: 0, cable: 0, len: 3, bytes: [0x90, 0x40, 0x7F] })
+        );
         // A unit without MIDI input gets none.
         let effect = Target { accepts_midi: false, cables: 0, rampable: &[] };
         assert_eq!(translate(&Event::note_on(0, 0, 60, 100), 0, 64, &effect), None);

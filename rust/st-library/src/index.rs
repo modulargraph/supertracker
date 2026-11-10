@@ -370,10 +370,8 @@ impl Item {
             record.tags = tags.clone();
         }
         // Zero and empty are explicit unknowns, distinct from absent labels.
-        match labels.bpm {
-            Some(bpm) if bpm == 0.0 => record.bpm = None,
-            Some(bpm) => record.bpm = Some(bpm),
-            None => {}
+        if let Some(bpm) = labels.bpm {
+            record.bpm = (bpm != 0.0).then_some(bpm);
         }
         match labels.key.as_deref() {
             Some("") => record.key = None,

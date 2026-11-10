@@ -23,7 +23,9 @@
 //!
 //! With `STPC_VST3_TEST_MARKER=<file>` in the environment the module appends a line per
 //! module entry and exit (with the number of plug-in objects still alive at exit).
-#![allow(non_snake_case, non_upper_case_globals, clippy::missing_safety_doc)]
+// The casts of SDK constants are needed where the bindings give an enumeration another
+// integer type on another platform.
+#![allow(non_snake_case, non_upper_case_globals, clippy::missing_safety_doc, clippy::unnecessary_cast)]
 
 use std::cell::RefCell;
 use std::ffi::{c_char, c_void, CStr};
@@ -91,8 +93,7 @@ pub const PARAM_CTX_SIGNATURE: u32 = 214;
 pub const PARAM_CTX_BAR: u32 = 215;
 pub const PARAM_CTX_CYCLE_START: u32 = 216;
 pub const PARAM_CTX_CYCLE_END: u32 = 217;
-/// Editor probes (controller only): 0 no view, 1 view created, 2 attached; the size the
-/// host last gave the view.
+/// Reserved for probes of an editor view (the plug-in has none yet): read-only, always 0.
 pub const PARAM_EDITOR_STATE: u32 = 220;
 pub const PARAM_EDITOR_WIDTH: u32 = 221;
 
@@ -129,6 +130,7 @@ struct ParamDef {
     unit: i32,
 }
 
+#[allow(clippy::too_many_arguments)]
 const fn def(
     id: u32,
     title: &'static str,
@@ -510,7 +512,8 @@ impl IComponentTrait for GainProcessor {
         if bytes.len() != GAIN_STATE_LEN || &bytes[..4] != GAIN_STATE_MAGIC || bytes[4..8] != 1u32.to_le_bytes() {
             return kResultFalse;
         }
-        for (index, id) in [PARAM_GAIN, PARAM_BYPASS, PARAM_LATENCY, PARAM_SIDECHAIN, PARAM_PROGRAM].iter().enumerate() {
+        for (index, id) in [PARAM_GAIN, PARAM_BYPASS, PARAM_LATENCY, PARAM_SIDECHAIN, PARAM_PROGRAM].iter().enumerate()
+        {
             let value = f64_at(&bytes, 8 + index * 8);
             if *id == PARAM_PROGRAM {
                 self.values.set(*id, value); // the program's gain is in the state already
@@ -871,7 +874,8 @@ impl IEditControllerTrait for GainController {
             return kResultFalse;
         }
         let mut latency_changed = false;
-        for (index, id) in [PARAM_GAIN, PARAM_BYPASS, PARAM_LATENCY, PARAM_SIDECHAIN, PARAM_PROGRAM].iter().enumerate() {
+        for (index, id) in [PARAM_GAIN, PARAM_BYPASS, PARAM_LATENCY, PARAM_SIDECHAIN, PARAM_PROGRAM].iter().enumerate()
+        {
             let changed = self.values.set(*id, f64_at(&bytes, 8 + index * 8));
             latency_changed |= changed && *id == PARAM_LATENCY;
         }
@@ -1079,7 +1083,13 @@ impl IUnitInfoTrait for GainController {
     unsafe fn hasProgramPitchNames(&self, _list: ProgramListID, _index: i32) -> tresult {
         kResultFalse
     }
-    unsafe fn getProgramPitchName(&self, _list: ProgramListID, _index: i32, _pitch: i16, _name: *mut String128) -> tresult {
+    unsafe fn getProgramPitchName(
+        &self,
+        _list: ProgramListID,
+        _index: i32,
+        _pitch: i16,
+        _name: *mut String128,
+    ) -> tresult {
         kResultFalse
     }
     unsafe fn getSelectedUnit(&self) -> UnitID {
@@ -1307,6 +1317,7 @@ impl IAudioProcessorTrait for SineSynth {
         let outputs = bus_channels(data.outputs, data.numOutputs, 0);
         let mut note = self.note.load(Ordering::Relaxed);
         let mut age = self.age.load(Ordering::Relaxed);
+        let mut sounded = false;
 
         let on_parameter = |id: u32, value: f64, offset: i32| {
             self.values.set(id, value);
@@ -1367,6 +1378,7 @@ impl IAudioProcessorTrait for SineSynth {
             } else {
                 0.0
             };
+            sounded |= sample != 0.0;
             for &out in outputs {
                 *out.add(frame) = sample;
             }
@@ -1375,7 +1387,7 @@ impl IAudioProcessorTrait for SineSynth {
         self.age.store(age, Ordering::Relaxed);
         if data.numOutputs > 0 && !data.outputs.is_null() {
             let all = (1u64 << outputs.len().min(63)) - 1;
-            (*data.outputs).silenceFlags = if note < 0 && frames > 0 { all } else { 0 };
+            (*data.outputs).silenceFlags = if !sounded && frames > 0 { all } else { 0 };
         }
         kResultOk
     }
@@ -1471,7 +1483,13 @@ impl IEditControllerTrait for SineSynth {
 }
 
 impl IMidiMappingTrait for SineSynth {
-    unsafe fn getMidiControllerAssignment(&self, bus: i32, _channel: i16, controller: CtrlNumber, id: *mut ParamID) -> tresult {
+    unsafe fn getMidiControllerAssignment(
+        &self,
+        bus: i32,
+        _channel: i16,
+        controller: CtrlNumber,
+        id: *mut ParamID,
+    ) -> tresult {
         if bus != 0 {
             return kResultFalse;
         }

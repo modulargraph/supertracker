@@ -7,6 +7,8 @@
 //!
 //! * [`vst3`]: format `"vst3"`, VST3 plug-ins.
 //!
+//! * [`scan`]: listing the plug-ins of a file without instantiating them, per format.
+//!
 //! Further formats (VST3, Audio Units on macOS) are added here as more
 //! [`stpc_runtime::PluginBackend`] implementations and registered in `main.rs`.
 
@@ -14,5 +16,6 @@ pub mod au;
 pub mod clap_backend;
 #[cfg(target_os = "macos")]
 pub mod macos;
+pub mod scan;
 pub mod test_backend;
 pub mod vst3;

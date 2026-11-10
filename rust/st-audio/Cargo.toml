@@ -7,3 +7,10 @@ description = "The mixer graph around the engine, audio devices, offline renderi
 publish = false
 
 [dependencies]
+tracker-engine = { path = "../tracker-engine" }
+st-project = { path = "../st-project" }
+# Status and device descriptions cross the bridge as JSON (st-host serializes them).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Audio devices (Apache-2.0). Linux: ALSA, needs the libasound2-dev package to build. macOS: CoreAudio.
+cpal = "0.16"

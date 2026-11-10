@@ -81,7 +81,7 @@ pub struct Inferred {
     pub key: Option<String>,
 }
 
-/// Display pack names: without NI's " Library" suffix and Loopcloud's numeric "[12345]" pack IDs.
+/// Display pack names: without NI's " Library" suffix and Loopcloud's numeric `[12345]` pack IDs.
 pub fn clean_pack(value: &str) -> String {
     let mut result = value.replace(" Library", "");
     // A trailing "[digits]" (2..=7 digits) with the white space around it.
@@ -173,7 +173,7 @@ pub fn canonical_key(text: &str) -> Option<String> {
         'b' | 'B' => Some(11),
         _ => None,
     });
-    let (shift, minor) = match with_accidental.and_then(|shift| quality_of(&value[2..]).map(|minor| (shift, minor))) {
+    let (shift, minor) = match with_accidental.and_then(|shift| Some(shift).zip(quality_of(&value[2..]))) {
         Some(found) => found,
         None => (0, quality_of(&value[1..])?),
     };

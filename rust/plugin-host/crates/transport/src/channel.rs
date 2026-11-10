@@ -95,6 +95,26 @@ impl Stream {
         self.sock.set_write_timeout(timeout)
     }
 
+    /// Waits until a frame (or the end of the stream) can be read, at most `timeout`.
+    /// False on timeout. Lets a caller watch a deadline or a cancel flag without setting
+    /// a read timeout, which could cut a frame in half.
+    pub fn wait_readable(&self, timeout: Duration) -> io::Result<bool> {
+        let mut pfd = libc::pollfd { fd: self.sock.as_raw_fd(), events: libc::POLLIN, revents: 0 };
+        let ms = timeout.as_millis().min(i32::MAX as u128) as libc::c_int;
+        loop {
+            // SAFETY: one valid pollfd.
+            let ready = unsafe { libc::poll(&mut pfd, 1, ms) };
+            if ready < 0 {
+                let err = io::Error::last_os_error();
+                if err.kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                return Err(err);
+            }
+            return Ok(ready > 0);
+        }
+    }
+
     /// Closes both directions; a thread blocked in [`Stream::recv`] on any clone returns.
     pub fn shutdown(&self) {
         let _ = self.sock.shutdown(std::net::Shutdown::Both);

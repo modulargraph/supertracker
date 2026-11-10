@@ -3,7 +3,7 @@
 //! Native Instruments keeps product background colours in a small SQLite file
 //! (`NI Resources/_DatabaseResources/color/color.db`). Reading its one table does not justify
 //! linking SQLite, so this module walks the table's B-tree directly, following the documented
-//! file format (https://www.sqlite.org/fileformat2.html). It reads rowid tables in UTF-8
+//! file format (<https://www.sqlite.org/fileformat2.html>). It reads rowid tables in UTF-8
 //! databases, including overflow pages; everything is bounded and any inconsistency ends the
 //! read with what was found so far.
 

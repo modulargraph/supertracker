@@ -321,7 +321,7 @@ fn kits_are_saved_indexed_read_and_browsed() {
     temp.mkdir("Native Access Content/Orbit Library/Samples");
     temp.write("Native Access Content/Orbit Library/Groups/Drums/._ghost.mxgrp", &[1]);
     let sample = temp.write("Source.wav", &st_library::probe::fixtures::wav(0.1));
-    let library = library_with_kits(&temp, "Cache", &[native.clone()]);
+    let library = library_with_kits(&temp, "Cache", std::slice::from_ref(&native));
     let user_root = temp.text("My Kits");
 
     // kit.save: Save As with a name writes into the user's kit folder and indexes it.

@@ -19,6 +19,9 @@
 //!   waits for an asynchronous Audio Unit call to complete): requests that arrive
 //!   meanwhile are served when the outer call has returned.
 //!
+//! The process declares a latency-critical activity (`NSProcessInfo`), so that App Nap
+//! leaves it alone while it has no visible window.
+//!
 //! The application is an *accessory* (no Dock icon, no menu bar of its own, but its
 //! windows can become key). It still installs a main menu, which is never shown: AppKit
 //! routes the standard key equivalents (copy, paste, undo, close window, ...) through the
@@ -42,7 +45,7 @@ use objc2_core_foundation::{
     kCFRunLoopCommonModes, CFAbsoluteTimeGetCurrent, CFRetained, CFRunLoop, CFRunLoopSource, CFRunLoopSourceContext,
     CFRunLoopTimer, CFRunLoopTimerContext,
 };
-use objc2_foundation::{NSPoint, NSString};
+use objc2_foundation::{NSActivityOptions, NSPoint, NSProcessInfo, NSString};
 use stpc_runtime::{LoopState, Runtime};
 
 /// The idle interval the container configures the runtime with on macOS
@@ -126,17 +129,18 @@ impl Loop {
     /// asks again.
     fn leave(&self) {
         self.app.stop(None);
-        let event = NSEvent::otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2(
-            NSEventType::ApplicationDefined,
-            NSPoint::new(0.0, 0.0),
-            NSEventModifierFlags::empty(),
-            0.0,
-            0,
-            None,
-            0,
-            0,
-            0,
-        );
+        let event =
+            NSEvent::otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2(
+                NSEventType::ApplicationDefined,
+                NSPoint::new(0.0, 0.0),
+                NSEventModifierFlags::empty(),
+                0.0,
+                0,
+                None,
+                0,
+                0,
+                0,
+            );
         if let Some(event) = event {
             self.app.postEvent_atStart(&event, true);
         }
@@ -165,6 +169,15 @@ pub fn run(runtime: &mut Runtime) {
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
     install_main_menu(&app, mtm);
+    // A background application without visible windows is a candidate for App Nap (timer
+    // throttling, lowered priority). This process renders audio for the host: declare a
+    // latency-critical activity for as long as it lives. Idle system sleep stays allowed;
+    // whether the machine may sleep is the host's decision.
+    let activity = NSProcessInfo::processInfo().beginActivityWithOptions_reason(
+        NSActivityOptions::UserInitiatedAllowingIdleSystemSleep | NSActivityOptions::LatencyCritical,
+        &NSString::from_str("Hosting audio plug-ins"),
+    );
+    std::mem::forget(activity);
 
     let (Some(run_loop), Some(common_modes)) = (CFRunLoop::main(), (unsafe { kCFRunLoopCommonModes })) else {
         runtime.run();

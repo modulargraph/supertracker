@@ -58,7 +58,10 @@ pub enum StateError {
     /// The bytes are neither a frame nor a property list.
     Unrecognised,
     /// The state was saved by a different Audio Unit.
-    WrongComponent { saved: ComponentId, loading: ComponentId },
+    WrongComponent {
+        saved: ComponentId,
+        loading: ComponentId,
+    },
 }
 
 impl fmt::Display for StateError {
@@ -91,7 +94,12 @@ pub struct Frame<'a> {
     pub payload: &'a [u8],
 }
 
-pub fn encode_frame(kind: PayloadKind, flags: u16, component: ComponentId, payload: &[u8]) -> Result<Vec<u8>, StateError> {
+pub fn encode_frame(
+    kind: PayloadKind,
+    flags: u16,
+    component: ComponentId,
+    payload: &[u8],
+) -> Result<Vec<u8>, StateError> {
     if payload.len() > MAX_STATE_BYTES - HEADER_LEN {
         return Err(StateError::TooLarge(payload.len()));
     }
@@ -110,7 +118,11 @@ pub fn encode_frame(kind: PayloadKind, flags: u16, component: ComponentId, paylo
 
 pub fn decode_frame(data: &[u8]) -> Result<Frame<'_>, StateError> {
     if data.len() < HEADER_LEN || data[..4] != MAGIC {
-        return Err(if data.len() >= 4 && data[..4] != MAGIC { StateError::Unrecognised } else { StateError::Truncated });
+        return Err(if data.len() >= 4 && data[..4] != MAGIC {
+            StateError::Unrecognised
+        } else {
+            StateError::Truncated
+        });
     }
     if data[4] != FRAME_VERSION {
         return Err(StateError::UnsupportedVersion(data[4]));
@@ -381,14 +393,9 @@ mod tests {
     fn the_header_layout_is_fixed() {
         let component = ComponentId::parse("aumu:dls%20:appl").unwrap();
         let bytes = encode_frame(PayloadKind::KeyedArchive, 0x0102, component, &[0xAA, 0xBB]).unwrap();
-        let expected: Vec<u8> = [
-            b"STAU".as_slice(),
-            &[1, 2, 0x02, 0x01],
-            b"aumudls appl",
-            &[2, 0, 0, 0, 0, 0, 0, 0],
-            &[0xAA, 0xBB],
-        ]
-        .concat();
+        let expected: Vec<u8> =
+            [b"STAU".as_slice(), &[1, 2, 0x02, 0x01], b"aumudls appl", &[2, 0, 0, 0, 0, 0, 0, 0], &[0xAA, 0xBB]]
+                .concat();
         assert_eq!(bytes, expected);
     }
 
@@ -441,10 +448,7 @@ mod tests {
     fn size_limits() {
         let huge = vec![0u8; MAX_STATE_BYTES + 1];
         assert_eq!(classify(&huge, delay()), Err(StateError::TooLarge(MAX_STATE_BYTES + 1)));
-        assert!(matches!(
-            encode_frame(PayloadKind::BinaryPlist, 0, delay(), &huge),
-            Err(StateError::TooLarge(_))
-        ));
+        assert!(matches!(encode_frame(PayloadKind::BinaryPlist, 0, delay(), &huge), Err(StateError::TooLarge(_))));
     }
 
     fn utf16(text: &str) -> Vec<u16> {

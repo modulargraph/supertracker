@@ -76,9 +76,26 @@ pub const MAX_BUS_CHANNELS: u32 = 64;
 /// sometimes wrong.
 pub fn candidates(caps: Option<&[Capability]>, has_input: bool, want_in: u32, want_out: u32) -> Vec<(u32, u32)> {
     let want_out = want_out.clamp(1, MAX_BUS_CHANNELS);
-    let want_in = if has_input { if want_in == 0 { want_out } else { want_in.min(MAX_BUS_CHANNELS) } } else { 0 };
+    let want_in = if has_input {
+        if want_in == 0 {
+            want_out
+        } else {
+            want_in.min(MAX_BUS_CHANNELS)
+        }
+    } else {
+        0
+    };
     let usual: Vec<(u32, u32)> = if has_input {
-        vec![(want_in, want_out), (want_out, want_out), (want_in, want_in), (2, 2), (1, want_out), (1, 2), (1, 1), (2, 1)]
+        vec![
+            (want_in, want_out),
+            (want_out, want_out),
+            (want_in, want_in),
+            (2, 2),
+            (1, want_out),
+            (1, 2),
+            (1, 1),
+            (2, 1),
+        ]
     } else {
         vec![(0, want_out), (0, 2), (0, 1)]
     };
@@ -89,7 +106,9 @@ pub fn candidates(caps: Option<&[Capability]>, has_input: bool, want_in: u32, wa
         .filter(|cap| cap.outputs >= 1 && cap.outputs as u32 <= MAX_BUS_CHANNELS)
         .filter_map(|cap| match (has_input, cap.inputs) {
             (false, _) => Some((0, cap.outputs as u32)),
-            (true, inputs) if inputs >= 1 && inputs as u32 <= MAX_BUS_CHANNELS => Some((inputs as u32, cap.outputs as u32)),
+            (true, inputs) if inputs >= 1 && inputs as u32 <= MAX_BUS_CHANNELS => {
+                Some((inputs as u32, cap.outputs as u32))
+            }
             (true, -1) | (true, -2) => Some((want_in, cap.outputs as u32)),
             _ => None,
         })
@@ -243,7 +262,10 @@ mod tests {
 
     #[test]
     fn capability_pairs() {
-        assert_eq!(caps(&[1, 1, 2, 2, 9]), [Capability { inputs: 1, outputs: 1 }, Capability { inputs: 2, outputs: 2 }]);
+        assert_eq!(
+            caps(&[1, 1, 2, 2, 9]),
+            [Capability { inputs: 1, outputs: 1 }, Capability { inputs: 2, outputs: 2 }]
+        );
         let any_equal = Capability { inputs: -1, outputs: -1 };
         assert!(any_equal.allows(1, 1) && any_equal.allows(6, 6) && !any_equal.allows(1, 2));
         let any_any = Capability { inputs: -1, outputs: -2 };
@@ -318,7 +340,8 @@ mod tests {
 
     #[test]
     fn candidate_lists_are_sane() {
-        let all_caps: [&[i32]; 8] = [&[], &[-1, -1], &[-1, -2], &[1, 1], &[2, 2, 1, 1], &[0, 2], &[-1, 2], &[6, 6, 2, 6, -8, 2]];
+        let all_caps: [&[i32]; 8] =
+            [&[], &[-1, -1], &[-1, -2], &[1, 1], &[2, 2, 1, 1], &[0, 2], &[-1, 2], &[6, 6, 2, 6, -8, 2]];
         for flat in all_caps {
             let caps = caps(flat);
             for has_input in [false, true] {

@@ -1204,7 +1204,9 @@ fn container_binary_refuses_bad_invocations_and_exits_when_the_host_goes_away() 
     let (mut child, stream, hello) = spawn("a.sock");
     assert_eq!((hello.magic, hello.protocol_version), (stpc_transport::HELLO_MAGIC, PROTOCOL_VERSION));
     assert_eq!((hello.pid, hello.token.as_str()), (child.id(), "secret"));
-    assert_eq!(hello.formats, ["clap", "test"]);
+    // Sorted; Audio Units ("au") are announced on macOS only.
+    let formats: Vec<&str> = hello.formats.iter().map(String::as_str).filter(|format| *format != "au").collect();
+    assert_eq!(formats, ["clap", "test", "vst3"]);
     // Refused by the host: the container exits with its "rejected" code.
     let refusal =
         Welcome { accepted: false, protocol_version: PROTOCOL_VERSION, reason: "wrong connection token".into() };

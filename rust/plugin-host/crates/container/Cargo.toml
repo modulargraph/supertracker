@@ -27,13 +27,36 @@ stpc-runtime.workspace = true
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6.5", features = ["exception"] }
 block2 = "0.6.2"
-objc2-foundation = "0.3.2"
-objc2-app-kit = "0.3.2"
-objc2-audio-toolbox = "0.3.2"
-objc2-avf-audio = "0.3.2"
-objc2-core-audio-kit = "0.3.2"
-objc2-core-audio-types = "0.3.2"
-objc2-core-foundation = "0.3.2"
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std", "block2", "objc2-core-foundation",
+    "NSArray", "NSCoder", "NSData", "NSDate", "NSDictionary", "NSEnumerator", "NSError", "NSGeometry",
+    "NSKeyValueObserving", "NSKeyedArchiver", "NSNotification", "NSObjCRuntime", "NSObject", "NSOperation",
+    "NSProcessInfo", "NSPropertyList", "NSRange", "NSString", "NSURL", "NSValue",
+] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+    "std", "block2", "libc", "objc2-core-foundation",
+    "NSApplication", "NSEvent", "NSGraphics", "NSMenu", "NSMenuItem", "NSResponder", "NSRunningApplication",
+    "NSGraphicsContext", "NSView", "NSViewController", "NSWindow", "NSWindowRestoration", "NSWorkspace",
+] }
+objc2-audio-toolbox = { version = "0.3.2", default-features = false, features = [
+    "std", "bitflags", "block2", "objc2-core-audio-types", "objc2-core-foundation",
+    "AUAudioUnit", "AUAudioUnitImplementation", "AUComponent", "AUParameters", "AudioComponent",
+    "AudioUnitProperties", "AudioUnitUtilities",
+] }
+objc2-avf-audio = { version = "0.3.2", default-features = false, features = [
+    "std", "objc2-audio-toolbox", "objc2-core-audio-types",
+    "AVAudioChannelLayout", "AVAudioFormat", "AVAudioTypes", "AVAudioUnitComponent",
+] }
+objc2-core-audio-kit = { version = "0.3.2", default-features = false, features = [
+    "std", "block2", "objc2-app-kit", "objc2-audio-toolbox",
+    "AUGenericViewController", "AUViewController",
+] }
+objc2-core-audio-types = { version = "0.3.2", default-features = false, features = [
+    "std", "bitflags", "objc2", "CoreAudioBaseTypes",
+] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
+    "std", "CFBase", "CFDate", "CFNumber", "CFRunLoop", "CFString",
+] }
 
 [dev-dependencies]
 # Built (as a cdylib) before the tests, which load it through the CLAP backend.

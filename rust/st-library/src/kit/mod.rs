@@ -234,7 +234,7 @@ pub struct KitMetadata {
     /// Types of a group.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub types: Option<Vec<String>>,
-    /// Sub-types of a group as "Type<US>Sub-type".
+    /// Sub-types of a group as `Type\u{1f}Sub-type`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subtypes: Option<Vec<String>>,
     /// Load compatibility of a group.

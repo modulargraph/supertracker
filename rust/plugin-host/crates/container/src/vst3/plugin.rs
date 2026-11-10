@@ -43,12 +43,12 @@ const RESTART_LATENCY: u32 = vst::RestartFlags_::kLatencyChanged as u32;
 const RESTART_TITLES: u32 = vst::RestartFlags_::kParamTitlesChanged as u32;
 const RESTART_MIDI: u32 = vst::RestartFlags_::kMidiCCAssignmentChanged as u32;
 
-const FLAG_AUTOMATE: i32 = vst::ParameterInfo_::ParameterFlags_::kCanAutomate as i32;
-const FLAG_READ_ONLY: i32 = vst::ParameterInfo_::ParameterFlags_::kIsReadOnly as i32;
-const FLAG_LIST: i32 = vst::ParameterInfo_::ParameterFlags_::kIsList as i32;
-const FLAG_HIDDEN: i32 = vst::ParameterInfo_::ParameterFlags_::kIsHidden as i32;
-const FLAG_PROGRAM: i32 = vst::ParameterInfo_::ParameterFlags_::kIsProgramChange as i32;
-const FLAG_BYPASS: i32 = vst::ParameterInfo_::ParameterFlags_::kIsBypass as i32;
+const FLAG_AUTOMATE: i32 = vst::ParameterInfo_::ParameterFlags_::kCanAutomate;
+const FLAG_READ_ONLY: i32 = vst::ParameterInfo_::ParameterFlags_::kIsReadOnly;
+const FLAG_LIST: i32 = vst::ParameterInfo_::ParameterFlags_::kIsList;
+const FLAG_HIDDEN: i32 = vst::ParameterInfo_::ParameterFlags_::kIsHidden;
+const FLAG_PROGRAM: i32 = vst::ParameterInfo_::ParameterFlags_::kIsProgramChange;
+const FLAG_BYPASS: i32 = vst::ParameterInfo_::ParameterFlags_::kIsBypass;
 
 /// One audio bus of the plug-in.
 #[derive(Clone, Debug)]
@@ -353,7 +353,8 @@ impl Vst3Plugin {
             let steps = if steps > 0 { steps } else { (count - 1).max(0) };
             self.programs = Some(Programs { parameter, steps, list, count });
         }
-        let (parameter, steps) = self.programs.map_or((NO_PARAMETER, 0), |programs| (programs.parameter, programs.steps));
+        let (parameter, steps) =
+            self.programs.map_or((NO_PARAMETER, 0), |programs| (programs.parameter, programs.steps));
         self.shared.program_steps.store(steps, Ordering::Relaxed);
         self.shared.program_parameter.store(parameter, Ordering::Relaxed);
     }
@@ -834,7 +835,7 @@ impl Plugin for Vst3Plugin {
                 let result = controller.getState(stream_ptr(&stream));
                 if result == kResultOk {
                     controller_state = Some(stream.take());
-                } else if stream.len() != 0 {
+                } else if !stream.is_empty() {
                     // Bytes from a failed save cannot be restored: no snapshot at all is
                     // better than one that silently lacks half.
                     return Err(failed(format!(

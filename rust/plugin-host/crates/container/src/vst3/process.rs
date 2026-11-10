@@ -308,7 +308,11 @@ impl ParamChanges {
         let queues: Vec<ComWrapper<ParamQueue>> = (0..queues)
             .map(|_| {
                 ComWrapper::new(ParamQueue {
-                    inner: UnsafeCell::new(QueueInner { id: 0, origin: FROM_QUEUE, points: Vec::with_capacity(points) }),
+                    inner: UnsafeCell::new(QueueInner {
+                        id: 0,
+                        origin: FROM_QUEUE,
+                        points: Vec::with_capacity(points),
+                    }),
                 })
             })
             .collect();
@@ -899,7 +903,7 @@ impl Vst3Processor {
     }
 
     /// What the controller and the host application still have to hear of this block.
-    fn publish(&mut self, mut data: Option<&mut ProcessData<'_>>) {
+    fn publish(&mut self, data: Option<&mut ProcessData<'_>>) {
         let mut wake = false;
         for index in 0..self.changes.used() {
             let queue = self.changes.queue(index);
@@ -919,7 +923,7 @@ impl Vst3Processor {
         if wake && !self.shared.sync_requested.swap(true, Ordering::AcqRel) {
             self.shared.handle.request_main_callback();
         }
-        if let Some(data) = data.as_deref_mut() {
+        if let Some(data) = data {
             for event in self.out_events.events().iter() {
                 if let Some(midi) = midi_from_event(event) {
                     data.push_event(midi);
@@ -955,8 +959,10 @@ fn midi_from_event(event: &vst::Event) -> Option<Event> {
             }
             NOTE_OFF => {
                 let note = event.__field0.noteOff;
-                let mut midi =
-                    Event::midi(offset, &[0x80 | (note.channel & 15) as u8, (note.pitch & 127) as u8, unit(note.velocity)]);
+                let mut midi = Event::midi(
+                    offset,
+                    &[0x80 | (note.channel & 15) as u8, (note.pitch & 127) as u8, unit(note.velocity)],
+                );
                 midi.aux = note.noteId as u32;
                 midi
             }
@@ -1174,7 +1180,8 @@ mod tests {
         assert_eq!((midi.offset, midi.port, midi.aux), (17, 1, 42));
         assert_eq!(midi.midi_bytes(), [0x93, 60, 1], "a note-on never has velocity 0");
         event.r#type = LEGACY_MIDI_OUT;
-        event.__field0.midiCCOut = vst::LegacyMIDICCOutEvent { controlNumber: 129, channel: 2, value: 0x7F, value2: 0x3F };
+        event.__field0.midiCCOut =
+            vst::LegacyMIDICCOutEvent { controlNumber: 129, channel: 2, value: 0x7F, value2: 0x3F };
         assert_eq!(midi_from_event(&event).unwrap().midi_bytes(), [0xE2, 0x7F, 0x3F]);
         event.__field0.midiCCOut = vst::LegacyMIDICCOutEvent { controlNumber: 7, channel: 0, value: 100, value2: 0 };
         assert_eq!(midi_from_event(&event).unwrap().midi_bytes(), [0xB0, 7, 100]);

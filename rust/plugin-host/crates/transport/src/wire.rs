@@ -192,7 +192,7 @@ macro_rules! wire_struct {
         pub struct $name { $($(#[$fm])* pub $f: $t),* }
         impl $crate::wire::Wire for $name {
             fn put(&self, w: &mut $crate::wire::Writer) { $($crate::wire::Wire::put(&self.$f, w);)* }
-            fn get(r: &mut $crate::wire::Reader<'_>) -> Result<Self, $crate::wire::WireError> {
+            fn get(r: &mut $crate::wire::Reader<'_>) -> ::std::result::Result<Self, $crate::wire::WireError> {
                 Ok($name { $($f: $crate::wire::Wire::get(r)?),* })
             }
         }
@@ -217,7 +217,7 @@ macro_rules! wire_enum {
                     }),*
                 }
             }
-            fn get(r: &mut $crate::wire::Reader<'_>) -> Result<Self, $crate::wire::WireError> {
+            fn get(r: &mut $crate::wire::Reader<'_>) -> ::std::result::Result<Self, $crate::wire::WireError> {
                 let code = <u16 as $crate::wire::Wire>::get(r)?;
                 match code {
                     $($code => Ok($name::$v { $($f: $crate::wire::Wire::get(r)?),* }),)*

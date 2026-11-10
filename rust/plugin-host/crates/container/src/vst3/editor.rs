@@ -2,7 +2,7 @@
 //! native parent the container provides.
 //!
 //! * **macOS**: the parent is the content view of a
-//!   [`crate::macos::editor_window::EditorWindow`] (`kPlatformTypeNSView`). The host
+//!   `crate::macos::editor_window::EditorWindow` (`kPlatformTypeNSView`). The host
 //!   interface `IPlugFrame` lets the plug-in resize the window; a view that answers
 //!   `canResize` gets a resizable window whose size changes go through
 //!   `checkSizeConstraint` and `onSize`. **Type-checked only.**
@@ -14,8 +14,8 @@
 use std::sync::Arc;
 
 use stpc_runtime::{EditorInfo, PluginError};
-use vst3::Steinberg::Vst::IEditController;
 use vst3::ComPtr;
+use vst3::Steinberg::Vst::IEditController;
 
 use super::process::Shared;
 
@@ -164,7 +164,8 @@ mod mac {
                         let Some(view) = vst3::ComRef::from_raw(state.view.get()) else { return };
                         // The user dragged the window: let the view pick the nearest size
                         // it supports, then tell it.
-                        let mut rect = ViewRect { left: 0, top: 0, right: width.round() as i32, bottom: height.round() as i32 };
+                        let mut rect =
+                            ViewRect { left: 0, top: 0, right: width.round() as i32, bottom: height.round() as i32 };
                         view.checkSizeConstraint(&mut rect);
                         view.onSize(&mut rect);
                         let (width, height) = ((rect.right - rect.left).max(0), (rect.bottom - rect.top).max(0));

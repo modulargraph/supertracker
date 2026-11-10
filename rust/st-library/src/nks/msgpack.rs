@@ -1,4 +1,4 @@
-//! A bounded MessagePack reader (https://github.com/msgpack/msgpack/blob/master/spec.md) that
+//! A bounded MessagePack reader (<https://github.com/msgpack/msgpack/blob/master/spec.md>) that
 //! produces JSON values.
 //!
 //! All standard scalar and container encodings are read. Binary and extension values become
@@ -53,11 +53,11 @@ impl<'a> Decoder<'a> {
             0xc0 => Value::Null,
             0xc2 => Value::Bool(false),
             0xc3 => Value::Bool(true),
-            0xc4 | 0xc5 | 0xc6 => {
+            0xc4..=0xc6 => {
                 let length = self.unsigned(1 << (marker - 0xc4))? as usize;
                 self.binary(length)?
             }
-            0xc7 | 0xc8 | 0xc9 => {
+            0xc7..=0xc9 => {
                 let length = self.unsigned(1 << (marker - 0xc7))? as usize;
                 self.extension(length)?
             }
@@ -86,7 +86,7 @@ impl<'a> Decoder<'a> {
                 }
             }
             0xd4..=0xd8 => self.extension(1 << (marker - 0xd4))?,
-            0xd9 | 0xda | 0xdb => {
+            0xd9..=0xdb => {
                 let length = self.unsigned(1 << (marker - 0xd9))? as usize;
                 Value::String(self.string(length)?)
             }

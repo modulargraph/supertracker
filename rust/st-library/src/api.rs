@@ -197,7 +197,7 @@ pub struct NksBrowseRequest {
     /// Types (any).
     #[serde(deserialize_with = "null_default")]
     pub types: Vec<String>,
-    /// Sub-types as "Type<US>Sub-type" (any).
+    /// Sub-types as `Type\u{1f}Sub-type` (any).
     #[serde(deserialize_with = "null_default")]
     pub subtypes: Vec<String>,
     /// Characters (all).
@@ -231,7 +231,7 @@ pub struct KitsBrowseRequest {
     /// Types (any).
     #[serde(deserialize_with = "null_default")]
     pub types: Vec<String>,
-    /// Sub-types as "Type<US>Sub-type" (any).
+    /// Sub-types as `Type\u{1f}Sub-type` (any).
     #[serde(deserialize_with = "null_default")]
     pub subtypes: Vec<String>,
     /// Characters (all).

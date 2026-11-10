@@ -15,9 +15,9 @@
 //! | [`editor`] | `IPlugView` in a container window (macOS) |
 //!
 //! Verified by running on Linux against `stpc-vst3-test-plugin` (`tests/vst3.rs`). The
-//! macOS module loading and the editor are type-checked only; the Windows module loading
-//! has never been compiled. See `docs/PLUGIN_CONTAINER.md` for what is and is not
-//! implemented.
+//! macOS module loading and the editor are type-checked only, the Windows module loading
+//! likewise (and on its own: the workspace is Unix only). See `docs/PLUGIN_CONTAINER.md`
+//! for what is and is not implemented.
 
 pub mod editor;
 pub mod host;
@@ -35,8 +35,8 @@ use stpc_runtime::{
     CreateRequest, HostHandle, Plugin, PluginBackend, PluginDescription, PluginError, SCAN_AUDIO_INPUT,
     SCAN_AUDIO_OUTPUT, SCAN_EFFECT, SCAN_INSTRUMENT, SCAN_SIDECHAIN, SCAN_WANTS_MIDI,
 };
-use vst3::Steinberg::FUnknown;
 use vst3::ComWrapper;
+use vst3::Steinberg::FUnknown;
 
 use host::HostApplication;
 use module::{cid_to_hex, hex_to_cid, Module};

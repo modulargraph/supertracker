@@ -91,10 +91,10 @@ fn lenient_integer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<
     })
 }
 
-/// The device part of a `midi.configure` request. Fields left out keep their value.
+/// Payload of `midi.configure`. Fields left out keep their value.
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
-pub struct DeviceRequest {
+pub struct ConfigureRequest {
     /// Receive MIDI input at all. Output does not depend on it.
     pub enabled: Option<bool>,
     /// Connect exactly these inputs (an empty list: none).
@@ -123,6 +123,12 @@ pub struct DeviceRequest {
     /// Receive only this channel (1 to 16), or all channels (0).
     #[serde(deserialize_with = "lenient_integer")]
     pub input_channel: Option<i64>,
+    /// The track input plays ([`crate::MidiService`] uses it; the device host ignores it).
+    #[serde(deserialize_with = "lenient_integer")]
+    pub track: Option<i64>,
+    /// The instrument input plays ([`crate::MidiService`] uses it; the device host ignores it).
+    #[serde(deserialize_with = "lenient_integer")]
+    pub instrument: Option<i64>,
 }
 
 /// An input device in a [`Devices`] listing.
@@ -355,7 +361,7 @@ impl MidiHost {
 
     /// Applies a request. Every device it names is resolved before anything changes, so a request
     /// that fails leaves the working configuration alone. Emits [`HostEvent::Configuration`].
-    pub fn configure(&self, request: &DeviceRequest) -> Result<Devices, MidiError> {
+    pub fn configure(&self, request: &ConfigureRequest) -> Result<Devices, MidiError> {
         let (devices, releases) = {
             let mut control = lock(&self.inner.control);
             if control.stopped {

@@ -186,7 +186,12 @@ impl IAttributeListTrait for Attributes {
         self.update(id, |slot| slot.binary = Some(bytes))
     }
 
-    unsafe fn getBinary(&self, id: IAttributeList_::AttrID, data: *mut *const c_void, size_in_bytes: *mut u32) -> tresult {
+    unsafe fn getBinary(
+        &self,
+        id: IAttributeList_::AttrID,
+        data: *mut *const c_void,
+        size_in_bytes: *mut u32,
+    ) -> tresult {
         if data.is_null() || size_in_bytes.is_null() {
             return kInvalidArgument;
         }
@@ -262,16 +267,12 @@ impl MemoryStream {
         self.position.set(0);
     }
 
-    pub fn len(&self) -> usize {
-        self.bytes.borrow().len()
+    pub fn is_empty(&self) -> bool {
+        self.bytes.borrow().is_empty()
     }
 
     pub fn take(&self) -> Vec<u8> {
         std::mem::take(&mut *self.bytes.borrow_mut())
-    }
-
-    pub fn contents(&self) -> Vec<u8> {
-        self.bytes.borrow().clone()
     }
 }
 

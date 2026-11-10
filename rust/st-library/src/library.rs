@@ -10,7 +10,7 @@ use crate::nks::artwork::NksArtwork;
 use crate::nks::catalog::{Extra, NksBrowseResponse, NksCatalog, NksStatus};
 use crate::nks::{NksHostPreset, NksMetadata};
 use crate::search::{self, SearchCache, Snapshot};
-use crate::util::{self, extension, file_name, is_directory, is_inside, lock, modified_seconds, normalized, Worker};
+use crate::util::{self, extension, is_directory, is_inside, lock, modified_seconds, normalized, Worker};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fs;
@@ -1577,11 +1577,6 @@ fn header_duration(item: &Item) -> Option<f64> {
     unchanged().then_some(duration)
 }
 
-#[allow(dead_code)]
-fn root_name(path: &str) -> &str {
-    file_name(path)
-}
-
 #[cfg(test)]
 impl Library {
     /// Records a header length as the worker would (tests of interleaved edits).
@@ -1671,6 +1666,12 @@ mod tests {
         drop(release);
         drop(library);
         let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn the_service_is_shareable_between_threads() {
+        fn shareable<T: Send + Sync + 'static>() {}
+        shareable::<Library>();
     }
 
     #[test]

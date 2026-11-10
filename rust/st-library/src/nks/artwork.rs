@@ -55,7 +55,7 @@ fn variant_files(variant: &str) -> Option<&'static [&'static str]> {
 struct Index {
     /// folded name -> relative folder
     single: HashMap<String, String>,
-    /// folded "parent<US>child" -> relative folder
+    /// folded `parent\u{1f}child` -> relative folder
     pairs: HashMap<String, String>,
     /// relative folder -> folded vendor from its .meta
     vendors: HashMap<String, String>,
@@ -70,8 +70,11 @@ pub struct NksArtwork {
     root: PathBuf,
     index: Mutex<Option<Arc<Index>>>,
     matches: Mutex<HashMap<String, ArtMatch>>,
-    images: Mutex<(HashMap<String, Arc<str>>, Vec<String>)>,
+    images: Mutex<ImageCache>,
 }
+
+/// Data URLs by variant and key, and the order they were added in.
+type ImageCache = (HashMap<String, Arc<str>>, Vec<String>);
 
 /// The standard location of "NI Resources", where the platform has one.
 pub fn default_root() -> Option<PathBuf> {

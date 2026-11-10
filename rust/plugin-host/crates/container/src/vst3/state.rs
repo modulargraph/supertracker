@@ -102,7 +102,9 @@ mod tests {
     #[test]
     fn refuses_foreign_newer_and_damaged_blobs() {
         let blob = encode(CLASS, b"component", Some(b"ctrl"));
-        assert!(decode([1, 2, 3, 4], &blob).unwrap_err().contains("another plug-in (VST3 class 535456334761696E50726F6300000001)"));
+        assert!(decode([1, 2, 3, 4], &blob)
+            .unwrap_err()
+            .contains("another plug-in (VST3 class 535456334761696E50726F6300000001)"));
         for cut in 0..blob.len() {
             assert!(decode(CLASS, &blob[..cut]).is_err(), "cut at {cut}");
         }

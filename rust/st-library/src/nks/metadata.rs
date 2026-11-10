@@ -315,7 +315,8 @@ impl NksMetadata {
             if chunk == "PCHK" {
                 has_plugin_state = has_plugin_state || length > 0;
             } else if ["NISI", "NICA", "PLID"].contains(&chunk.as_str()) {
-                if parsed.contains_key(&chunk) {
+                let duplicate = parsed.contains_key(&chunk);
+                if duplicate {
                     warnings.push(format!("Duplicate {chunk} metadata was ignored."));
                 } else if length > (METADATA_LIMIT - metadata_bytes) as u64 {
                     warnings.push(format!("The {chunk} chunk exceeds the 8 MiB metadata budget and was skipped."));
@@ -330,9 +331,7 @@ impl NksMetadata {
                         }
                     }
                     match decode_map(content) {
-                        Ok(fields) => {
-                            parsed.insert(chunk, fields);
-                        }
+                        Ok(fields) => drop(parsed.insert(chunk, fields)),
                         Err(error) => warnings.push(format!("Could not read {chunk}: {error}")),
                     }
                 }
@@ -425,7 +424,8 @@ pub fn catalog_summary(path: &str) -> Result<CatalogSummary> {
     }
     let riff_end = file_size.min(u64::from(little32(&header, 4)) + 8);
     let (mut offset, mut chunks, mut has_controls) = (12u64, 0, false);
-    let (mut info, mut plugin): (Option<Map<String, Value>>, Option<Map<String, Value>>) = (None, None);
+    let mut info: Option<Map<String, Value>> = None;
+    let mut plugin: Option<Map<String, Value>> = None;
     while offset + 8 <= riff_end && chunks < 4096 && (info.is_none() || plugin.is_none() || !has_controls) {
         chunks += 1;
         let chunk_header = read_exact_at(&mut file, offset, 8, TRUNCATED)?;

@@ -52,11 +52,14 @@ use objc2_foundation::{NSNotification, NSPoint, NSRect, NSSize, NSString};
 /// Content size of a new window until the owner sets one.
 const INITIAL_SIZE: (f64, f64) = (480.0, 320.0);
 
+type CloseCallback = Box<dyn FnMut()>;
+type ResizeCallback = Box<dyn FnMut(f64, f64)>;
+
 struct Shared {
     window: RefCell<Option<Retained<NSWindow>>>,
     content: RefCell<Option<Retained<NSView>>>,
-    on_close: RefCell<Option<Box<dyn FnMut()>>>,
-    on_resize: RefCell<Option<Box<dyn FnMut(f64, f64)>>>,
+    on_close: RefCell<Option<CloseCallback>>,
+    on_resize: RefCell<Option<ResizeCallback>>,
     /// Bumped whenever `on_resize` is replaced, so a running callback is not put back.
     resize_generation: Cell<u64>,
     /// Closed by the user or by the owner: no callback fires any more.
