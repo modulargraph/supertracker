@@ -140,24 +140,24 @@ impl Fx {
     pub fn process(&mut self, left: &mut [f32], right: &mut [f32], sidechain: Sidechain) -> bool {
         assert_eq!(left.len(), right.len());
         let frames = left.len() as u32;
+        // The main pointers first: the aliasing sidechain form is derived from them.
+        let (main_left, main_right) = (left.as_mut_ptr(), right.as_mut_ptr());
         let (side_left, side_right) = match sidechain {
             Sidechain::None => (std::ptr::null(), std::ptr::null()),
             Sidechain::Left(l) => {
-                assert!(l.len() >= left.len());
+                assert!(l.len() >= frames as usize);
                 (l.as_ptr(), std::ptr::null())
             }
             Sidechain::Both(l, r) => {
-                assert!(l.len() >= left.len() && r.len() >= left.len());
+                assert!(l.len() >= frames as usize && r.len() >= frames as usize);
                 (l.as_ptr(), r.as_ptr())
             }
-            Sidechain::MainInput => (left.as_ptr(), right.as_ptr()),
+            Sidechain::MainInput => (main_left as *const f32, main_right as *const f32),
         };
         // SAFETY: a live handle whose render owner is `&mut self`; the buffers are valid for
         // `frames` samples. The function copies the sidechain before it writes the outputs,
         // which is what makes the aliasing `MainInput` form part of its contract.
-        unsafe {
-            st_builtin_effect_process(self.raw, left.as_mut_ptr(), right.as_mut_ptr(), side_left, side_right, frames) == 1
-        }
+        unsafe { st_builtin_effect_process(self.raw, main_left, main_right, side_left, side_right, frames) == 1 }
     }
 }
 
