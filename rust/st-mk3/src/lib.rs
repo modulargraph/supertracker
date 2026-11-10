@@ -86,5 +86,5 @@ mod screens;
 mod service;
 pub mod transport;
 
-pub use driver::{DriverCallbacks, DriverOptions, DriverStatus, Mk3Driver};
+pub use driver::{DriverCallbacks, DriverOptions, DriverStatus, Mk3Driver, RawReportCallback};
 pub use service::{Configure, Connect, Error, EventCallback, LedsResult, Mk3Options, Mk3Service, Mk3Settings, SaveSettings, ScreenResult, Status, StatusRequest};

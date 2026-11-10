@@ -108,9 +108,11 @@
 //! | [`settings`] | the settings file |
 //! | [`dialogs`] | the file chooser trait, and scripted answers for tests |
 //! | [`app`] | `ready`, `app.external`, the quit handshake, and [`install`] |
+//! | [`areas`] | the commands of the other crates: [`areas::audio`] (engine, mixer, transport, devices) |
 //! | [`testing`] | [`testing::TestHost`] for testing commands as the interface would call them |
 
 pub mod app;
+pub mod areas;
 pub mod bridge;
 pub mod catalog;
 pub mod commands;

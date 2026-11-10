@@ -242,7 +242,11 @@ fn test_legacy_fractional_preroll_and_stopped_origin() {
     assert!(after_zero.context.bar == 1 && after_zero.context.beat > 0.0);
     let negative_bar = prepared_span_at(&mut engine, 4096, 1024, 6000);
     assert!(negative_bar.frames == 775 && negative_bar.context.next_boundary_frame == 4871);
-    assert!(negative_bar.context.bar == -1 && negative_bar.context.bar_start_beat == -3.0 && negative_bar.context.bar_end_beat == -1.5);
+    assert!(
+        negative_bar.context.bar == -1
+            && negative_bar.context.bar_start_beat == -3.0
+            && negative_bar.context.bar_end_beat == -1.5
+    );
     let mut notes: Vec<Note> = Vec::new();
     drain_notes(&mut engine, 4096, &mut notes);
     expect_frames(&notes, ST_EVENT_NOTE_ON, &[4096]);
@@ -308,7 +312,11 @@ fn test_legacy_fractional_song_boundary_partitioning() {
         let before = prepared_span_at(&mut engine, BOUNDARY - 1, 256, 0);
         assert!(before.frames == 1 && (before.context.flags & ST_CLOCK_PLAYING) != 0);
         assert!(before.context.next_boundary_frame == BOUNDARY);
-        assert!(before.context.next_boundary_kinds & (if looping != 0 { ST_CLOCK_BOUNDARY_LOOP } else { ST_CLOCK_BOUNDARY_DOMAIN }) != 0);
+        assert!(
+            before.context.next_boundary_kinds
+                & (if looping != 0 { ST_CLOCK_BOUNDARY_LOOP } else { ST_CLOCK_BOUNDARY_DOMAIN })
+                != 0
+        );
         let after = prepared_span_at(&mut engine, BOUNDARY, 256, 0);
         assert!(after.frames > 0 && ((after.context.flags & ST_CLOCK_PLAYING) != 0) == (looping != 0));
         assert!(after.context.epoch != before.context.epoch);

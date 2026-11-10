@@ -5,7 +5,7 @@
 //! started again afterwards. What was stopped is written to a file first, so that a crash in
 //! between still leads to their restoration at the next launch.
 //!
-//! The process control itself ([`NiAgents`]) exists on macOS only; the parsing it relies on is
+//! The process control itself (`NiAgents`) exists on macOS only; the parsing it relies on is
 //! plain text handling and is tested everywhere.
 
 use std::path::{Path, PathBuf};

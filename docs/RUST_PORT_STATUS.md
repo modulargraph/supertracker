@@ -12,7 +12,8 @@ runs today, how to run and test it, and every bridge command with the crate that
 | Settings file | `st-host` | done |
 | `--serve`: HTTP + WebSocket on 127.0.0.1 | `st-app` | done, tested end to end in Chromium |
 | Window: tao + wry + muda, menus, native context menus, file choosers, quit handshake | `st-app` | runs on Linux (GTK/WebKitGTK, checked in a virtual display); macOS code type-checks, **not yet run on a Mac** |
-| Audio engine, sample files, plug-ins, library, MIDI, Maschine MK3, AI control | `st-audio` (with `st-samples`), `st-plugin-*`, `st-library`, `st-midi`, `st-mk3`, `st-agent` | no commands registered in the host yet: they answer "not implemented" |
+| Audio playback core: project to engine, the mixer graph (strips, inserts with built-in effects, sends, sidechains, buses, master, delay compensation, automation, meters), transport, live notes, devices (cpal and the null device), offline render | `st-audio` on `tracker-engine`, registered in `st-host` (`areas/audio.rs`) | done, tested on Linux (offline renders, allocation-free render path, null device, Chromium end to end); CoreAudio only type-checked |
+| Sample commands, recording and line inputs, export / bounce / freeze / render selection, plug-in instances, library, MIDI devices, Maschine MK3, AI control | `st-audio` (with `st-samples`), `st-plugin-*`, `st-library`, `st-midi`, `st-mk3`, `st-agent` | no commands registered in the host yet: they answer "not implemented" |
 
 The interface (`Resources/Web`) reaches its host through `host-transport.js`. It no longer talks to
 the Swift host: the page does not use `window.webkit.messageHandlers` and does not define
@@ -29,27 +30,33 @@ target/debug/supertracker --serve          # no window: prints http://127.0.0.1:
 target/debug/supertracker --help
 ```
 
-Linux build packages (Ubuntu 24.04): `libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config` (and a C
-toolchain). To run the window without a display: `xvfb`; the window smoke test also needs `xdotool`.
+Linux build packages (Ubuntu 24.04): `libgtk-3-dev libwebkit2gtk-4.1-dev libasound2-dev pkg-config`
+(and a C toolchain; `libasound2-dev` is for `cpal`, the audio device layer of `st-audio`). To run the
+window without a display: `xvfb`; the window smoke test also needs `xdotool`.
 
 Type-checking the macOS code from Linux (no SDK needed; one dependency compiles a small Objective-C
 file, for which clang must be named):
 
 ```sh
-cargo check -p st-host --target aarch64-apple-darwin
+cargo check -p st-audio -p st-host --target aarch64-apple-darwin
 CC_aarch64_apple_darwin=clang cargo check -p st-app --target aarch64-apple-darwin
 ```
 
 Environment: `SUPERTRACKER_SUPPORT_DIR` (absolute path) replaces the support folder
 (`~/Library/Application Support/SuperTracker`, `$XDG_DATA_HOME/SuperTracker` or
 `~/.local/share/SuperTracker`); `SUPERTRACKER_UI_DIR` is `--ui`; `SUPERTRACKER_DIALOG_ANSWERS` is
-`--dialog-answers`; `SUPERTRACKER_TRACE=1` logs every request and its outcome to standard error.
+`--dialog-answers`; `SUPERTRACKER_TRACE=1` logs every request and its outcome to standard error;
+`SUPERTRACKER_AUDIO_DEVICE=null` makes the host render to the null audio device whatever is connected
+and whatever the settings say (tests, servers). Without it the host uses the output chosen in
+Settings, else the system's default output, and the null device while none is connected.
 
 ### Tests
 
 | What | How |
 |---|---|
-| Bridge guarantees, session and settings commands, catalogue | `cargo test -p st-host` |
+| Bridge guarantees, session and settings commands, catalogue; the audio commands on the null device (`tests/audio.rs`) | `cargo test -p st-host` |
+| The audio core: unit tests, offline renders against the mixer's rules (`tests/offline.rs`), the demo song, transport, devices (`tests/playback.rs`), no allocation on the render path (`tests/realtime.rs`) | `cargo test -p st-audio` |
+| Render cost of the demo song and of a 64-track project | `cargo run --release -p st-audio --example bench` |
 | Command line, WebSocket framing, file serving, menus, window helpers | `cargo test -p st-app` |
 | The page's bridge, transport and quit handshake | `node tests/host_transport_tests.js`, `node tests/host_quit_tests.js`, and every `tests/*_tests.js` (they play the host through `tests/helpers/host.js`) |
 | The real page against the real host, in Chromium | `node tests/host_e2e/run.js` ([README](../tests/host_e2e/README.md)) |
@@ -79,7 +86,10 @@ bridge.commands().with(&service)
   `library.roots`, `plugins.list`, `audio.devices`, `midi.devices` and `plugins.recovery`, and how
   `project.save` captures plug-in state (`engine.snapshot`). Registering those commands is all an area
   has to do to appear there.
-- The audio engine attaches to project publications with `Session::attach_audio` (`ProjectAudio`).
+- The audio engine attaches to project publications with `Session::attach_audio` (`ProjectAudio`);
+  `st_host::areas::audio` does (the engine is `Host::audio`, for the areas that build on it:
+  samples through `st_audio::SampleSource`, plug-in inserts through `st_audio::graph::insert::InsertFactory`,
+  export and freeze through `AudioEngine::render_offline`).
 - `st_host::testing::TestHost` runs commands as the page would, for each area's tests.
 - After adding or finishing a command, change its entry in `rust/st-host/src/catalog_table.rs` and
   run `UPDATE_PORT_STATUS=1 cargo test -p st-host --test port_status`, which rewrites the tables
@@ -130,16 +140,16 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the Swif
 <!-- commands:begin (generated from rust/st-host/src/catalog_table.rs; see rust/st-host/tests/port_status.rs) -->
 | Crate | Commands | Implemented | Partial | Not yet |
 |---|---:|---:|---:|---:|
-| `st-host` | 15 | 11 | 4 | 0 |
+| `st-host` | 15 | 12 | 3 | 0 |
 | `st-app` | 2 | 2 | 0 | 0 |
 | `st-project` | 9 | 9 | 0 | 0 |
-| `st-audio` | 56 | 0 | 0 | 56 |
+| `st-audio` | 56 | 13 | 4 | 39 |
 | `st-plugin-*` | 4 | 0 | 0 | 4 |
 | `st-library` | 21 | 0 | 0 | 21 |
 | `st-midi` | 4 | 0 | 0 | 4 |
 | `st-mk3` | 6 | 0 | 0 | 6 |
 | `st-agent` | 2 | 0 | 0 | 2 |
-| **all** | **119** | **22** | **4** | **93** |
+| **all** | **119** | **36** | **7** | **76** |
 
 ### `st-host`
 
@@ -149,7 +159,7 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the Swif
 | `app.quitAnswer` | `{state: "deciding" or "stay" or "proceed", reason?, project?, force?}` | {} or {quitting: true} | implemented | New in the Rust host: the page's answer to the app.quitRequested event (st_host::Lifecycle). |
 | `dialog.export` | `{mode?: "stems", name?}` | {path} or {path, mode: "stems"} or {cancelled: true} | implemented | Stems: choose a folder; a new "<name> stems" folder is reserved in it. |
 | `dialog.openSample` | `{}` | {path} or {cancelled: true} | implemented | Open panel for audio files. |
-| `engine.project` | `{project, replace?, forcePluginState?, awaitPlugins?}` | {audio: false} without an audio engine; the engine's status with one | partial | The session part is done (validation, dirty flag, st-project session). The audio graph is st-audio's: implement st_host::ProjectAudio and Session::attach_audio. |
+| `engine.project` | `{project, replace?, forcePluginState?, awaitPlugins?}` | the status (as in status events); {audio: false} in a host without an audio engine | implemented | Validation, dirty flag and the st-project session (st-host), then the engine and the mixer through st_host::ProjectAudio (st-audio): unchanged patterns are not sent again, and a mixer that did not change is not recompiled. Samples that cannot be loaded are reported in sample.error events. |
 | `library.chooseRoot` | `{}` | library.scan result, or {cancelled: true} | partial | The folder chooser is done; the scan it starts is library.scan (st-library), so it fails with that command's "not implemented" until then. |
 | `project.autosave` | `{project?}` | {saved: true} or {saved: false, deferred: true} | implemented | Recovery copy; deferred while a save or session change is in flight. The host also writes it every 20 s. |
 | `project.media.chooseRoot` | `{}` | {path} or {cancelled: true} | implemented | Folder chooser. |
@@ -188,8 +198,8 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the Swif
 |---|---|---|---|---|
 | `audio.bounceTrack` | `{track, path?, format fields of audio.export}` | {path, clip: {id, name, path, track, startBeat, durationBeats, …}, sourceTrack, sourceTrackIndex, duration} | not yet | Offline render of one track to a file (default: Renders folder in the support directory). |
 | `audio.clipInfo` | `{path}` | sample info: {path, frames, sampleRate, channels, duration, peaks…} | not yet | Decodes an audio clip's file once and caches its metadata. File work in st-samples (decode_file, DecodedSample::info). |
-| `audio.configure` | `{output?, outputDevice?, input?, inputDevice?, inputChannels?, bufferSize?, monitor?, inputMeter?}` | audio.devices result | not yet | Selects devices and buffer size; the choice was remembered in audio-devices.json (settings section audio.devices). |
-| `audio.devices` | `{}` | {inputs: [...], outputs: [...], current selection, sampleRate, bufferSize, …} | not yet | Part of the ready handshake (`audio`). |
+| `audio.configure` | `{output?, outputDevice?, outputSystemDefault?, bufferSize?, sampleRate?, input?, inputDevice?, inputChannels?, monitor?, inputMeter?}` | audio.devices result | partial | Selects the output (by id, by uid in `output`, or outputSystemDefault), the buffer size and the sample rate; remembered in the settings section audio.devices. A device that cannot be opened leaves the null device running (fallback: true, deviceError). Input fields (input, inputDevice, inputChannels, monitor, inputMeter) are ignored until recording is ported. |
+| `audio.devices` | `{}` | {devices, inputs, outputs: [{id, uid, name, inputChannels, outputChannels, sampleRate, bufferSize}], defaultInput, defaultOutput, outputDevice, outputUid, sampleRate, bufferSize, bufferSizes, running, fallback, deviceError?, …} | implemented | Part of the ready handshake (`audio`). Devices come from cpal; the null device (id 0, uid "null") is always among the outputs and is what runs while no output is connected. Also sent as an event when the output changes by itself. |
 | `audio.export` | `{path, mode: "mix" or "stems" or "track", owners?, tail?, format fields (sampleRate, bitDepth, …)}` | {path or paths, duration, …}; progress in audio.exportProgress events | not yet | Offline render through the same graph; Stop cancels it. |
 | `audio.inputs` | `{inputs?: [...], input?, track?}` | line input configuration and status | not yet | Same handler as audio.inputs.configure. |
 | `audio.inputs.configure` | `{inputs?: [...], input?, track?}` | line input configuration and status | not yet | Live line inputs routed into tracks. |
@@ -198,16 +208,16 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the Swif
 | `audio.renderDiagnostics` | `{}` | {units, inputCapture, renderClock, heartbeat, sampleRates, …} | not yet | Not sent by the page: diagnostics for tests and the agent. |
 | `audio.stopRecord` | `{}` | {path, duration, …} of the recorded file | not yet | Ends audio.record. |
 | `builtin.drumModels` | `{}` | [{id, name, parameters…}] | not yet | Not sent by the page today. Metadata of the built-in drum models (tracker-engine). |
-| `builtin.effects` | `{}` | [{id, name, parameters: [...]}] | not yet | Metadata of the built-in effects (tracker-engine). |
-| `engine.instrumentParameter` | `{instrument, target, value}` | {ok: bool} | not yet | Live change of one built-in instrument parameter (cutoff, resonance, automation targets). |
-| `engine.panic` | `{}` | transport status | not yet | All sound off, including plug-ins and the preview player. project.new calls it when present. |
-| `engine.snapshot` | `{}` | the project as the engine holds it, with audioPlugins: [{…, state}] captured now | not yet | project.save, project.autosave and the page's capture use it for plug-in state; a plug-in that cannot be captured carries stateError. |
+| `builtin.effects` | `{}` | [{id: "stfx:<effect>", name, category, sidechain, parameters: [{address, id, name, unit, min, max, defaultValue, logarithmic, integer, toggle, labels}]}] | implemented | Metadata of the built-in effects (tracker-engine); a parameter's index is its address. |
+| `engine.instrumentParameter` | `{instrument, target, value}` | {ok: bool} | implemented | Live change of one built-in instrument parameter (cutoff, resonance, automation targets). |
+| `engine.panic` | `{}` | transport status | implemented | All sound off: voices, effect tails, held sustain. project.new calls it when present. |
+| `engine.snapshot` | `{}` | the project as the engine holds it, with audioPlugins: [{…, state}] captured now | partial | The published project with the state of built-in effects captured (base64 JSON, format SuperTracker.BuiltinFX). Plug-in instances are not hosted yet: their descriptors keep the state they carry. |
 | `freeze.status` | `{}` | {tracks: [{track, state, stale?, …}]} | not yet | Freeze state of every track. |
 | `freeze.track` | `{track, tail?, maxTail?, method?, patterns?, monitor?}` | {project or track freeze record, media: [...]}; progress in freeze.progress events | not yet | Long: the page sends it with ST.longRequest (no time limit). |
 | `freeze.unfreeze` | `{track}` | {track, project?} | not yet | Long, like freeze.track. |
-| `midi.expression` | `{kind: pitch bend, controller, aftertouch or sustain; track, note?, controller?, value}` | {ok: true} | not yet | Expression for held notes, to the engine or the track's plug-in. |
-| `note.off` | `{note, track?, instrument?, applyNote?, captureInput?, …}` | {ok: true, sustained?} \| | not yet |  |
-| `note.on` | `{note, velocity?, track?, instrument?, captureInput?, …}` | {ok: true} | not yet | Quick command: order with note.off matters. |
+| `midi.expression` | `{kind: pitch bend, controller, aftertouch or sustain; track, note?, controller?, value}` | {sent: bool, track, instrument} | partial | Reaches the engine: pitch bend (value -1..1 is ±2 semitones), the mod wheel (cc 1) and sustain (cc 64 or kind sustain). Other controllers and aftertouch answer sent: false until plug-in instruments and MIDI outputs exist. |
+| `note.off` | `{note, track?, instrument?, applyNote?, captureInput?, …}` | {ok: true, sustained?, inputAcknowledgement?} | implemented | With captureInput the reply waits for the audio thread and carries inputAcknowledgement. A held sustain pedal defers the release (sustained: true). |
+| `note.on` | `{note, velocity?, track?, instrument?, captureInput?, …}` | {ok: true, inputAcknowledgement?} | implemented | Quick command: order with note.off matters. With captureInput (and inputOwner) the reply waits for the audio thread and carries inputAcknowledgement {status, applied, pattern, row, sequence, recordingClock?, …}. |
 | `plugin.captureBasePatch` | `{owner or track, kind, slot, instanceID?}` | the plug-in descriptor with its new base patch | not yet | Only while stopped. |
 | `plugin.editor` | `{owner or track, kind, slot, instanceID?, open?}` | {open: bool, …} | not yet | Opens the plug-in's own window (in its container process). |
 | `plugin.load` | `{owner or track, kind: "instrument" or "effect", slot, id/component, state?, …}` | the loaded plug-in's descriptor {instanceID, name, kind, owner, slot, parameters…} | not yet | Long. The instance lives in a container (st-plugin-*). |
@@ -222,7 +232,7 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the Swif
 | `render.selection` | `{tracks, startBeat, endBeat or rows, tail?, destination…}` | {path, clip or sample, duration}; progress in render.selectionProgress events | not yet | Long: sent with ST.longRequest. |
 | `routing.apply` | `{project}` | {project, routing, status} | not yet | Validates and applies a routing change with the complete project. |
 | `routing.capabilities` | `{}` | {maxBuses, sidechain support, …, audioExport: formats} \| | not yet |  |
-| `routing.status` | `{}` | {projectUnavailable?: bool, failure?, strips…} | not yet | The page's capture asks for it after a failed publication. |
+| `routing.status` | `{}` | {projectUnavailable?: bool, failure?, strips…} | partial | The compiled mixer: {standard, strips, inserts: [{owner, slot, instanceID, component, available, reason?, latencyFrames}], unavailableSidechains, latencyFrames}. A project the mixer cannot render is refused at publication, so projectUnavailable is always false and failure null. |
 | `routing.validate` | `{project}` | validation report {valid, errors, latency…} \| | not yet |  |
 | `sample.analyzeSlices` | `{instrument, path?, sensitivity…}` | {slices: [frame], …} | not yet | Transient detection; up to 180 s. File work in st-samples (analyze_slices). |
 | `sample.edit` | `{instrument, path?, operation, start, end, …}` | sample info of the edited sample | not yet | Writes edits into the support folder's Edits directory. File work in st-samples (edit_to_file). |
@@ -235,13 +245,13 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the Swif
 | `sample.stopPreview` | `{}` | {playing: false} \| | not yet |  |
 | `sample.wavetables` | `{}` | [{name, path, frames…}] built-in wavetables \| | not yet | From st-samples (builtin::wavetable_list). |
 | `sampler.playheads` | `{enabled: bool, instrument?}` | {ok: true, watching: instrument}; positions in sampler.playheads events (30 per second, emit_latest) \| | not yet |  |
-| `step.preview` | `{step: {note, instrument, velocity, chord?…}, track?, duration?}` | {auditioning: bool} | not yet | Audition of one tracker step. |
-| `transport.loop` | `{loop: {start, end} or null}` | transport status \| | not yet |  |
-| `transport.play` | `{mode?: "pattern" or "song", songMode?, fromStart?, loop?, countIn?}` | transport status; then status events (emit_latest) | not yet | Waits for the project's assets; superseded by a newer transport command. |
-| `transport.queue` | `{pattern?, sequence?, mode?, clear?}` | {queued, pattern, sequence, mode?} | not yet | Queues a jump at the next boundary. |
-| `transport.recordArm` | `{armed: bool}` | {armed} | not yet | project.new and project.open disarm through it when present. |
-| `transport.seek` | `{pattern?, row?, sequence?}` | transport status \| | not yet |  |
-| `transport.stop` | `{}` | transport status | not yet | Also cancels a running export. |
+| `step.preview` | `{step: {note, instrument, velocity, chord?…}, track?, duration?}` | {auditioning: bool} | implemented | Audition of one tracker step. |
+| `transport.loop` | `{loop: {start, end} or null} (or the range itself)` | transport status \| | implemented | Pattern-mode row loop; anything that is not a range clears it. |
+| `transport.play` | `{mode?: "pattern" or "song", songMode?, fromStart?, loop?, countIn?}` | transport status | implemented | mode "pattern" or songMode: false plays the active pattern; loop is a row range for Pattern mode; countIn is bars (0..4). Then status events, 20 per second (emit_latest). |
+| `transport.queue` | `{pattern?, sequence?, mode?, clear?}` | {queued, pattern, sequence, mode?} | implemented | Queues a jump at the next boundary. |
+| `transport.recordArm` | `{armed: bool}` | {armed} | implemented | The engine stamps input acknowledgements with the armed state. project.new and project.open disarm through it when present. |
+| `transport.seek` | `{pattern?, row?, sequence?}` | transport status \| | implemented |  |
+| `transport.stop` | `{}` | transport status | implemented | Stops the transport. (Cancelling an export belongs to audio.export.) |
 
 ### `st-plugin-*`
 
@@ -318,7 +328,8 @@ Events the page handles today, and who will emit them.
 | `project.openRequested` `{path}` | `st-host`: the system asked to open a project file |
 | `project.media.progress` | `st-host` (`st-project` search) |
 | `error` `{message}` | any area; `st-host` uses it for a failed recovery save |
-| `status`, `transport.status` (use `emit_latest`), `sampler.playheads` (`emit_latest`), `audio.latency`, `audio.recording`, `audio.exportProgress`, `audio.clipLoaded`, `audio.clipsLoaded`, `audio.clipError`, `sample.loaded`, `sample.error`, `sample.previewEnded`, `sample.preview.stopped`, `freeze.progress`, `render.selectionProgress`, `routing.changed`, `routing.error`, `plugin.changed`, `plugin.error`, `plugins.changed`, `audioPlugins.changed` | `st-audio` |
+| `status` (sent 20 times a second with `emit_latest`), `audio.devices` (the output changed by itself), `sample.error` (a sample of the published project could not be loaded) | `st-audio`: sent today |
+| `transport.status`, `sampler.playheads` (`emit_latest`), `audio.latency`, `audio.recording`, `audio.exportProgress`, `audio.clipLoaded`, `audio.clipsLoaded`, `audio.clipError`, `sample.loaded`, `sample.previewEnded`, `sample.preview.stopped`, `freeze.progress`, `render.selectionProgress`, `routing.changed`, `routing.error`, `plugin.changed`, `plugin.error`, `plugins.changed`, `audioPlugins.changed` | `st-audio`: not sent yet |
 | `plugins.catalogue` | `st-plugin-*` (scan progress) |
 | `library.progress`, `library.results`, `library.metadata`, `library.favorite`, `library.error`, `library.kits.progress`, `library.nks.progress` | `st-library` |
 | `midi.note`, `midi.message`, `midi.status` | `st-midi` |
@@ -335,7 +346,7 @@ which are not read (no migration):
 |---|---|---|
 | `window` | `st-app` (size, position, maximised) | the window frame autosave in UserDefaults (`SuperTrackerMain`) |
 | `interface` | the page, through `settings.get` / `settings.set` | (new; the page still uses `localStorage`, which a `--serve` page loses with each new port) |
-| `audio.devices` | `st-audio` | `audio-devices.json` |
+| `audio.devices` | `st-audio` (`{output: uid, absent for the system default; bufferSize; sampleRate}`) | `audio-devices.json` |
 | `midi.clock` | `st-midi` | `midi-clock.json` |
 | `mk3` | `st-mk3` | `maschine-mk3.json` (`{enabled}`) |
 | `agent` | `st-agent` | `ai-control.json` |
@@ -348,16 +359,22 @@ which are not read (no migration):
 
 Exercised on Linux (Ubuntu 24.04, x86-64):
 
-- `cargo test -p st-host -p st-app`.
+- `cargo test -p st-host -p st-app -p st-audio`. The audio tests render offline or on the null device;
+  the container has no sound card, so no `cpal` output stream has been opened anywhere yet (device
+  listing, the fallback to the null device and the refusal of an unknown device are exercised).
 - `tests/host_e2e/run.js`: Chromium against `supertracker --serve` (boot against the real host, save
   through a scripted Save chooser, reload, New, open through a scripted Open chooser, unimplemented
-  commands, token and origin checks, clean quit, session and settings restored by a second process).
+  commands, token and origin checks, clean quit, session and settings restored by a second process,
+  and audio: the demo song played from the page on the null device, a note edited while playing).
 - `tests/host_e2e/window_smoke.sh` under Xvfb: the GTK window with WebKitGTK loads the page from the
   custom scheme, the message channel works both ways, a menu shortcut reaches the page, a native
   context menu and the native file chooser open and are answered, Quit runs the handshake and exits 0.
 
 Not exercised anywhere yet:
 
+- **Audio on a real device**: `cpal` output streams (ALSA and CoreAudio), device loss and return,
+  and the restart of the engine at a device's sample rate have only run against the null device and
+  missing devices.
 - **Everything macOS**: the AppKit window (transparent title bar, full-size content), `window.titleBar`
   dragging, the application menu and its standard items, `rfd` panels and the alert for a hung page,
   context menus through `show_context_menu_for_nsview`, `Event::Opened` (files opened from Finder),
@@ -377,6 +394,12 @@ Known differences from the Swift host:
   the window has its own title bar and in a browser.
 - No migration of old project layouts (`st-project` refuses them with its own message), no Maschine
   group (`.mxgrp`) import, no VST2.
+- Audio: one mix model (every project is mixed as "standard" routing; a project without `routing` is
+  the same mixer without buses). The delay and reverb returns are the engine's own DSP run as mixer
+  returns, not Apple's delay and reverb units. Built-in effect state is base64 JSON
+  (`SuperTracker.BuiltinFX`), not a binary property list: states saved by the Swift host are refused
+  per effect and the effect starts from its defaults. Play does not wait for samples (they are
+  loaded when the project is published). See `cargo doc -p st-audio` for the design and the seams.
 - The self-test modes, the hidden UI script runner (`DevHarness.swift`) and the keyboard acceptance
   session of the Swift executable have no counterpart; the end-to-end tests above take their place
   for what is ported.

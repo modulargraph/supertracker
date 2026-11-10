@@ -66,6 +66,12 @@ fn render_counted(engine: &st_audio::AudioEngine, blocks: usize, frames: usize, 
 
 #[test]
 fn rendering_never_allocates_or_frees_even_across_project_and_plan_changes() {
+    // The counter itself works: an allocation made while armed is seen.
+    ARMED.with(|armed| armed.set(true));
+    drop(std::hint::black_box(vec![0u8; 64]));
+    ARMED.with(|armed| armed.set(false));
+    assert!(COUNTED.swap(0, Ordering::Relaxed) >= 2, "the counting allocator counts");
+
     let (mut left, mut right) = (vec![0.0f32; 4096], vec![0.0f32; 4096]);
     let engine = engine();
     let mut project: serde_json::Value = serde_json::from_str(include_str!("fixtures/demo_project.json")).unwrap();

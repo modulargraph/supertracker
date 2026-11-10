@@ -399,7 +399,7 @@ fn screen_rendering_diff_regions_and_packet_encoding() {
     ])));
     let next = renderer.framebuffer(PixelFormat::Rgb565);
     let region: Region = encode::dirty_region(Some(&frame), &next).expect("text changes pixels");
-    assert!(region.x % 4 == 0 && region.y % 2 == 0 && region.width % 4 == 0 && region.height % 2 == 0, "4 × 2 alignment: {region:?}");
+    assert!(region.x.is_multiple_of(4) && region.y.is_multiple_of(2) && region.width.is_multiple_of(4) && region.height.is_multiple_of(2), "4 × 2 alignment: {region:?}");
     assert!(region.x >= 296 && region.y >= 200 && region.x + region.width <= 480, "the region bounds the text: {region:?}");
     let partial = encode::packet(0, Some(&frame), &next).expect("a partial packet");
     let mut screen = frame.clone();

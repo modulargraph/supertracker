@@ -2536,7 +2536,9 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "st-audio",
  "st-project",
+ "st-samples",
 ]
 
 [[package]]

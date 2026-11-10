@@ -838,7 +838,7 @@ fn nav_led_offset(name: &str) -> Option<usize> {
 }
 
 /// Everything the controller's LEDs show. `mk3.leds` payloads change parts of it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct LedState {
     /// Button backlights by contract name, 0 to 1.
     pub buttons: BTreeMap<String, f64>,
@@ -850,12 +850,6 @@ pub struct LedState {
     pub strip: [Option<Rgb>; 25],
     /// The LEDs around the main encoder: `up`, `left`, `right`, `down`.
     pub nav: BTreeMap<String, Option<Rgb>>,
-}
-
-impl Default for LedState {
-    fn default() -> Self {
-        LedState { buttons: BTreeMap::new(), groups: [None; 8], pads: [None; 16], strip: [None; 25], nav: BTreeMap::new() }
-    }
 }
 
 impl LedState {

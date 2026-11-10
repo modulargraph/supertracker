@@ -23,7 +23,7 @@ pub(crate) struct HidCallbacks {
     /// Something to log.
     pub log: Box<dyn Fn(&str) + Send + Sync>,
     /// Every normalized input report, for diagnostics.
-    pub raw: Box<dyn Fn(&[u8]) + Send + Sync>,
+    pub raw: crate::driver::RawReportCallback,
 }
 
 /// Counters for `mk3.status {diagnostics: true}`.

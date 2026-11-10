@@ -8,7 +8,7 @@
 //! same inputs, expected values and tolerances; every test ends with the C++ program's final
 //! "zero render-thread allocations" check.
 // The index loops mirror the C++ loops they translate.
-#![allow(clippy::needless_range_loop)]
+#![allow(clippy::needless_range_loop, clippy::manual_is_multiple_of, clippy::type_complexity)]
 
 mod engine_support_a;
 
@@ -551,7 +551,14 @@ fn test_seek_status_revision() {
                 while !done.load(Ordering::SeqCst) {
                     let status = shared.status();
                     if status.transport_seek_revision > back.transport_seek_revision {
-                        assert!(status.row == if (status.transport_seek_revision - back.transport_seek_revision) % 2 != 0 { 5 } else { 2 });
+                        assert!(
+                            status.row
+                                == if (status.transport_seek_revision - back.transport_seek_revision) % 2 != 0 {
+                                    5
+                                } else {
+                                    2
+                                }
+                        );
                     }
                 }
             });

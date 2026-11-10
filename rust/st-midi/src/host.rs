@@ -97,29 +97,18 @@ fn lenient_integer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<
 pub struct ConfigureRequest {
     /// Receive MIDI input at all. Output does not depend on it.
     pub enabled: Option<bool>,
-    /// Connect exactly these inputs (an empty list: none).
+    /// Connect exactly these inputs, by device id or name (an empty list: none).
     #[serde(rename = "inputIDs")]
     pub input_ids: Option<Vec<Identifier>>,
-    /// The same as `inputIDs`, used when that is absent.
-    pub inputs: Option<Vec<Identifier>>,
     /// One input: `"all"`, `"none"` (or `null`), a device id or a device name.
     #[serde(rename = "inputID", deserialize_with = "nullable")]
     pub input_id: Option<Option<Identifier>>,
-    /// The same as `inputID`, used when that is absent.
-    #[serde(deserialize_with = "nullable")]
-    pub input: Option<Option<Identifier>>,
     /// The default output: `"none"` (or `null`), a device id or a device name.
     #[serde(rename = "outputID", deserialize_with = "nullable")]
     pub output_id: Option<Option<Identifier>>,
-    /// The same as `outputID`, used when that is absent.
-    #[serde(deserialize_with = "nullable")]
-    pub output: Option<Option<Identifier>>,
     /// The default output channel, 1 to 16.
     #[serde(deserialize_with = "lenient_integer")]
     pub channel: Option<i64>,
-    /// The same as `channel`, used when that is absent.
-    #[serde(deserialize_with = "lenient_integer")]
-    pub output_channel: Option<i64>,
     /// Receive only this channel (1 to 16), or all channels (0).
     #[serde(deserialize_with = "lenient_integer")]
     pub input_channel: Option<i64>,
@@ -165,10 +154,6 @@ pub struct OutputDevice {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Devices {
-    /// The inputs present (the same list as `inputs`).
-    pub sources: Vec<InputDevice>,
-    /// The outputs present (the same list as `outputs`).
-    pub destinations: Vec<OutputDevice>,
     /// The inputs present.
     pub inputs: Vec<InputDevice>,
     /// The outputs present.
@@ -371,19 +356,19 @@ impl MidiHost {
             let mut output = control.requested_output.clone();
             let enabled = request.enabled.unwrap_or(control.enabled);
             let (mut output_channel, mut input_channel) = (control.output_channel, control.input_channel);
-            if let Some(list) = request.input_ids.as_ref().or(request.inputs.as_ref()) {
+            if let Some(list) = &request.input_ids {
                 inputs = Some(list.iter().map(|identifier| identifier.0.clone()).collect());
-            } else if let Some(single) = request.input_id.as_ref().or(request.input.as_ref()) {
+            } else if let Some(single) = &request.input_id {
                 inputs = match single {
                     Some(identifier) if identifier.0.to_lowercase() == "all" => None,
                     Some(identifier) if !identifier.is_none() => Some(vec![identifier.0.clone()]),
                     _ => Some(Vec::new()),
                 };
             }
-            if let Some(single) = request.output_id.as_ref().or(request.output.as_ref()) {
+            if let Some(single) = &request.output_id {
                 output = single.as_ref().filter(|identifier| !identifier.is_none()).map(|identifier| identifier.0.clone());
             }
-            if let Some(channel) = request.channel.or(request.output_channel) {
+            if let Some(channel) = request.channel {
                 if !(1..=16).contains(&channel) {
                     return Err(MidiError::new("MIDI output channel must be between 1 and 16."));
                 }
@@ -592,8 +577,6 @@ fn snapshot(control: &Control) -> Devices {
         })
         .collect();
     Devices {
-        sources: inputs.clone(),
-        destinations: outputs.clone(),
         inputs,
         outputs,
         enabled: control.enabled,

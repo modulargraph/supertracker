@@ -61,6 +61,20 @@ pub fn list() -> SystemDevices {
     devices
 }
 
+/// A cheap look at whether the system can have an output at all, for the periodic check that
+/// brings a device back: on Linux, whether any sound card is registered (enumerating ALSA
+/// devices on a machine without one is slow and writes to standard error each time).
+pub fn may_have_outputs() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::fs::read_to_string("/proc/asound/cards").is_ok_and(|cards| cards.contains('['))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
+    }
+}
+
 /// The sample rate an output would run at when asked for `preferred`: that rate if the device
 /// supports it, else the device's own default.
 pub fn output_rate(uid: &str, preferred: f64) -> Result<f64, String> {

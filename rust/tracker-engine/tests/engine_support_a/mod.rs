@@ -2,14 +2,16 @@
 //! `tests/engine_timing_*.rs`: ports of the C++ programs `tests/engine_tests.cpp` and
 //! `tests/engine_timing_tests.cpp`.
 //!
-//! * [`Engine`]: an owned engine whose methods carry the names and argument order of the
+//! * `Engine`: an owned engine whose methods carry the names and argument order of the
 //!   `st_engine_*` functions the C++ tests called, implemented on the engine's safe Rust API
 //!   (`Control` / `Render` / `Shared` methods). No `extern "C"` function is used.
-//! * [`realtime`] and [`assert_zero_render_allocations`]: the C++ tests' replaced
-//!   `operator new` with its thread-local "render in progress" flag.
-//! * [`tone`]: `tests/engine_test_tone.hpp`.
-//! * [`core_helpers`], [`timing_helpers`]: the fixtures and helpers of the two C++ programs.
-#![allow(dead_code)]
+//! * `realtime` and `assert_zero_render_allocations`: the C++ tests' replaced `operator new`
+//!   with its thread-local "render in progress" flag.
+//! * `tone`: `tests/engine_test_tone.hpp`.
+//! * `core_helpers`, `timing_helpers`: the fixtures and helpers of the two C++ programs.
+//!
+//! Places where the safe API lacked something the C API had are marked `TODO(api)`.
+#![allow(dead_code, clippy::too_many_arguments)]
 
 pub mod core_helpers;
 pub mod timing_helpers;
@@ -22,9 +24,7 @@ use tracker_engine::engine::control::Control;
 use tracker_engine::engine::edits::Pcm;
 use tracker_engine::engine::state::{Render, Shared};
 use tracker_engine::engine::tables::CACHE_CAPACITY;
-use tracker_engine::engine::{
-    STEngine, STEvent, STInstrument, STStatus, STStep, STTrack, STTransportState,
-};
+use tracker_engine::engine::{STEngine, STEvent, STInstrument, STStatus, STStep, STTrack, STTransportState};
 
 // ---------------------------------------------------------------------------------------------
 // Allocation counting: the C++ tests' `operator new` with `thread_local bool realtime`.
@@ -39,38 +39,44 @@ thread_local! {
 /// its render-in-progress flag was set.
 static REALTIME_ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
 
+/// Blocks freed by any thread while its render-in-progress flag was set. The C++ tests replaced
+/// only `operator new` and so did not see these; the engine's contract ("never blocks, locks,
+/// allocates or frees") covers them, and the count is asserted as well.
+static REALTIME_FREES: AtomicU64 = AtomicU64::new(0);
+
 #[cfg(not(feature = "cxx-alloc"))]
 mod allocator {
-    use super::{REALTIME, REALTIME_ALLOCATIONS};
+    use super::{REALTIME, REALTIME_ALLOCATIONS, REALTIME_FREES};
     use std::alloc::{GlobalAlloc, Layout, System};
     use std::cell::Cell;
-    use std::sync::atomic::Ordering;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     pub struct CountingAllocator;
 
     #[inline]
-    fn note() {
+    fn note(counter: &AtomicU64) {
         // `try_with`: the allocator also runs while a thread's locals are being torn down.
         if REALTIME.try_with(Cell::get).unwrap_or(false) {
-            REALTIME_ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+            counter.fetch_add(1, Ordering::Relaxed);
         }
     }
 
     // SAFETY: defers to the system allocator; the bookkeeping never allocates.
     unsafe impl GlobalAlloc for CountingAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            note();
+            note(&REALTIME_ALLOCATIONS);
             unsafe { System.alloc(layout) }
         }
         unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-            note();
+            note(&REALTIME_ALLOCATIONS);
             unsafe { System.alloc_zeroed(layout) }
         }
         unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
-            note();
+            note(&REALTIME_ALLOCATIONS);
             unsafe { System.realloc(pointer, layout, size) }
         }
         unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+            note(&REALTIME_FREES);
             unsafe { System.dealloc(pointer, layout) }
         }
     }
@@ -94,12 +100,18 @@ pub fn realtime_allocations() -> u64 {
     REALTIME_ALLOCATIONS.load(Ordering::Relaxed)
 }
 
+/// Frees counted inside [`realtime`] sections so far, on every thread of this test binary.
+pub fn realtime_frees() -> u64 {
+    REALTIME_FREES.load(Ordering::Relaxed)
+}
+
 /// C++ `assert(realtimeAllocations.load()==0)` at the end of `main`. Every `#[test]` ends with
-/// it, so each suite fails on its own when a render-thread call allocated (the counter is
+/// it, so each suite fails on its own when a render-thread call allocated (the counters are
 /// process-wide, like the C++ one: once a render allocated, every later check fails too).
 #[track_caller]
 pub fn assert_zero_render_allocations() {
     assert_eq!(realtime_allocations(), 0, "a render-thread call allocated");
+    assert_eq!(realtime_frees(), 0, "a render-thread call freed memory");
 }
 
 /// Sets the flag when dropped. The multi-thread tests end their loops on such flags; setting

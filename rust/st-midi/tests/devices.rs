@@ -55,7 +55,7 @@ fn loopback_ids_parser_channels_and_output_bytes() {
     let (host, captured, events) = host_with(&ports, Some(vec![SOURCE])).unwrap();
     assert_eq!(ports.input_connections(99), 0, "an initial selection avoids subscribing to unrelated sources");
     let devices = host.configure(&request(json!({"inputIDs": [SOURCE], "outputID": DESTINATION}))).unwrap();
-    assert!(devices.sources.iter().any(|source| source.id == SOURCE && source.connected), "the source is discovered");
+    assert!(devices.inputs.iter().any(|source| source.id == SOURCE && source.connected), "the source is discovered");
     assert_eq!(devices.output_id, Some(DESTINATION));
     assert!(devices.outputs[0].selected);
     assert!(matches!(events.lock().unwrap().last(), Some(HostEvent::Configuration(_))));
@@ -97,7 +97,7 @@ fn loopback_ids_parser_channels_and_output_bytes() {
 
     assert_eq!(host.configure(&request(json!({"channel": 17}))).unwrap_err().to_string(), "MIDI output channel must be between 1 and 16.");
     assert_eq!(host.configure(&request(json!({"inputChannel": 17}))).unwrap_err().to_string(), "MIDI input channel must be 0 (all), or between 1 and 16.");
-    assert_eq!(host.configure(&request(json!({"outputChannel": "9"}))).unwrap().channel, 9);
+    assert_eq!(host.configure(&request(json!({"channel": "9"}))).unwrap().channel, 9, "digits in a string are a number");
     host.configure(&request(json!({"inputChannel": 0}))).unwrap();
     let before = captured.lock().unwrap().len();
     ports.feed(SOURCE, &[0x80, 60, 0, 0x80, 62, 0, 0x82, 66, 0, 0xB0, 64, 0, 0xB0, 123, 0, 0xB2, 123, 0]);
@@ -132,13 +132,13 @@ fn selection_by_name_all_none_and_refusals() {
     assert_eq!(devices.input_channel, 0);
     assert_eq!(devices.channel, 1);
 
-    assert_eq!(host.configure(&request(json!({"input": "pads"}))).unwrap().input_ids, [2], "names match without regard to case");
+    assert_eq!(host.configure(&request(json!({"inputID": "pads"}))).unwrap().input_ids, [2], "names match without regard to case");
     assert_eq!(host.configure(&request(json!({"inputID": "none"}))).unwrap().input_ids, Vec::<i32>::new());
     assert_eq!(host.configure(&request(json!({"inputID": "all"}))).unwrap().input_ids, [1, 2]);
     assert_eq!(host.configure(&request(json!({"inputID": null}))).unwrap().requested_input_ids, Some(vec![]), "null selects none");
-    assert_eq!(host.configure(&request(json!({"inputs": ["1", 2.0]}))).unwrap().input_ids, [1, 2]);
-    assert_eq!(host.configure(&request(json!({"output": "Synth"}))).unwrap().output_id, Some(3));
-    assert_eq!(host.configure(&request(json!({"output": "off"}))).unwrap().output_id, None);
+    assert_eq!(host.configure(&request(json!({"inputIDs": ["1", 2.0]}))).unwrap().input_ids, [1, 2]);
+    assert_eq!(host.configure(&request(json!({"outputID": "Synth"}))).unwrap().output_id, Some(3));
+    assert_eq!(host.configure(&request(json!({"outputID": "off"}))).unwrap().output_id, None);
     assert!(host.prepare_destination(None).is_none() && !host.send(Message::new(0x90, 1, 1), None), "no default output: nothing is sent");
 
     // A request that names a missing device changes nothing.
@@ -155,8 +155,6 @@ fn selection_by_name_all_none_and_refusals() {
     let listing = serde_json::to_value(host.devices()).unwrap();
     assert_eq!(listing["inputs"][1], json!({"id": 2, "name": "Pads", "manufacturer": "Memory", "offline": false, "connected": true}));
     assert_eq!(listing["outputs"][0], json!({"id": 3, "name": "Synth", "manufacturer": "Memory", "offline": false, "selected": false}));
-    assert_eq!(listing["sources"], listing["inputs"]);
-    assert_eq!(listing["destinations"], listing["outputs"]);
     for key in ["enabled", "inputIDs", "allInputs", "outputID", "requestedInputIDs", "requestedOutputID", "channel", "inputChannel"] {
         assert!(listing.get(key).is_some(), "the listing has {key}");
     }

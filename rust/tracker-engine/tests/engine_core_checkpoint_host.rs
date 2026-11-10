@@ -26,7 +26,9 @@ fn test_transport_checkpoint() {
         let mut e = Engine::new();
         configure_checkpoint_music(&mut e);
         let initial = e.capture_transport();
-        assert!(initial.playing == 0 && initial.song_mode == 0 && e.status().position == 0.0 && initial.transport_frames == 0.0);
+        assert!(
+            initial.playing == 0 && initial.song_mode == 0 && e.status().position == 0.0 && initial.transport_frames == 0.0
+        );
         e.seek(1, 2, 1);
         e.render_nothing();
         let status = e.status();
@@ -36,7 +38,12 @@ fn test_transport_checkpoint() {
         e.restore_transport(stopped, 1);
         assert!(e.pop_event().is_none());
         let after = e.status();
-        assert!(after.position == status.position && after.seconds == status.seconds && after.playing == 0 && after.song_mode == status.song_mode);
+        assert!(
+            after.position == status.position
+                && after.seconds == status.seconds
+                && after.playing == 0
+                && after.song_mode == status.song_mode
+        );
         assert!(note_events(render_events(&mut e, 1000)).is_empty());
         assert!(e.status().seconds == status.seconds);
     }
@@ -70,11 +77,20 @@ fn test_transport_checkpoint() {
                 && restored.position == status.position
         );
         let exact = e.capture_transport();
-        assert!(exact.row_remaining == saved.row_remaining && exact.row_duration == saved.row_duration && exact.transport_frames == saved.transport_frames);
+        assert!(
+            exact.row_remaining == saved.row_remaining
+                && exact.row_duration == saved.row_duration
+                && exact.transport_frames == saved.transport_frames
+        );
         assert!(e.pop_event().is_none());
         let events = render_events_block(&mut e, saved.row_remaining.ceil() as usize + 2, 127);
         let notes = note_events(events.clone());
-        assert!(notes.len() == 1 && notes[0].e.type_ == ST_EVENT_NOTE_ON && notes[0].e.note == 74 && notes[0].frame == saved.row_remaining.ceil() as u64);
+        assert!(
+            notes.len() == 1
+                && notes[0].e.type_ == ST_EVENT_NOTE_ON
+                && notes[0].e.note == 74
+                && notes[0].frame == saved.row_remaining.ceil() as u64
+        );
         let parameters = parameter_changes(&events, ST_TARGET_VOLUME);
         assert!(!parameters.is_empty() && parameters[0].frame == 0 && parameters[0].e.value == 0.25);
     }
@@ -161,7 +177,13 @@ fn test_transport_checkpoint() {
         state.transport_frames = f64::NAN;
         e.restore_transport(state, 0);
         let status = e.status();
-        assert!(status.pattern == 0 && status.row == 0 && status.sequence == 0 && status.position.is_finite() && status.seconds == 0.0);
+        assert!(
+            status.pattern == 0
+                && status.row == 0
+                && status.sequence == 0
+                && status.position.is_finite()
+                && status.seconds == 0.0
+        );
         let mut quiet = Audio::new(128);
         render(&mut e, &mut quiet);
         assert!(quiet.energy() == 0.0);
@@ -615,7 +637,13 @@ fn test_mapped_checkpoint() {
         let mut before = Audio::new(4321);
         render(&mut e, &mut before);
         let saved = e.capture_transport();
-        assert!(saved.timing_version == 1 && saved.timing_revision == 17 && saved.playing != 0 && saved.row_has_started != 0 && saved.row_remaining > 0.0);
+        assert!(
+            saved.timing_version == 1
+                && saved.timing_revision == 17
+                && saved.playing != 0
+                && saved.row_has_started != 0
+                && saved.row_remaining > 0.0
+        );
         let status = e.status();
         temporary_export(&mut e);
         e.restore_transport(saved, 1);
@@ -630,7 +658,12 @@ fn test_mapped_checkpoint() {
                 && after.timing_revision == 17
         );
         let restored = e.status();
-        assert!(restored.position == status.position && restored.seconds == status.seconds && restored.beat == status.beat && restored.bpm == status.bpm);
+        assert!(
+            restored.position == status.position
+                && restored.seconds == status.seconds
+                && restored.beat == status.beat
+                && restored.bpm == status.bpm
+        );
         assert!(e.pop_event().is_none());
         let notes = note_events(render_events(&mut e, saved.row_remaining as usize + 1));
         assert!(!notes.is_empty() && notes[0].frame == saved.row_remaining as u64 && notes[0].e.type_ == ST_EVENT_NOTE_ON);
@@ -760,7 +793,11 @@ fn test_mapped_synced_lfo() {
         e.play(1);
         let mut audio = Audio::new(43000);
         render(&mut e, &mut audio);
-        assert!(audio.energy_in(13000, 14000) == 0.0 && audio.energy_in(16000, 17000) > 0.00001 && audio.energy_in(41000, 42000) < 1e-12);
+        assert!(
+            audio.energy_in(13000, 14000) == 0.0
+                && audio.energy_in(16000, 17000) > 0.00001
+                && audio.energy_in(41000, 42000) < 1e-12
+        );
     }
     assert_zero_render_allocations();
 }

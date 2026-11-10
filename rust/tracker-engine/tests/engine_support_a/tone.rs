@@ -4,8 +4,7 @@
 
 use super::{ControlHalf, Engine};
 use tracker_engine::engine::{
-    default_instrument, STInstrument, ST_INSTRUMENT_SAMPLE, ST_MODE_FORWARD, ST_MODE_WAVETABLE,
-    ST_WAVETABLE_DEFAULT_FRAME,
+    default_instrument, STInstrument, ST_INSTRUMENT_SAMPLE, ST_MODE_FORWARD, ST_MODE_WAVETABLE, ST_WAVETABLE_DEFAULT_FRAME,
 };
 
 pub const TEST_SINE: i32 = 0;
@@ -16,7 +15,8 @@ pub const TEST_NOISE: i32 = 4;
 
 /// `testCycle`: one cycle (2048 samples) of `wave`; noise is one second of white noise.
 pub fn test_cycle(wave: i32) -> Vec<f32> {
-    let pi = 3.14159265358979323846_f64;
+    // C++ `const double pi=3.14159265358979323846`, the same double.
+    let pi = std::f64::consts::PI;
     let frames: usize = if wave == TEST_NOISE { 48000 } else { ST_WAVETABLE_DEFAULT_FRAME as usize };
     let mut cycle = vec![0.0f32; frames];
     let mut state: u32 = 12345;

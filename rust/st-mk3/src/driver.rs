@@ -50,6 +50,9 @@ pub struct DriverStatus {
     pub error: Option<String>,
 }
 
+/// Receives input reports, report id first.
+pub type RawReportCallback = Box<dyn Fn(&[u8]) + Send + Sync>;
+
 /// What the driver tells its owner. Called from the driver's threads.
 pub struct DriverCallbacks {
     /// An `mk3.input` payload.
@@ -59,7 +62,7 @@ pub struct DriverCallbacks {
     /// A line for the log.
     pub log: Box<dyn Fn(&str) + Send + Sync>,
     /// Every input report, with its report id first (diagnostics; the probe's `--raw`).
-    pub raw_report: Box<dyn Fn(&[u8]) + Send + Sync>,
+    pub raw_report: RawReportCallback,
 }
 
 impl Default for DriverCallbacks {

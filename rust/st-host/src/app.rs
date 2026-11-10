@@ -26,12 +26,14 @@ pub struct HostOptions {
     pub opener: Arc<dyn Opener>,
     /// How often the host writes the recovery copy on its own; `None` for never (tests).
     pub autosave_every: Option<Duration>,
+    /// The audio engine; `None` for a host without one (tests of the host's own commands).
+    pub audio: Option<crate::areas::audio::AudioOptions>,
 }
 
 impl HostOptions {
     /// The options of a normal run: the system's opener, recovery every 20 s.
     pub fn new(support: PathBuf, dialogs: Arc<dyn Dialogs>) -> Self {
-        HostOptions { support, dialogs, opener: Arc::new(SystemOpener), autosave_every: Some(Duration::from_secs(20)) }
+        HostOptions { support, dialogs, opener: Arc::new(SystemOpener), autosave_every: Some(Duration::from_secs(20)), audio: Some(crate::areas::audio::AudioOptions::from_environment()) }
     }
 }
 
@@ -40,6 +42,8 @@ pub struct Host {
     pub session: Arc<Session>,
     pub settings: Arc<Settings>,
     pub lifecycle: Arc<Lifecycle>,
+    /// The audio area, when the host was installed with one.
+    pub audio: Option<Arc<crate::areas::audio::Audio>>,
 }
 
 /// Registers every command `st-host` implements and returns its services.
@@ -54,6 +58,7 @@ pub fn install(bridge: &mut BridgeBuilder, options: HostOptions) -> Result<Host>
     let external = Arc::new(External { opener: options.opener });
 
     let events = bridge.events();
+    let audio_events = bridge.events();
     let commands = bridge.commands();
     session.register(commands);
     MediaRelink::register(session.clone(), events, commands);
@@ -61,11 +66,15 @@ pub fn install(bridge: &mut BridgeBuilder, options: HostOptions) -> Result<Host>
     commands.with(&settings).register("settings.get", Settings::command_get).register("settings.set", Settings::command_set);
     commands.with(&external).register_blocking("app.external", External::open);
     commands.with(&lifecycle).register_blocking("app.quitAnswer", Lifecycle::answer);
+    let audio = match &options.audio {
+        Some(audio) => Some(crate::areas::audio::install(commands, &session, &settings, audio_events, audio)?),
+        None => None,
+    };
 
     if let Some(interval) = options.autosave_every {
         session.start_autosave_timer(interval);
     }
-    Ok(Host { session, settings, lifecycle })
+    Ok(Host { session, settings, lifecycle, audio })
 }
 
 struct Handshake {

@@ -302,7 +302,8 @@ fn a_flood_from_the_audio_thread_is_dropped_and_counted_not_blocked_on() {
     assert!(started.elapsed() < Duration::from_secs(2), "pushing never waits");
     wait_for("the flood to be accounted for", || service.output_stats().dropped > 0);
     let stats = service.output_stats();
-    assert!(stats.dropped >= 100_000 - 4096 - 16_384 && stats.dropped < 100_000, "{stats:?}");
+    // Everything beyond the queue (4096), the backlog (16 384) and the one message in the sender's hand.
+    assert!(stats.dropped >= 100_000 - 4096 - 16_384 - 1 && stats.dropped < 100_000, "{stats:?}");
     assert_eq!(stats.sent, 0);
     // A second audio stream gets a queue of its own.
     drop(midi);

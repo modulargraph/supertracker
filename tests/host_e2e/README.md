@@ -27,13 +27,19 @@ Needs Node 22 and Playwright with Chromium (`require('playwright')`). It starts
    host's version and command list), not in browser-preview mode;
 3. a note entered in the page is saved to a file through `project.save`, whose Save chooser is answered
    from the answers file; the file on disk contains the note;
-4. an unimplemented command (`plugin.load`, and Play) is refused with "… is not implemented in the
-   Rust host yet …", the page shows it, and later requests still work;
+4. an unimplemented command (`plugin.load`) is refused with "… is not implemented in the Rust host
+   yet …" and later requests still work;
 5. after a reload the page gets the session back; New clears it; `project.open` through the (scripted)
    Open chooser brings the note back;
 6. `quit` on the host's standard input ends it with status 0, and the page reports the lost connection
    instead of waiting;
-7. a second host process restores the session from the recovery copy, with its file and the settings.
+7. a second host process restores the session from the recovery copy, with its file and the settings;
+8. audio: the page loads the demo song and presses Play; the position advances from the host's real
+   `status` events and the host reports non-silent master and track peaks; a note edited while playing
+   reaches the engine (`engine.snapshot`) without stopping playback or raising an error; Stop stops.
+
+The host runs with `SUPERTRACKER_AUDIO_DEVICE=null`: the null audio device renders in real time to
+nowhere, so the run is the same with and without a sound card.
 
 ## `window_smoke.sh`: the window in a virtual display (Linux)
 

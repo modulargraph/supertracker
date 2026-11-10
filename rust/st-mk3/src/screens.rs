@@ -303,7 +303,11 @@ fn dump(shared: &Shared, device: &mut Device, screen: usize, renderer: &Renderer
     for name in &names {
         for (suffix, picture) in &pictures {
             if let Some(picture) = picture {
-                let _ = std::fs::write(folder.join(format!("{name}{suffix}.png")), picture);
+                // Written under another name first: a viewer watching the folder never sees half a picture.
+                let (target, partial) = (folder.join(format!("{name}{suffix}.png")), folder.join(format!("{name}{suffix}.png.part")));
+                if std::fs::write(&partial, picture).is_ok() {
+                    let _ = std::fs::rename(&partial, &target);
+                }
             }
         }
     }

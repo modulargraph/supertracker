@@ -247,7 +247,11 @@ fn test_exact_stepped_automation() {
     let volume = parameter_changes(&changes, ST_TARGET_VOLUME);
     assert!(volume.len() == 3);
     assert!(volume[0].frame == 0 && volume[1].frame == 6000 && volume[2].frame == 12000);
-    assert!((volume[0].e.value - 0.8).abs() < 1e-6 && (volume[1].e.value - 0.3).abs() < 1e-6 && (volume[2].e.value - 0.8).abs() < 1e-6);
+    assert!(
+        (volume[0].e.value - 0.8).abs() < 1e-6
+            && (volume[1].e.value - 0.3).abs() < 1e-6
+            && (volume[2].e.value - 0.8).abs() < 1e-6
+    );
     assert_zero_render_allocations();
 }
 
@@ -291,7 +295,8 @@ fn test_timed_mix_defaults_and_automation_refresh() {
     while let Some(event) = e.pop_event() {
         updated.push(Timed { frame: event.frame_offset as u64, e: event });
     }
-    let targets = [ST_TARGET_VOLUME, ST_TARGET_DELAY, ST_TARGET_REVERB, ST_TARGET_INSTRUMENT_VOLUME, ST_TARGET_INSTRUMENT_PAN];
+    let targets =
+        [ST_TARGET_VOLUME, ST_TARGET_DELAY, ST_TARGET_REVERB, ST_TARGET_INSTRUMENT_VOLUME, ST_TARGET_INSTRUMENT_PAN];
     let expected = [1.2f64, 0.25, 0.1, 0.6, 0.2];
     for n in 0..5 {
         let changes = parameter_changes(&updated, targets[n]);
@@ -303,7 +308,13 @@ fn test_timed_mix_defaults_and_automation_refresh() {
             pan.push(*value);
         }
     }
-    assert!(pan.len() == 2 && pan[0].frame == 512 && pan[0].e.value == 0.0 && pan[1].frame == 512 && (pan[1].e.value + 0.6).abs() < 1e-6);
+    assert!(
+        pan.len() == 2
+            && pan[0].frame == 512
+            && pan[0].e.value == 0.0
+            && pan[1].frame == 512
+            && (pan[1].e.value + 0.6).abs() < 1e-6
+    );
     bus_render(&mut e, 0, 1024, &mut first);
     assert!(e.pop_event().is_none());
     let mut song = Engine::new();
@@ -318,7 +329,13 @@ fn test_timed_mix_defaults_and_automation_refresh() {
     song.play(1);
     let sequence_events = render_events(&mut song, 13000);
     let volume = parameter_changes(&sequence_events, ST_TARGET_VOLUME);
-    assert!(volume.len() == 2 && volume[0].frame == 0 && volume[0].e.value == 0.0 && volume[1].frame == 6000 && (volume[1].e.value - 0.8).abs() < 1e-6);
+    assert!(
+        volume.len() == 2
+            && volume[0].frame == 0
+            && volume[0].e.value == 0.0
+            && volume[1].frame == 6000
+            && (volume[1].e.value - 0.8).abs() < 1e-6
+    );
     let mut locked = Engine::new();
     configure(&mut locked, ST_INSTRUMENT_AU);
     locked.begin_update();
@@ -341,7 +358,8 @@ fn test_timed_mix_defaults_and_automation_refresh() {
     while let Some(event) = locked.pop_event() {
         refreshed.push(Timed { frame: event.frame_offset as u64, e: event });
     }
-    let (locked_volume, held_pan) = (parameter_changes(&refreshed, ST_TARGET_VOLUME), parameter_changes(&refreshed, ST_TARGET_PAN));
+    let (locked_volume, held_pan) =
+        (parameter_changes(&refreshed, ST_TARGET_VOLUME), parameter_changes(&refreshed, ST_TARGET_PAN));
     assert!(locked_volume.len() == 1 && locked_volume[0].frame == 0 && (locked_volume[0].e.value - 0.3).abs() < 1e-6);
     assert!(held_pan.len() == 1 && held_pan[0].frame == 0 && held_pan[0].e.value == -0.5);
     assert_zero_render_allocations();
@@ -594,7 +612,8 @@ fn slice_fx_audio(note: i32, selector: i32, manual: bool, chord: &[i32]) -> Audi
 
 #[test]
 fn test_explicit_slice_fx() {
-    let (mapped, explicit_slice, raised) = (slice_fx_audio(61, 0, false, &[]), slice_fx_audio(60, 2, false, &[]), slice_fx_audio(72, 2, false, &[]));
+    let (mapped, explicit_slice, raised) =
+        (slice_fx_audio(61, 0, false, &[]), slice_fx_audio(60, 2, false, &[]), slice_fx_audio(72, 2, false, &[]));
     assert!(mapped.l == explicit_slice.l && mapped.r == explicit_slice.r);
     assert!(explicit_slice.energy_in(1600, 1800) > 0.0001 && raised.energy_in(1600, 1800) < 1e-12);
     let (manual, manual_fx) = (slice_fx_audio(61, 0, true, &[]), slice_fx_audio(60, 2, true, &[]));
@@ -690,7 +709,12 @@ fn test_step_preview_ownership() {
         assert!(notes.len() == 2 && notes[0].e.note == 72 && notes[1].e.note == 76 && notes[0].e.velocity == 39);
         e.note_on(0, 0, 72, 100);
         notes = note_events(render_events(&mut e, 1));
-        assert!(notes.len() == 2 && notes[0].e.type_ == ST_EVENT_NOTE_OFF && notes[0].e.note == 72 && notes[1].e.type_ == ST_EVENT_NOTE_ON);
+        assert!(
+            notes.len() == 2
+                && notes[0].e.type_ == ST_EVENT_NOTE_OFF
+                && notes[0].e.note == 72
+                && notes[1].e.type_ == ST_EVENT_NOTE_ON
+        );
         step.note = -1;
         e.preview_step(0, step, &[], 0.35);
         notes = note_events(render_events(&mut e, 2000));

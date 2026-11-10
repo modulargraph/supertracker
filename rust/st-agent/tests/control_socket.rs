@@ -344,7 +344,11 @@ fn a_stalled_client_blocks_nothing() {
         // What the stalled client can still read ends with the end of the stream: no write after close.
         stalled.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
         let mut rest = Vec::new();
-        stalled.read_to_end(&mut rest).expect("the stream ends");
+        // The end of the stream, or a reset because our own unread requests were discarded with it.
+        match stalled.read_to_end(&mut rest) {
+            Ok(_) => {}
+            Err(error) => assert_eq!(error.kind(), std::io::ErrorKind::ConnectionReset, "the stream ends"),
+        }
         server.start().unwrap();
     }
     server.stop();

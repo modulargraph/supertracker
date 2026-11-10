@@ -29,7 +29,8 @@ function pass(what) { passed++; console.log('PASS ' + what); }
 /** Starts the host and resolves with its process and the URL it prints first. */
 function startHost(bin, folder, extra = []) {
   const host = spawn(bin, ['--serve', '--ui', path.join(repository, 'Resources/Web'), '--dialog-answers', path.join(folder, 'answers.json'), ...extra], {
-    env: { ...process.env, SUPERTRACKER_SUPPORT_DIR: path.join(folder, 'support') }, stdio: ['pipe', 'pipe', 'pipe']
+    // The null audio device: the same run on a machine with and without a sound card.
+    env: { ...process.env, SUPERTRACKER_SUPPORT_DIR: path.join(folder, 'support'), SUPERTRACKER_AUDIO_DEVICE: 'null' }, stdio: ['pipe', 'pipe', 'pipe']
   });
   host.log = '';
   host.stderr.on('data', data => { host.log += data; });
@@ -118,7 +119,12 @@ async function main() {
     const ready = await request(page, 'ready');
     assert.equal(ready.ok.version, '0.1.0');
     assert.notEqual(ready.ok.version, 'browser preview');
-    assert.deepEqual([ready.ok.roots, ready.ok.plugins, ready.ok.audio, ready.ok.midi], [[], [], { inputs: [], outputs: [] }, { inputs: [], outputs: [] }]);
+    assert.deepEqual([ready.ok.roots, ready.ok.plugins, ready.ok.midi], [[], [], { inputs: [], outputs: [] }]);
+    // The audio engine is part of the host: it runs on the null device here.
+    assert.equal(ready.ok.audio.outputUid, 'null');
+    assert.equal(ready.ok.audio.running, true);
+    assert.ok(ready.ok.audio.outputs.some(device => device.uid === 'null' && device.id === 0), 'the null device is listed');
+    for (const command of ['transport.play', 'transport.stop', 'note.on', 'audio.devices']) assert.ok(boot.commands.includes(command), command);
     pass(`the interface boots against the host over the WebSocket (${boot.commands.length} commands implemented, no preview fallback)`);
 
     // ---- Create a note, save through the Save window (answered from the answers file) --------
@@ -136,12 +142,10 @@ async function main() {
     const refused = await request(page, 'plugin.load', { track: 0, kind: 'instrument' });
     assert.equal(refused.error, '`plugin.load` is not implemented in the Rust host yet (it belongs to st-audio).');
     assert.equal((await request(page, 'no.such.command')).error, '`no.such.command` is not a command this host knows.');
-    await page.evaluate(() => ST.perform('play'));
-    await page.waitForFunction(() => /`transport\.\w+` is not implemented in the Rust host yet/.test(document.querySelector('#toast-region').innerText), null, { timeout: 5000 });
     assert.deepEqual(await request(page, 'settings.set', { key: 'e2e', value: 7 }), { ok: {} });
     assert.deepEqual(await request(page, 'settings.get', { key: 'e2e' }), { ok: { value: 7 } });
     assert.deepEqual(await noteAt(page), NOTE);
-    pass('an unimplemented command shows "not implemented" in the page and the next requests still work');
+    pass('an unimplemented command is refused with its name and owner, and the next requests still work');
 
     // ---- Reload: the host hands the session back; New clears it; Open (through the Open window) restores it
     await page.reload();
@@ -173,6 +177,44 @@ async function main() {
     assert.equal(restored.ok.path, saved);
     assert.equal(restored.ok.dirty, false);
     pass('a new host process restores the session (recovery copy), its file and the settings');
+    // ---- Audio: the demo song plays on the null device; the page follows real status events -------
+    assert.equal(await page.evaluate(() => ST.projectAction('demo')), true, 'loading the demo failed: ' + await toasts(page));
+    assert.equal(await page.evaluate(() => ST.state.project.name), 'Midnight transmission');
+    await page.evaluate(() => ST.perform('play'));
+    await page.waitForFunction(() => ST.state.playing && ST.state.status.playing === true && ST.state.status.row >= 2
+      && ST.state.status.peakL > 0.001 && ST.state.status.peakR > 0.001, null, { timeout: 15000 });
+    const heard = await page.evaluate(() => ({ ...ST.state.status }));
+    assert.equal(heard.running, true);
+    assert.equal(heard.sampleRate, 48000);
+    assert.ok(heard.trackPeaks.length === 8 && heard.trackPeaks.some(peak => peak > 0.001), 'track meters move: ' + JSON.stringify(heard.trackPeaks));
+    await page.waitForFunction(seconds => ST.state.status.seconds > seconds + 0.25, heard.seconds, { timeout: 10000 });
+    assert.doesNotMatch(await toasts(page), /not implemented in the Rust host yet/, 'Play must not answer "not implemented"');
+    pass(`Play starts the demo song: the position advances (row ${heard.row}, ${heard.seconds.toFixed(2)} s) and the host reports master peaks ${heard.peakL.toFixed(3)} / ${heard.peakR.toFixed(3)} on the null device`);
+
+    // Editing a note while the song plays is published to the engine without stopping it.
+    const LIVE = { note: 45, instrument: 0, velocity: 101, gate: 0.5 };
+    await page.evaluate(note => ST.mutate('E2E live edit', () => { ST.state.project.patterns[0].steps[0][2] = note; }), LIVE);
+    const deadline = Date.now() + 10000;
+    let engineNote = null;
+    while (Date.now() < deadline && !engineNote) {
+      const snapshot = await request(page, 'engine.snapshot');
+      engineNote = snapshot.ok?.patterns?.[0]?.steps?.[0]?.[2] || null;
+      if (!engineNote) await page.waitForTimeout(100);
+    }
+    assert.deepEqual(engineNote, LIVE, 'the edit reaches the engine');
+    const before = await page.evaluate(() => ST.state.status.seconds);
+    await page.waitForFunction(seconds => ST.state.playing && ST.state.status.seconds !== seconds, before, { timeout: 5000 });
+    assert.equal(await page.evaluate(() => ST.state.playing), true, 'playback continues through the edit');
+    assert.doesNotMatch(await toasts(page), /error|failed|not implemented/i, 'the edit raised no error');
+    pass('a note edited while playing reaches the engine and playback continues');
+
+    await page.evaluate(() => ST.perform('stop'));
+    await page.waitForFunction(() => !ST.state.playing && ST.state.status.playing === false, null, { timeout: 5000 });
+    const stopped = await page.evaluate(() => ST.state.status.seconds);
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => ST.state.status.seconds), stopped, 'a stopped transport does not move');
+    assert.deepEqual(problems.filter(text => !/not implemented in the Rust host yet|Failed to load resource/.test(text)), [], 'the page reported errors while playing');
+    pass('Stop stops the transport');
     assert.equal(await quit(host), 0);
     host = null;
     console.log(`\n${passed} checks passed.`);

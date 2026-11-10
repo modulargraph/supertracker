@@ -44,6 +44,8 @@ impl Fixture {
             let mut options = HostOptions::new(folder.path().join("support"), dialogs.clone());
             options.opener = opened.clone();
             options.autosave_every = None;
+            // These tests are about the host's own commands; the audio area has its own (tests/audio.rs).
+            options.audio = None;
             services = Some(install(bridge, options).expect("install the host"));
             extra(bridge);
         });

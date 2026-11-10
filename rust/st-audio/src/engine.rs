@@ -738,6 +738,9 @@ impl AudioEngine {
         state.last_device_check = Instant::now();
         if standing_in && !dead {
             // Only leave the null device when the wanted one is really there.
+            if !system::may_have_outputs() {
+                return false;
+            }
             let devices = system::list();
             let available = match &state.wanted {
                 DeviceChoice::Named(uid) => devices.outputs.iter().any(|device| device.uid == *uid),

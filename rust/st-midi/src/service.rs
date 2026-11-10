@@ -292,12 +292,7 @@ impl MidiService {
     /// instrument input plays. Held input notes are released only when the input route really
     /// changes, not when a request repeats the current values.
     pub fn configure(&self, request: ConfigureRequest) -> Result<Devices, MidiError> {
-        let touches_route = request.input.is_some()
-            || request.input_id.is_some()
-            || request.input_ids.is_some()
-            || request.inputs.is_some()
-            || request.input_channel.is_some()
-            || request.enabled.is_some();
+        let touches_route = request.input_id.is_some() || request.input_ids.is_some() || request.input_channel.is_some() || request.enabled.is_some();
         let before = touches_route.then(|| input_route(&self.host().devices()));
         let previous_channel = {
             let mut router = lock(&self.inner.router);

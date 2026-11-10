@@ -109,7 +109,11 @@ pub fn note_events(mut events: Vec<Timed>) -> Vec<Timed> {
 pub fn parameter_changes_at(events: &[Timed], target: i32, track: i32, address: u64) -> Vec<Timed> {
     let mut result: Vec<Timed> = Vec::new();
     for event in events {
-        if event.e.type_ == ST_EVENT_PARAMETER && event.e.target == target && event.e.track == track && event.e.address == address {
+        if event.e.type_ == ST_EVENT_PARAMETER
+            && event.e.target == target
+            && event.e.track == track
+            && event.e.address == address
+        {
             match result.last_mut() {
                 Some(last) if last.frame == event.frame => *last = *event,
                 _ => result.push(*event),

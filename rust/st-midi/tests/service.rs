@@ -165,8 +165,10 @@ fn controllers_sustain_and_transport() {
     assert_eq!(f.engine.take(), ["release t0 n60"]);
     assert!(f.events("midi.message").is_empty(), "the pedal is not reported as a control change");
 
+    f.ports.clear_sent();
     f.play(11, &[0xFA, 0xFC, 0xFB]);
     assert_eq!(f.engine.take(), ["start", "stop", "start"]);
+    wait_for("Stop to silence the external instrument", || f.ports.sent_messages(500).len() == 3);
     // While we send clock ourselves, an echoed Start must not restart our transport.
     f.service.clock_command(serde_json::from_value(json!({"enabled": true})).unwrap()).unwrap();
     assert_eq!(f.engine.take(), ["wake"], "the clock runs with the audio engine");
@@ -292,6 +294,7 @@ fn commands_speak_the_pages_json() {
     assert_eq!(clock, json!({"enabled": true, "running": false, "leadMilliseconds": null, "automaticLeadMilliseconds": 0.0, "devices": [{"id": 500, "name": "Synth", "offline": false, "clock": true, "transport": true}]}));
     f.service.set_audio_running(true);
     assert!(f.service.clock_status().running);
+    assert_eq!(f.engine.take(), ["wake"], "turning the clock on starts the audio engine");
 
     // Blocked input (an export runs) is dropped entirely.
     f.service.set_input_blocked(true);

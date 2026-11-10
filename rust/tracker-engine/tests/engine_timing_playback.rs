@@ -301,7 +301,12 @@ fn render_buses(engine: &mut Engine, frames: usize, overlap: bool) -> BusRendere
         result.first.left[at..at + count].copy_from_slice(&left[..count]);
         result.first.right[at..at + count].copy_from_slice(&right[..count]);
         drain_notes(engine, at as u64, &mut result.first.notes);
-        engine.render_bus_into(1, at as u64, &mut result.second.left[at..at + count], &mut result.second.right[at..at + count]);
+        engine.render_bus_into(
+            1,
+            at as u64,
+            &mut result.second.left[at..at + count],
+            &mut result.second.right[at..at + count],
+        );
         drain_notes(engine, at as u64, &mut result.second.notes);
         at += 4096;
     }
@@ -371,7 +376,8 @@ fn test_draft_publication_and_invalid_atomicity() {
     rejects(&mut engine, &too_many_tempos, &valid_meter);
     rejects(&mut engine, &valid_tempo, &[]);
     rejects(&mut engine, &valid_tempo, &valid_meter[..0]);
-    let too_many_meters: Vec<STClockMeterEvent> = (0..ST_CLOCK_MAX_EVENTS + 1).map(|n| meter(n as f64 * 4.0, 4, 4)).collect();
+    let too_many_meters: Vec<STClockMeterEvent> =
+        (0..ST_CLOCK_MAX_EVENTS + 1).map(|n| meter(n as f64 * 4.0, 4, 4)).collect();
     rejects(&mut engine, &valid_tempo, &too_many_meters);
     for bad in [tempo(0.25, 120.0), tempo(0.0, 19.0), tempo(0.0, 401.0), tempo(0.0, f64::NAN), tempo(f64::INFINITY, 120.0)] {
         rejects(&mut engine, &[bad], &valid_meter);
