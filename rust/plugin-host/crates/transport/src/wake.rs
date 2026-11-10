@@ -104,15 +104,7 @@ pub mod address {
             // SAFETY: `word` is a valid, live u32; FUTEX_WAIT (not _PRIVATE: the word is
             // shared between processes) with a relative timeout.
             let rc = unsafe {
-                libc::syscall(
-                    libc::SYS_futex,
-                    word.as_ptr(),
-                    libc::FUTEX_WAIT,
-                    expected,
-                    ts_ptr,
-                    0usize,
-                    0u32,
-                )
+                libc::syscall(libc::SYS_futex, word.as_ptr(), libc::FUTEX_WAIT, expected, ts_ptr, 0usize, 0u32)
             };
             if rc == -1 && io::Error::last_os_error().raw_os_error() == Some(libc::ETIMEDOUT) {
                 WaitOutcome::TimedOut
@@ -314,7 +306,11 @@ impl Notifier {
         Notifier { pipe: Some(write_end) }
     }
     pub fn mode(&self) -> WakeMode {
-        if self.pipe.is_some() { WakeMode::Pipe } else { WakeMode::Address }
+        if self.pipe.is_some() {
+            WakeMode::Pipe
+        } else {
+            WakeMode::Address
+        }
     }
     /// Call after storing the new value into `word`.
     #[inline]
@@ -346,7 +342,11 @@ impl Waiter {
         Waiter { pipe: Some(read_end) }
     }
     pub fn mode(&self) -> WakeMode {
-        if self.pipe.is_some() { WakeMode::Pipe } else { WakeMode::Address }
+        if self.pipe.is_some() {
+            WakeMode::Pipe
+        } else {
+            WakeMode::Address
+        }
     }
 
     /// Sleeps while `*word == expected`, at most `timeout_ns` (None: until woken).
@@ -388,10 +388,7 @@ fn poll_one(pfd: &mut libc::pollfd, timeout_ns: Option<u64>) -> libc::c_int {
     let ts;
     let ts_ptr = match timeout_ns {
         Some(ns) => {
-            ts = libc::timespec {
-                tv_sec: (ns / 1_000_000_000) as libc::time_t,
-                tv_nsec: (ns % 1_000_000_000) as _,
-            };
+            ts = libc::timespec { tv_sec: (ns / 1_000_000_000) as libc::time_t, tv_nsec: (ns % 1_000_000_000) as _ };
             &ts as *const libc::timespec
         }
         None => std::ptr::null(),

@@ -195,7 +195,7 @@ impl Render {
         };
         let count = (audible_end - from) as usize;
         let lost = lost as usize;
-        for (out, left) in [(l.as_deref_mut(), true), (r.as_deref_mut(), false)] {
+        for (out, left) in [(l, true), (r, false)] {
             let Some(out) = out else { continue };
             if let Some(prefix) = out.get_mut(..lost) {
                 prefix.fill(0.0);
@@ -316,14 +316,14 @@ impl Render {
         if c.next_boundary_frame != i64::MAX {
             count = cmin(count as i64, cmax(0, c.next_boundary_frame.wrapping_sub(graph_frame))) as u32;
         }
-        for n in 1..count {
+        let changed = (1..count).find(|&n| {
             let next = at(content_frame + n as u64);
-            if next.epoch != c.epoch || next.revision != c.revision {
-                count = n;
-                c.next_boundary_frame = graph_frame + n as i64;
-                c.next_boundary_kinds = ST_CLOCK_BOUNDARY_ORIGIN;
-                break;
-            }
+            next.epoch != c.epoch || next.revision != c.revision
+        });
+        if let Some(n) = changed {
+            count = n;
+            c.next_boundary_frame = graph_frame + n as i64;
+            c.next_boundary_kinds = ST_CLOCK_BOUNDARY_ORIGIN;
         }
         result.frames = count;
         *out = result;

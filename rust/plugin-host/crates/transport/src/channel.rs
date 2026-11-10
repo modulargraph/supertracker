@@ -116,7 +116,7 @@ impl Stream {
             libc::iovec { iov_base: payload.as_ptr() as *mut libc::c_void, iov_len: payload.len() },
         ];
         let mut control = [0u64; 8]; // u64 for alignment; 64 bytes hold MAX_FDS descriptors
-        // SAFETY: zeroed msghdr is valid; the fields set below point to live buffers.
+                                     // SAFETY: zeroed msghdr is valid; the fields set below point to live buffers.
         let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
         msg.msg_iov = iov.as_mut_ptr();
         msg.msg_iovlen = 2;
@@ -171,10 +171,7 @@ impl Stream {
         let mut fds = Vec::new();
         let mut got = 0;
         while got < HEADER_LEN {
-            let mut iov = libc::iovec {
-                iov_base: header[got..].as_mut_ptr().cast(),
-                iov_len: HEADER_LEN - got,
-            };
+            let mut iov = libc::iovec { iov_base: header[got..].as_mut_ptr().cast(), iov_len: HEADER_LEN - got };
             let mut control = [0u64; 8];
             // SAFETY: zeroed msghdr is valid; buffers are live for the call.
             let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
@@ -345,10 +342,7 @@ mod tests {
         std::fs::create_dir(&dir).unwrap();
         let listener = Listener::bind(&dir, "c1.sock").unwrap();
         let endpoint = listener.endpoint();
-        assert_eq!(
-            listener.accept(Duration::from_millis(30), || true).err().unwrap().kind(),
-            io::ErrorKind::TimedOut
-        );
+        assert_eq!(listener.accept(Duration::from_millis(30), || true).err().unwrap().kind(), io::ErrorKind::TimedOut);
         assert_eq!(
             listener.accept(Duration::from_secs(5), || false).err().unwrap().kind(),
             io::ErrorKind::ConnectionAborted

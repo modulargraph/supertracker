@@ -13,7 +13,7 @@
 use std::ffi::{c_char, CStr};
 
 /// `stfx::pi`.
-pub const PI: f64 = 3.1415926535897932384626433832795;
+pub const PI: f64 = 3.1415926535897932384626433832795; // the same double as std::f64::consts::PI
 
 /// `ST_BUILTIN_PARAMETER_LOG`: the normalized value maps logarithmically onto the range.
 pub const PARAMETER_LOG: u32 = 1;
@@ -26,7 +26,7 @@ pub const EFFECT_SIDECHAIN: u32 = 1;
 
 /// One entry of an enum parameter's label table (`const char *`).
 #[repr(transparent)]
-pub struct Label(pub *const c_char);
+pub struct Label(*const c_char);
 // SAFETY: a label only ever points at an immutable, 'static, NUL-terminated string literal.
 unsafe impl Sync for Label {}
 
@@ -38,17 +38,20 @@ impl Label {
 
 /// `STBuiltinParameterInfo`: one parameter of an effect or drum model. All ranges and defaults
 /// are in displayed physical units. Layout matches the C header.
+///
+/// The string and label pointers can only be set through the constructors, which take
+/// `'static` C strings; that is what makes the safe accessors below sound.
 #[repr(C)]
 pub struct ParameterInfo {
-    pub id: *const c_char,
-    pub name: *const c_char,
-    pub unit: *const c_char,
+    pub(crate) id: *const c_char,
+    pub(crate) name: *const c_char,
+    pub(crate) unit: *const c_char,
     pub minimum: f64,
     pub maximum: f64,
     pub default_value: f64,
     pub flags: u32,
-    pub labels: *const *const c_char,
-    pub label_count: u32,
+    pub(crate) labels: *const *const c_char,
+    pub(crate) label_count: u32,
 }
 // SAFETY: every pointer refers to immutable 'static data (string literals and label tables).
 unsafe impl Sync for ParameterInfo {}
@@ -109,6 +112,23 @@ impl ParameterInfo {
         unsafe { CStr::from_ptr(self.id) }
     }
 
+    /// The display name.
+    pub fn name(&self) -> &'static CStr {
+        // SAFETY: as for `id`.
+        unsafe { CStr::from_ptr(self.name) }
+    }
+
+    /// The display unit (may be empty).
+    pub fn unit(&self) -> &'static CStr {
+        // SAFETY: as for `id`.
+        unsafe { CStr::from_ptr(self.unit) }
+    }
+
+    /// Number of value labels (0 for parameters without labels).
+    pub fn label_count(&self) -> u32 {
+        self.label_count
+    }
+
     /// The display label of integer value `index`, if the parameter has labels.
     pub fn label(&self, index: u32) -> Option<&'static CStr> {
         if self.labels.is_null() || index >= self.label_count {
@@ -120,11 +140,12 @@ impl ParameterInfo {
 }
 
 /// `STBuiltinEffectInfo`: catalogue entry of an effect or drum model. Layout matches the C header.
+/// As with `ParameterInfo`, the string pointers always come from `'static` C strings.
 #[repr(C)]
 pub struct EffectInfo {
-    pub id: *const c_char,
-    pub name: *const c_char,
-    pub category: *const c_char,
+    pub(crate) id: *const c_char,
+    pub(crate) name: *const c_char,
+    pub(crate) category: *const c_char,
     pub parameter_count: u32,
     pub flags: u32,
 }
@@ -139,7 +160,13 @@ impl EffectInfo {
         parameter_count: u32,
         flags: u32,
     ) -> Self {
-        EffectInfo { id: id.as_ptr(), name: name.as_ptr(), category: category.as_ptr(), parameter_count, flags }
+        EffectInfo {
+            id: id.as_ptr(),
+            name: name.as_ptr(),
+            category: category.as_ptr(),
+            parameter_count,
+            flags,
+        }
     }
 
     /// The persistent effect identifier.
@@ -147,7 +174,46 @@ impl EffectInfo {
         // SAFETY: `id` always comes from a 'static C string literal.
         unsafe { CStr::from_ptr(self.id) }
     }
+
+    /// The display name.
+    pub fn name(&self) -> &'static CStr {
+        // SAFETY: as for `id`.
+        unsafe { CStr::from_ptr(self.name) }
+    }
+
+    /// The catalogue category.
+    pub fn category(&self) -> &'static CStr {
+        // SAFETY: as for `id`.
+        unsafe { CStr::from_ptr(self.category) }
+    }
 }
+
+// The layout the C header gives these structs on the supported 64-bit targets (x86_64 and
+// arm64); checked at compile time so a drift cannot go unnoticed on any of them.
+#[cfg(target_pointer_width = "64")]
+const _: () = {
+    use std::mem::{align_of, offset_of, size_of};
+    assert!(size_of::<ParameterInfo>() == 72 && align_of::<ParameterInfo>() == 8);
+    assert!(
+        offset_of!(ParameterInfo, id) == 0
+            && offset_of!(ParameterInfo, name) == 8
+            && offset_of!(ParameterInfo, unit) == 16
+    );
+    assert!(offset_of!(ParameterInfo, minimum) == 24 && offset_of!(ParameterInfo, maximum) == 32);
+    assert!(
+        offset_of!(ParameterInfo, default_value) == 40 && offset_of!(ParameterInfo, flags) == 48
+    );
+    assert!(
+        offset_of!(ParameterInfo, labels) == 56 && offset_of!(ParameterInfo, label_count) == 64
+    );
+    assert!(size_of::<EffectInfo>() == 32 && align_of::<EffectInfo>() == 8);
+    assert!(
+        offset_of!(EffectInfo, id) == 0
+            && offset_of!(EffectInfo, name) == 8
+            && offset_of!(EffectInfo, category) == 16
+    );
+    assert!(offset_of!(EffectInfo, parameter_count) == 24 && offset_of!(EffectInfo, flags) == 28);
+};
 
 /// Number of parameter slots every processor carries (`std::array<double,64> p`).
 pub const MAX_PARAMETERS: usize = 64;
@@ -177,7 +243,12 @@ impl Descriptor {
         create: fn(f64, u32) -> Box<dyn Processor>,
         tail: TailFn,
     ) -> Self {
-        Descriptor { info: EffectInfo::new(id, name, category, params.len() as u32, flags), params, create, tail }
+        Descriptor {
+            info: EffectInfo::new(id, name, category, params.len() as u32, flags),
+            params,
+            create,
+            tail,
+        }
     }
 }
 
@@ -242,6 +313,14 @@ pub fn clean(x: f64) -> f64 {
     }
 }
 
+/// `condition ? a : b` for per-sample choices that depend on the audio (an envelope follower
+/// picking its attack or release coefficient). Same value as an `if`; the hint only asks for
+/// a conditional select instead of a branch that mispredicts on noisy material.
+#[inline(always)]
+pub fn select(condition: bool, a: f64, b: f64) -> f64 {
+    std::hint::select_unpredictable(condition, a, b)
+}
+
 /// `stfx::mix`: linear crossfade from `dry` to `wet`.
 #[inline(always)]
 pub fn mix(dry: f64, wet: f64, amount: f64) -> f64 {
@@ -255,11 +334,11 @@ pub fn wrap(p: f64) -> f64 {
 }
 
 /* Branch-free, vectorizable approximations for render loops. Errors are far
-   below audibility (and below float output precision), so replacing libm
-   calls with these is sound-equivalent:
-     fast_exp     relative error < 3e-13 over [-700, 700]
-     fast_tanh    absolute error < 1e-12
-     fast_sin_2pi sin(2*pi*phase), absolute error < 1e-11 for any finite phase */
+below audibility (and below float output precision), so replacing libm
+calls with these is sound-equivalent:
+  fast_exp     relative error < 3e-13 over [-700, 700]
+  fast_tanh    absolute error < 1e-12
+  fast_sin_2pi sin(2*pi*phase), absolute error < 1e-11 for any finite phase */
 
 /// `stfx::fastExp`.
 #[inline(always)]
@@ -330,7 +409,9 @@ pub fn fast_tanh_f32(x: f32) -> f32 {
     let r = (y - n * 0.693359375f32) + n * 2.12194440e-4f32; // Cody-Waite ln2 split
     let r2 = r * r;
     let p = (1.0 + r)
-        + r2 * ((0.5 + r * (1.0f32 / 6.0)) + r2 * ((1.0f32 / 24.0 + r * (1.0f32 / 120.0)) + r2 * (1.0f32 / 720.0 + r * (1.0f32 / 5040.0))));
+        + r2 * ((0.5 + r * (1.0f32 / 6.0))
+            + r2 * ((1.0f32 / 24.0 + r * (1.0f32 / 120.0))
+                + r2 * (1.0f32 / 720.0 + r * (1.0f32 / 5040.0))));
     // n is integral and within [-26, 0].
     let bits = ((n as i32).wrapping_add(127)) << 23;
     let e = p * f32::from_bits(bits as u32);
@@ -391,7 +472,11 @@ pub struct Core {
 
 impl Core {
     pub fn new(sample_rate: f64) -> Self {
-        Core { sr: sample_rate, tempo: 120.0, p: [0.0; MAX_PARAMETERS] }
+        Core {
+            sr: sample_rate,
+            tempo: 120.0,
+            p: [0.0; MAX_PARAMETERS],
+        }
     }
 }
 
@@ -402,7 +487,13 @@ pub trait Processor: Send {
     fn core_mut(&mut self) -> &mut Core;
     /// In-place stereo render of `min(left.len(), right.len())` frames. A sidechain slice
     /// shorter than that is ignored. With only one sidechain channel it is used for both.
-    fn process(&mut self, left: &mut [f32], right: &mut [f32], sidechain_left: Option<&[f32]>, sidechain_right: Option<&[f32]>);
+    fn process(
+        &mut self,
+        left: &mut [f32],
+        right: &mut [f32],
+        sidechain_left: Option<&[f32]>,
+        sidechain_right: Option<&[f32]>,
+    );
     fn reset(&mut self);
     fn latency(&self) -> u32 {
         0
@@ -440,6 +531,14 @@ macro_rules! core_accessors {
 }
 pub(crate) use core_accessors;
 
+/// The render buffers of one `process` call, all with the same frame count.
+pub type FrameBuffers<'a, 'b> = (
+    &'a mut [f32],
+    &'a mut [f32],
+    Option<&'b [f32]>,
+    Option<&'b [f32]>,
+);
+
 /// Narrows the render buffers to a common frame count: `left`/`right` are cut to the shorter
 /// of the two, and a sidechain channel is kept only if it covers that many frames.
 #[inline(always)]
@@ -448,9 +547,14 @@ pub fn frame_buffers<'a, 'b>(
     right: &'a mut [f32],
     sidechain_left: Option<&'b [f32]>,
     sidechain_right: Option<&'b [f32]>,
-) -> (&'a mut [f32], &'a mut [f32], Option<&'b [f32]>, Option<&'b [f32]>) {
+) -> FrameBuffers<'a, 'b> {
     let n = left.len().min(right.len());
-    (&mut left[..n], &mut right[..n], sidechain_left.and_then(|s| s.get(..n)), sidechain_right.and_then(|s| s.get(..n)))
+    (
+        &mut left[..n],
+        &mut right[..n],
+        sidechain_left.and_then(|s| s.get(..n)),
+        sidechain_right.and_then(|s| s.get(..n)),
+    )
 }
 
 /// `stfx::ParameterCache`: recomputes derived control targets only when the raw parameters
@@ -463,7 +567,10 @@ pub struct ParameterCache<const N: usize> {
 
 impl<const N: usize> Default for ParameterCache<N> {
     fn default() -> Self {
-        ParameterCache { last: [0.0; N], valid: false }
+        ParameterCache {
+            last: [0.0; N],
+            valid: false,
+        }
     }
 }
 
@@ -512,7 +619,15 @@ pub struct Biquad {
 
 impl Default for Biquad {
     fn default() -> Self {
-        Biquad { b0: 1.0, b1: 0.0, b2: 0.0, a1: 0.0, a2: 0.0, z1: 0.0, z2: 0.0 }
+        Biquad {
+            b0: 1.0,
+            b1: 0.0,
+            b2: 0.0,
+            a1: 0.0,
+            a2: 0.0,
+            z1: 0.0,
+            z2: 0.0,
+        }
     }
 }
 
@@ -614,11 +729,15 @@ pub struct DelayLine {
 impl DelayLine {
     /// Allocates `max(capacity, 4)` samples.
     pub fn new(capacity: usize) -> Self {
-        DelayLine { data: vec![0.0; capacity.max(4)], write: 0 }
+        DelayLine {
+            data: vec![0.0; capacity.max(4)],
+            write: 0,
+        }
     }
 
-    /// Number of samples in the buffer (`data.size()`).
+    /// Number of samples in the buffer (`data.size()`); never less than 4.
     #[inline(always)]
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.data.len()
     }
@@ -685,5 +804,133 @@ impl Smoother {
             }
         }
         self.value
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    //! Layout of the `#[repr(C)]` types exported through `STBuiltinEffects.h`.
+    //!
+    //! The same table is printed by this C++ program (compile with
+    //! `clang++ -std=c++17 -I Sources/TrackerEngine/include layout.cpp`), and the two outputs
+    //! must be identical:
+    //!
+    //! ```cpp
+    //! #include "STBuiltinEffects.h"
+    //! #include <cstddef>
+    //! #include <cstdio>
+    //! #define FIELD(type, field) std::printf(#type "." #field " offset %zu size %zu\n", offsetof(type, field), sizeof(((type *)0)->field))
+    //! int main() {
+    //!     std::printf("STBuiltinParameterInfo size %zu align %zu\n", sizeof(STBuiltinParameterInfo), alignof(STBuiltinParameterInfo));
+    //!     FIELD(STBuiltinParameterInfo, id); FIELD(STBuiltinParameterInfo, name); FIELD(STBuiltinParameterInfo, unit);
+    //!     FIELD(STBuiltinParameterInfo, minimum); FIELD(STBuiltinParameterInfo, maximum); FIELD(STBuiltinParameterInfo, defaultValue);
+    //!     FIELD(STBuiltinParameterInfo, flags); FIELD(STBuiltinParameterInfo, labels); FIELD(STBuiltinParameterInfo, labelCount);
+    //!     std::printf("STBuiltinEffectInfo size %zu align %zu\n", sizeof(STBuiltinEffectInfo), alignof(STBuiltinEffectInfo));
+    //!     FIELD(STBuiltinEffectInfo, id); FIELD(STBuiltinEffectInfo, name); FIELD(STBuiltinEffectInfo, category);
+    //!     FIELD(STBuiltinEffectInfo, parameterCount); FIELD(STBuiltinEffectInfo, flags);
+    //!     std::printf("flags LOG %d INTEGER %d TOGGLE %d SIDECHAIN %d\n", ST_BUILTIN_PARAMETER_LOG, ST_BUILTIN_PARAMETER_INTEGER,
+    //!         ST_BUILTIN_PARAMETER_TOGGLE, ST_BUILTIN_EFFECT_SIDECHAIN);
+    //! }
+    //! ```
+
+    use super::{
+        EffectInfo, ParameterInfo, EFFECT_SIDECHAIN, PARAMETER_INTEGER, PARAMETER_LOG,
+        PARAMETER_TOGGLE,
+    };
+    use std::ffi::c_char;
+    use std::mem::{align_of, offset_of, size_of};
+
+    /// The layout table, in the format of the C++ program above.
+    fn layout() -> String {
+        let pointer = size_of::<*const c_char>();
+        let mut out = String::new();
+        out += &format!(
+            "STBuiltinParameterInfo size {} align {}\n",
+            size_of::<ParameterInfo>(),
+            align_of::<ParameterInfo>()
+        );
+        let parameter_fields = [
+            ("id", offset_of!(ParameterInfo, id), pointer),
+            ("name", offset_of!(ParameterInfo, name), pointer),
+            ("unit", offset_of!(ParameterInfo, unit), pointer),
+            (
+                "minimum",
+                offset_of!(ParameterInfo, minimum),
+                size_of::<f64>(),
+            ),
+            (
+                "maximum",
+                offset_of!(ParameterInfo, maximum),
+                size_of::<f64>(),
+            ),
+            (
+                "defaultValue",
+                offset_of!(ParameterInfo, default_value),
+                size_of::<f64>(),
+            ),
+            ("flags", offset_of!(ParameterInfo, flags), size_of::<u32>()),
+            (
+                "labels",
+                offset_of!(ParameterInfo, labels),
+                size_of::<*const *const c_char>(),
+            ),
+            (
+                "labelCount",
+                offset_of!(ParameterInfo, label_count),
+                size_of::<u32>(),
+            ),
+        ];
+        for (name, offset, size) in parameter_fields {
+            out += &format!("STBuiltinParameterInfo.{name} offset {offset} size {size}\n");
+        }
+        out += &format!(
+            "STBuiltinEffectInfo size {} align {}\n",
+            size_of::<EffectInfo>(),
+            align_of::<EffectInfo>()
+        );
+        let effect_fields = [
+            ("id", offset_of!(EffectInfo, id), pointer),
+            ("name", offset_of!(EffectInfo, name), pointer),
+            ("category", offset_of!(EffectInfo, category), pointer),
+            (
+                "parameterCount",
+                offset_of!(EffectInfo, parameter_count),
+                size_of::<u32>(),
+            ),
+            ("flags", offset_of!(EffectInfo, flags), size_of::<u32>()),
+        ];
+        for (name, offset, size) in effect_fields {
+            out += &format!("STBuiltinEffectInfo.{name} offset {offset} size {size}\n");
+        }
+        out += &format!("flags LOG {PARAMETER_LOG} INTEGER {PARAMETER_INTEGER} TOGGLE {PARAMETER_TOGGLE} SIDECHAIN {EFFECT_SIDECHAIN}\n");
+        out
+    }
+
+    #[test]
+    fn c_layout() {
+        let table = layout();
+        print!("{table}");
+        // What the C++ program prints on the supported 64-bit targets (x86_64 and arm64, LP64).
+        #[cfg(target_pointer_width = "64")]
+        assert_eq!(
+            table,
+            "STBuiltinParameterInfo size 72 align 8\n\
+             STBuiltinParameterInfo.id offset 0 size 8\n\
+             STBuiltinParameterInfo.name offset 8 size 8\n\
+             STBuiltinParameterInfo.unit offset 16 size 8\n\
+             STBuiltinParameterInfo.minimum offset 24 size 8\n\
+             STBuiltinParameterInfo.maximum offset 32 size 8\n\
+             STBuiltinParameterInfo.defaultValue offset 40 size 8\n\
+             STBuiltinParameterInfo.flags offset 48 size 4\n\
+             STBuiltinParameterInfo.labels offset 56 size 8\n\
+             STBuiltinParameterInfo.labelCount offset 64 size 4\n\
+             STBuiltinEffectInfo size 32 align 8\n\
+             STBuiltinEffectInfo.id offset 0 size 8\n\
+             STBuiltinEffectInfo.name offset 8 size 8\n\
+             STBuiltinEffectInfo.category offset 16 size 8\n\
+             STBuiltinEffectInfo.parameterCount offset 24 size 4\n\
+             STBuiltinEffectInfo.flags offset 28 size 4\n\
+             flags LOG 1 INTEGER 2 TOGGLE 4 SIDECHAIN 1\n"
+        );
     }
 }

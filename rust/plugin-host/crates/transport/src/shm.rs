@@ -46,14 +46,7 @@ impl Drop for Mapping {
 fn map(fd: BorrowedFd<'_>, len: usize) -> io::Result<Mapping> {
     // SAFETY: a fresh shared mapping of `len` bytes; the kernel picks the address.
     let ptr = unsafe {
-        libc::mmap(
-            std::ptr::null_mut(),
-            len,
-            libc::PROT_READ | libc::PROT_WRITE,
-            libc::MAP_SHARED,
-            fd.as_raw_fd(),
-            0,
-        )
+        libc::mmap(std::ptr::null_mut(), len, libc::PROT_READ | libc::PROT_WRITE, libc::MAP_SHARED, fd.as_raw_fd(), 0)
     };
     if ptr == libc::MAP_FAILED {
         return Err(io::Error::last_os_error());
@@ -107,9 +100,7 @@ fn create_fd(len: usize) -> io::Result<OwnedFd> {
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn create_memfd(len: usize) -> io::Result<OwnedFd> {
     // SAFETY: NUL-terminated literal name; the flags are valid.
-    let raw = unsafe {
-        libc::memfd_create(c"stpc-region".as_ptr(), libc::MFD_CLOEXEC | libc::MFD_ALLOW_SEALING)
-    };
+    let raw = unsafe { libc::memfd_create(c"stpc-region".as_ptr(), libc::MFD_CLOEXEC | libc::MFD_ALLOW_SEALING) };
     if raw < 0 {
         return Err(io::Error::last_os_error());
     }

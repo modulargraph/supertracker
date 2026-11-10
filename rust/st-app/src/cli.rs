@@ -16,7 +16,8 @@ Usage: supertracker [options] [project.supertracker]
                            (also: SUPERTRACKER_DIALOG_ANSWERS). For tests.
   --help, --version
 
-Settings and the recovery copy live in the support folder (SUPERTRACKER_SUPPORT_DIR overrides it).";
+Settings and the recovery copy live in the support folder (SUPERTRACKER_SUPPORT_DIR overrides it).
+SUPERTRACKER_TRACE=1 logs every bridge request and its outcome to standard error.";
 
 /// What the command line asked for.
 #[derive(Debug, Default, PartialEq, Eq)]

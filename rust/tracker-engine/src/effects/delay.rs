@@ -3,8 +3,9 @@
 //! Replaces `Sources/TrackerEngine/EffectsDelay.hpp` (namespace `stfx::delay`).
 
 use super::common::{
-    core_accessors, frame_buffers, max, min, pow2, Core, Descriptor, Label, ParameterInfo as P, Processor, MAX_PARAMETERS,
-    PARAMETER_INTEGER as INTEGER, PARAMETER_LOG as LOG, PARAMETER_TOGGLE as TOGGLE,
+    core_accessors, frame_buffers, max, min, pow2, Core, Descriptor, Label, ParameterInfo as P,
+    Processor, MAX_PARAMETERS, PARAMETER_INTEGER as INTEGER, PARAMETER_LOG as LOG,
+    PARAMETER_TOGGLE as TOGGLE,
 };
 use super::spatial::{self, bounded, clean, soft, Line, ZeroMix};
 
@@ -43,7 +44,16 @@ pub fn at(line: &Line, position: f64, length: usize) -> f32 {
 }
 
 /// Delay time units in beats: 1/64 .. 1/4, then the 1/16, 1/8 and 1/4 triplets.
-const UNITS: [f64; 8] = [0.0625, 0.125, 0.25, 0.5, 1.0, 1.0 / 6.0, 1.0 / 3.0, 2.0 / 3.0];
+const UNITS: [f64; 8] = [
+    0.0625,
+    0.125,
+    0.25,
+    0.5,
+    1.0,
+    1.0 / 6.0,
+    1.0 / 3.0,
+    2.0 / 3.0,
+];
 
 #[inline(always)]
 fn unit(value: f64) -> f64 {
@@ -75,11 +85,19 @@ impl BeatDelay {
 
     /// `BeatDelay::tailForParameters`.
     pub fn tail_estimate(sr: f64, values: &[f64; MAX_PARAMETERS], tempo_bpm: f64) -> f64 {
-        let duration = max(1.0 / sr, 60.0 / bpm(tempo_bpm) * unit(values[8]) * ((values[0] + 1.0) * 0.5 + values[1] * 0.01));
+        let duration = max(
+            1.0 / sr,
+            60.0 / bpm(tempo_bpm) * unit(values[8]) * ((values[0] + 1.0) * 0.5 + values[1] * 0.01),
+        );
         let feedback = bounded(values[2] * 0.01, 0.0, 0.97);
         // Estimated time to -100 dB including the first echo; pure target-data
         // calculation is safe before first render and during concurrent edits.
-        duration * (if feedback > 0.0 { 1.0 + (1.0e-5f64.ln() / feedback.ln()).ceil() } else { 1.0 })
+        duration
+            * (if feedback > 0.0 {
+                1.0 + (1.0e-5f64.ln() / feedback.ln()).ceil()
+            } else {
+                1.0
+            })
     }
 }
 
@@ -102,11 +120,20 @@ impl Processor for BeatDelay {
         Self::tail_estimate(self.core.sr, values, tempo)
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let p = self.core.p;
         let sr = self.core.sr;
-        self.target = max(1.0, sr * 60.0 / bpm(self.core.tempo) * unit(p[8]) * ((p[0] + 1.0) * 0.5 + p[1] * 0.01));
+        self.target = max(
+            1.0,
+            sr * 60.0 / bpm(self.core.tempo) * unit(p[8]) * ((p[0] + 1.0) * 0.5 + p[1] * 0.01),
+        );
         if self.first {
             self.del = self.target;
             self.first = false;
@@ -119,7 +146,10 @@ impl Processor for BeatDelay {
         // std::pow(x, 2.) is compiled as x*x.
         let color = p[4] * 0.01;
         let cut = 250.0 + (color * color) * 18000.0;
-        let a = [spatial::pole(cut * pow2(-split), sr), spatial::pole(cut * pow2(split), sr)];
+        let a = [
+            spatial::pole(cut * pow2(-split), sr),
+            spatial::pole(cut * pow2(split), sr),
+        ];
         let [memory_l, memory_r] = &mut self.memory;
         for i in 0..l.len() {
             let x = l[i];
@@ -129,8 +159,12 @@ impl Processor for BeatDelay {
             for ch in 0..2 {
                 self.low[ch] += a[ch] * (wet[ch] as f64 - self.low[ch]);
             }
-            memory_l.write(soft((x as f64 + feedback * ((1.0 - cross) * self.low[0] + cross * self.low[1])) as f32));
-            memory_r.write(soft((y as f64 + feedback * ((1.0 - cross) * self.low[1] + cross * self.low[0])) as f32));
+            memory_l.write(soft(
+                (x as f64 + feedback * ((1.0 - cross) * self.low[0] + cross * self.low[1])) as f32,
+            ));
+            memory_r.write(soft(
+                (y as f64 + feedback * ((1.0 - cross) * self.low[1] + cross * self.low[0])) as f32,
+            ));
             let mid = (wet[0] + wet[1]) * 0.5f32;
             let side = ((wet[0] - wet[1]) as f64 * 0.5 * width) as f32;
             l[i] = clean((x as f64 * (1.0 - mix) + (mid + side) as f64 * mix) as f32);
@@ -152,7 +186,14 @@ struct Grain {
 
 impl Default for Grain {
     fn default() -> Self {
-        Grain { position: 0.0, step: 1.0, age: 0.0, length: 1.0, pan: 0.0, active: false }
+        Grain {
+            position: 0.0,
+            step: 1.0,
+            age: 0.0,
+            length: 1.0,
+            pan: 0.0,
+            active: false,
+        }
     }
 }
 
@@ -193,10 +234,18 @@ impl GrainDelay {
         let size = values[1] * 0.001 * (1.0 + values[2] * 0.005);
         let space = values[4] * 0.001;
         let pitch = rate(values[0]) * pow2(values[6] * 0.0025);
-        let history = min(6.0, space + size * max(1.0, pitch) + min(space * 0.4, 0.1) * values[2] * 0.01);
+        let history = min(
+            6.0,
+            space + size * max(1.0, pitch) + min(space * 0.4, 0.1) * values[2] * 0.01,
+        );
         let duration = history + size;
         let feedback = bounded(values[5] * 0.0085, 0.0, 0.85);
-        duration * (if feedback > 0.0 { 1.0 + (1.0e-5f64.ln() / feedback.ln()).ceil() } else { 1.0 })
+        duration
+            * (if feedback > 0.0 {
+                1.0 + (1.0e-5f64.ln() / feedback.ln()).ceil()
+            } else {
+                1.0
+            })
     }
 }
 
@@ -223,7 +272,13 @@ impl Processor for GrainDelay {
         Self::tail_estimate(values)
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let p = self.core.p;
         let sr = self.core.sr;
@@ -250,12 +305,19 @@ impl Processor for GrainDelay {
                         g.active = true;
                         g.age = 0.0;
                         g.length = max(16.0, size * (1.0 + noise(&mut self.random) * jitter * 0.5));
-                        g.step = pitch * (if reverse { -1.0 } else { 1.0 }) * pow2(noise(&mut self.random) * modulation * 0.25);
+                        g.step = pitch
+                            * (if reverse { -1.0 } else { 1.0 })
+                            * pow2(noise(&mut self.random) * modulation * 0.25);
                         // Forward grains have enough history to finish without crossing the write head.
                         let history = max(1.0, space)
-                            + (if !reverse { g.length * max(1.0, g.step) } else { 0.0 })
+                            + (if !reverse {
+                                g.length * max(1.0, g.step)
+                            } else {
+                                0.0
+                            })
                             + noise(&mut self.random) * jitter * min(space * 0.4, sr * 0.1);
-                        g.position = wrap_position(memory_l.pos as f64 - history, memory_l.data.len());
+                        g.position =
+                            wrap_position(memory_l.pos as f64 - history, memory_l.data.len());
                         g.pan = noise(&mut self.random) * stereo;
                         break;
                     }
@@ -338,7 +400,13 @@ impl Processor for GrainStretch {
         120.0
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let p = self.core.p;
         let sr = self.core.sr;
@@ -350,7 +418,10 @@ impl Processor for GrainStretch {
         }
         if !self.was_on {
             self.captured = 0;
-            self.capture_length = self.capture[0].data.len().min((sr * 60.0 / bpm(tempo) * 8.0).ceil() as usize);
+            self.capture_length = self.capture[0]
+                .data
+                .len()
+                .min((sr * 60.0 / bpm(tempo) * 8.0).ceil() as usize);
             self.cursor = 0.0;
             self.clock = 0.0;
             for g in self.grains.iter_mut() {
@@ -361,7 +432,10 @@ impl Processor for GrainStretch {
         let pitch = rate(p[3]);
         let speed = p[1] * 0.01;
         let mix = bounded(p[6] * 0.01, 0.0, 1.0);
-        let mut size = max(16.0, p[5] * 0.001 * sr / (if p[4] >= 0.5 { pitch } else { 1.0 }));
+        let mut size = max(
+            16.0,
+            p[5] * 0.001 * sr / (if p[4] >= 0.5 { pitch } else { 1.0 }),
+        );
         size = min(size, sr * 0.8);
         let wanted_loop = ((sr * 60.0 / bpm(tempo) * 0.25 * p[2]) as usize).max(1);
         let [capture_l, capture_r] = &mut self.capture;
@@ -370,7 +444,10 @@ impl Processor for GrainStretch {
             let y = r[i];
             if self.captured < self.capture_length {
                 // capture_length never exceeds either buffer (both have the same size).
-                if let (Some(slot_l), Some(slot_r)) = (capture_l.data.get_mut(self.captured), capture_r.data.get_mut(self.captured)) {
+                if let (Some(slot_l), Some(slot_r)) = (
+                    capture_l.data.get_mut(self.captured),
+                    capture_r.data.get_mut(self.captured),
+                ) {
                     *slot_l = x;
                     *slot_r = y;
                 }
@@ -465,7 +542,13 @@ impl Processor for Resochord {
         40.0
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let p = self.core.p;
         let sr = self.core.sr;
@@ -503,11 +586,19 @@ impl Processor for Resochord {
         let mut target = [0.0f64; 6];
         let lowpass = spatial::pole(1200.0 + bright * bright * 18500.0, sr);
         for k in 0..6 {
-            let semitones =
-                root as f64 + tune + (if string { (k as f64 - 2.5) * spread * 0.6 } else { CHORDS[style][k] as f64 });
+            let semitones = root as f64
+                + tune
+                + (if string {
+                    (k as f64 - 2.5) * spread * 0.6
+                } else {
+                    CHORDS[style][k] as f64
+                });
             let hz = 130.81278265 * pow2(semitones / 12.0);
             target[k] = sr / bounded(hz, 12.0, sr * 0.4);
-            self.gain[k] = min(0.9998, 0.001f64.powf(target[k] / (sr * decay)) * (0.65 + feedback * 0.35));
+            self.gain[k] = min(
+                0.9998,
+                0.001f64.powf(target[k] / (sr * decay)) * (0.65 + feedback * 0.35),
+            );
         }
         if !self.initialized {
             self.lengths = target;
@@ -521,7 +612,9 @@ impl Processor for Resochord {
                 self.lengths[k] += self.smooth * (target[k] - self.lengths[k]);
                 let v = self.comb[k].read(self.lengths[k]);
                 self.filtered[k] += lowpass * (v as f64 - self.filtered[k]);
-                self.comb[k].write(soft(((x + y) as f64 * 0.15 + self.filtered[k] * self.gain[k]) as f32));
+                self.comb[k].write(soft(
+                    ((x + y) as f64 * 0.15 + self.filtered[k] * self.gain[k]) as f32,
+                ));
                 wet[k & 1] += v as f64 * 0.28;
             }
             l[i] = clean((x as f64 * (1.0 - mix) + wet[0] * mix) as f32);
@@ -670,7 +763,15 @@ static DESCRIPTORS: [Descriptor; 4] = [
         |sr, _| Box::new(GrainStretch::new(sr)),
         |_, _, _| 120.0,
     ),
-    Descriptor::new(c"resochord", c"Resochord", c"Delay", 0, &RESO_PARAMS, |sr, _| Box::new(Resochord::new(sr)), |_, _, _| 40.0),
+    Descriptor::new(
+        c"resochord",
+        c"Resochord",
+        c"Delay",
+        0,
+        &RESO_PARAMS,
+        |sr, _| Box::new(Resochord::new(sr)),
+        |_, _, _| 40.0,
+    ),
 ];
 
 /// `stfx::delayDescriptors`.

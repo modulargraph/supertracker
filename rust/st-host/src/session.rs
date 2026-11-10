@@ -1,5 +1,10 @@
 //! The session: the project the host holds for the interface, and the commands that publish, open,
 //! save and recover it (`engine.project`, `project.*`) and choose files (`dialog.*`).
+//!
+//! The document itself (validation, project files and their media folder, the recovery copy,
+//! templates, MIDI files) is `st-project`'s; this module is the bridge side of it. Errors from
+//! `st-project` reach the interface with their text unchanged, including the one that rejects a
+//! project in a retired layout.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -8,18 +13,22 @@ use std::time::Duration;
 
 use serde::Deserialize;
 use serde_json::{json, Value};
+use st_project::session::Session as Document;
+use st_project::Project;
 
 use crate::bridge::{CallError, Calls, EventSink};
 use crate::dialogs::{Dialogs, FileDialog, FileFilter};
-use crate::document::Document;
 use crate::{Commands, Error, NoPayload, Result};
 
 /// The audio side of a project publication. `st-audio` implements this and attaches itself with
 /// [`Session::attach_audio`]; until then publications only update the session.
+///
+/// There is one mix model: a project without `routing` is mixed with standard routing, exactly like
+/// one that says `mixModel: "standard"`.
 pub trait ProjectAudio: Send + Sync + 'static {
     /// Builds the audio graph for `project`. The returned value is the result of `engine.project`.
     /// Called before the session accepts the project: an error leaves the session as it was.
-    fn prepare(&self, project: &Value, options: &PublishOptions) -> Result<Value>;
+    fn prepare(&self, project: &Project, options: &PublishOptions) -> Result<Value>;
 }
 
 /// How a project is being published.
@@ -33,9 +42,11 @@ pub struct PublishOptions {
     pub await_plugins: bool,
 }
 
+const REPLACING: PublishOptions = PublishOptions { replace: true, force_plugin_state: true, await_plugins: false };
+
 /// The session service. Created by [`crate::install`].
 pub struct Session {
-    document: Mutex<Box<dyn Document>>,
+    document: Mutex<Document>,
     dialogs: Arc<dyn Dialogs>,
     calls: Calls,
     events: EventSink,
@@ -70,7 +81,7 @@ pub struct PublishPayload {
 }
 
 #[derive(Debug, Default, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default)]
 pub struct NewPayload {
     #[serde(rename = "templateID")]
     pub template_id: Option<String>,
@@ -79,7 +90,7 @@ pub struct NewPayload {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
-pub struct OpenPayload {
+pub struct PathPayload {
     pub path: Option<PathBuf>,
 }
 
@@ -99,8 +110,17 @@ impl Default for SavePayload {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
-pub struct AutosavePayload {
+pub struct ProjectPayload {
     pub project: Option<Value>,
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct SaveTemplatePayload {
+    pub project: Option<Value>,
+    pub name: Option<String>,
+    pub id: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -120,7 +140,11 @@ fn project_filters() -> Vec<FileFilter> {
     vec![FileFilter::new("SuperTracker projects", &["supertracker", "json"])]
 }
 
-fn absolute(path: PathBuf) -> Result<PathBuf> {
+fn midi_filters() -> Vec<FileFilter> {
+    vec![FileFilter::new("MIDI files", &["mid", "midi"])]
+}
+
+pub(crate) fn absolute(path: PathBuf) -> Result<PathBuf> {
     if path.is_absolute() {
         Ok(path)
     } else {
@@ -128,13 +152,18 @@ fn absolute(path: PathBuf) -> Result<PathBuf> {
     }
 }
 
+/// A name that can be part of a file name.
+fn file_stem(name: &str) -> String {
+    name.trim().replace(['/', ':'], "-")
+}
+
 impl Session {
-    pub(crate) fn new(mut document: Box<dyn Document>, dialogs: Arc<dyn Dialogs>, calls: Calls, events: EventSink) -> Arc<Self> {
+    pub(crate) fn new(support: &Path, dialogs: Arc<dyn Dialogs>, calls: Calls, events: EventSink) -> Result<Arc<Self>> {
+        let mut document = Document::new(support)?;
         let mut startup = Startup::default();
-        if let Err(error) = document.startup() {
-            startup.warnings.push(format!("Could not restore the previous session: {error} Opening a blank session."));
-        }
-        Arc::new(Session {
+        // An unreadable recovery copy or default template does not stop the launch; it is reported.
+        startup.warnings.extend(document.startup()?.warning);
+        Ok(Arc::new(Session {
             document: Mutex::new(document),
             dialogs,
             calls,
@@ -143,7 +172,7 @@ impl Session {
             foreground: AtomicUsize::new(0),
             startup: Mutex::new(startup),
             autosave_timer: Mutex::new(None),
-        })
+        }))
     }
 
     pub(crate) fn register(self: &Arc<Self>, commands: &mut Commands) {
@@ -155,6 +184,11 @@ impl Session {
             .register_blocking("project.save", |session: &Session, payload| session.save(payload, false))
             .register_blocking("project.saveAs", |session: &Session, payload| session.save(payload, true))
             .register_blocking("project.autosave", Session::autosave)
+            .register_blocking("project.importMIDI", Session::import_midi)
+            .register_blocking("project.exportMIDI", Session::export_midi)
+            .register_blocking("project.templates.list", Session::list_templates)
+            .register_blocking("project.templates.save", Session::save_template)
+            .register_blocking("project.templates.setDefault", Session::set_default_template)
             .register_blocking("dialog.openSample", Session::choose_sample)
             .register_blocking("dialog.export", Session::choose_export)
             .register_blocking("project.media.chooseRoot", Session::choose_media_root)
@@ -166,7 +200,7 @@ impl Session {
         let _ = self.audio.set(audio);
     }
 
-    fn document(&self) -> MutexGuard<'_, Box<dyn Document>> {
+    fn document(&self) -> MutexGuard<'_, Document> {
         self.document.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
@@ -180,7 +214,7 @@ impl Session {
     }
 
     /// The project as the host holds it.
-    pub fn project(&self) -> Option<Value> {
+    pub fn project(&self) -> Option<Project> {
         self.document().project().cloned()
     }
 
@@ -191,7 +225,7 @@ impl Session {
 
     /// Whether the session has changes its file does not.
     pub fn dirty(&self) -> bool {
-        self.document().dirty()
+        self.document().is_dirty()
     }
 
     /// Problems found while starting (an unreadable recovery copy), for the handshake to report.
@@ -215,6 +249,16 @@ impl Session {
         self.startup().open_request.take()
     }
 
+    /// The project a command works on: the one in its payload, or the session's.
+    pub(crate) fn candidate(&self, supplied: Option<Value>, missing: &str) -> Result<Project> {
+        let project = match supplied {
+            Some(value) => Project::from_value(value)?,
+            None => self.project().ok_or_else(|| Error::new(missing))?,
+        };
+        st_project::validate::validate(&project)?;
+        Ok(project)
+    }
+
     /// Calls a command of another area, treating "not implemented yet" as "that area has nothing to do".
     fn call_if_present(&self, command: &str, payload: Value) -> Result<Option<Value>> {
         match self.calls.call(command, payload) {
@@ -224,7 +268,7 @@ impl Session {
         }
     }
 
-    pub(crate) fn prepare_audio(&self, project: &Value, options: PublishOptions) -> Result<Option<Value>> {
+    pub(crate) fn prepare_audio(&self, project: &Project, options: PublishOptions) -> Result<Option<Value>> {
         self.audio.get().map(|audio| audio.prepare(project, &options)).transpose()
     }
 
@@ -253,20 +297,22 @@ impl Session {
         Ok(Some(Value::Array(plugins.clone())))
     }
 
-    /// Stores freshly captured plug-in states in the session's project. Fails when the project
+    /// Captures the plug-in states and stores them in the session's project. Fails when the project
     /// changed while they were being captured: the states would belong to an older project.
-    fn store_plugin_states(&self, before: &Option<Value>, states: Option<Value>) -> Result<()> {
-        let Some(states) = states else { return Ok(()) };
+    fn capture_plugin_states(&self) -> Result<()> {
+        let before = self.project();
+        let (Some(held), Some(states)) = (&before, self.captured_plugin_states()?) else { return Ok(()) };
         let mut document = self.document();
         if document.project() != before.as_ref() {
             return Err(Error::new("The project changed while capturing plug-in state. Retry after the current edit finishes."));
         }
-        let Some(mut project) = document.project().cloned() else { return Ok(()) };
-        if project.get("audioPlugins") == Some(&states) {
+        let mut value = held.to_value();
+        if value.get("audioPlugins") == Some(&states) {
             return Ok(());
         }
-        project["audioPlugins"] = states;
-        document.update(project, true)
+        value["audioPlugins"] = states;
+        document.update(Project::from_value(value)?, true)?;
+        Ok(())
     }
 
     /// `engine.project`: the interface publishes its project.
@@ -274,7 +320,8 @@ impl Session {
         let Some(project) = payload.project else {
             return Err(Error::new("`engine.project` needs the project to publish."));
         };
-        self.document().validate(&project)?;
+        let project = Project::from_value(project)?;
+        st_project::validate::validate(&project)?;
         let _foreground = self.foreground();
         let options = PublishOptions {
             replace: payload.replace,
@@ -286,21 +333,24 @@ impl Session {
         Ok(result.unwrap_or_else(|| json!({ "audio": false })))
     }
 
-    /// `project.new`: replaces the session with an untitled one.
+    /// `project.new`: replaces the session with an untitled one, from a template (the given one,
+    /// else the default one) or, with null as the result, the interface's blank project.
     pub fn new_project(&self, payload: NewPayload) -> Result<Value> {
-        if !payload.blank && payload.template_id.is_some() {
-            return Err(Error::new("Project templates are not available yet: `project.templates.*` is not implemented in the Rust host."));
-        }
+        // Resolved first: a template that cannot be opened must not cost the open session.
+        let proposed = self.document().proposed_new_project(payload.template_id.as_deref(), payload.blank)?;
         let _foreground = self.foreground();
         self.document().autosave()?;
         self.quiet_audio()?;
-        self.document().start_new(None)?;
-        // Null: the interface starts from its own blank project.
-        Ok(Value::Null)
+        let result = match &proposed {
+            Some(project) => json!({ "project": project.to_value() }),
+            None => Value::Null,
+        };
+        self.document().accept_new_project(proposed)?;
+        Ok(result)
     }
 
     /// `project.open`: opens the file at `path`, or the one chosen in the Open window.
-    pub fn open(&self, payload: OpenPayload) -> Result<Value> {
+    pub fn open(&self, payload: PathPayload) -> Result<Value> {
         let chosen = match payload.path {
             Some(path) => absolute(path)?,
             None => match self.dialogs.choose(&FileDialog::open_file("Open Project", project_filters()))? {
@@ -310,24 +360,26 @@ impl Session {
         };
         let _foreground = self.foreground();
         self.document().autosave()?;
-        let project = self.document().read(&chosen)?;
-        self.prepare_audio(&project, PublishOptions { replace: true, force_plugin_state: true, await_plugins: false })?;
+        // Read once for the audio engine, which may refuse it, before the session changes.
+        let project = st_project::files::read_project(&chosen)?;
+        self.prepare_audio(&project, REPLACING)?;
         self.call_if_present("transport.recordArm", json!({ "armed": false }))?;
-        self.document().accept_opened(project.clone(), &chosen);
-        Ok(json!({ "project": project, "path": chosen, "dirty": false }))
+        let mut document = self.document();
+        let opened = document.open(&chosen)?.to_value();
+        Ok(json!({ "project": opened, "path": chosen, "dirty": document.is_dirty() }))
     }
 
     /// `project.save` and `project.saveAs`.
     pub fn save(&self, payload: SavePayload, save_as: bool) -> Result<Value> {
         let _foreground = self.foreground();
         if let Some(project) = payload.project {
-            self.document().update(project, true)?;
+            self.document().update(Project::from_value(project)?, true)?;
         }
         let known = if save_as { None } else { self.path() };
         let destination = match payload.path.map(absolute).transpose()?.or(known) {
             Some(path) => path,
             None => {
-                let name = self.project_name().unwrap_or_else(|| "Untitled".to_string());
+                let name = self.project().map(|project| file_stem(project.display_name())).unwrap_or_else(|| "Untitled".to_string());
                 let dialog = FileDialog::save_file("Save Project", &format!("{name}.supertracker"), project_filters());
                 match self.dialogs.choose(&dialog)? {
                     Some(path) if path.extension().is_none() => path.with_extension("supertracker"),
@@ -336,25 +388,25 @@ impl Session {
                 }
             }
         };
-        let before = self.project();
-        let states = self.captured_plugin_states()?;
-        self.store_plugin_states(&before, states)?;
-        let saved = self.document().save(&destination, payload.collect_samples)?;
-        let mut result = json!({ "project": saved, "path": destination, "saved": true });
+        self.capture_plugin_states()?;
+        let mut document = self.document();
+        let outcome = document.save_with(&destination, None, payload.collect_samples)?;
+        let saved = document.project().map(Project::to_value);
+        let mut result = json!({ "project": saved, "path": outcome.path, "saved": true });
         // The file is written. A failing recovery copy is reported, but does not undo the save.
-        if let Err(error) = self.document().autosave() {
-            result["recoveryWarning"] = json!(error.message());
+        if let Some(warning) = outcome.recovery_warning {
+            result["recoveryWarning"] = json!(warning);
         }
         Ok(result)
     }
 
     /// `project.autosave`: writes the recovery copy, unless a save or session change is in flight.
-    pub fn autosave(&self, payload: AutosavePayload) -> Result<Value> {
+    pub fn autosave(&self, payload: ProjectPayload) -> Result<Value> {
         if self.foreground.load(Ordering::SeqCst) > 0 {
             return Ok(json!({ "saved": false, "deferred": true }));
         }
         if let Some(project) = payload.project {
-            self.document().update(project, true)?;
+            self.document().update(Project::from_value(project)?, true)?;
         }
         self.write_recovery()?;
         Ok(json!({ "saved": true }))
@@ -368,20 +420,15 @@ impl Session {
 
     /// Captures plug-in state and writes the recovery copy.
     pub(crate) fn write_recovery(&self) -> Result<()> {
-        let before = self.project();
-        if before.is_none() {
-            return Ok(());
-        }
-        let states = self.captured_plugin_states()?;
-        self.store_plugin_states(&before, states)?;
-        self.document().autosave()
+        self.capture_plugin_states()?;
+        Ok(self.document().autosave()?)
     }
 
     /// Accepts the interface's final project (if any) and writes the recovery copy before quitting.
     pub(crate) fn secure_for_quit(&self, project: Option<Value>) -> Result<()> {
         let _foreground = self.foreground();
         if let Some(project) = project {
-            self.document().update(project, true)?;
+            self.document().update(Project::from_value(project)?, true)?;
         }
         self.write_recovery()
     }
@@ -414,10 +461,83 @@ impl Session {
         self.autosave_timer.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).take();
     }
 
-    fn project_name(&self) -> Option<String> {
+    /// `project.importMIDI`: a Standard MIDI File becomes a new, unsaved session.
+    pub fn import_midi(&self, payload: PathPayload) -> Result<Value> {
+        let chosen = match payload.path {
+            Some(path) => absolute(path)?,
+            None => match self.dialogs.choose(&FileDialog::open_file("Import MIDI File", midi_filters()))? {
+                Some(path) => path,
+                None => return Ok(cancelled()),
+            },
+        };
+        let _foreground = self.foreground();
+        self.document().autosave()?;
+        let project = st_project::midi::import_file(&chosen)?;
+        st_project::validate::validate(&project)?;
+        self.prepare_audio(&project, REPLACING)?;
+        self.call_if_present("transport.recordArm", json!({ "armed": false }))?;
+        let value = project.to_value();
+        let mut document = self.document();
+        document.accept_new_project(None)?;
+        document.update(project, true)?;
+        let warnings = value.pointer("/midiImport/warnings").cloned().unwrap_or_else(|| json!([]));
+        Ok(json!({ "project": value, "path": chosen, "warnings": warnings }))
+    }
+
+    /// `project.exportMIDI`: writes the project (the payload's, else the session's) as a Standard MIDI File.
+    pub fn export_midi(&self, payload: ProjectPayload) -> Result<Value> {
+        let project = self.candidate(payload.project, "There is no project to export.")?;
+        let chosen = match payload.path {
+            Some(path) => absolute(path)?,
+            None => {
+                let dialog = FileDialog::save_file("Export MIDI File", &format!("{}.mid", file_stem(project.display_name())), midi_filters());
+                match self.dialogs.choose(&dialog)? {
+                    Some(path) if path.extension().is_none() => path.with_extension("mid"),
+                    Some(path) => path,
+                    None => return Ok(cancelled()),
+                }
+            }
+        };
+        let exported = st_project::midi::export_file(&project, &chosen)?;
+        Ok(json!({
+            "path": chosen,
+            "noteCount": exported.note_count,
+            "trackCount": exported.track_count,
+            "ticksPerQuarter": exported.ticks_per_quarter,
+            "warnings": exported.warnings,
+        }))
+    }
+
+    /// `project.templates.list`
+    pub fn list_templates(&self, _: NoPayload) -> Result<Value> {
         let document = self.document();
-        let name = document.project()?.get("name")?.as_str()?.trim();
-        (!name.is_empty()).then(|| name.replace(['/', ':'], "-"))
+        let templates: Vec<Value> =
+            document.templates().into_iter().map(|template| json!({ "id": template.id, "name": template.name, "path": template.path })).collect();
+        Ok(json!({ "templates": templates, "defaultID": document.default_template_id()? }))
+    }
+
+    /// `project.templates.save`: saves the project (the payload's, else the session's) as a template.
+    pub fn save_template(&self, payload: SaveTemplatePayload) -> Result<Value> {
+        let missing = "Choose a project and name for the template.";
+        let name = payload.name.ok_or_else(|| Error::new(missing))?;
+        let project = self.candidate(payload.project, missing)?;
+        let template = self.document().save_template(&project, &name, payload.id.as_deref())?;
+        Ok(json!({ "id": template.id, "name": template.name, "path": template.path }))
+    }
+
+    /// `project.templates.setDefault`
+    ///
+    /// `{id}`: a template's id, or null for a blank default. The field must be present, so that a
+    /// request that lost it does not clear the default.
+    pub fn set_default_template(&self, payload: Value) -> Result<Value> {
+        let id = match payload.get("id") {
+            Some(Value::String(id)) => Some(id.as_str()),
+            Some(Value::Null) => None,
+            _ => return Err(Error::new("Choose a template identifier, or null for a blank default.")),
+        };
+        let document = self.document();
+        document.set_default_template(id)?;
+        Ok(json!({ "defaultID": document.default_template_id()? }))
     }
 
     /// `dialog.openSample`: an audio file to load.
@@ -431,7 +551,12 @@ impl Session {
 
     /// `dialog.export`: where to write a mixdown (a file) or stems (a new folder).
     pub fn choose_export(&self, payload: ExportDialogPayload) -> Result<Value> {
-        let name = payload.name.filter(|name| !name.trim().is_empty()).or_else(|| self.project_name()).unwrap_or_else(|| "Mixdown".to_string());
+        let name = payload
+            .name
+            .filter(|name| !name.trim().is_empty())
+            .or_else(|| self.project().map(|project| project.display_name().to_string()))
+            .map(|name| file_stem(&name))
+            .unwrap_or_else(|| "Mixdown".to_string());
         if payload.mode.as_deref() == Some("stems") {
             let dialog = FileDialog::choose_folder("A new folder will be created here for this stem export.").confirm_label("Export here");
             let Some(parent) = self.dialogs.choose(&dialog)? else { return Ok(cancelled()) };
@@ -459,7 +584,7 @@ impl Session {
         let Some(folder) = self.dialogs.choose(&FileDialog::choose_folder("Add a Folder to the Library"))? else {
             return Ok(cancelled());
         };
-        self.calls.call("library.scan", json!({ "roots": [folder] })).map_err(|error| Error::new(error.to_string()))
+        Ok(self.calls.call("library.scan", json!({ "roots": [folder] }))?)
     }
 }
 

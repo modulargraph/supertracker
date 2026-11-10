@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 
 use crate::bridge::{BridgeBuilder, CallError, Calls, EventSink};
 use crate::dialogs::Dialogs;
-use crate::document::{Document, JsonDocument};
+use crate::media::MediaRelink;
 use crate::session::{PublishOptions, Session};
 use crate::settings::Settings;
 use crate::{Error, NoPayload, Result};
@@ -24,16 +24,14 @@ pub struct HostOptions {
     pub dialogs: Arc<dyn Dialogs>,
     /// Opens links and reveals files. [`SystemOpener`] outside tests.
     pub opener: Arc<dyn Opener>,
-    /// The document implementation; `None` for the default.
-    pub document: Option<Box<dyn Document>>,
     /// How often the host writes the recovery copy on its own; `None` for never (tests).
     pub autosave_every: Option<Duration>,
 }
 
 impl HostOptions {
-    /// The options of a normal run: the default document, the system's opener, recovery every 20 s.
+    /// The options of a normal run: the system's opener, recovery every 20 s.
     pub fn new(support: PathBuf, dialogs: Arc<dyn Dialogs>) -> Self {
-        HostOptions { support, dialogs, opener: Arc::new(SystemOpener), document: None, autosave_every: Some(Duration::from_secs(20)) }
+        HostOptions { support, dialogs, opener: Arc::new(SystemOpener), autosave_every: Some(Duration::from_secs(20)) }
     }
 }
 
@@ -50,14 +48,15 @@ pub struct Host {
 /// builder, then starts the bridge.
 pub fn install(bridge: &mut BridgeBuilder, options: HostOptions) -> Result<Host> {
     let settings = Arc::new(Settings::open(&options.support)?);
-    let document = options.document.unwrap_or_else(|| Box::new(JsonDocument::new(&options.support)));
-    let session = Session::new(document, options.dialogs, bridge.calls(), bridge.events());
+    let session = Session::new(&options.support, options.dialogs, bridge.calls(), bridge.events())?;
     let lifecycle = Arc::new(Lifecycle { events: bridge.events(), session: session.clone(), state: Mutex::new(Quit::default()) });
     let handshake = Arc::new(Handshake { session: session.clone(), settings: settings.clone(), calls: bridge.calls() });
     let external = Arc::new(External { opener: options.opener });
 
+    let events = bridge.events();
     let commands = bridge.commands();
     session.register(commands);
+    MediaRelink::register(session.clone(), events, commands);
     commands.with(&handshake).register_blocking("ready", Handshake::ready);
     commands.with(&settings).register("settings.get", Settings::command_get).register("settings.set", Settings::command_set);
     commands.with(&external).register_blocking("app.external", External::open);
@@ -77,7 +76,7 @@ struct Handshake {
 
 impl Handshake {
     /// What another area contributes to the handshake, or `fallback` while the area is not there.
-    fn from_area(&self, command: &str, fallback: Value, problems: &mut Vec<String>) -> Value {
+    fn area_part(&self, command: &str, fallback: Value, problems: &mut Vec<String>) -> Value {
         match self.calls.call(command, json!({})) {
             Ok(value) => value,
             Err(CallError::NotImplemented(_)) => fallback,
@@ -110,16 +109,16 @@ impl Handshake {
         let mut result = json!({
             "version": env!("CARGO_PKG_VERSION"),
             "commands": self.calls.implemented(),
-            "project": project,
+            "project": project.as_ref().map(st_project::Project::to_value),
             "dirty": self.session.dirty(),
             "path": self.session.path(),
-            "roots": self.from_area("library.roots", json!([]), &mut warnings),
-            "plugins": self.from_area("plugins.list", json!([]), &mut warnings),
-            "audio": self.from_area("audio.devices", no_devices(), &mut warnings),
-            "midi": self.from_area("midi.devices", no_devices(), &mut warnings),
+            "roots": self.area_part("library.roots", json!([]), &mut warnings),
+            "plugins": self.area_part("plugins.list", json!([]), &mut warnings),
+            "audio": self.area_part("audio.devices", no_devices(), &mut warnings),
+            "midi": self.area_part("midi.devices", no_devices(), &mut warnings),
         });
         if self.calls.implements("plugins.recovery") {
-            result["pluginRecovery"] = self.from_area("plugins.recovery", Value::Null, &mut warnings);
+            result["pluginRecovery"] = self.area_part("plugins.recovery", Value::Null, &mut warnings);
         }
         if !warnings.is_empty() {
             result["warning"] = json!(warnings.join(" "));

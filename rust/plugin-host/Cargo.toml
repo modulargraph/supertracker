@@ -2,7 +2,7 @@
 # Its own workspace: rust/Cargo.toml excludes this directory. See docs/PLUGIN_CONTAINER.md.
 [workspace]
 resolver = "2"
-members = ["crates/transport", "crates/runtime", "crates/client", "crates/container"]
+members = ["crates/transport", "crates/runtime", "crates/client", "crates/container", "crates/clap-test-plugin"]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,6 +12,8 @@ publish = false
 
 [workspace.dependencies]
 libc = "0.2"
+# CLAP ABI definitions (MIT OR Apache-2.0, no dependencies).
+clap-sys = "0.5"
 stpc-transport = { path = "crates/transport" }
 stpc-client = { path = "crates/client" }
 stpc-runtime = { path = "crates/runtime" }

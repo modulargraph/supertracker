@@ -137,32 +137,87 @@ pub type LossReason = ExitReason;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum HostEvent {
-    ContainerStarted { container: ContainerId, pid: u32 },
+    ContainerStarted {
+        container: ContainerId,
+        pid: u32,
+    },
     /// A container process ended. `lost` lists the instances that went with it (empty for
     /// a regular shutdown).
-    ContainerExited { container: ContainerId, pid: u32, reason: ExitReason, lost: Vec<InstanceId> },
+    ContainerExited {
+        container: ContainerId,
+        pid: u32,
+        reason: ExitReason,
+        lost: Vec<InstanceId>,
+    },
     /// The instance's container is gone; `process` plays the fallback until it is restored.
-    InstanceLost { instance: InstanceId, container: ContainerId, reason: LossReason },
+    InstanceLost {
+        instance: InstanceId,
+        container: ContainerId,
+        reason: LossReason,
+    },
     /// A block missed its deadline (one event per episode).
-    DeadlineMissed { instance: InstanceId },
+    DeadlineMissed {
+        instance: InstanceId,
+    },
     /// The container has not answered a block for the hang timeout. With `kill_hung` the
     /// container is killed next and `InstanceLost` follows.
-    InstanceHung { instance: InstanceId, container: ContainerId },
-    InstanceRestored { instance: InstanceId, container: ContainerId },
-    InstanceRestoreFailed { instance: InstanceId, error: String },
+    InstanceHung {
+        instance: InstanceId,
+        container: ContainerId,
+    },
+    InstanceRestored {
+        instance: InstanceId,
+        container: ContainerId,
+    },
+    InstanceRestoreFailed {
+        instance: InstanceId,
+        error: String,
+    },
     /// The user grabbed / released a control in the plug-in's editor.
-    ParameterGesture { instance: InstanceId, id: u64, begin: bool },
+    ParameterGesture {
+        instance: InstanceId,
+        id: u64,
+        begin: bool,
+    },
     /// The plug-in changed a parameter itself (editor, program change).
-    ParameterChanged { instance: InstanceId, id: u64, value: f64 },
-    LatencyChanged { instance: InstanceId, frames: u32 },
-    TailChanged { instance: InstanceId, frames: u64 },
+    ParameterChanged {
+        instance: InstanceId,
+        id: u64,
+        value: f64,
+    },
+    LatencyChanged {
+        instance: InstanceId,
+        frames: u32,
+    },
+    TailChanged {
+        instance: InstanceId,
+        frames: u64,
+    },
     /// Parameter metadata and values must be read again.
-    ParametersRescan { instance: InstanceId },
-    StateDirty { instance: InstanceId },
+    ParametersRescan {
+        instance: InstanceId,
+    },
+    StateDirty {
+        instance: InstanceId,
+    },
     /// The user closed the editor window.
-    EditorClosed { instance: InstanceId },
-    EditorResized { instance: InstanceId, width: u32, height: u32 },
-    Log { container: ContainerId, message: String },
+    EditorClosed {
+        instance: InstanceId,
+    },
+    EditorResized {
+        instance: InstanceId,
+        width: u32,
+        height: u32,
+    },
+    /// The plug-in asks to be deactivated and activated again (e.g. its latency changes).
+    /// The host does that when convenient: `deactivate()` then `activate()`.
+    RestartRequested {
+        instance: InstanceId,
+    },
+    Log {
+        container: ContainerId,
+        message: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -358,10 +413,7 @@ impl Supervisor {
         // sockaddr_un holds about 104 bytes on macOS: fail early with a usable message.
         if dir.as_os_str().len() + 24 > 100 {
             let _ = std::fs::remove_dir(&dir);
-            return Err(Error::Invalid(format!(
-                "socket directory path too long for a Unix socket: {}",
-                dir.display()
-            )));
+            return Err(Error::Invalid(format!("socket directory path too long for a Unix socket: {}", dir.display())));
         }
         let inner = Arc::new(SupInner {
             policy: Mutex::new(config.policy),
@@ -504,8 +556,8 @@ fn sweep_stale_dirs(base: &Path) {
             continue;
         }
         // SAFETY: signal 0 only checks for the existence of the process.
-        let gone = unsafe { libc::kill(pid, 0) } != 0
-            && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
+        let gone =
+            unsafe { libc::kill(pid, 0) } != 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
         if gone {
             let _ = std::fs::remove_dir_all(entry.path());
         }
@@ -608,8 +660,7 @@ impl SupInner {
             .arg(&token)
             .envs(self.config.container_env.iter().map(|(k, v)| (k.as_os_str(), v.as_os_str())))
             .stdin(Stdio::null());
-        let mut child =
-            command.spawn().map_err(|e| Error::Spawn(format!("{}: {e}", self.container_path.display())))?;
+        let mut child = command.spawn().map_err(|e| Error::Spawn(format!("{}: {e}", self.container_path.display())))?;
         let reject = |child: &mut Child, error: Error| -> Error {
             let _ = child.kill();
             let _ = child.wait();
@@ -817,13 +868,25 @@ impl SupInner {
             let dirty: Vec<(u64, f64)> = shared.dirty.lock().unwrap().iter().map(|(k, v)| (*k, *v)).collect();
             for (id, value) in dirty {
                 // Best effort: a parameter the plug-in refuses must not fail the restore.
-                let _ = conn.call(&Request::SetParameter { instance: shared.id, id, value }, &[], self.config.request_timeout);
+                let _ = conn.call(
+                    &Request::SetParameter { instance: shared.id, id, value },
+                    &[],
+                    self.config.request_timeout,
+                );
             }
             if control.offline {
-                expect_ok(conn.call(&Request::SetOffline { instance: shared.id, offline: true }, &[], self.config.request_timeout)?)?;
+                expect_ok(conn.call(
+                    &Request::SetOffline { instance: shared.id, offline: true },
+                    &[],
+                    self.config.request_timeout,
+                )?)?;
             }
             if control.bypass && !shared.client_bypass.load(Ordering::Relaxed) {
-                expect_ok(conn.call(&Request::SetBypass { instance: shared.id, bypass: true }, &[], self.config.request_timeout)?)?;
+                expect_ok(conn.call(
+                    &Request::SetBypass { instance: shared.id, bypass: true },
+                    &[],
+                    self.config.request_timeout,
+                )?)?;
             }
             if shared.active.load(Ordering::Relaxed) {
                 expect_ok(conn.call(&Request::Activate { instance: shared.id }, &[], self.config.create_timeout)?)?;
@@ -977,7 +1040,13 @@ fn expect_ok(response: Response) -> Result<()> {
 
 // ---- reader thread and death procedure --------------------------------------------------
 
-fn reader_thread(stream: Stream, conn: Arc<Connection>, container: Arc<Container>, sup: Weak<SupInner>, generation: u64) {
+fn reader_thread(
+    stream: Stream,
+    conn: Arc<Connection>,
+    container: Arc<Container>,
+    sup: Weak<SupInner>,
+    generation: u64,
+) {
     loop {
         let frame = match stream.recv() {
             Ok(frame) => frame,
@@ -1098,6 +1167,7 @@ fn housekeep(sup: &Arc<SupInner>, shared: &Arc<InstanceShared>) {
                 HostEvent::EditorClosed { instance }
             }
             Notification::EditorResized { width, height } => HostEvent::EditorResized { instance, width, height },
+            Notification::RestartRequested => HostEvent::RestartRequested { instance },
         };
         sup.emit(event);
     }
@@ -1283,7 +1353,12 @@ impl Instance {
         if self.shared.status() == InstanceStatus::Lost {
             return Ok(());
         }
-        expect_ok(call(&self.shared, &control, &Request::SetOffline { instance: self.shared.id, offline }, self.timeout())?)
+        expect_ok(call(
+            &self.shared,
+            &control,
+            &Request::SetOffline { instance: self.shared.id, offline },
+            self.timeout(),
+        )?)
     }
 
     /// Bypasses the plug-in. Uses the plug-in's own bypass when it has one; otherwise the
@@ -1322,7 +1397,8 @@ impl Instance {
         let conn = control.conn.clone().ok_or(Error::InstanceLost)?;
         // SAFETY: only the wake mode is read, through the gate.
         self.shared.lock_gate();
-        let mode = unsafe { (*self.shared.rt.get()).link.as_ref().map(|link| link.waiter.mode()) }.unwrap_or(WakeMode::Address);
+        let mode = unsafe { (*self.shared.rt.get()).link.as_ref().map(|link| link.waiter.mode()) }
+            .unwrap_or(WakeMode::Address);
         let result = (|| -> Result<InstanceInfo> {
             let (link, fds) = new_link(&control, max_frames, mode)?;
             let borrowed: Vec<BorrowedFd<'_>> = fds.iter().map(|fd| fd.as_fd()).collect();
@@ -1351,6 +1427,15 @@ impl Instance {
         control.sample_rate = sample_rate;
         control.max_frames = max_frames;
         control.info = info;
+        // Reconfiguring deactivates the plug-in; bring it back if it was active.
+        if self.shared.active.load(Ordering::Relaxed) {
+            let request = Request::Activate { instance: self.shared.id };
+            let activated = call(&self.shared, &control, &request, self.sup.config.create_timeout).and_then(expect_ok);
+            if activated.is_err() {
+                self.shared.active.store(false, Ordering::Release);
+            }
+            activated?;
+        }
         Ok(())
     }
 

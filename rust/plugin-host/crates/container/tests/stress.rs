@@ -35,7 +35,8 @@ fn stress(seed: u64, operations: usize) {
     let fallbacks = Arc::new(AtomicU64::new(0));
 
     let audio = {
-        let (entries, stop, processed, fallbacks) = (entries.clone(), stop.clone(), processed.clone(), fallbacks.clone());
+        let (entries, stop, processed, fallbacks) =
+            (entries.clone(), stop.clone(), processed.clone(), fallbacks.clone());
         std::thread::spawn(move || {
             let mut rng = Rng(seed ^ 0xA0D10);
             while !stop.load(Ordering::Relaxed) {
@@ -73,10 +74,21 @@ fn stress(seed: u64, operations: usize) {
 
     let mut rng = Rng(seed);
     let mut counts = [0usize; 12];
-    let policies = [GroupingPolicy::Shared, GroupingPolicy::PerManufacturer, GroupingPolicy::PerPlugin, GroupingPolicy::PerInstance];
+    let policies = [
+        GroupingPolicy::Shared,
+        GroupingPolicy::PerManufacturer,
+        GroupingPolicy::PerPlugin,
+        GroupingPolicy::PerInstance,
+    ];
     for _ in 0..operations {
         let len = entries.read().unwrap().len();
-        let op = if len == 0 { 0 } else if len >= 12 { 1 } else { rng.below(12) as usize };
+        let op = if len == 0 {
+            0
+        } else if len >= 12 {
+            1
+        } else {
+            rng.below(12) as usize
+        };
         counts[op] += 1;
         match op {
             0 | 10 => {
@@ -92,14 +104,22 @@ fn stress(seed: u64, operations: usize) {
                 if plugin == "bigstate" {
                     config.options = format!("size={}", 1000 + rng.below(200_000));
                 }
-                let (inputs, outputs) = (config.input_buses.iter().sum::<u32>() as usize, config.output_buses.iter().sum::<u32>() as usize);
+                let (inputs, outputs) =
+                    (config.input_buses.iter().sum::<u32>() as usize, config.output_buses.iter().sum::<u32>() as usize);
                 // Creation can fail if the target container is killed concurrently: never here
                 // (this thread is the only one that kills), so it must succeed.
                 let instance = env.sup().create_instance(config).expect("create under stress");
                 if rng.below(5) != 0 {
                     instance.activate().expect("activate under stress");
                 }
-                entries.write().unwrap().push(Entry { instance, plugin, inputs, outputs, is_instrument: plugin == "sine", exact: true });
+                entries.write().unwrap().push(Entry {
+                    instance,
+                    plugin,
+                    inputs,
+                    outputs,
+                    is_instrument: plugin == "sine",
+                    exact: true,
+                });
             }
             1 => {
                 let index = rng.below(len as u64) as usize;
@@ -139,7 +159,9 @@ fn stress(seed: u64, operations: usize) {
             5 => {
                 // Crash from inside, on the plug-in's main thread.
                 let list = entries.read().unwrap();
-                if let Some(entry) = list.iter().find(|e| e.plugin == "crash" && e.instance.status() == InstanceStatus::Running) {
+                if let Some(entry) =
+                    list.iter().find(|e| e.plugin == "crash" && e.instance.status() == InstanceStatus::Running)
+                {
                     let result = entry.instance.set_parameter(tb::crash::MAIN, 1.0 + rng.below(2) as f64);
                     assert!(matches!(result, Err(Error::ContainerDied)), "{result:?}");
                 }
@@ -162,7 +184,8 @@ fn stress(seed: u64, operations: usize) {
             9 => {
                 let list = entries.read().unwrap();
                 let entry = &list[rng.below(len as u64) as usize];
-                let result = if entry.instance.is_active() { entry.instance.deactivate() } else { entry.instance.activate() };
+                let result =
+                    if entry.instance.is_active() { entry.instance.deactivate() } else { entry.instance.activate() };
                 assert!(matches!(result, Ok(()) | Err(Error::InstanceLost)), "{result:?}");
             }
             11 => {
@@ -219,7 +242,8 @@ fn stress(seed: u64, operations: usize) {
 #[test]
 fn randomized_operations() {
     let operations = std::env::var("STPC_STRESS_OPS").ok().and_then(|v| v.parse().ok()).unwrap_or(400);
-    let seed = std::env::var("STPC_STRESS_SEED").ok().and_then(|v| u64::from_str_radix(v.trim_start_matches("0x"), 16).ok());
+    let seed =
+        std::env::var("STPC_STRESS_SEED").ok().and_then(|v| u64::from_str_radix(v.trim_start_matches("0x"), 16).ok());
     match seed {
         Some(seed) => stress(seed, operations),
         None => {

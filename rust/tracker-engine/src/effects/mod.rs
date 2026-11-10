@@ -28,6 +28,16 @@
 //! `common` for the few places where a libm call is spelled differently to match what the
 //! C++ compiler emits).
 
+// The numeric literals are the C++ ones, digit for digit (several are deliberately truncated
+// approximations of well-known constants and must not be "corrected"), and the index loops
+// mirror the C++ loops they translate.
+#![allow(
+    clippy::approx_constant,
+    clippy::excessive_precision,
+    clippy::needless_range_loop,
+    clippy::manual_range_contains
+)]
+
 pub mod capi;
 pub mod common;
 pub mod delay;

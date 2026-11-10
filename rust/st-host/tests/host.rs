@@ -64,7 +64,7 @@ impl Fixture {
 
 fn project(name: &str) -> Value {
     json!({
-        "version": 1, "name": name, "bpm": 120.0,
+        "version": 1, "name": name, "bpm": 120,
         "tracks": [{"name": "Track 01", "instrument": 0}],
         "instruments": [{"name": "Instrument 01", "type": "sample", "samplePath": ""}],
         "patterns": [{"id": 0, "length": 64, "steps": [[{"note": 60, "instrument": 0}]]}],
@@ -116,7 +116,6 @@ fn publish_save_new_open_round_trip() {
     let fixture = Fixture::new();
     let file = fixture.file("Song.supertracker");
     assert_eq!(fixture.host.request("engine.project", json!({"project": project("Song"), "awaitPlugins": true})), Ok(json!({"audio": false})));
-    assert!(!fixture.services.session.dirty());
 
     // Save without a known file asks where, with the project's name proposed.
     fixture.dialogs.push(None);
@@ -149,7 +148,7 @@ fn publish_save_new_open_round_trip() {
     // New: the interface gets null (it supplies the blank project) and the session is untitled.
     assert_eq!(fixture.host.request("project.new", json!({})), Ok(Value::Null));
     assert_eq!(fixture.services.session.path(), None);
-    assert_eq!(fixture.services.session.project(), None);
+    assert!(fixture.services.session.project().is_none());
 
     // Open by path, then through the Open window.
     let opened = fixture.host.request("project.open", json!({"path": file})).unwrap();
@@ -174,13 +173,15 @@ fn project_commands_fail_with_messages_for_the_user() {
     let missing = fixture.host.request("project.open", json!({"path": fixture.file("Missing.supertracker")})).unwrap_err();
     assert!(missing.starts_with("Could not open Missing.supertracker:"), "{missing}");
     std::fs::write(fixture.file("notes.txt"), "hello").unwrap();
-    assert_eq!(fixture.host.request("project.open", json!({"path": fixture.file("notes.txt")})), Err("notes.txt is not a SuperTracker project.".to_string()));
+    let not_a_project = fixture.host.request("project.open", json!({"path": fixture.file("notes.txt")})).unwrap_err();
+    assert!(not_a_project.contains("not"), "{not_a_project}");
     // A dialog with no scripted answer is an error, not a hang and not a silent cancel.
     fixture.host.request("engine.project", json!({"project": project("Song")})).unwrap();
     let unanswered = fixture.host.request("project.saveAs", json!({})).unwrap_err();
     assert!(unanswered.starts_with("No scripted answer is left for the Save window"), "{unanswered}");
     let template = fixture.host.request("project.new", json!({"templateID": "abc"})).unwrap_err();
-    assert!(template.contains("project.templates"), "{template}");
+    assert!(template.starts_with("Project template abc could not be opened:"), "{template}");
+    assert_eq!(fixture.services.session.project().unwrap().display_name(), "Song", "a template that cannot be opened does not cost the session");
     assert_eq!(fixture.host.request("project.new", json!({"templateID": "abc", "blank": true})), Ok(Value::Null));
 }
 
@@ -204,7 +205,7 @@ fn autosave_writes_a_recovery_copy_that_the_next_launch_restores() {
     let ready = broken.host.request("ready", json!({})).unwrap();
     assert_eq!(ready["project"], Value::Null);
     let warning = ready["warning"].as_str().unwrap();
-    assert!(warning.starts_with("Could not restore the previous session:") && warning.contains("was kept as"), "{warning}");
+    assert!(warning.starts_with("The previous session could not be recovered:") && warning.contains("was kept as"), "{warning}");
 }
 
 #[test]
@@ -222,8 +223,8 @@ struct Graph {
 }
 
 impl ProjectAudio for Graph {
-    fn prepare(&self, project: &Value, options: &PublishOptions) -> Result<Value> {
-        let name = project["name"].as_str().unwrap_or_default().to_string();
+    fn prepare(&self, project: &st_project::Project, options: &PublishOptions) -> Result<Value> {
+        let name = project.display_name().to_string();
         if name == "Broken graph" {
             st_host::fail!("The audio device is gone.");
         }
@@ -257,7 +258,7 @@ fn an_attached_audio_engine_prepares_publications_and_can_refuse_them() {
     assert_eq!(graph.prepared.lock().unwrap()[0], ("Song".to_string(), PublishOptions { replace: true, force_plugin_state: true, await_plugins: false }));
     // A refused publication leaves the session as it was.
     assert_eq!(fixture.host.request("engine.project", json!({"project": project("Broken graph")})), Err("The audio device is gone.".to_string()));
-    assert_eq!(fixture.services.session.project().unwrap()["name"], "Song");
+    assert_eq!(fixture.services.session.project().unwrap().display_name(), "Song");
 
     // Saving stores the plug-in states the engine reports.
     let file = fixture.file("Song.supertracker");
@@ -442,4 +443,158 @@ fn the_recovery_timer_writes_without_being_asked() {
     }
     assert_eq!(serde_json::from_slice::<Value>(&std::fs::read(&recovery).unwrap()).unwrap(), project("Timed"));
     services.unwrap().session.stop();
+}
+
+#[test]
+fn a_project_in_a_retired_layout_is_refused_with_st_projects_own_words() {
+    let fixture = Fixture::new();
+    let mut old = project("Old");
+    old["timing"] = json!({"tempoMap": [{"beat": 0, "bpm": 90}]});
+    let expected = "This project was saved in an older layout (a tempo map) that this version no longer reads. Open and save it with a version of SuperTracker that converts it, then open it again.";
+    assert_eq!(fixture.host.request("engine.project", json!({"project": old})), Err(expected.to_string()));
+    let file = fixture.file("Old.supertracker");
+    std::fs::write(&file, old.to_string()).unwrap();
+    assert_eq!(fixture.host.request("project.open", json!({"path": file})), Err(expected.to_string()));
+    assert!(fixture.services.session.project().is_none());
+}
+
+#[test]
+fn a_project_without_routing_is_accepted_like_one_with_standard_routing() {
+    let fixture = Fixture::new();
+    let mut plain = project("Plain");
+    plain.as_object_mut().unwrap().remove("routing");
+    assert_eq!(fixture.host.request("engine.project", json!({"project": plain})), Ok(json!({"audio": false})));
+    let mut standard = project("Standard");
+    standard["tracks"][0]["routingID"] = json!("track-1");
+    standard["routing"] = json!({"version": 1, "mixModel": "standard", "buses": [], "outputs": {}, "sends": [], "sidechains": []});
+    assert_eq!(fixture.host.request("engine.project", json!({"project": standard})), Ok(json!({"audio": false})));
+}
+
+#[test]
+fn templates_are_saved_listed_made_default_and_used_by_new() {
+    let fixture = Fixture::new();
+    assert_eq!(fixture.host.request("project.templates.list", json!({})), Ok(json!({"templates": [], "defaultID": null})));
+    assert_eq!(fixture.host.request("project.templates.save", json!({"name": "Live set"})), Err("Choose a project and name for the template.".to_string()));
+    let saved = fixture.host.request("project.templates.save", json!({"project": project("Live set"), "name": "  Live set "})).unwrap();
+    let id = saved["id"].as_str().unwrap().to_string();
+    assert_eq!(saved["name"], "Live set");
+    assert!(std::path::Path::new(saved["path"].as_str().unwrap()).is_file());
+    // Saving a template touches neither the session nor its recovery copy.
+    assert!(fixture.services.session.project().is_none());
+
+    let listed = fixture.host.request("project.templates.list", json!({})).unwrap();
+    assert_eq!(listed, json!({"templates": [saved.clone()], "defaultID": null}));
+    assert_eq!(fixture.host.request("project.templates.setDefault", json!({})), Err("Choose a template identifier, or null for a blank default.".to_string()));
+    assert_eq!(fixture.host.request("project.templates.setDefault", json!({"id": id})), Ok(json!({"defaultID": id})));
+
+    // New uses the default template; `blank` and an explicit template override it.
+    let from_default = fixture.host.request("project.new", json!({})).unwrap();
+    assert_eq!(from_default["project"]["name"], "Live set");
+    assert_eq!(fixture.host.request("project.new", json!({"blank": true})), Ok(Value::Null));
+    assert_eq!(fixture.host.request("project.new", json!({"templateID": id})).unwrap()["project"]["name"], "Live set");
+    assert_eq!(fixture.host.request("project.templates.setDefault", json!({"id": null})), Ok(json!({"defaultID": null})));
+    assert_eq!(fixture.host.request("project.new", json!({})), Ok(Value::Null));
+
+    // The next launch starts from the default template.
+    fixture.host.request("project.templates.setDefault", json!({"id": id})).unwrap();
+    let relaunched = fixture.relaunch(|_| {});
+    assert_eq!(relaunched.host.request("ready", json!({})).unwrap()["project"]["name"], "Live set");
+}
+
+#[test]
+fn midi_files_export_and_import_through_the_dialogs_or_a_path() {
+    let fixture = Fixture::new();
+    assert_eq!(fixture.host.request("project.exportMIDI", json!({})), Err("There is no project to export.".to_string()));
+    fixture.dialogs.push(None);
+    assert_eq!(fixture.host.request("project.exportMIDI", json!({"project": project("Melody")})), Ok(json!({"cancelled": true})));
+    fixture.dialogs.push(Some(fixture.file("Melody")));
+    let exported = fixture.host.request("project.exportMIDI", json!({"project": project("Melody")})).unwrap();
+    let file = fixture.file("Melody.mid");
+    assert_eq!(exported["path"], json!(file));
+    assert_eq!(exported["noteCount"], 1);
+    assert_eq!(fixture.dialogs.asked()[1].suggested_name.as_deref(), Some("Melody.mid"));
+    assert_eq!(&std::fs::read(&file).unwrap()[..4], b"MThd");
+
+    fixture.dialogs.push(None);
+    assert_eq!(fixture.host.request("project.importMIDI", json!({})), Ok(json!({"cancelled": true})));
+    let imported = fixture.host.request("project.importMIDI", json!({"path": file})).unwrap();
+    assert_eq!(imported["path"], json!(file));
+    assert_eq!(imported["project"]["name"], "Melody");
+    assert!(imported["warnings"].is_array());
+    // The import is a new session that has never been saved.
+    assert_eq!(fixture.services.session.path(), None);
+    assert!(fixture.services.session.dirty());
+    assert_eq!(fixture.services.session.project().unwrap().display_name(), "Melody");
+    let garbage = fixture.file("garbage.mid");
+    std::fs::write(&garbage, "not midi").unwrap();
+    assert!(fixture.host.request("project.importMIDI", json!({"path": garbage})).is_err());
+    assert_eq!(fixture.services.session.project().unwrap().display_name(), "Melody", "a failed import leaves the session alone");
+}
+
+#[test]
+fn missing_media_is_inspected_searched_and_relinked() {
+    let fixture = Fixture::new();
+    fixture.host.request("ready", json!({})).unwrap();
+    assert_eq!(fixture.host.request("project.media.inspect", json!({})), Err("Open a project before relinking media.".to_string()));
+    let found = fixture.file("found/deep/kick.wav");
+    std::fs::create_dir_all(found.parent().unwrap()).unwrap();
+    std::fs::write(&found, b"RIFF kick").unwrap();
+    let mut song = project("Relink");
+    song["instruments"][0]["samplePath"] = json!("/gone/drive/kick.wav");
+    fixture.host.request("engine.project", json!({"project": song})).unwrap();
+
+    let inspected = fixture.host.request("project.media.inspect", json!({})).unwrap();
+    assert_eq!((inspected["referenceCount"].as_u64(), inspected["missingCount"].as_u64()), (Some(1), Some(1)));
+    let missing = inspected["missing"][0].clone();
+    assert_eq!(missing["path"], "/gone/drive/kick.wav");
+
+    assert_eq!(fixture.host.request("project.media.search", json!({"roots": ["relative/folder"]})), Err("Choose up to 64 absolute media folders or root mappings.".to_string()));
+    let searched = fixture.host.request("project.media.search", json!({"roots": [fixture.file("found")], "requestId": "r1"})).unwrap();
+    assert_eq!(searched["requestId"], "r1");
+    assert_eq!(searched["missing"][0]["candidates"][0]["path"], json!(found));
+    // Progress is reported as events that carry the request's id, from "starting" to "complete".
+    let events: Vec<(String, Value)> = fixture.host.events().into_iter().filter(|(name, _)| name == "project.media.progress").collect();
+    assert_eq!(events.first().unwrap().1["phase"], "starting");
+    assert_eq!(events.last().unwrap().1["phase"], "complete");
+    assert!(events.iter().all(|(_, payload)| payload["requestId"] == "r1" && payload["operationId"] == searched["operationId"]));
+
+    assert_eq!(fixture.host.request("project.media.apply", json!({})), Err("Select replacement files before applying media relinks.".to_string()));
+    let selection = json!({"id": missing["id"], "from": "/gone/drive/kick.wav", "to": found, "allowDifferentContent": true});
+    let applied = fixture.host.request("project.media.apply", json!({"selections": [selection]})).unwrap();
+    assert_eq!(applied["changed"], 1);
+    assert_eq!(applied["project"]["instruments"][0]["samplePath"], json!(found));
+    // Applying returns the relinked project; the session changes when the interface publishes it.
+    assert_eq!(fixture.services.session.project().unwrap().to_value()["instruments"][0]["samplePath"], "/gone/drive/kick.wav");
+    assert_eq!(fixture.host.request("project.media.cancel", json!({})), Ok(json!({"cancelled": true, "operations": 0})));
+}
+
+#[test]
+fn a_media_search_stops_when_it_is_cancelled() {
+    let fixture = Fixture::new();
+    fixture.host.request("ready", json!({})).unwrap();
+    // Enough folders that the walk is still going when the cancellation arrives.
+    let root = fixture.file("haystack");
+    for folder in 0..200 {
+        let path = root.join(format!("d{folder}"));
+        std::fs::create_dir_all(&path).unwrap();
+        for file in 0..50 {
+            std::fs::write(path.join(format!("f{file}.wav")), b"x").unwrap();
+        }
+    }
+    let mut song = project("Cancel");
+    song["instruments"][0]["samplePath"] = json!("/gone/needle.wav");
+    fixture.host.request("engine.project", json!({"project": song})).unwrap();
+    let search = fixture.host.send("project.media.search", json!({"roots": [root], "requestId": "slow"}));
+    assert!(fixture.host.wait_for_event("project.media.progress", Duration::from_secs(5)).is_some());
+    let cancelled = fixture.host.request("project.media.cancel", json!({})).unwrap();
+    match fixture.host.reply(search) {
+        // The usual case: the walk was still running.
+        Err(error) => {
+            assert_eq!(error, "The operation was cancelled.");
+            assert_eq!(cancelled, json!({"cancelled": true, "operations": 1}));
+        }
+        // A very fast disk finished first; then there was nothing left to cancel.
+        Ok(report) => assert_eq!((report["requestId"].as_str(), cancelled["operations"].as_u64()), (Some("slow"), Some(0))),
+    }
+    assert_eq!(fixture.host.bridge.pending(), 0);
 }

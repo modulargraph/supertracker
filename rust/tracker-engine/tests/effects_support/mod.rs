@@ -91,7 +91,11 @@ pub struct Effect {
 impl Effect {
     /// `descriptor.create(rate, 256)` without touching the parameters.
     pub fn raw(info: &'static Descriptor, rate: f64) -> Self {
-        Effect { info, dsp: (info.create)(rate, 256), sr: rate }
+        Effect {
+            info,
+            dsp: (info.create)(rate, 256),
+            sr: rate,
+        }
     }
 
     /// `descriptor.create(rate, 256)` followed by the catalogue defaults.
@@ -104,13 +108,18 @@ impl Effect {
     }
 
     pub fn parameter_index(&self, id: &str) -> Option<usize> {
-        self.info.params.iter().position(|parameter| parameter.id().to_bytes() == id.as_bytes())
+        self.info
+            .params
+            .iter()
+            .position(|parameter| parameter.id().to_bytes() == id.as_bytes())
     }
 
     /// Sets the physical value of the parameter with the given id.
     #[track_caller]
     pub fn set(&mut self, id: &str, value: f64) {
-        let index = self.parameter_index(id).unwrap_or_else(|| panic!("missing parameter {id}"));
+        let index = self
+            .parameter_index(id)
+            .unwrap_or_else(|| panic!("missing parameter {id}"));
         self.dsp.core_mut().p[index] = value;
     }
 
@@ -127,7 +136,10 @@ impl Effect {
 /// Finds a descriptor by id in a family.
 #[track_caller]
 pub fn descriptor(family: &'static [Descriptor], id: &str) -> &'static Descriptor {
-    family.iter().find(|d| d.info.id().to_bytes() == id.as_bytes()).unwrap_or_else(|| panic!("unknown effect {id}"))
+    family
+        .iter()
+        .find(|d| d.info.id().to_bytes() == id.as_bytes())
+        .unwrap_or_else(|| panic!("unknown effect {id}"))
 }
 
 /// A stereo test signal.
@@ -139,7 +151,10 @@ pub struct Audio {
 
 impl Audio {
     pub fn new(frames: usize) -> Self {
-        Audio { l: vec![0.0; frames], r: vec![0.0; frames] }
+        Audio {
+            l: vec![0.0; frames],
+            r: vec![0.0; frames],
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -155,7 +170,11 @@ impl Audio {
 /// Renders `audio` in place in blocks of `block` frames (0 = one block), counting allocations
 /// made by `process`.
 pub fn render(dsp: &mut dyn Processor, audio: &mut Audio, block: usize) {
-    let block = if block == 0 { audio.len().max(1) } else { block };
+    let block = if block == 0 {
+        audio.len().max(1)
+    } else {
+        block
+    };
     for (l, r) in audio.l.chunks_mut(block).zip(audio.r.chunks_mut(block)) {
         counted(|| dsp.process(l, r, None, None));
     }
@@ -164,13 +183,20 @@ pub fn render(dsp: &mut dyn Processor, audio: &mut Audio, block: usize) {
 /// Sum of squares of `a[begin..end]` (`end` 0 or past the end = to the end).
 pub fn energy(a: &[f32], begin: usize, end: usize) -> f64 {
     let end = if end == 0 { a.len() } else { end.min(a.len()) };
-    a[begin.min(end)..end].iter().map(|&v| v as f64 * v as f64).sum()
+    a[begin.min(end)..end]
+        .iter()
+        .map(|&v| v as f64 * v as f64)
+        .sum()
 }
 
 /// Sum of squared differences from `begin`.
 pub fn squared_difference(a: &[f32], b: &[f32], begin: usize) -> f64 {
-    a[begin..].iter().zip(b[begin..].iter()).map(|(&x, &y)| {
-        let d = (x - y) as f64;
-        d * d
-    }).sum()
+    a[begin..]
+        .iter()
+        .zip(b[begin..].iter())
+        .map(|(&x, &y)| {
+            let d = (x - y) as f64;
+            d * d
+        })
+        .sum()
 }

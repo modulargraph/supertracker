@@ -297,7 +297,8 @@ mod tests {
         let titles: Vec<&str> = MENUS.iter().map(|menu| menu.title).collect();
         assert_eq!(titles, ["SuperTracker", "File", "Edit", "View", "Transport", "Pattern", "Track", "Instrument", "Window", "Help"]);
         assert_eq!(MENUS.iter().filter(|menu| menu.role == Role::Application).count(), 1);
-        assert_eq!(commands().len(), 123);
+        // As many command items as the menu bar of the Swift application had.
+        assert_eq!(commands().len(), 100);
     }
 
     #[test]

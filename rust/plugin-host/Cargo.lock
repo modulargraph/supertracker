@@ -3,10 +3,23 @@
 version = 4
 
 [[package]]
+name = "clap-sys"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a76abbdb2907f6fd97fb6bc0b7be96b77d328f2dd9669d1075cc03369ed22154"
+
+[[package]]
 name = "libc"
 version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
+
+[[package]]
+name = "stpc-clap-test-plugin"
+version = "0.1.0"
+dependencies = [
+ "clap-sys",
+]
 
 [[package]]
 name = "stpc-client"
@@ -20,7 +33,9 @@ dependencies = [
 name = "stpc-container"
 version = "0.1.0"
 dependencies = [
+ "clap-sys",
  "libc",
+ "stpc-clap-test-plugin",
  "stpc-client",
  "stpc-runtime",
  "stpc-transport",

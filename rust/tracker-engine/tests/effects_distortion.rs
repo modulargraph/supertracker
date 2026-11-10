@@ -2,10 +2,15 @@
 //! directly through `effects::distortion` (no C API), including the "no allocation in
 //! process/reset" check. Same checks and tolerances as the C++ program, whose `require` is
 //! called 148742 times.
+// The index loops mirror the C++ loops they translate.
+#![allow(clippy::needless_range_loop)]
 
 mod effects_support;
 
-use effects_support::{allocations, counted, descriptor, energy, squared_difference as difference, Audio, Checks, Effect};
+use effects_support::{
+    allocations, counted, descriptor, energy, squared_difference as difference, Audio, Checks,
+    Effect,
+};
 use std::collections::BTreeSet;
 use tracker_engine::effects::common::{PARAMETER_LOG, PI};
 use tracker_engine::effects::distortion;
@@ -68,17 +73,32 @@ fn check_catalogue(c: &mut Checks) {
     c.require(all.len() == 3, "three distortion-family descriptors");
     let counts = [16u32, 8, 11];
     for (i, d) in all.iter().enumerate() {
-        c.require(d.info.id().to_bytes() == IDS[i].as_bytes(), "stable processor ID/order");
+        c.require(
+            d.info.id().to_bytes() == IDS[i].as_bytes(),
+            "stable processor ID/order",
+        );
         c.require(d.info.parameter_count == counts[i], "parameter page counts");
         let mut ids = BTreeSet::new();
         for p in d.params.iter().take(d.info.parameter_count as usize) {
-            // SAFETY: parameter strings are 'static C string literals.
-            let (id_empty, name_empty) = unsafe { (*p.id == 0, *p.name == 0) };
-            c.require(!p.id.is_null() && !id_empty && !p.name.is_null() && !name_empty && !p.unit.is_null(), "complete metadata");
-            c.require(ids.insert(p.id().to_bytes().to_vec()), "unique persistent parameter IDs");
-            c.require(p.minimum <= p.default_value && p.default_value <= p.maximum, "defaults within ranges");
-            if p.label_count != 0 {
-                c.require(!p.labels.is_null() && p.maximum - p.minimum + 1.0 == p.label_count as f64, "enum labels match range");
+            // The unit may be empty but always exists: the accessor returns a C string, never null.
+            let _unit = p.unit();
+            c.require(
+                !p.id().is_empty() && !p.name().is_empty(),
+                "complete metadata",
+            );
+            c.require(
+                ids.insert(p.id().to_bytes().to_vec()),
+                "unique persistent parameter IDs",
+            );
+            c.require(
+                p.minimum <= p.default_value && p.default_value <= p.maximum,
+                "defaults within ranges",
+            );
+            if p.label_count() != 0 {
+                c.require(
+                    p.label(0).is_some() && p.maximum - p.minimum + 1.0 == p.label_count() as f64,
+                    "enum labels match range",
+                );
             }
             if (p.flags & PARAMETER_LOG) != 0 {
                 c.require(p.minimum > 0.0, "positive logarithmic minimum");
@@ -92,35 +112,56 @@ fn check_common_contracts(c: &mut Checks) {
         let mut silence = effect(id);
         let mut zero = Audio::new(2048);
         render(&mut silence, &mut zero, 0);
-        c.require(energy(&zero.l, 0, 0) == 0.0 && energy(&zero.r, 0, 0) == 0.0, &format!("{id} fresh silence"));
+        c.require(
+            energy(&zero.l, 0, 0) == 0.0 && energy(&zero.r, 0, 0) == 0.0,
+            &format!("{id} fresh silence"),
+        );
 
         let mut dry = effect(id);
         dry.set("mix", 0.0);
         let input = varied(4097);
         let mut output = input.clone();
         render(&mut dry, &mut output, 73);
-        c.require(input.l == output.l && input.r == output.r, &format!("{id} exact zero-mix dry path"));
+        c.require(
+            input.l == output.l && input.r == output.r,
+            &format!("{id} exact zero-mix dry path"),
+        );
 
         let (mut one_block, mut partitioned) = (effect(id), effect(id));
         let (mut full, mut chunks) = (input.clone(), input.clone());
         render(&mut one_block, &mut full, 0);
         render(&mut partitioned, &mut chunks, 113);
-        c.require(full.l == chunks.l && full.r == chunks.r, &format!("{id} partition invariant render"));
+        c.require(
+            full.l == chunks.l && full.r == chunks.r,
+            &format!("{id} partition invariant render"),
+        );
         counted(|| partitioned.dsp.reset());
         chunks = input.clone();
         render(&mut partitioned, &mut chunks, 31);
-        c.require(full.l == chunks.l && full.r == chunks.r, &format!("{id} deterministic reset"));
+        c.require(
+            full.l == chunks.l && full.r == chunks.r,
+            &format!("{id} deterministic reset"),
+        );
 
         let mut stereo = effect(id);
         let mut mono = tone(4096);
         render(&mut stereo, &mut mono, 79);
-        c.require(mono.l == mono.r, &format!("{id} identical stereo channels remain identical"));
+        c.require(
+            mono.l == mono.r,
+            &format!("{id} identical stereo channels remain identical"),
+        );
         stereo.dsp.reset();
         let mut left_only = tone(4096);
         left_only.r.fill(0.0);
         render(&mut stereo, &mut left_only, 101);
-        c.require(energy(&left_only.r, 0, 0) == 0.0, &format!("{id} no unintended channel leakage"));
-        c.require(energy(&left_only.l, 0, 0) > 0.01, &format!("{id} active channel produces sound"));
+        c.require(
+            energy(&left_only.r, 0, 0) == 0.0,
+            &format!("{id} no unintended channel leakage"),
+        );
+        c.require(
+            energy(&left_only.l, 0, 0) > 0.01,
+            &format!("{id} active channel produces sound"),
+        );
         c.require(
             stereo.dsp.latency() == 0 && stereo.dsp.tail().is_finite() && stereo.dsp.tail() > 0.0,
             &format!("{id} latency/tail contract"),
@@ -135,7 +176,11 @@ fn check_extreme_stability(c: &mut Checks) {
             let mut audio = Audio::new(257);
             for block in 0..48usize {
                 for i in 0..effect.info.info.parameter_count as usize {
-                    effect.dsp.core_mut().p[i] = if block % 3 == 0 { effect.info.params[i].minimum } else { effect.info.params[i].maximum };
+                    effect.dsp.core_mut().p[i] = if block % 3 == 0 {
+                        effect.info.params[i].minimum
+                    } else {
+                        effect.info.params[i].maximum
+                    };
                 }
                 if block % 11 == 0 {
                     effect.dsp.core_mut().p[0] = f64::NAN;
@@ -149,7 +194,10 @@ fn check_extreme_stability(c: &mut Checks) {
                 render(&mut effect, &mut audio, 0);
                 for i in 0..audio.len() {
                     c.require(
-                        audio.l[i].is_finite() && audio.r[i].is_finite() && audio.l[i].abs() < 32.0 && audio.r[i].abs() < 32.0,
+                        audio.l[i].is_finite()
+                            && audio.r[i].is_finite()
+                            && audio.l[i].abs() < 32.0
+                            && audio.r[i].abs() < 32.0,
                         "bounded extreme render",
                     );
                 }
@@ -158,7 +206,10 @@ fn check_extreme_stability(c: &mut Checks) {
             effect.dsp.reset();
             let mut zero = Audio::new(2048);
             render(&mut effect, &mut zero, 0);
-            c.require(energy(&zero.l, 0, 0) == 0.0 && energy(&zero.r, 0, 0) == 0.0, &format!("{id} reset removes all state"));
+            c.require(
+                energy(&zero.l, 0, 0) == 0.0 && energy(&zero.r, 0, 0) == 0.0,
+                &format!("{id} reset removes all state"),
+            );
         }
     }
 }
@@ -181,8 +232,14 @@ fn check_fuzz_and_analog(c: &mut Checks) {
     echoed.r[0] = 0.5;
     render(&mut no_feedback, &mut plain, 137);
     render(&mut feedback, &mut echoed, 137);
-    c.require(energy(&echoed.l, 500, 0) > energy(&plain.l, 500, 0) + 1e-8, "fuzz feedback creates an audible tail");
-    c.require(energy(&echoed.l, 96000, 0) < 1e-12, "maximum feedback decays within reported tail");
+    c.require(
+        energy(&echoed.l, 500, 0) > energy(&plain.l, 500, 0) + 1e-8,
+        "fuzz feedback creates an audible tail",
+    );
+    c.require(
+        energy(&echoed.l, 96000, 0) < 1e-12,
+        "maximum feedback decays within reported tail",
+    );
 
     let (mut open_gate, mut gated) = (effect("distortion"), effect("distortion"));
     for effect in [&mut open_gate, &mut gated] {
@@ -200,7 +257,10 @@ fn check_fuzz_and_analog(c: &mut Checks) {
     let mut closed = ungated.clone();
     render(&mut open_gate, &mut ungated, 0);
     render(&mut gated, &mut closed, 0);
-    c.require(energy(&closed.l, 5600, 0) < energy(&ungated.l, 5600, 0) * 0.05, "gate suppresses fuzz feedback after input stops");
+    c.require(
+        energy(&closed.l, 5600, 0) < energy(&ungated.l, 5600, 0) * 0.05,
+        "gate suppresses fuzz feedback after input stops",
+    );
 
     let (mut bass, mut cut_bass) = (effect("distortion"), effect("distortion"));
     for effect in [&mut bass, &mut cut_bass] {
@@ -214,7 +274,10 @@ fn check_fuzz_and_analog(c: &mut Checks) {
     let mut cut = full.clone();
     render(&mut bass, &mut full, 0);
     render(&mut cut_bass, &mut cut, 0);
-    c.require(energy(&cut.l, 12000, 0) < energy(&full.l, 12000, 0) * 0.15, "analog bass attenuates low frequencies");
+    c.require(
+        energy(&cut.l, 12000, 0) < energy(&full.l, 12000, 0) * 0.15,
+        "analog bass attenuates low frequencies",
+    );
 
     let (mut dark, mut bright) = (effect("distortion"), effect("distortion"));
     dark.set("mode", 1.0);
@@ -225,7 +288,10 @@ fn check_fuzz_and_analog(c: &mut Checks) {
     let mut clear = dull.clone();
     render(&mut dark, &mut dull, 0);
     render(&mut bright, &mut clear, 0);
-    c.require(energy(&clear.l, 8000, 0) > energy(&dull.l, 8000, 0) * 50.0, "analog tone controls the high cut");
+    c.require(
+        energy(&clear.l, 8000, 0) > energy(&dull.l, 8000, 0) * 50.0,
+        "analog tone controls the high cut",
+    );
 }
 
 fn check_lofi(c: &mut Checks) {
@@ -240,7 +306,10 @@ fn check_lofi(c: &mut Checks) {
     }
     render(&mut hold, &mut ramp, 7);
     for i in 0..ramp.len() {
-        c.require((ramp.l[i] as f64 - (i / 4 * 4) as f64 / 100.0).abs() < 1e-6, "12 kHz hold interval is four frames at 48 kHz");
+        c.require(
+            (ramp.l[i] as f64 - (i / 4 * 4) as f64 / 100.0).abs() < 1e-6,
+            "12 kHz hold interval is four frames at 48 kHz",
+        );
     }
 
     let mut crush = effect("lofi");
@@ -257,8 +326,14 @@ fn check_lofi(c: &mut Checks) {
     for i in 0..quantized.len() {
         // The C++ evaluates these in float (`quantized.left[i] * 8`) and `std::round(float)`.
         let scaled = quantized.l[i] * 8.0f32;
-        c.require(((scaled - scaled.round()) as f64).abs() < 1e-7, "four-bit quantization grid");
-        c.require(((quantized.l[i] - original.l[i]).abs() as f64) <= 1.0 / 16.0 + 1e-7, "four-bit quantization error bound");
+        c.require(
+            ((scaled - scaled.round()) as f64).abs() < 1e-7,
+            "four-bit quantization grid",
+        );
+        c.require(
+            ((quantized.l[i] - original.l[i]).abs() as f64) <= 1.0 / 16.0 + 1e-7,
+            "four-bit quantization error bound",
+        );
         if i != 0 {
             c.require(quantized.l[i] >= quantized.l[i - 1], "monotonic quantizer");
         }
@@ -272,13 +347,19 @@ fn check_lofi(c: &mut Checks) {
     let mut filtered = aliased.clone();
     render(&mut raw, &mut aliased, 0);
     render(&mut smooth, &mut filtered, 0);
-    c.require(energy(&filtered.l, 12000, 0) < energy(&aliased.l, 12000, 0) * 0.02, "smooth attenuates out-of-band aliasing");
+    c.require(
+        energy(&filtered.l, 12000, 0) < energy(&aliased.l, 12000, 0) * 0.02,
+        "smooth attenuates out-of-band aliasing",
+    );
 
     let mut mono = effect("lofi");
     mono.set("stereo", 0.0);
     let mut stereo = varied(1024);
     render(&mut mono, &mut stereo, 0);
-    c.require(stereo.l == stereo.r, "zero stereo width folds wet signal to mono");
+    c.require(
+        stereo.l == stereo.r,
+        "zero stereo width folds wet signal to mono",
+    );
 
     let mut jitter = effect("lofi");
     jitter.set("jitter", 100.0);
@@ -287,11 +368,17 @@ fn check_lofi(c: &mut Checks) {
     render(&mut jitter, &mut first, 51);
     jitter.dsp.reset();
     render(&mut jitter, &mut second, 103);
-    c.require(first.l == second.l && first.r == second.r, "clock jitter is deterministic across reset and block size");
+    c.require(
+        first.l == second.l && first.r == second.r,
+        "clock jitter is deterministic across reset and block size",
+    );
     let mut regular_clock = effect("lofi");
     let mut regular = varied(4096);
     render(&mut regular_clock, &mut regular, 0);
-    c.require(difference(&first.l, &regular.l, 0) > 0.1, "clock jitter changes the sample clock");
+    c.require(
+        difference(&first.l, &regular.l, 0) > 0.1,
+        "clock jitter changes the sample clock",
+    );
 }
 
 fn check_saturation(c: &mut Checks) {
@@ -306,7 +393,10 @@ fn check_saturation(c: &mut Checks) {
     }
     for a in 0..3 {
         for b in a + 1..3 {
-            c.require(difference(&modes[a].l, &modes[b].l, 12000) > 1.0, "saturation modes have distinct responses");
+            c.require(
+                difference(&modes[a].l, &modes[b].l, 12000) > 1.0,
+                "saturation modes have distinct responses",
+            );
         }
     }
 
@@ -318,14 +408,23 @@ fn check_saturation(c: &mut Checks) {
     render(&mut driven, &mut high, 0);
     let low_ratio = bin_amplitude(&low.l, 12000, 1200.0) / bin_amplitude(&low.l, 12000, 400.0);
     let high_ratio = bin_amplitude(&high.l, 12000, 1200.0) / bin_amplitude(&high.l, 12000, 400.0);
-    c.require(high_ratio > low_ratio * 10.0, "classic drive increases harmonic content");
+    c.require(
+        high_ratio > low_ratio * 10.0,
+        "classic drive increases harmonic content",
+    );
 
-    c.require(bin_amplitude(&modes[2].l, 12000, 800.0) > 0.002, "tube mode produces asymmetric even harmonics");
+    c.require(
+        bin_amplitude(&modes[2].l, 12000, 800.0) > 0.002,
+        "tube mode produces asymmetric even harmonics",
+    );
     let mut mean = 0.0f64;
     for i in 12000..modes[2].len() {
         mean += modes[2].l[i] as f64;
     }
-    c.require((mean / 12000.0).abs() < 0.003, "tube DC blocker removes steady bias");
+    c.require(
+        (mean / 12000.0).abs() < 0.003,
+        "tube DC blocker removes steady bias",
+    );
 
     let (mut neutral, mut eq_bypassed) = (effect("saturator"), effect("saturator"));
     neutral.set("mode", 2.0);
@@ -336,7 +435,10 @@ fn check_saturation(c: &mut Checks) {
     let (mut normal, mut bypassed) = (input.clone(), input.clone());
     render(&mut neutral, &mut normal, 0);
     render(&mut eq_bypassed, &mut bypassed, 0);
-    c.require(normal.l == bypassed.l, "tube EQ bypass removes bass and treble coloration");
+    c.require(
+        normal.l == bypassed.l,
+        "tube EQ bypass removes bass and treble coloration",
+    );
 
     let (mut mode_change, mut unchanged) = (effect("saturator"), effect("saturator"));
     let mut warm = tone(8192);
@@ -348,8 +450,14 @@ fn check_saturation(c: &mut Checks) {
     let mut reference = next.clone();
     render(&mut mode_change, &mut next, 0);
     render(&mut unchanged, &mut reference, 0);
-    c.require(((next.l[0] - reference.l[0]).abs() as f64) < 0.005, "mode changes crossfade instead of jumping");
-    c.require(difference(&next.l, &reference.l, 1024) > 0.001, "mode transition reaches the new response");
+    c.require(
+        ((next.l[0] - reference.l[0]).abs() as f64) < 0.005,
+        "mode changes crossfade instead of jumping",
+    );
+    c.require(
+        difference(&next.l, &reference.l, 1024) > 0.001,
+        "mode transition reaches the new response",
+    );
 }
 
 fn check_conservative_tails(c: &mut Checks) {
@@ -404,7 +512,10 @@ fn check_conservative_tails(c: &mut Checks) {
                 for i in (reported * sr).ceil() as usize..tail.len() {
                     peak = peak.max((tail.l[i] as f64).abs().max((tail.r[i] as f64).abs()));
                 }
-                c.require(peak < 1e-6, &format!("{id} worst-case state decays before reported tail at {sr}"));
+                c.require(
+                    peak < 1e-6,
+                    &format!("{id} worst-case state decays before reported tail at {sr}"),
+                );
             }
         }
     }
@@ -422,5 +533,18 @@ fn distortion_family() {
     check_conservative_tails(&mut c);
     c.require(allocations() == 0, "no allocation in process/reset");
     println!("PASS: distortion family metadata, signal behavior, reset/partition invariance, transitions, stability, and render allocation checks ({} checks)", c.count);
-    assert_eq!(c.count, 148742, "same number of checks as tests/effects_distortion_tests.cpp");
+    assert_eq!(
+        c.count, 148742,
+        "same number of checks as tests/effects_distortion_tests.cpp"
+    );
+}
+
+/// The allocation counter behind the "no allocation in process/reset" checks does see heap
+/// allocations (it is absent when the crate's own `cxx-alloc` test allocator is enabled).
+#[cfg(not(feature = "cxx-alloc"))]
+#[test]
+fn allocation_counter_detects_allocations() {
+    let before = allocations();
+    counted(|| drop(std::hint::black_box(vec![0u8; 64])));
+    assert_eq!(allocations(), before + 1);
 }

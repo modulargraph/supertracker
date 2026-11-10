@@ -3,8 +3,9 @@
 //! Replaces `Sources/TrackerEngine/EffectsModulation.hpp` (namespace `stfx::modulation`).
 
 use super::common::{
-    clamp, clean, core_accessors, fast_cos_2pi, fast_exp, fast_sin_2pi, fast_tanh, frame_buffers, max, min, mix, pole, wrap, Core,
-    DelayLine, Descriptor, Label, ParameterInfo as P, Processor, Smoother, PARAMETER_INTEGER as INTEGER, PARAMETER_LOG as LOG,
+    clamp, clean, core_accessors, fast_cos_2pi, fast_exp, fast_sin_2pi, fast_tanh, frame_buffers,
+    max, min, mix, pole, select, wrap, Core, DelayLine, Descriptor, Label, ParameterInfo as P,
+    Processor, Smoother, PARAMETER_INTEGER as INTEGER, PARAMETER_LOG as LOG,
     PARAMETER_TOGGLE as TOGGLE, PI,
 };
 
@@ -29,7 +30,10 @@ impl Chorus {
     pub fn new(sr: f64) -> Self {
         Chorus {
             core: Core::new(sr),
-            d: [DelayLine::new((sr * 0.05) as usize + 4), DelayLine::new((sr * 0.05) as usize + 4)],
+            d: [
+                DelayLine::new((sr * 0.05) as usize + 4),
+                DelayLine::new((sr * 0.05) as usize + 4),
+            ],
             phase: 0.0,
             rate: Smoother::default(),
             depth: Smoother::default(),
@@ -57,7 +61,13 @@ impl Processor for Chorus {
         0.04
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let p = self.core.p;
         let sr = self.core.sr;
@@ -80,13 +90,26 @@ impl Processor for Chorus {
     }
 }
 
-const SOURCES: &[Label] = &[Label::new(c"LFO"), Label::new(c"LFO Sync"), Label::new(c"Envelope")];
+const SOURCES: &[Label] = &[
+    Label::new(c"LFO"),
+    Label::new(c"LFO Sync"),
+    Label::new(c"Envelope"),
+];
 static FLANGER_PARAMS: [P; 10] = [
     P::new(c"frequency", c"Frequency", c"Hz", 20.0, 5000.0, 500.0, LOG),
     P::new(c"feedback", c"Feedback", c"%", -95.0, 95.0, 35.0, 0),
     P::new(c"invert", c"Invert", c"", 0.0, 1.0, 0.0, TOGGLE),
     P::new(c"amount", c"Amount", c"%", -100.0, 100.0, 50.0, 0),
-    P::choice(c"source", c"Modulation source", c"", 0.0, 2.0, 0.0, INTEGER, SOURCES),
+    P::choice(
+        c"source",
+        c"Modulation source",
+        c"",
+        0.0,
+        2.0,
+        0.0,
+        INTEGER,
+        SOURCES,
+    ),
     P::new(c"speed", c"LFO speed", c"Hz", 0.03, 8.0, 0.3, LOG),
     P::new(c"beats", c"LFO period", c"beats", 0.25, 64.0, 4.0, LOG),
     P::new(c"envshape", c"Envelope shape", c"", 0.25, 4.0, 1.0, LOG),
@@ -108,7 +131,10 @@ impl Flanger {
     pub fn new(sr: f64) -> Self {
         Flanger {
             core: Core::new(sr),
-            d: [DelayLine::new((sr * 0.12) as usize + 4), DelayLine::new((sr * 0.12) as usize + 4)],
+            d: [
+                DelayLine::new((sr * 0.12) as usize + 4),
+                DelayLine::new((sr * 0.12) as usize + 4),
+            ],
             phase: 0.0,
             envelope: 0.0,
             delay: [Smoother::default(); 2],
@@ -138,18 +164,30 @@ impl Processor for Flanger {
         15.0
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let p = self.core.p;
         let sr = self.core.sr;
-        let rate = if p[4] == 1.0 { self.core.tempo / (60.0 * p[6]) } else { p[5] };
+        let rate = if p[4] == 1.0 {
+            self.core.tempo / (60.0 * p[6])
+        } else {
+            p[5]
+        };
         let attack = pole(2.0, sr);
         let release = pole(100.0, sr);
         let smooth = pole(10.0, sr);
         for i in 0..l.len() {
             let x = [l[i] as f64, r[i] as f64];
             let peak = max(x[0].abs(), x[1].abs());
-            self.envelope = clean(peak + (if peak > self.envelope { attack } else { release }) * (self.envelope - peak));
+            self.envelope = clean(
+                peak + select(peak > self.envelope, attack, release) * (self.envelope - peak),
+            );
             let w = self.wet.tick(p[9] / 100.0, smooth);
             let fb = self.feedback.tick(p[1] / 100.0, smooth);
             let inv = if p[2] >= 0.5 { -1.0 } else { 1.0 };
@@ -161,7 +199,12 @@ impl Processor for Flanger {
                     fast_sin_2pi(self.phase + c as f64 * p[8] / 360.0)
                 };
                 let dt = self.delay[c].tick(
-                    clamp(sr / (2.0 * p[0]) * fast_exp(0.6931471805599453 * (2.0 * p[3] / 100.0 * modulation)), 1.0, sr * 0.115),
+                    clamp(
+                        sr / (2.0 * p[0])
+                            * fast_exp(0.6931471805599453 * (2.0 * p[3] / 100.0 * modulation)),
+                        1.0,
+                        sr * 0.115,
+                    ),
                     smooth,
                 );
                 let y = self.d[c].read(dt);
@@ -225,7 +268,12 @@ impl Processor for Fm {
     }
 
     fn reset(&mut self) {
-        for v in self.low.iter_mut().chain(self.high.iter_mut()).chain(self.dry.iter_mut()) {
+        for v in self
+            .low
+            .iter_mut()
+            .chain(self.high.iter_mut())
+            .chain(self.dry.iter_mut())
+        {
             v.reset();
         }
         self.state = [0.0; 2];
@@ -236,7 +284,13 @@ impl Processor for Fm {
         self.split.reset();
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let p = self.core.p;
         let sr = self.core.sr;
@@ -248,7 +302,8 @@ impl Processor for Fm {
             let x = [l[i] as f64, r[i] as f64];
             let pk = max(x[0].abs(), x[1].abs());
             self.envelope = clean(max(pk, self.envelope * release));
-            let depth = self.amount.tick(p[3] / 100.0, smooth) * mix(1.0, clamp(self.envelope, 0.0, 1.0), p[2] / 100.0);
+            let depth = self.amount.tick(p[3] / 100.0, smooth)
+                * mix(1.0, clamp(self.envelope, 0.0, 1.0), p[2] / 100.0);
             let w = self.wet.tick(p[4] / 100.0, smooth);
             let a = self.split.tick(split_pole, smooth);
             let offset = 63.0 * depth * fast_sin_2pi(self.phase);
@@ -305,7 +360,8 @@ impl FrequencyShifter {
         for (i, coefficient) in coefficients.iter_mut().enumerate() {
             let k = i as i32 - GROUP_DELAY as i32;
             if k != 0 && (k % 2) != 0 {
-                *coefficient = 2.0 / (PI * k as f64) * (0.54 - 0.46 * (2.0 * PI * i as f64 / (TAPS - 1) as f64).cos());
+                *coefficient = 2.0 / (PI * k as f64)
+                    * (0.54 - 0.46 * (2.0 * PI * i as f64 / (TAPS - 1) as f64).cos());
             }
         }
         FrequencyShifter {
@@ -345,13 +401,22 @@ impl Processor for FrequencyShifter {
         self.wet.reset();
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let p = self.core.p;
         let sr = self.core.sr;
         let smooth = pole(5.0, sr);
         for i in 0..l.len() {
-            let freq = self.shift.tick((p[0] + p[1]) * (if p[4] >= 0.5 { -1.0 } else { 1.0 }), smooth);
+            let freq = self.shift.tick(
+                (p[0] + p[1]) * (if p[4] >= 0.5 { -1.0 } else { 1.0 }),
+                smooth,
+            );
             let fb = self.feedback.tick(p[2] / 100.0, smooth);
             let w = self.wet.tick(p[5] / 100.0, smooth);
             // The cursor only ever takes values 0..TAPS-1 (see the wrap below).
@@ -368,7 +433,9 @@ impl Processor for FrequencyShifter {
                 // Newest sample at cursor+taps; tap t reads t samples back.
                 // Four partial sums: independent chains instead of one serial chain.
                 // window[j] is history[cursor + 1 + j], so "t samples back" is window[TAPS - 1 - t].
-                let window: &[f64; TAPS] = self.history[c][cursor + 1..cursor + 1 + TAPS].try_into().unwrap_or(&[0.0; TAPS]);
+                let window: &[f64; TAPS] = self.history[c][cursor + 1..cursor + 1 + TAPS]
+                    .try_into()
+                    .unwrap_or(&[0.0; TAPS]);
                 let (mut q0, mut q1, mut q2, mut q3) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
                 let mut t = 0;
                 while t < 64 {
@@ -382,9 +449,19 @@ impl Processor for FrequencyShifter {
                 }
                 let q = (q0 + q1) + (q2 + q3);
                 let real = self.history[c][delayed];
-                self.last[c] = clean(real * fast_cos_2pi(self.phase[c]) - q * fast_sin_2pi(self.phase[c]));
+                self.last[c] =
+                    clean(real * fast_cos_2pi(self.phase[c]) - q * fast_sin_2pi(self.phase[c]));
                 out[c] = mix(self.dry[c][delayed], self.last[c], w) as f32;
-                self.phase[c] = wrap(self.phase[c] + freq * (if c != 0 { 1.0 - 2.0 * p[3] / 100.0 } else { 1.0 }) / sr);
+                self.phase[c] = wrap(
+                    self.phase[c]
+                        + freq
+                            * (if c != 0 {
+                                1.0 - 2.0 * p[3] / 100.0
+                            } else {
+                                1.0
+                            })
+                            / sr,
+                );
             }
             l[i] = out[0];
             r[i] = out[1];
@@ -401,7 +478,16 @@ static PHASER_PARAMS: [P; 10] = [
     P::new(c"feedback", c"Feedback", c"%", -95.0, 95.0, 30.0, 0),
     P::new(c"eightpole", c"Eight poles", c"", 0.0, 1.0, 0.0, TOGGLE),
     P::new(c"amount", c"Amount", c"%", -100.0, 100.0, 60.0, 0),
-    P::choice(c"source", c"Modulation source", c"", 0.0, 2.0, 0.0, INTEGER, SOURCES),
+    P::choice(
+        c"source",
+        c"Modulation source",
+        c"",
+        0.0,
+        2.0,
+        0.0,
+        INTEGER,
+        SOURCES,
+    ),
     P::new(c"speed", c"LFO speed", c"Hz", 0.03, 8.0, 0.4, LOG),
     P::new(c"beats", c"LFO period", c"beats", 0.25, 64.0, 4.0, LOG),
     P::new(c"envshape", c"Envelope shape", c"", 0.25, 4.0, 1.0, LOG),
@@ -464,11 +550,21 @@ impl Processor for Phaser {
         45.0
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let p = self.core.p;
         let sr = self.core.sr;
-        let rate = if p[4] == 1.0 { self.core.tempo / (60.0 * p[6]) } else { p[5] };
+        let rate = if p[4] == 1.0 {
+            self.core.tempo / (60.0 * p[6])
+        } else {
+            p[5]
+        };
         let attack = pole(2.0, sr);
         let release = pole(100.0, sr);
         let smooth = pole(5.0, sr);
@@ -484,7 +580,8 @@ impl Processor for Phaser {
         for i in 0..l.len() {
             let x = [l[i] as f64, r[i] as f64];
             let pk = max(x[0].abs(), x[1].abs());
-            self.envelope = clean(pk + (if pk > self.envelope { attack } else { release }) * (self.envelope - pk));
+            self.envelope =
+                clean(pk + select(pk > self.envelope, attack, release) * (self.envelope - pk));
             let w = self.wet.tick(p[9] / 100.0, smooth);
             let fb = self.feedback.tick(p[1] / 100.0, smooth);
             let mut out = [0.0f32; 2];
@@ -494,8 +591,14 @@ impl Processor for Phaser {
                 } else {
                     fast_sin_2pi(self.phase + c as f64 * p[8] / 360.0)
                 };
-                let hz = self.frequency[c]
-                    .tick(clamp(p[0] * fast_exp(0.6931471805599453 * (3.0 * p[3] / 100.0 * modulation)), 10.0, sr * 0.45), smooth);
+                let hz = self.frequency[c].tick(
+                    clamp(
+                        p[0] * fast_exp(0.6931471805599453 * (3.0 * p[3] / 100.0 * modulation)),
+                        10.0,
+                        sr * 0.45,
+                    ),
+                    smooth,
+                );
                 if self.control == 0 {
                     let g = (PI * hz / sr).tan();
                     self.coefficient[c] = (1.0 - g) / (1.0 + g);
@@ -519,9 +622,33 @@ impl Processor for Phaser {
 }
 
 static DESCRIPTORS: [Descriptor; 5] = [
-    Descriptor::new(c"chorus", c"Chorus", c"Modulation", 0, &CHORUS_PARAMS, |sr, _| Box::new(Chorus::new(sr)), |_, _, _| 0.04),
-    Descriptor::new(c"flanger", c"Flanger", c"Modulation", 0, &FLANGER_PARAMS, |sr, _| Box::new(Flanger::new(sr)), |_, _, _| 15.0),
-    Descriptor::new(c"fm", c"Audio FM", c"Modulation", 0, &FM_PARAMS, |sr, _| Box::new(Fm::new(sr)), |_, _, _| 0.15),
+    Descriptor::new(
+        c"chorus",
+        c"Chorus",
+        c"Modulation",
+        0,
+        &CHORUS_PARAMS,
+        |sr, _| Box::new(Chorus::new(sr)),
+        |_, _, _| 0.04,
+    ),
+    Descriptor::new(
+        c"flanger",
+        c"Flanger",
+        c"Modulation",
+        0,
+        &FLANGER_PARAMS,
+        |sr, _| Box::new(Flanger::new(sr)),
+        |_, _, _| 15.0,
+    ),
+    Descriptor::new(
+        c"fm",
+        c"Audio FM",
+        c"Modulation",
+        0,
+        &FM_PARAMS,
+        |sr, _| Box::new(Fm::new(sr)),
+        |_, _, _| 0.15,
+    ),
     Descriptor::new(
         c"freqshifter",
         c"Frequency Shifter",
@@ -531,7 +658,15 @@ static DESCRIPTORS: [Descriptor; 5] = [
         |sr, _| Box::new(FrequencyShifter::new(sr)),
         |_, _, _| 1.0,
     ),
-    Descriptor::new(c"phaser", c"Phaser", c"Modulation", 0, &PHASER_PARAMS, |sr, _| Box::new(Phaser::new(sr)), |_, _, _| 45.0),
+    Descriptor::new(
+        c"phaser",
+        c"Phaser",
+        c"Modulation",
+        0,
+        &PHASER_PARAMS,
+        |sr, _| Box::new(Phaser::new(sr)),
+        |_, _, _| 45.0,
+    ),
 ];
 
 /// `stfx::modulationDescriptors`.

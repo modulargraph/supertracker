@@ -76,6 +76,48 @@ impl Render {
         }
     }
 
+    /// `st_engine_render`: direct stereo render (standalone/offline); invalidates bus history.
+    pub fn render(&mut self, sh: &Shared, left: Option<&mut [f32]>, right: Option<&mut [f32]>, frames: u32) {
+        self.cache_valid = false;
+        self.release_clock_origin();
+        self.process(sh, left, right, frames, false, 0, 0);
+    }
+
+    /// `st_engine_capture_transport`: exclusive stopped-graph operation.
+    pub fn capture_transport(&mut self, sh: &Shared) -> STTransportState {
+        self.flush_quiescent(sh);
+        // SAFETY: `&mut self` is the render half and no adoption happens while the view exists.
+        unsafe { Rt::attach(self, sh) }.capture_transport()
+    }
+
+    /// `st_engine_restore_transport`: exclusive stopped-graph operation.
+    pub fn restore_transport(&mut self, sh: &Shared, state: &STTransportState, resume: bool) {
+        self.flush_quiescent(sh);
+        // SAFETY: as in `capture_transport`.
+        unsafe { Rt::attach(self, sh) }.restore_transport(state, resume);
+    }
+
+    /// `st_engine_forget_external_voices`: end every AU/external-MIDI voice on `channel`
+    /// without emitting its note-off. Returns the number of voices ended.
+    pub fn forget_external_voices(&mut self, sh: &Shared, channel: i32) -> i32 {
+        // SAFETY: `tb` points to the tables of the project in use; `&mut self` is the render
+        // half, their only accessor.
+        let channels = unsafe { &*self.tb }.channels;
+        if channel < 0 || channel >= channels {
+            return 0;
+        }
+        let mut count = 0;
+        let mut sink = VoiceSink { masks: &mut self.active_voice_masks, out: &self.out, sh };
+        for (index, v) in self.voices.iter_mut().enumerate() {
+            if v.active && v.external && v.track == channel {
+                v.off_sent = true;
+                sink.kill(v, index);
+                count += 1;
+            }
+        }
+        count
+    }
+
     /// `refresh`: adopt the latest published project, then apply queued commands and a pending
     /// automation refresh. Called at the start of every newly rendered block.
     pub fn refresh(&mut self, sh: &Shared) {

@@ -7,3 +7,9 @@ description = "SuperTracker's sound library: index and search, NKS metadata and 
 publish = false
 
 [dependencies]
+st-project = { path = "../st-project" }
+# Request/response types of the bridge commands (MIT/Apache-2.0).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# SHA-256 of samples collected into kit packages (RustCrypto, MIT/Apache-2.0; already used by st-project).
+sha2 = "0.10"

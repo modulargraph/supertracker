@@ -160,7 +160,8 @@ wire_enum! {
         Reset { instance: u64 } = 14,
         SetOffline { instance: u64, offline: bool } = 15,
         SetBypass { instance: u64, bypass: bool } = 16,
-        /// New sample rate and/or block size, with a new region.
+        /// New sample rate and/or block size, with a new region. Leaves the instance
+        /// deactivated.
         Reconfigure { instance: u64, sample_rate: f64, max_frames: u32 } = 17,
         GetInfo { instance: u64 } = 18,
         GetParameters { instance: u64 } = 20,

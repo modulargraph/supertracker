@@ -70,7 +70,7 @@
 //! # }
 //! # assert_eq!(texts[2], r#"{"id":2,"ok":true,"result":{"hertz":220.0}}"#);
 //! # assert_eq!(texts[1], r#"{"payload":{"hertz":220.0},"type":"tuner.changed"}"#);
-//! # assert!(texts[0].contains("`ready` is not a command"));
+//! # assert!(texts[0].contains("`ready` is not implemented"));
 //! ```
 //!
 //! # Where handlers run
@@ -104,7 +104,7 @@
 //! | [`commands`], [`bridge`] | the command table and the running bridge: [`Commands`], [`Bridge`], [`Connection`], [`EventSink`], [`Calls`] |
 //! | [`transport`] | [`Transport`], the trait a transport implements, and [`Outbox`], the queue both transports are built on |
 //! | [`catalog`] | every command of the interface with its owner crate; the source of `docs/RUST_PORT_STATUS.md` |
-//! | [`session`], [`document`] | the open project and `engine.project`, `project.*`, `dialog.*` |
+//! | [`session`] | the open project (an `st_project` session) and `engine.project`, `project.*`, `dialog.*`; missing media (`project.media.*`) |
 //! | [`settings`] | the settings file |
 //! | [`dialogs`] | the file chooser trait, and scripted answers for tests |
 //! | [`app`] | `ready`, `app.external`, the quit handshake, and [`install`] |
@@ -115,8 +115,8 @@ pub mod bridge;
 pub mod catalog;
 pub mod commands;
 pub mod dialogs;
-pub mod document;
 mod error;
+mod media;
 mod paths;
 pub mod protocol;
 pub mod session;

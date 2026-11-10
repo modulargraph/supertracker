@@ -16,8 +16,11 @@ path = "src/main.rs"
 
 [dependencies]
 libc.workspace = true
+clap-sys.workspace = true
 stpc-runtime.workspace = true
 
 [dev-dependencies]
+# Built (as a cdylib) before the tests, which load it through the CLAP backend.
+stpc-clap-test-plugin = { path = "../clap-test-plugin" }
 stpc-client.workspace = true
 stpc-transport.workspace = true

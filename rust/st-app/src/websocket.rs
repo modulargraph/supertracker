@@ -7,6 +7,7 @@
 //! frames under a lock.
 
 use std::io::{self, Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Larger messages are refused (a project with every plug-in state stays far below this).
@@ -106,17 +107,19 @@ fn frame(opcode: u8, payload: &[u8]) -> Vec<u8> {
 /// (pongs and the closing handshake). Each call writes one whole frame.
 pub struct Sender<W: Write> {
     stream: Arc<Mutex<W>>,
+    /// A close frame has been sent: the closing handshake needs exactly one from each side.
+    closed: Arc<AtomicBool>,
 }
 
 impl<W: Write> Clone for Sender<W> {
     fn clone(&self) -> Self {
-        Sender { stream: self.stream.clone() }
+        Sender { stream: self.stream.clone(), closed: self.closed.clone() }
     }
 }
 
 impl<W: Write> Sender<W> {
     pub fn new(stream: W) -> Self {
-        Sender { stream: Arc::new(Mutex::new(stream)) }
+        Sender { stream: Arc::new(Mutex::new(stream)), closed: Arc::new(AtomicBool::new(false)) }
     }
 
     fn write(&self, opcode: u8, payload: &[u8]) -> io::Result<()> {
@@ -135,7 +138,12 @@ impl<W: Write> Sender<W> {
     }
 
     /// Sends a close frame with a status code (1000 normal, 1001 going away, 1009 too big, ...).
+    /// Only the first call sends: whoever closes first names the reason, and the other side's close
+    /// frame is the answer to it.
     pub fn close(&self, code: u16) -> io::Result<()> {
+        if self.closed.swap(true, Ordering::SeqCst) {
+            return Ok(());
+        }
         self.write(OP_CLOSE, &code.to_be_bytes())
     }
 }
@@ -314,6 +322,14 @@ mod tests {
     #[test]
     fn a_close_frame_is_echoed_and_ends_the_connection() {
         let (mut receiver, written) = receiver(client_frame(true, OP_CLOSE, &1001u16.to_be_bytes()));
+        assert_eq!(receiver.next().unwrap(), Received::Closed);
+        assert_eq!(*written.0.lock().unwrap(), frame(OP_CLOSE, &1001u16.to_be_bytes()));
+    }
+
+    #[test]
+    fn the_host_closing_first_does_not_answer_the_peers_close_with_a_second_one() {
+        let (mut receiver, written) = receiver(client_frame(true, OP_CLOSE, &1001u16.to_be_bytes()));
+        receiver.sender.close(1001).unwrap();
         assert_eq!(receiver.next().unwrap(), Received::Closed);
         assert_eq!(*written.0.lock().unwrap(), frame(OP_CLOSE, &1001u16.to_be_bytes()));
     }

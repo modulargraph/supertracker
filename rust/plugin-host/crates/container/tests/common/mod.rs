@@ -249,7 +249,12 @@ pub fn bits(samples: &[f32]) -> Vec<u32> {
 pub fn assert_bits_eq(actual: &[f32], expected: &[f32], what: &str) {
     assert_eq!(actual.len(), expected.len(), "{what}: length");
     if let Some(index) = (0..actual.len()).find(|&i| actual[i].to_bits() != expected[i].to_bits()) {
-        panic!("{what}: first difference at frame {index}: got {} ({:#x}), expected {} ({:#x})",
-            actual[index], actual[index].to_bits(), expected[index], expected[index].to_bits());
+        panic!(
+            "{what}: first difference at frame {index}: got {} ({:#x}), expected {} ({:#x})",
+            actual[index],
+            actual[index].to_bits(),
+            expected[index],
+            expected[index].to_bits()
+        );
     }
 }

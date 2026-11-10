@@ -28,6 +28,12 @@ const SLOW_ORDERED: Duration = Duration::from_millis(250);
 
 const SHUTTING_DOWN: &str = "SuperTracker is shutting down.";
 
+/// `SUPERTRACKER_TRACE=1` logs every request and its outcome to standard error.
+fn tracing() -> bool {
+    static TRACING: OnceLock<bool> = OnceLock::new();
+    *TRACING.get_or_init(|| std::env::var_os("SUPERTRACKER_TRACE").is_some_and(|value| !value.is_empty() && value != "0"))
+}
+
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     // Handlers run outside these locks, so a poisoned lock still guards consistent data.
     mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -97,6 +103,12 @@ impl Slot {
         lock(&self.core.pending).remove(&self.serial);
         match &self.destination {
             Destination::Interface { connection, id } => {
+                if tracing() {
+                    match &result {
+                        Ok(_) => eprintln!("st-host: {id} {} -> ok", self.command),
+                        Err(message) => eprintln!("st-host: {id} {} -> error: {message}", self.command),
+                    }
+                }
                 let json = match &result {
                     Ok(value) => protocol::reply_ok(id, value),
                     Err(message) => protocol::reply_error(id, message),
@@ -495,6 +507,9 @@ impl EventSink {
         let json = protocol::event(name, &payload);
         for connection in connections {
             connection.send(json.clone(), latest_only.then(|| name.to_string()));
+        }
+        if tracing() && !latest_only {
+            eprintln!("st-host: event {name}");
         }
     }
 }

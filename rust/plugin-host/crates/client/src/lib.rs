@@ -34,8 +34,8 @@ pub use instance::{
 pub use stpc_transport as transport;
 pub use stpc_transport::messages::{
     BusInfo, EditorInfo, InstanceInfo, ParameterInfo, ParameterValue, PresetInfo, INFO_HAS_BYPASS, INFO_HAS_EDITOR,
-    INFO_INSTRUMENT, INFO_PRODUCES_MIDI, INFO_WANTS_MIDI, PARAM_AUTOMATABLE, PARAM_BOOLEAN, PARAM_BYPASS,
-    PARAM_HIDDEN, PARAM_READ_ONLY, PARAM_STEPPED,
+    INFO_INSTRUMENT, INFO_PRODUCES_MIDI, INFO_WANTS_MIDI, PARAM_AUTOMATABLE, PARAM_BOOLEAN, PARAM_BYPASS, PARAM_HIDDEN,
+    PARAM_READ_ONLY, PARAM_STEPPED,
 };
 pub use stpc_transport::region::{
     Event, Transport, EVENT_FLAG_SEQUENCED, EVENT_MIDI, EVENT_PARAM, TRANSPORT_LOOPING, TRANSPORT_PLAYING,
@@ -43,8 +43,8 @@ pub use stpc_transport::region::{
 };
 pub use stpc_transport::PROTOCOL_VERSION;
 pub use supervisor::{
-    ContainerInfo, ContainerState, EventCallback, ExitReason, GroupingPolicy, HostEvent, LossReason, RestartReport, Supervisor,
-    SupervisorConfig, WakePreference, CONTAINER_BINARY_NAME, ENV_CONTAINER_PATH,
+    ContainerInfo, ContainerState, EventCallback, ExitReason, GroupingPolicy, HostEvent, LossReason, RestartReport,
+    Supervisor, SupervisorConfig, WakePreference, CONTAINER_BINARY_NAME, ENV_CONTAINER_PATH,
 };
 
 pub type InstanceId = u64;

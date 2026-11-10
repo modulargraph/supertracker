@@ -19,7 +19,9 @@ use stpc_transport::wake::{self, Notifier, WaitOutcome, Waiter, WakeMode};
 use stpc_transport::wire::{Bytes, Wire};
 use stpc_transport::{monotonic_ns, ARG_ENDPOINT, ARG_TOKEN, HELLO_MAGIC, PROTOCOL_VERSION};
 
-use crate::plugin::{BusSpan, CreateRequest, Plugin, PluginBackend, PluginError, ProcessData, ProcessStatus, Processor};
+use crate::plugin::{
+    BusSpan, CreateRequest, Plugin, PluginBackend, PluginError, ProcessData, ProcessStatus, Processor,
+};
 
 #[derive(Debug)]
 pub enum RuntimeError {
@@ -503,6 +505,8 @@ impl Runtime {
             max_frames: params.max_frames,
             input_buses: &params.in_buses,
             output_buses: &params.out_buses,
+            event_capacity: params.event_capacity,
+            out_event_capacity: params.out_event_capacity,
         };
         let mut plugin = match backend.create(&request, link.clone()) {
             Ok(plugin) => plugin,
@@ -691,9 +695,14 @@ fn stop_rt_thread(slot: &mut Slot) -> bool {
     true
 }
 
-fn reconfigure(slot: &mut Slot, sample_rate: f64, max_frames: u32, fds: Vec<OwnedFd>, config: &RuntimeConfig) -> Handled {
+fn reconfigure(
+    slot: &mut Slot,
+    sample_rate: f64,
+    max_frames: u32,
+    fds: Vec<OwnedFd>,
+    config: &RuntimeConfig,
+) -> Handled {
     let new_rt = build_rt(&slot.params, sample_rate, max_frames, fds, config)?;
-    let was_active = slot.active;
     if !stop_rt_thread(slot) {
         return Err((ERR_INVALID_STATE, "the instance is hung in its process call".into()));
     }
@@ -707,9 +716,8 @@ fn reconfigure(slot: &mut Slot, sample_rate: f64, max_frames: u32, fds: Vec<Owne
     slot.link.set_region(&new_rt.region);
     slot.rt = new_rt;
     slot.thread = Some(spawn_rt_thread(slot.link.instance_id(), &slot.rt)?);
-    if was_active {
-        activate(slot)?;
-    }
+    // The instance is left deactivated: from here on the request cannot fail, so both
+    // sides agree on the region. The host activates again if the instance was active.
     Ok(Response::Info { info: slot.plugin.info() })
 }
 
@@ -800,7 +808,8 @@ fn rt_thread(rt: Arc<RtShared>) {
                 None => flags = RSP_INACTIVE,
                 Some(processor) => {
                     let frames = (header.req.frames.load(Ordering::Relaxed) as usize).min(layout.max_frames);
-                    let num_events = (header.req.num_events.load(Ordering::Relaxed) as usize).min(layout.event_capacity);
+                    let num_events =
+                        (header.req.num_events.load(Ordering::Relaxed) as usize).min(layout.event_capacity);
                     let req_flags = header.req.flags.load(Ordering::Relaxed);
                     for &ptr in &out_ptrs {
                         // SAFETY: each output channel holds max_frames >= frames samples.
@@ -809,7 +818,10 @@ fn rt_thread(rt: Arc<RtShared>) {
                     // SAFETY: the request block and the event list belong to this side
                     // until the response is published below.
                     let (transport, events) = unsafe {
-                        (header.req.transport(), std::slice::from_raw_parts(region.events() as *const Event, num_events))
+                        (
+                            header.req.transport(),
+                            std::slice::from_raw_parts(region.events() as *const Event, num_events),
+                        )
                     };
                     let mut data = ProcessData {
                         frames,

@@ -146,19 +146,35 @@ pub const RSP_OUT_EVENTS_DROPPED: u32 = 16;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Notification {
     /// The user grabbed a control in the plug-in's editor.
-    ParamGestureBegin { id: u64 },
+    ParamGestureBegin {
+        id: u64,
+    },
     /// A parameter was changed by the plug-in itself (editor, MIDI learn, program change).
-    ParamValue { id: u64, value: f64 },
-    ParamGestureEnd { id: u64 },
-    LatencyChanged { frames: u32 },
-    TailChanged { frames: u64 },
+    ParamValue {
+        id: u64,
+        value: f64,
+    },
+    ParamGestureEnd {
+        id: u64,
+    },
+    LatencyChanged {
+        frames: u32,
+    },
+    TailChanged {
+        frames: u64,
+    },
     /// Parameter metadata and/or all values changed (preset load inside the editor).
     ParamsRescan,
     /// The state changed in a way no parameter reports.
     StateDirty,
     /// The user closed the editor window.
     EditorClosed,
-    EditorResized { width: u32, height: u32 },
+    EditorResized {
+        width: u32,
+        height: u32,
+    },
+    /// The plug-in asks to be deactivated and activated again (e.g. to change its latency).
+    RestartRequested,
 }
 
 impl Notification {
@@ -173,6 +189,7 @@ impl Notification {
             Notification::StateDirty => (7, 0, 0, 0),
             Notification::EditorClosed => (8, 0, 0, 0),
             Notification::EditorResized { width, height } => (9, 0, 0, ((width as u64) << 32) | height as u64),
+            Notification::RestartRequested => (10, 0, 0, 0),
         }
     }
     fn unpack(kind: u32, id: u64, value: u64, aux: u64) -> Option<Notification> {
@@ -186,6 +203,7 @@ impl Notification {
             7 => Notification::StateDirty,
             8 => Notification::EditorClosed,
             9 => Notification::EditorResized { width: (aux >> 32) as u32, height: aux as u32 },
+            10 => Notification::RestartRequested,
             _ => return None,
         })
     }
@@ -444,7 +462,11 @@ impl Region {
             ("input channels", fixed.in_channels.load(Ordering::Relaxed) as u64, l.in_channels as u64),
             ("output channels", fixed.out_channels.load(Ordering::Relaxed) as u64, l.out_channels as u64),
             ("event capacity", fixed.event_capacity.load(Ordering::Relaxed) as u64, l.event_capacity as u64),
-            ("out event capacity", fixed.out_event_capacity.load(Ordering::Relaxed) as u64, l.out_event_capacity as u64),
+            (
+                "out event capacity",
+                fixed.out_event_capacity.load(Ordering::Relaxed) as u64,
+                l.out_event_capacity as u64,
+            ),
             ("queue capacity", fixed.queue_capacity.load(Ordering::Relaxed) as u64, l.queue_capacity as u64),
         ];
         for (what, got, want) in checks {
@@ -652,6 +674,7 @@ mod tests {
             Notification::StateDirty,
             Notification::EditorClosed,
             Notification::EditorResized { width: 640, height: 480 },
+            Notification::RestartRequested,
         ];
         for n in all {
             assert!(region.push_notification(n));

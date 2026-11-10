@@ -150,7 +150,11 @@ impl InstanceConfig {
 
     /// A stereo instrument (no audio input) at 48 kHz.
     pub fn instrument(format: &str, plugin_id: &str) -> InstanceConfig {
-        InstanceConfig { kind: PluginKind::Instrument, input_buses: Vec::new(), ..InstanceConfig::effect(format, plugin_id) }
+        InstanceConfig {
+            kind: PluginKind::Instrument,
+            input_buses: Vec::new(),
+            ..InstanceConfig::effect(format, plugin_id)
+        }
     }
 }
 
@@ -409,11 +413,7 @@ impl InstanceShared {
     /// Blocks until the audio thread is outside `process`, then keeps it out (it gets
     /// `PROCESS_BUSY` fallbacks) until [`InstanceShared::unlock_gate`].
     pub fn lock_gate(&self) {
-        while self
-            .gate
-            .compare_exchange(GATE_IDLE, GATE_EXCLUSIVE, Ordering::AcqRel, Ordering::Relaxed)
-            .is_err()
-        {
+        while self.gate.compare_exchange(GATE_IDLE, GATE_EXCLUSIVE, Ordering::AcqRel, Ordering::Relaxed).is_err() {
             std::thread::sleep(Duration::from_micros(50));
         }
     }
@@ -459,7 +459,11 @@ impl InstanceShared {
             }
             let src = if self.pass_through && channel < self.main_out && self.main_in > 0 {
                 let source = channel.min(self.main_in - 1);
-                if source < block.num_inputs as usize { *block.inputs.add(source) } else { std::ptr::null() }
+                if source < block.num_inputs as usize {
+                    *block.inputs.add(source)
+                } else {
+                    std::ptr::null()
+                }
             } else {
                 std::ptr::null()
             };
@@ -820,11 +824,7 @@ impl Instance {
     /// `out_events` for `out_event_capacity`. `transport` must be null or valid.
     pub unsafe fn process_raw(&self, block: &RawBlock) -> ProcessOutcome {
         let shared = &*self.shared;
-        if shared
-            .gate
-            .compare_exchange(GATE_IDLE, GATE_PROCESSING, Ordering::AcqRel, Ordering::Relaxed)
-            .is_err()
-        {
+        if shared.gate.compare_exchange(GATE_IDLE, GATE_PROCESSING, Ordering::AcqRel, Ordering::Relaxed).is_err() {
             shared.blocks.fetch_add(1, Ordering::Relaxed);
             return shared.fallback_plain(block, PROCESS_BUSY);
         }

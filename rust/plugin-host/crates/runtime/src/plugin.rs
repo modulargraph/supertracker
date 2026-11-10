@@ -66,6 +66,9 @@ pub struct CreateRequest<'a> {
     /// Channels per input bus; bus 0 is the main input, further buses are sidechains.
     pub input_buses: &'a [u32],
     pub output_buses: &'a [u32],
+    /// Most events a block can carry to the plug-in, and from it.
+    pub event_capacity: u32,
+    pub out_event_capacity: u32,
 }
 
 /// A plug-in format ("clap", "vst3", "au", "test").

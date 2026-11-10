@@ -1,0 +1,1 @@
+//! Browser preview decoding (stub).

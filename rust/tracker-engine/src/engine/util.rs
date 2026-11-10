@@ -6,7 +6,8 @@ use std::cell::UnsafeCell;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-pub const PI: f64 = 3.1415926535897932384626433832795;
+/// The C++ engine's `pi` constant (3.1415926535897932384626433832795 rounds to this double).
+pub const PI: f64 = std::f64::consts::PI;
 
 /// `std::min(a, b)`: returns `a` unless `b < a` (so a NaN `b` yields `a`, a NaN `a` yields `a`).
 #[inline(always)]

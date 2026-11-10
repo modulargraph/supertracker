@@ -128,7 +128,7 @@ impl Settings {
 }
 
 /// Writes `bytes` to `path` so that the file is either the old or the new content at any moment.
-pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let folder = path.parent().unwrap_or(Path::new("."));
     let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
     let temporary = folder.join(format!(".{name}.{}.tmp", std::process::id()));

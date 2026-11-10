@@ -9,9 +9,10 @@
 //! grouped into successive banks of eight controls for keyboard/hardware pages.
 
 use super::common::{
-    clamp, clean, core_accessors, db_gain, fast_cos_2pi, fast_sin_2pi, fast_tanh, frame_buffers, max, min, mix, pole, pow2, wrap, Core,
-    DelayLine, Descriptor, Label, Memo, ParameterInfo as P, Processor, Smoother, MAX_PARAMETERS, PARAMETER_INTEGER as INTEGER,
-    PARAMETER_LOG as LOG, PARAMETER_TOGGLE as TOGGLE, PI,
+    clamp, clean, core_accessors, db_gain, fast_cos_2pi, fast_sin_2pi, fast_tanh, frame_buffers,
+    max, min, mix, pole, pow2, wrap, Core, DelayLine, Descriptor, Label, Memo, ParameterInfo as P,
+    Processor, Smoother, MAX_PARAMETERS, PARAMETER_INTEGER as INTEGER, PARAMETER_LOG as LOG,
+    PARAMETER_TOGGLE as TOGGLE, PI,
 };
 
 /// Shared state of the Perform processors (`perform_detail::Base`).
@@ -27,7 +28,12 @@ pub struct Base {
 
 impl Base {
     pub fn new(rate: f64) -> Self {
-        Base { core: Core::new(rate), smooth: [Smoother::default(); 24], pole_memo: [Memo::default(); 24], smoothing: pole(12.0, rate) }
+        Base {
+            core: Core::new(rate),
+            smooth: [Smoother::default(); 24],
+            pole_memo: [Memo::default(); 24],
+            smoothing: pole(12.0, rate),
+        }
     }
 
     /// Parameter `index` smoothed with the default 12 ms time constant.
@@ -101,14 +107,33 @@ fn feedback_tail(seconds: f64, gain: f64) -> f64 {
     if gain >= 1.0 {
         return 120.0;
     }
-    let repeats = if gain > 1e-12 { (1e-6f64.ln() / gain.ln()).ceil() } else { 0.0 };
+    let repeats = if gain > 1e-12 {
+        (1e-6f64.ln() / gain.ln()).ceil()
+    } else {
+        0.0
+    };
     seconds * (1.0 + max(0.0, repeats)) + 0.25
 }
 
 /// The musical note division (in beats) nearest to `beats` on a log scale.
 pub fn division(beats: f64) -> f64 {
-    const VALUES: [f64; 15] =
-        [1.0 / 32.0, 1.0 / 24.0, 1.0 / 16.0, 1.0 / 12.0, 1.0 / 8.0, 1.0 / 6.0, 1.0 / 4.0, 1.0 / 3.0, 0.5, 2.0 / 3.0, 1.0, 1.5, 2.0, 3.0, 4.0];
+    const VALUES: [f64; 15] = [
+        1.0 / 32.0,
+        1.0 / 24.0,
+        1.0 / 16.0,
+        1.0 / 12.0,
+        1.0 / 8.0,
+        1.0 / 6.0,
+        1.0 / 4.0,
+        1.0 / 3.0,
+        0.5,
+        2.0 / 3.0,
+        1.0,
+        1.5,
+        2.0,
+        3.0,
+        4.0,
+    ];
     let mut best = VALUES[0];
     let mut distance = 1e9;
     for v in VALUES {
@@ -153,7 +178,11 @@ impl Svf {
         let low = self.s2 + self.g * band;
         self.s1 = clean(4.0 * soft((2.0 * band - self.s1) * 0.25));
         self.s2 = clean(4.0 * soft((2.0 * low - self.s2) * 0.25));
-        SvfOut { low: bounded(low), band: bounded(band), high: bounded(input - damping * band - low) }
+        SvfOut {
+            low: bounded(low),
+            band: bounded(band),
+            high: bounded(input - damping * band - low),
+        }
     }
 
     fn reset(&mut self) {
@@ -174,7 +203,12 @@ struct SvfBank<const N: usize> {
 
 impl<const N: usize> SvfBank<N> {
     fn new() -> Self {
-        SvfBank { s1: [0.0; N], s2: [0.0; N], g: [0.0; N], a: [0.0; N] }
+        SvfBank {
+            s1: [0.0; N],
+            s2: [0.0; N],
+            g: [0.0; N],
+            a: [0.0; N],
+        }
     }
 
     #[inline(always)]
@@ -244,11 +278,16 @@ impl FrequencyShifter {
         let mut i = 0;
         while i < 63 {
             let n = i as i32 - 31;
-            let w = 0.42 - 0.5 * (2.0 * PI * i as f64 / 62.0).cos() + 0.08 * (4.0 * PI * i as f64 / 62.0).cos();
+            let w = 0.42 - 0.5 * (2.0 * PI * i as f64 / 62.0).cos()
+                + 0.08 * (4.0 * PI * i as f64 / 62.0).cos();
             taps[i / 2] = 2.0 * w / (PI * n as f64);
             i += 2;
         }
-        FrequencyShifter { history: [0.0; 126], taps, write: 0 }
+        FrequencyShifter {
+            history: [0.0; 126],
+            taps,
+            write: 0,
+        }
     }
 
     /// Store one input sample; the shifted output can then be read with `output`.
@@ -267,7 +306,9 @@ impl FrequencyShifter {
         // newest sample at index write+62 (mirrored); tap i multiplies the sample i back.
         // window[j] is history[write + j], so "i samples back" is window[62 - i].
         let write = self.write % 63;
-        let window: &[f64; 63] = self.history[write..write + 63].try_into().unwrap_or(&[0.0; 63]);
+        let window: &[f64; 63] = self.history[write..write + 63]
+            .try_into()
+            .unwrap_or(&[0.0; 63]);
         // Four partial sums: independent chains instead of one serial chain.
         let (mut i0, mut i1, mut i2, mut i3) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
         let mut k = 0;
@@ -382,7 +423,14 @@ struct Capture {
 
 impl Capture {
     fn new(capacity: usize) -> Self {
-        Capture { data: vec![[0.0; 2]; capacity.max(8)], write: 0, valid: 0, end: 0, captured_valid: 0, frames: 0 }
+        Capture {
+            data: vec![[0.0; 2]; capacity.max(8)],
+            write: 0,
+            valid: 0,
+            end: 0,
+            captured_valid: 0,
+            frames: 0,
+        }
     }
 
     #[inline(always)]
@@ -421,7 +469,10 @@ impl Capture {
         let b = (a + 1) % size;
         let f = absolute - absolute.floor();
         let (xa, xb) = (self.data[a], self.data[b]);
-        [mix(xa[0] as f64, xb[0] as f64, f), mix(xa[1] as f64, xb[1] as f64, f)]
+        [
+            mix(xa[0] as f64, xb[0] as f64, f),
+            mix(xa[1] as f64, xb[1] as f64, f),
+        ]
     }
 
     fn reset(&mut self) {
@@ -506,7 +557,13 @@ impl Processor for PerformFilter {
         Self::tail_estimate(self.base.core.sr, values, tempo)
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let sr = self.base.core.sr;
         for i in 0..l.len() {
@@ -522,7 +579,9 @@ impl Processor for PerformFilter {
             let out = self.out_gain.get([v5], || db_gain(v5));
             let lo = clamp(self.base.value(8), 20.0, sr * 0.42);
             let hi = clamp(self.base.value(9), 20.0, sr * 0.42);
-            let hz = self.center.get([lo, hi, position], || lo * (max(hi, lo) / lo).powf(position));
+            let hz = self.center.get([lo, hi, position], || {
+                lo * (max(hi, lo) / lo).powf(position)
+            });
             let damping = 2.0 - 2.08 * res;
             let dry = [l[i] as f64, r[i] as f64];
             let mut wet = [0.0f64; 2];
@@ -536,7 +595,11 @@ impl Processor for PerformFilter {
                 }
                 for c in 0..2 {
                     let v = self.filter[c].tick(soft(dry[c] * drive), hz, damping, sr);
-                    wet[c] = (if kind < 1.0 { mix(v.low, v.band, kind) } else { mix(v.band, v.high, kind - 1.0) }) * out;
+                    wet[c] = (if kind < 1.0 {
+                        mix(v.low, v.band, kind)
+                    } else {
+                        mix(v.band, v.high, kind - 1.0)
+                    }) * out;
                 }
             } else {
                 self.live = false;
@@ -584,8 +647,12 @@ impl PerformFlanger {
             return 0.25;
         }
         let base = 1.0 / clamp(v[1], 10.0, 4000.0);
-        let gain = min(0.995, 0.001f64.powf(base / clamp(v[2], 0.02, 12.0))) * db_gain(clamp(v[3], 0.0, 24.0) * 0.5);
-        feedback_tail(base * (1.0 + clamp(v[4], 0.0, 1.0) * 0.03 + clamp(v[9], 0.0, 1.0) * 0.45), gain)
+        let gain = min(0.995, 0.001f64.powf(base / clamp(v[2], 0.02, 12.0)))
+            * db_gain(clamp(v[3], 0.0, 24.0) * 0.5);
+        feedback_tail(
+            base * (1.0 + clamp(v[4], 0.0, 1.0) * 0.03 + clamp(v[9], 0.0, 1.0) * 0.45),
+            gain,
+        )
     }
 }
 
@@ -612,7 +679,13 @@ impl Processor for PerformFlanger {
         Self::tail_estimate(self.base.core.sr, values, tempo)
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let sr = self.base.core.sr;
         let engaged = self.base.core.p[0];
@@ -644,15 +717,23 @@ impl Processor for PerformFlanger {
             self.live = true;
             let drive = self.drive_gain.get([v3], || db_gain(v3));
             let scale = self.inv_sqrt.get([drive], || 1.0 / drive.sqrt());
-            let dl = clamp(base * (1.0 + depth * 0.45 * fast_sin_2pi(self.phase)), 1.0, (self.left.len() - 2) as f64);
+            let dl = clamp(
+                base * (1.0 + depth * 0.45 * fast_sin_2pi(self.phase)),
+                1.0,
+                (self.left.len() - 2) as f64,
+            );
             let dr = clamp(
-                base * (1.0 + spread * 0.03 + depth * 0.45 * fast_sin_2pi(self.phase + spread * 0.25)),
+                base * (1.0
+                    + spread * 0.03
+                    + depth * 0.45 * fast_sin_2pi(self.phase + spread * 0.25)),
                 1.0,
                 (self.right.len() - 2) as f64,
             );
             let mut a = self.left.read(dl);
             let mut b = self.right.read(dr);
-            let fb = self.feedback_gain.get([base, decay], || min(0.995, 0.001f64.powf(base / sr / max(0.02, decay)))) * polarity;
+            let fb = self.feedback_gain.get([base, decay], || {
+                min(0.995, 0.001f64.powf(base / sr / max(0.02, decay)))
+            }) * polarity;
             let old_l = self.ap[0];
             let old_r = self.ap[1];
             self.ap[0] = bounded(a + 0.55 * old_l);
@@ -660,8 +741,10 @@ impl Processor for PerformFlanger {
             a = mix(a, old_l - 0.55 * self.ap[0], tone);
             b = mix(b, old_r - 0.55 * self.ap[1], tone);
             let (xl, xr) = (l[i] as f64, r[i] as f64);
-            self.left.push(xl * on + soft(mix(a, b, spread * 0.45) * fb * drive) * scale);
-            self.right.push(xr * on + soft(mix(b, a, spread * 0.45) * fb * drive) * scale);
+            self.left
+                .push(xl * on + soft(mix(a, b, spread * 0.45) * fb * drive) * scale);
+            self.right
+                .push(xr * on + soft(mix(b, a, spread * 0.45) * fb * drive) * scale);
             l[i] = bounded(mix(xl, (xl + a) * 0.70710678118, on * amount)) as f32;
             r[i] = bounded(mix(xr, (xr + b) * 0.70710678118, on * amount)) as f32;
         }
@@ -741,7 +824,11 @@ impl BurstEcho {
     pub fn tail_estimate(_sr: f64, v: &[f64; MAX_PARAMETERS], bpm: f64) -> f64 {
         let assignment = clamp(v[2], 0.0, 1.0);
         let position = clamp(v[1], 0.0, 1.0);
-        let beats = mix(clamp(v[3], 1.0 / 32.0, 4.0), position_beats(position), assignment);
+        let beats = mix(
+            clamp(v[3], 1.0 / 32.0, 4.0),
+            position_beats(position),
+            assignment,
+        );
         let seconds = if v[4] >= 2.5 {
             clamp(v[10], 1.0, 2000.0) * 0.001
         } else {
@@ -779,7 +866,13 @@ impl Processor for BurstEcho {
         Self::tail_estimate(self.base.core.sr, values, tempo)
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let sr = self.base.core.sr;
         let p = self.base.core.p;
@@ -813,15 +906,28 @@ impl Processor for BurstEcho {
             let drive = self.drive_gain.get([v11], || db_gain(v11));
             let out = self.out_gain.get([v13], || db_gain(v13));
             let scale = self.inv_sqrt.get([drive], || 1.0 / drive.sqrt());
-            let selected_beats = mix(beats, self.position_beats.get([position], || position_beats(position)), assignment);
+            let selected_beats = mix(
+                beats,
+                self.position_beats
+                    .get([position], || position_beats(position)),
+                assignment,
+            );
             let seconds = if mode >= 2.5 {
                 free_ms * 0.001
             } else {
-                self.base.beat_seconds(self.divided.get([selected_beats], || division(selected_beats))) * time_mode_factor(mode)
+                self.base.beat_seconds(
+                    self.divided
+                        .get([selected_beats], || division(selected_beats)),
+                ) * time_mode_factor(mode)
             };
-            let frames = self.delay.tick(clamp(seconds * sr, 1.0, (self.left.len() - 2) as f64), smoothing);
+            let frames = self.delay.tick(
+                clamp(seconds * sr, 1.0, (self.left.len() - 2) as f64),
+                smoothing,
+            );
             let feeding = on && (feed >= 0.999 || (self.elapsed as f64) < feed * sr);
-            let input_gain = self.feed_gain.tick(if feeding { 1.0 } else { 0.0 }, self.feed_pole);
+            let input_gain = self
+                .feed_gain
+                .tick(if feeding { 1.0 } else { 0.0 }, self.feed_pole);
             let fb = mix(feedback, position * 0.98, 1.0 - assignment) * mix(0.45, 1.0, engage);
             let a = self.left.read(frames);
             let b = self.right.read(frames * (1.0 - stereo * 0.013));
@@ -838,15 +944,16 @@ impl Processor for BurstEcho {
                 echo[c] = x - self.high[c].tick(x, self.hp);
             }
             let (xl, xr) = (l[i] as f64, r[i] as f64);
-            self.left.push(xl * input_gain + soft(mix(echo[0], echo[1], stereo) * fb * drive) * scale);
-            self.right.push(xr * input_gain + soft(mix(echo[1], echo[0], stereo) * fb * drive) * scale);
-            let target_dry = if mix_mode >= 1.5 {
-                0.0
-            } else if mix_mode >= 0.5 && on && self.elapsed as f64 >= frames {
-                0.0
-            } else {
-                1.0
-            };
+            self.left
+                .push(xl * input_gain + soft(mix(echo[0], echo[1], stereo) * fb * drive) * scale);
+            self.right
+                .push(xr * input_gain + soft(mix(echo[1], echo[0], stereo) * fb * drive) * scale);
+            let target_dry =
+                if mix_mode >= 1.5 || (mix_mode >= 0.5 && on && self.elapsed as f64 >= frames) {
+                    0.0
+                } else {
+                    1.0
+                };
             let dry = self.dry_gain.tick(target_dry, self.dry_pole);
             l[i] = bounded((xl * dry + a * wet) * out) as f32;
             r[i] = bounded((xr * dry + b * wet) * out) as f32;
@@ -930,7 +1037,13 @@ impl Processor for ResoEcho {
         Self::tail_estimate(self.base.core.sr, values, tempo)
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let sr = self.base.core.sr;
         let smoothing = self.base.smoothing;
@@ -956,10 +1069,17 @@ impl Processor for ResoEcho {
             let drive = self.drive_gain.get([v8], || db_gain(v8));
             let scale = self.inv_sqrt.get([drive], || 1.0 / drive.sqrt());
             let frames = self.delay.tick(
-                clamp(mix(free_ms * 0.001, self.base.beat_seconds(beats), sync) * sr, 1.0, (self.left.len() - 2) as f64),
+                clamp(
+                    mix(free_ms * 0.001, self.base.beat_seconds(beats), sync) * sr,
+                    1.0,
+                    (self.left.len() - 2) as f64,
+                ),
                 smoothing,
             );
-            let echoes = [self.left.read(frames), self.right.read(frames * (1.0 - spread * 0.02))];
+            let echoes = [
+                self.left.read(frames),
+                self.right.read(frames * (1.0 - spread * 0.02)),
+            ];
             let input = [l[i] as f64, r[i] as f64];
             let mut filtered = [0.0f64; 2];
             let mut feed = [0.0f64; 2];
@@ -969,7 +1089,12 @@ impl Processor for ResoEcho {
                 for c in 0..2 {
                     for j in 0..3 {
                         let side = if c != 0 { 1.0 } else { -1.0 };
-                        bank.set(c * 3 + j, frequency * pow2(j as f64 * 0.5 + spread * side * 0.02), damping, sr);
+                        bank.set(
+                            c * 3 + j,
+                            frequency * pow2(j as f64 * 0.5 + spread * side * 0.02),
+                            damping,
+                            sr,
+                        );
                     }
                 }
                 0.0
@@ -990,7 +1115,9 @@ impl Processor for ResoEcho {
             }
             self.left.push(feed[0]);
             self.right.push(feed[1]);
-            let dry = self.dry_gain.tick(1.0 - clamp(mode - 1.0, 0.0, 1.0), smoothing);
+            let dry = self
+                .dry_gain
+                .tick(1.0 - clamp(mode - 1.0, 0.0, 1.0), smoothing);
             let direct_l = mix(input[0], filtered[0] * wet, on * min(1.0, mode)) * dry;
             let direct_r = mix(input[1], filtered[1] * wet, on * min(1.0, mode)) * dry;
             l[i] = bounded(direct_l + echoes[0] * wet) as f32;
@@ -1049,7 +1176,13 @@ impl Processor for PerformRing {
         Self::tail_estimate(self.base.core.sr, values, tempo)
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let sr = self.base.core.sr;
         const INTERVALS: [f64; 5] = [-12.0, -7.0, 0.0, 7.0, 12.0];
@@ -1064,7 +1197,10 @@ impl Processor for PerformRing {
             let wet_only = self.base.value(7);
             let v8 = self.base.value(8);
             let out = self.out_gain.get([v8], || db_gain(v8));
-            let hz = self.frequency.tick(target, self.glide_pole.get([glide], || pole(max(1.0, glide), sr)));
+            let hz = self.frequency.tick(
+                target,
+                self.glide_pole.get([glide], || pole(max(1.0, glide), sr)),
+            );
             let step = &mut self.step;
             self.increments.get([hz, spread], || {
                 for j in 0..5 {
@@ -1163,7 +1299,13 @@ impl Processor for PerformStutter {
         false
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let sr = self.base.core.sr;
         let p = self.base.core.p;
@@ -1184,36 +1326,73 @@ impl Processor for PerformStutter {
             let free_ms = self.base.value(8);
             let amount = self.base.value(9);
             let fade_ms = self.base.value(10);
-            let scale = self.requested_memo.get([assign, position], || pow2(if assign < 0.5 { 4.0 * (position - 0.5) } else { 0.0 }));
+            let scale = self.requested_memo.get([assign, position], || {
+                pow2(if assign < 0.5 {
+                    4.0 * (position - 0.5)
+                } else {
+                    0.0
+                })
+            });
             let requested = clamp(beats * scale, 1.0 / 32.0, 4.0);
             let base = &self.base;
-            let seconds = self.seconds_memo.get([quantize, requested, free_ms * scale, tempo], || {
-                if quantize >= 0.5 {
-                    base.beat_seconds(division(requested))
-                } else {
-                    clamp(free_ms * scale, 5.0, 2000.0) * 0.001
-                }
-            });
+            let seconds =
+                self.seconds_memo
+                    .get([quantize, requested, free_ms * scale, tempo], || {
+                        if quantize >= 0.5 {
+                            base.beat_seconds(division(requested))
+                        } else {
+                            clamp(free_ms * scale, 5.0, 2000.0) * 0.001
+                        }
+                    });
             let target_length = seconds * sr;
             if on && !self.was_on {
-                let back = if quantize >= 0.5 { (self.history.frames as f64 % max(2.0, target_length)) as usize } else { 0 };
+                let back = if quantize >= 0.5 {
+                    (self.history.frames as f64 % max(2.0, target_length)) as usize
+                } else {
+                    0
+                };
                 self.history.capture(back);
                 self.phase = 0.0;
                 self.direction = if dir >= 0.5 && dir < 1.5 { -1.0 } else { 1.0 };
             }
-            let available = if on { self.history.captured_valid } else { self.history.valid };
+            let available = if on {
+                self.history.captured_valid
+            } else {
+                self.history.valid
+            };
             let limit = available.max(2) as f64;
-            let length = clamp(self.loop_length.tick(clamp(target_length, 2.0, limit), smoothing), 2.0, limit);
+            let length = clamp(
+                self.loop_length
+                    .tick(clamp(target_length, 2.0, limit), smoothing),
+                2.0,
+                limit,
+            );
             if dir < 0.5 {
                 self.direction = 1.0;
             } else if dir < 1.5 {
                 self.direction = -1.0;
             } else if (position - self.last_position).abs() > 1e-7 {
-                self.direction = if position > self.last_position { 1.0 } else { -1.0 };
+                self.direction = if position > self.last_position {
+                    1.0
+                } else {
+                    -1.0
+                };
             }
-            let semitones = clamp(pitch + (if assign >= 0.5 { (position - 0.5) * 48.0 } else { 0.0 }), -48.0, 48.0);
+            let semitones = clamp(
+                pitch
+                    + (if assign >= 0.5 {
+                        (position - 0.5) * 48.0
+                    } else {
+                        0.0
+                    }),
+                -48.0,
+                48.0,
+            );
             self.last_position = position;
-            let rate = self.speed.tick(self.direction * self.pitch_memo.get([semitones], || pow2(semitones / 12.0)), smoothing);
+            let rate = self.speed.tick(
+                self.direction * self.pitch_memo.get([semitones], || pow2(semitones / 12.0)),
+                smoothing,
+            );
             self.phase = wrap(self.phase / length) * length;
             let wet = self.history.read(length, self.phase);
             let cycle = self.phase / length;
@@ -1221,7 +1400,11 @@ impl Processor for PerformStutter {
             let mut shape = seam(self.phase, length, min(fade_ms * 0.001 * sr, length * 0.05));
             if gate < 0.999 {
                 let fade = min(0.02, duty * 0.1);
-                shape *= if cycle >= duty { 0.0 } else { clamp((duty - cycle) / fade, 0.0, 1.0) };
+                shape *= if cycle >= duty {
+                    0.0
+                } else {
+                    clamp((duty - cycle) / fade, 0.0, 1.0)
+                };
             }
             l[i] = bounded(mix(input_l, wet[0] * shape, engage * amount)) as f32;
             r[i] = bounded(mix(input_r, wet[1] * shape, engage * amount)) as f32;
@@ -1279,7 +1462,13 @@ impl Processor for PerformTremolo {
         0.1
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let sr = self.base.core.sr;
         let tempo = self.base.core.tempo;
@@ -1300,11 +1489,20 @@ impl Processor for PerformTremolo {
             let v12 = self.base.value(12);
             let out = self.out_gain.get([v12], || db_gain(v12));
             let base = &self.base;
-            let rate = self.rate_memo.get([min_rate, max_rate, position, sync, beats, tempo], || {
-                mix(min_rate * (max(0.01, max_rate) / max(0.01, min_rate)).powf(position), 1.0 / base.beat_seconds(beats), sync)
-            });
+            let rate =
+                self.rate_memo
+                    .get([min_rate, max_rate, position, sync, beats, tempo], || {
+                        mix(
+                            min_rate * (max(0.01, max_rate) / max(0.01, min_rate)).powf(position),
+                            1.0 / base.beat_seconds(beats),
+                            sync,
+                        )
+                    });
             let input = [l[i] as f64, r[i] as f64];
-            let osc = [fast_sin_2pi(self.phase), fast_sin_2pi(self.phase + stereo * 0.5)];
+            let osc = [
+                fast_sin_2pi(self.phase),
+                fast_sin_2pi(self.phase + stereo * 0.5),
+            ];
             self.phase = wrap(self.phase + rate / sr);
             self.left.push(input[0]);
             self.right.push(input[1]);
@@ -1325,7 +1523,11 @@ impl Processor for PerformTremolo {
                 if vibrato {
                     let line = if c != 0 { &self.right } else { &self.left };
                     let delayed = line.read(sr * (0.012 + 0.008 * depth * osc[c]));
-                    moved = if shifted { mix(delayed, self.shifter[c].output(self.shift_phase[c]), mode) } else { delayed };
+                    moved = if shifted {
+                        mix(delayed, self.shifter[c].output(self.shift_phase[c]), mode)
+                    } else {
+                        delayed
+                    };
                 }
                 result[c] = mix(input[c], mix(trem, moved, blend), on) * out;
             }
@@ -1403,7 +1605,13 @@ impl Processor for PerformScratcher {
         false
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let sr = self.base.core.sr;
         let engaged = self.base.core.p[0];
@@ -1431,7 +1639,9 @@ impl Processor for PerformScratcher {
             }
             let motion = (position - self.last_position) * length * 2.0;
             self.last_position = position;
-            self.brake *= self.brake_pole.get([brake_time, position], || pole(brake_time * 1000.0 * (0.25 + position * 1.75), sr));
+            self.brake *= self.brake_pole.get([brake_time, position], || {
+                pole(brake_time * 1000.0 * (0.25 + position * 1.75), sr)
+            });
             let travel = clamp(self.brake + motion, -16.0, 16.0);
             self.phase = wrap(self.phase / length) * length;
             let captured = self.history.read(length, self.phase);
@@ -1439,7 +1649,10 @@ impl Processor for PerformScratcher {
             let a = captured[0] * edge;
             let b = captured[1] * edge;
             self.phase += travel;
-            let frames = self.delay.tick(max(1.0, milliseconds * 0.001 * sr * (0.2 + 0.8 * position)), smoothing);
+            let frames = self.delay.tick(
+                max(1.0, milliseconds * 0.001 * sr * (0.2 + 0.8 * position)),
+                smoothing,
+            );
             let dl = self.left.read(frames);
             let dr = self.right.read(frames);
             self.shift_phase = wrap(self.shift_phase + shift / sr);
@@ -1452,8 +1665,10 @@ impl Processor for PerformScratcher {
                 sl = self.shifter[0].output(self.shift_phase);
                 sr_ = self.shifter[1].output(self.shift_phase);
             }
-            self.left.push(a * engage + soft(mix(dl, sl, shift_weight) * feedback));
-            self.right.push(b * engage + soft(mix(dr, sr_, shift_weight) * feedback));
+            self.left
+                .push(a * engage + soft(mix(dl, sl, shift_weight) * feedback));
+            self.right
+                .push(b * engage + soft(mix(dr, sr_, shift_weight) * feedback));
             l[i] = bounded(mix(input[0], a + dl * wet, engage * amount) * out) as f32;
             r[i] = bounded(mix(input[1], b + dr * wet, engage * amount) * out) as f32;
             if !on {
@@ -1465,37 +1680,100 @@ impl Processor for PerformScratcher {
     }
 }
 
-const FILTER_TYPES: &[Label] = &[Label::new(c"Low pass"), Label::new(c"Band pass"), Label::new(c"High pass")];
+const FILTER_TYPES: &[Label] = &[
+    Label::new(c"Low pass"),
+    Label::new(c"Band pass"),
+    Label::new(c"High pass"),
+];
 const POLARITIES: &[Label] = &[Label::new(c"Positive"), Label::new(c"Negative")];
 const TONES: &[Label] = &[Label::new(c"Flanger"), Label::new(c"Phaser")];
 const ASSIGNMENTS: &[Label] = &[Label::new(c"Feedback"), Label::new(c"Time")];
-const TIME_MODES: &[Label] = &[Label::new(c"Straight"), Label::new(c"Dotted"), Label::new(c"Triplet"), Label::new(c"Milliseconds")];
-const ECHO_MODES: &[Label] = &[Label::new(c"Mix"), Label::new(c"Replace"), Label::new(c"Wet only")];
-const RESO_MODES: &[Label] = &[Label::new(c"Mix"), Label::new(c"Insert"), Label::new(c"Wet only")];
+const TIME_MODES: &[Label] = &[
+    Label::new(c"Straight"),
+    Label::new(c"Dotted"),
+    Label::new(c"Triplet"),
+    Label::new(c"Milliseconds"),
+];
+const ECHO_MODES: &[Label] = &[
+    Label::new(c"Mix"),
+    Label::new(c"Replace"),
+    Label::new(c"Wet only"),
+];
+const RESO_MODES: &[Label] = &[
+    Label::new(c"Mix"),
+    Label::new(c"Insert"),
+    Label::new(c"Wet only"),
+];
 const RING_MODES: &[Label] = &[Label::new(c"Mix"), Label::new(c"Wet only")];
 const STUTTER_ASSIGN: &[Label] = &[Label::new(c"Length"), Label::new(c"Pitch")];
-const DIRECTIONS: &[Label] = &[Label::new(c"Forward"), Label::new(c"Reverse"), Label::new(c"Follow movement")];
+const DIRECTIONS: &[Label] = &[
+    Label::new(c"Forward"),
+    Label::new(c"Reverse"),
+    Label::new(c"Follow movement"),
+];
 const VIBRATO_MODES: &[Label] = &[Label::new(c"Varispeed"), Label::new(c"Frequency shift")];
 
 static FILTER: [P; 10] = [
     P::new(c"engage", c"Engage", c"", 0.0, 1.0, 0.0, TOGGLE),
     P::new(c"position", c"Frequency position", c"%", 0.0, 1.0, 0.65, 0),
-    P::choice(c"type", c"Filter type", c"", 0.0, 2.0, 0.0, INTEGER, FILTER_TYPES),
+    P::choice(
+        c"type",
+        c"Filter type",
+        c"",
+        0.0,
+        2.0,
+        0.0,
+        INTEGER,
+        FILTER_TYPES,
+    ),
     P::new(c"resonance", c"Resonance", c"%", 0.0, 1.05, 0.2, 0),
     P::new(c"saturation", c"Saturation", c"dB", 0.0, 30.0, 0.0, 0),
     P::new(c"output", c"Output", c"dB", -36.0, 12.0, 0.0, 0),
     P::new(c"mix", c"Mix", c"%", 0.0, 1.0, 1.0, 0),
     P::new(c"response", c"Response", c"ms", 1.0, 100.0, 12.0, LOG),
-    P::new(c"min_frequency", c"Minimum frequency", c"Hz", 20.0, 20000.0, 40.0, LOG),
-    P::new(c"max_frequency", c"Maximum frequency", c"Hz", 20.0, 20000.0, 18000.0, LOG),
+    P::new(
+        c"min_frequency",
+        c"Minimum frequency",
+        c"Hz",
+        20.0,
+        20000.0,
+        40.0,
+        LOG,
+    ),
+    P::new(
+        c"max_frequency",
+        c"Maximum frequency",
+        c"Hz",
+        20.0,
+        20000.0,
+        18000.0,
+        LOG,
+    ),
 ];
 static FLANGER: [P; 10] = [
     P::new(c"engage", c"Engage", c"", 0.0, 1.0, 0.0, TOGGLE),
-    P::new(c"frequency", c"Comb frequency", c"Hz", 10.0, 4000.0, 220.0, LOG),
+    P::new(
+        c"frequency",
+        c"Comb frequency",
+        c"Hz",
+        10.0,
+        4000.0,
+        220.0,
+        LOG,
+    ),
     P::new(c"decay", c"Decay", c"s", 0.02, 12.0, 1.5, LOG),
     P::new(c"saturation", c"Saturation", c"dB", 0.0, 24.0, 3.0, 0),
     P::new(c"stereo", c"Stereo", c"%", 0.0, 1.0, 0.35, 0),
-    P::choice(c"polarity", c"Polarity", c"", 0.0, 1.0, 0.0, INTEGER, POLARITIES),
+    P::choice(
+        c"polarity",
+        c"Polarity",
+        c"",
+        0.0,
+        1.0,
+        0.0,
+        INTEGER,
+        POLARITIES,
+    ),
     P::choice(c"tone", c"Tone", c"", 0.0, 1.0, 0.0, INTEGER, TONES),
     P::new(c"mix", c"Mix", c"%", 0.0, 1.0, 0.7, 0),
     P::new(c"rate", c"Motion rate", c"Hz", 0.0, 10.0, 0.25, 0),
@@ -1504,14 +1782,49 @@ static FLANGER: [P; 10] = [
 static BURST: [P; 14] = [
     P::new(c"engage", c"Engage", c"", 0.0, 1.0, 0.0, TOGGLE),
     P::new(c"position", c"Performance position", c"%", 0.0, 1.0, 0.6, 0),
-    P::choice(c"assignment", c"Position controls", c"", 0.0, 1.0, 0.0, INTEGER, ASSIGNMENTS),
+    P::choice(
+        c"assignment",
+        c"Position controls",
+        c"",
+        0.0,
+        1.0,
+        0.0,
+        INTEGER,
+        ASSIGNMENTS,
+    ),
     P::new(c"time", c"Time", c"beats", 1.0 / 32.0, 4.0, 0.5, LOG),
-    P::choice(c"time_mode", c"Time mode", c"", 0.0, 3.0, 0.0, INTEGER, TIME_MODES),
+    P::choice(
+        c"time_mode",
+        c"Time mode",
+        c"",
+        0.0,
+        3.0,
+        0.0,
+        INTEGER,
+        TIME_MODES,
+    ),
     P::new(c"feedback", c"Feedback", c"%", 0.0, 0.98, 0.6, 0),
     P::new(c"filter", c"Feedback filter", c"%", 0.0, 1.0, 0.2, 0),
     P::new(c"wet", c"Wet level", c"%", 0.0, 1.0, 0.5, 0),
-    P::new(c"feed", c"Burst length (1 = continuous)", c"s", 0.01, 1.0, 0.15, 0),
-    P::choice(c"mix_mode", c"Mix mode", c"", 0.0, 2.0, 0.0, INTEGER, ECHO_MODES),
+    P::new(
+        c"feed",
+        c"Burst length (1 = continuous)",
+        c"s",
+        0.01,
+        1.0,
+        0.15,
+        0,
+    ),
+    P::choice(
+        c"mix_mode",
+        c"Mix mode",
+        c"",
+        0.0,
+        2.0,
+        0.0,
+        INTEGER,
+        ECHO_MODES,
+    ),
     P::new(c"free_time", c"Free time", c"ms", 1.0, 2000.0, 250.0, LOG),
     P::new(c"saturation", c"Saturation", c"dB", 0.0, 18.0, 0.0, 0),
     P::new(c"stereo", c"Ping-pong", c"%", 0.0, 1.0, 0.0, 0),
@@ -1519,12 +1832,29 @@ static BURST: [P; 14] = [
 ];
 static RESO: [P; 12] = [
     P::new(c"engage", c"Engage", c"", 0.0, 1.0, 0.0, TOGGLE),
-    P::new(c"frequency", c"Resonator frequency", c"Hz", 20.0, 4000.0, 440.0, LOG),
+    P::new(
+        c"frequency",
+        c"Resonator frequency",
+        c"Hz",
+        20.0,
+        4000.0,
+        440.0,
+        LOG,
+    ),
     P::new(c"time", c"Time", c"beats", 1.0 / 32.0, 4.0, 0.5, LOG),
     P::new(c"feedback", c"Feedback", c"%", 0.0, 0.98, 0.65, 0),
     P::new(c"pump", c"Pump", c"%", 0.0, 1.0, 0.3, 0),
     P::new(c"wet", c"Wet level", c"%", 0.0, 1.0, 0.5, 0),
-    P::choice(c"mix_mode", c"Mix mode", c"", 0.0, 2.0, 0.0, INTEGER, RESO_MODES),
+    P::choice(
+        c"mix_mode",
+        c"Mix mode",
+        c"",
+        0.0,
+        2.0,
+        0.0,
+        INTEGER,
+        RESO_MODES,
+    ),
     P::new(c"resonance", c"Resonance", c"%", 0.0, 1.0, 0.6, 0),
     P::new(c"saturation", c"Saturation", c"dB", 0.0, 24.0, 6.0, 0),
     P::new(c"free_time", c"Free time", c"ms", 1.0, 2000.0, 250.0, LOG),
@@ -1539,19 +1869,62 @@ static RING: [P; 9] = [
     P::new(c"reverb_time", c"Reverb time", c"s", 0.1, 15.0, 2.0, LOG),
     P::new(c"reverb_mix", c"Reverb mix", c"%", 0.0, 1.0, 0.25, 0),
     P::new(c"mix", c"Mix", c"%", 0.0, 1.0, 0.75, 0),
-    P::choice(c"mix_mode", c"Mix mode", c"", 0.0, 1.0, 0.0, INTEGER, RING_MODES),
+    P::choice(
+        c"mix_mode",
+        c"Mix mode",
+        c"",
+        0.0,
+        1.0,
+        0.0,
+        INTEGER,
+        RING_MODES,
+    ),
     P::new(c"output", c"Output", c"dB", -24.0, 12.0, 0.0, 0),
 ];
 static STUTTER: [P; 11] = [
     P::new(c"engage", c"Engage", c"", 0.0, 1.0, 0.0, TOGGLE),
     P::new(c"position", c"Performance position", c"%", 0.0, 1.0, 0.5, 0),
-    P::choice(c"assignment", c"Position controls", c"", 0.0, 1.0, 0.0, INTEGER, STUTTER_ASSIGN),
-    P::new(c"length", c"Loop length", c"beats", 1.0 / 32.0, 4.0, 0.5, LOG),
+    P::choice(
+        c"assignment",
+        c"Position controls",
+        c"",
+        0.0,
+        1.0,
+        0.0,
+        INTEGER,
+        STUTTER_ASSIGN,
+    ),
+    P::new(
+        c"length",
+        c"Loop length",
+        c"beats",
+        1.0 / 32.0,
+        4.0,
+        0.5,
+        LOG,
+    ),
     P::new(c"pitch", c"Pitch", c"st", -24.0, 24.0, 0.0, 0),
     P::new(c"gate", c"Gate open", c"%", 0.0, 1.0, 1.0, 0),
-    P::choice(c"direction", c"Direction", c"", 0.0, 2.0, 0.0, INTEGER, DIRECTIONS),
+    P::choice(
+        c"direction",
+        c"Direction",
+        c"",
+        0.0,
+        2.0,
+        0.0,
+        INTEGER,
+        DIRECTIONS,
+    ),
     P::new(c"quantize", c"Tempo quantize", c"", 0.0, 1.0, 1.0, TOGGLE),
-    P::new(c"free_length", c"Free loop length", c"ms", 5.0, 2000.0, 125.0, LOG),
+    P::new(
+        c"free_length",
+        c"Free loop length",
+        c"ms",
+        5.0,
+        2000.0,
+        125.0,
+        LOG,
+    ),
     P::new(c"mix", c"Mix", c"%", 0.0, 1.0, 1.0, 0),
     P::new(c"fade", c"Seam fade", c"ms", 0.1, 20.0, 2.0, LOG),
 ];
@@ -1559,8 +1932,25 @@ static TREMOLO: [P; 13] = [
     P::new(c"engage", c"Engage", c"", 0.0, 1.0, 0.0, TOGGLE),
     P::new(c"position", c"Performance position", c"%", 0.0, 1.0, 0.5, 0),
     P::new(c"blend", c"Tremolo / Vibrato", c"%", 0.0, 1.0, 0.0, 0),
-    P::choice(c"vibrato_mode", c"Vibrato mode", c"", 0.0, 1.0, 0.0, INTEGER, VIBRATO_MODES),
-    P::new(c"response", c"Attack / Release", c"ms", 1.0, 1000.0, 20.0, LOG),
+    P::choice(
+        c"vibrato_mode",
+        c"Vibrato mode",
+        c"",
+        0.0,
+        1.0,
+        0.0,
+        INTEGER,
+        VIBRATO_MODES,
+    ),
+    P::new(
+        c"response",
+        c"Attack / Release",
+        c"ms",
+        1.0,
+        1000.0,
+        20.0,
+        LOG,
+    ),
     P::new(c"stereo", c"Stereo phase", c"%", 0.0, 1.0, 0.0, 0),
     P::new(c"depth_min", c"Depth minimum", c"%", 0.0, 1.0, 0.0, 0),
     P::new(c"depth_max", c"Depth maximum", c"%", 0.0, 1.0, 1.0, 0),
@@ -1575,7 +1965,15 @@ static SCRATCH: [P; 10] = [
     P::new(c"position", c"Scratch position", c"%", 0.0, 1.0, 0.5, 0),
     P::new(c"delay", c"Swirl delay", c"ms", 1.0, 1000.0, 125.0, LOG),
     P::new(c"feedback", c"Feedback", c"%", 0.0, 0.95, 0.3, 0),
-    P::new(c"frequency_shift", c"Feedback shift", c"Hz", -2000.0, 2000.0, 0.0, 0),
+    P::new(
+        c"frequency_shift",
+        c"Feedback shift",
+        c"Hz",
+        -2000.0,
+        2000.0,
+        0.0,
+        0,
+    ),
     P::new(c"wet", c"Swirl level", c"%", 0.0, 1.0, 0.25, 0),
     P::new(c"brake", c"Brake time", c"s", 0.01, 3.0, 0.25, LOG),
     P::new(c"capture", c"Capture length", c"s", 0.05, 4.0, 1.0, LOG),
@@ -1602,12 +2000,60 @@ static DESCRIPTORS: [Descriptor; 8] = [
         |sr, _| Box::new(PerformFlanger::new(sr)),
         PerformFlanger::tail_estimate,
     ),
-    Descriptor::new(c"burstecho", c"Burst Echo", c"Perform", 0, &BURST, |sr, _| Box::new(BurstEcho::new(sr)), BurstEcho::tail_estimate),
-    Descriptor::new(c"resoecho", c"Reso Echo", c"Perform", 0, &RESO, |sr, _| Box::new(ResoEcho::new(sr)), ResoEcho::tail_estimate),
-    Descriptor::new(c"ring", c"Ring", c"Perform", 0, &RING, |sr, _| Box::new(PerformRing::new(sr)), PerformRing::tail_estimate),
-    Descriptor::new(c"stutter", c"Stutter", c"Perform", 0, &STUTTER, |sr, _| Box::new(PerformStutter::new(sr)), capture_tail),
-    Descriptor::new(c"tremolo", c"Tremolo", c"Perform", 0, &TREMOLO, |sr, _| Box::new(PerformTremolo::new(sr)), |_, _, _| 0.1),
-    Descriptor::new(c"scratcher", c"Scratcher", c"Perform", 0, &SCRATCH, |sr, _| Box::new(PerformScratcher::new(sr)), capture_tail),
+    Descriptor::new(
+        c"burstecho",
+        c"Burst Echo",
+        c"Perform",
+        0,
+        &BURST,
+        |sr, _| Box::new(BurstEcho::new(sr)),
+        BurstEcho::tail_estimate,
+    ),
+    Descriptor::new(
+        c"resoecho",
+        c"Reso Echo",
+        c"Perform",
+        0,
+        &RESO,
+        |sr, _| Box::new(ResoEcho::new(sr)),
+        ResoEcho::tail_estimate,
+    ),
+    Descriptor::new(
+        c"ring",
+        c"Ring",
+        c"Perform",
+        0,
+        &RING,
+        |sr, _| Box::new(PerformRing::new(sr)),
+        PerformRing::tail_estimate,
+    ),
+    Descriptor::new(
+        c"stutter",
+        c"Stutter",
+        c"Perform",
+        0,
+        &STUTTER,
+        |sr, _| Box::new(PerformStutter::new(sr)),
+        capture_tail,
+    ),
+    Descriptor::new(
+        c"tremolo",
+        c"Tremolo",
+        c"Perform",
+        0,
+        &TREMOLO,
+        |sr, _| Box::new(PerformTremolo::new(sr)),
+        |_, _, _| 0.1,
+    ),
+    Descriptor::new(
+        c"scratcher",
+        c"Scratcher",
+        c"Perform",
+        0,
+        &SCRATCH,
+        |sr, _| Box::new(PerformScratcher::new(sr)),
+        capture_tail,
+    ),
 ];
 
 /// `stfx::performDescriptors`.

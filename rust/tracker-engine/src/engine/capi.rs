@@ -1153,7 +1153,7 @@ pub unsafe extern "C" fn st_engine_add_pattern_clip(
         return;
     }
     p.pattern_clips.push(PatternClip {
-        head_asset: head_asset,
+        head_asset,
         loop_asset: if loop_asset < 0 { -1 } else { loop_asset },
         track,
         pattern,
@@ -1262,7 +1262,7 @@ pub unsafe extern "C" fn st_engine_set_send_effects(e: *mut STEngine, delay_beat
     p.delay_tone_coef = if tone >= 1.0 {
         1.0
     } else {
-        (1.0 - (-2.0 * 3.14159265358979323846 * 200.0 * 100.0f64.powf(tone as f64) / e.sample_rate).exp()) as f32
+        (1.0 - (-2.0 * std::f64::consts::PI * 200.0 * 100.0f64.powf(tone as f64) / e.sample_rate).exp()) as f32
     };
     p.reverb_predelay = clamp(finite(reverb_predelay, 0.0), 0.0, 0.5);
 }
@@ -1413,7 +1413,7 @@ pub unsafe extern "C" fn st_engine_input_note(
         b: instrument,
         c: note,
         d: velocity,
-        request_id: request_id,
+        request_id,
         input_edge: edge,
         apply_input_note: apply_note,
         ..Command::default()

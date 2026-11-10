@@ -6,8 +6,9 @@
 //! are deliberately not described as bit-compatible NI algorithms or presets.
 
 use super::common::{
-    core_accessors, frame_buffers, max, min, Core, Descriptor, Label, Memo, ParameterInfo as P, Processor, MAX_PARAMETERS,
-    PARAMETER_INTEGER as INTEGER, PARAMETER_LOG as LOG, PARAMETER_TOGGLE as TOGGLE, PI,
+    core_accessors, frame_buffers, max, min, Core, Descriptor, Label, Memo, ParameterInfo as P,
+    Processor, MAX_PARAMETERS, PARAMETER_INTEGER as INTEGER, PARAMETER_LOG as LOG,
+    PARAMETER_TOGGLE as TOGGLE, PI,
 };
 
 /// `spatial::bounded`: clamp to [lo, hi]; nonfinite values become `lo`.
@@ -79,7 +80,11 @@ impl Line {
     #[inline(always)]
     pub(crate) fn read_at(&self, whole: usize, f: f32) -> f32 {
         let size = self.data.len();
-        let a = if self.pos >= whole { self.pos - whole } else { (self.pos + size).wrapping_sub(whole) };
+        let a = if self.pos >= whole {
+            self.pos - whole
+        } else {
+            (self.pos + size).wrapping_sub(whole)
+        };
         let b = if a == 0 { size.wrapping_sub(1) } else { a - 1 };
         // Out-of-range slots cannot occur for validated positions; they read as silence.
         let xa = self.data.get(a).copied().unwrap_or(0.0);
@@ -103,7 +108,11 @@ impl Line {
     // (the block never reads its own writes).
     fn read_block(&self, whole: usize, f: f32, out: &mut [f32]) {
         let size = self.data.len();
-        let mut a = if self.pos >= whole { self.pos - whole } else { (self.pos + size).wrapping_sub(whole) };
+        let mut a = if self.pos >= whole {
+            self.pos - whole
+        } else {
+            (self.pos + size).wrapping_sub(whole)
+        };
         for slot in out.iter_mut() {
             let b = if a == 0 { size.wrapping_sub(1) } else { a - 1 };
             let xa = self.data.get(a).copied().unwrap_or(0.0);
@@ -193,7 +202,8 @@ pub struct Network {
 impl Network {
     pub fn new(rate: f64) -> Self {
         let sr = rate;
-        let tank: [Line; 8] = std::array::from_fn(|_| Line::with_capacity((sr * 0.35) as usize + 8));
+        let tank: [Line; 8] =
+            std::array::from_fn(|_| Line::with_capacity((sr * 0.35) as usize + 8));
         let ap: [Line; 6] = std::array::from_fn(|_| Line::with_capacity((sr * 0.035) as usize + 8));
         let pre: [Line; 2] = std::array::from_fn(|_| Line::with_capacity((sr * 0.26) as usize + 8));
         let mut network = Network {
@@ -242,8 +252,27 @@ impl Network {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn configure(&mut self, kind: i32, size: f64, t60: f64, damping: f64, modulation: f64, diffusion: f64, pre_ms: f64, freeze: bool) {
-        let args = [kind as f64, size, t60, damping, modulation, diffusion, pre_ms, freeze as u8 as f64];
+    pub fn configure(
+        &mut self,
+        kind: i32,
+        size: f64,
+        t60: f64,
+        damping: f64,
+        modulation: f64,
+        diffusion: f64,
+        pre_ms: f64,
+        freeze: bool,
+    ) {
+        let args = [
+            kind as f64,
+            size,
+            t60,
+            damping,
+            modulation,
+            diffusion,
+            pre_ms,
+            freeze as u8 as f64,
+        ];
         if self.have_args && args == self.last_args && self.configured {
             return;
         }
@@ -251,9 +280,15 @@ impl Network {
         self.have_args = true;
         self.mode = kind;
         self.frozen = freeze;
-        const ROOM: [f64; 8] = [0.0173, 0.0239, 0.0311, 0.0377, 0.0419, 0.0473, 0.0533, 0.0599];
-        const HALL: [f64; 8] = [0.0297, 0.0371, 0.0411, 0.0539, 0.0671, 0.0713, 0.0797, 0.0893];
-        const PLATE: [f64; 8] = [0.0229, 0.0317, 0.0401, 0.0487, 0.0613, 0.0689, 0.0833, 0.0971];
+        const ROOM: [f64; 8] = [
+            0.0173, 0.0239, 0.0311, 0.0377, 0.0419, 0.0473, 0.0533, 0.0599,
+        ];
+        const HALL: [f64; 8] = [
+            0.0297, 0.0371, 0.0411, 0.0539, 0.0671, 0.0713, 0.0797, 0.0893,
+        ];
+        const PLATE: [f64; 8] = [
+            0.0229, 0.0317, 0.0401, 0.0487, 0.0613, 0.0689, 0.0833, 0.0971,
+        ];
         const META: [f64; 8] = [0.031, 0.0465, 0.062, 0.0775, 0.093, 0.1085, 0.124, 0.1395];
         let base = match kind {
             1 => &HALL,
@@ -265,7 +300,11 @@ impl Network {
         let scale = 0.3 + bounded(size, 0.0, 100.0) * 0.015;
         for k in 0..8 {
             self.target[k] = sr * base[k] * scale;
-            self.gains[k] = if freeze { 0.999995 } else { 0.001f64.powf(self.target[k] / (sr * bounded(t60, 0.1, 30.0))) };
+            self.gains[k] = if freeze {
+                0.999995
+            } else {
+                0.001f64.powf(self.target[k] / (sr * bounded(t60, 0.1, 30.0)))
+            };
             self.feedback[k] = 0.3535533905932738 * self.gains[k];
         }
         self.lp = if freeze {
@@ -334,7 +373,9 @@ impl Network {
         for j in 0..6 {
             limit = limit.min(self.ap_whole[j]);
         }
-        limit.min(if shortest > 1.0 { shortest as usize } else { 1 }).max(1)
+        limit
+            .min(if shortest > 1.0 { shortest as usize } else { 1 })
+            .max(1)
     }
 
     // Renders in_l.len() samples of wet output; identical arithmetic to a per-sample
@@ -346,13 +387,23 @@ impl Network {
         while offset < n {
             let count = (n - offset).min(self.chunk_limit());
             let end = offset + count;
-            self.chunk(&in_l[offset..end], &in_r[offset..end], &mut out_l[offset..end], &mut out_r[offset..end]);
+            self.chunk(
+                &in_l[offset..end],
+                &in_r[offset..end],
+                &mut out_l[offset..end],
+                &mut out_r[offset..end],
+            );
             offset = end;
         }
     }
 
     fn chunk(&mut self, in_l: &[f32], in_r: &[f32], out_l: &mut [f32], out_r: &mut [f32]) {
-        let n = in_l.len().min(in_r.len()).min(out_l.len()).min(out_r.len()).min(CHUNK);
+        let n = in_l
+            .len()
+            .min(in_r.len())
+            .min(out_l.len())
+            .min(out_r.len())
+            .min(CHUNK);
         let (in_l, in_r, out_l, out_r) = (&in_l[..n], &in_r[..n], &mut out_l[..n], &mut out_r[..n]);
         let mut x = [[0.0f32; CHUNK]; 2];
         let mut early_out = [[0.0f32; CHUNK]; 2];
@@ -362,7 +413,10 @@ impl Network {
         let pre_limit = (self.pre[0].data.len() - 2) as f64;
         for i in 0..n {
             if self.predelay != self.desired_pre {
-                self.predelay = Self::snap(self.predelay + self.smooth * (self.desired_pre - self.predelay), self.desired_pre);
+                self.predelay = Self::snap(
+                    self.predelay + self.smooth * (self.desired_pre - self.predelay),
+                    self.desired_pre,
+                );
             }
             let pd = min(self.predelay, pre_limit);
             let pw = pd as usize;
@@ -381,7 +435,11 @@ impl Network {
         for c in 0..2 {
             for j in 0..3 {
                 let index = c * 3 + j;
-                self.ap[index].read_block(self.ap_whole[index], self.ap_frac[index], &mut buffer[..n]);
+                self.ap[index].read_block(
+                    self.ap_whole[index],
+                    self.ap_frac[index],
+                    &mut buffer[..n],
+                );
                 let xc = &mut x[c][..n];
                 for (b, xv) in buffer[..n].iter_mut().zip(xc.iter_mut()) {
                     let y = *b - g * *xv;
@@ -397,7 +455,10 @@ impl Network {
             if !self.times_settled {
                 let mut all = true;
                 for k in 0..8 {
-                    self.times[k] = Self::snap(self.times[k] + self.smooth * (self.target[k] - self.times[k]), self.target[k]);
+                    self.times[k] = Self::snap(
+                        self.times[k] + self.smooth * (self.target[k] - self.times[k]),
+                        self.target[k],
+                    );
                     all = all && self.times[k] == self.target[k];
                 }
                 self.times_settled = all;
@@ -408,7 +469,10 @@ impl Network {
                 self.phase[k] = ph;
                 // Triangle modulation keeps the inner loop free from transcendental calls.
                 let triangle = 1.0 - 2.0 * (ph * (1.0 / PI) - 1.0).abs();
-                position[k][i] = min(self.max_time, max(1.0, self.times[k] + self.modulation * triangle));
+                position[k][i] = min(
+                    self.max_time,
+                    max(1.0, self.times[k] + self.modulation * triangle),
+                );
             }
         }
         let mut d = [[0.0f32; CHUNK]; 8];
@@ -421,8 +485,16 @@ impl Network {
                 let whole = position[k][i] as usize;
                 let f = (position[k][i] - whole as f64) as f32;
                 // Slot of "whole samples ago" relative to this sample's write position.
-                let write_at = if pos + i >= size { pos + i - size } else { pos + i };
-                let a = if write_at >= whole { write_at - whole } else { (write_at + size).wrapping_sub(whole) };
+                let write_at = if pos + i >= size {
+                    pos + i - size
+                } else {
+                    pos + i
+                };
+                let a = if write_at >= whole {
+                    write_at - whole
+                } else {
+                    (write_at + size).wrapping_sub(whole)
+                };
                 let b = if a == 0 { size - 1 } else { a - 1 };
                 // 1 <= whole <= size-2 and write_at < size, so both slots are in range.
                 let xa = data.get(a).copied().unwrap_or(0.0);
@@ -469,7 +541,10 @@ impl Network {
             let input = &x[k & 1][..n];
             let fb = self.feedback[k];
             for i in 0..n {
-                buffer[i] = clean_fast(soft((if frozen { 0.0f32 } else { input[i] * 0.24f32 }) + (d[k][i] as f64 * fb) as f32));
+                buffer[i] = clean_fast(soft(
+                    (if frozen { 0.0f32 } else { input[i] * 0.24f32 })
+                        + (d[k][i] as f64 * fb) as f32,
+                ));
             }
             self.tank[k].write_block(&buffer[..n]);
         }
@@ -498,7 +573,13 @@ impl ZeroMix {
     /// the wet state first. `tail` is the effect's `tail_for_parameters` for its current
     /// parameters and tempo; it is only evaluated while counting zero-mix frames.
     #[inline]
-    pub fn skip(&mut self, zero: bool, tail: impl FnOnce() -> f64, sr: f64, n: usize) -> (bool, bool) {
+    pub fn skip(
+        &mut self,
+        zero: bool,
+        tail: impl FnOnce() -> f64,
+        sr: f64,
+        n: usize,
+    ) -> (bool, bool) {
         if !zero {
             let restart = self.idle;
             self.idle = false;
@@ -535,14 +616,26 @@ pub struct WetEq {
 
 impl Default for WetEq {
     fn default() -> Self {
-        WetEq { bass: [0.0; 2], treble: [0.0; 2], low_gain: 1.0, high_gain: 1.0, high_a: 0.9, bass_a: 0.03, last_args: [-1.0, 0.0, 0.0, 0.0] }
+        WetEq {
+            bass: [0.0; 2],
+            treble: [0.0; 2],
+            low_gain: 1.0,
+            high_gain: 1.0,
+            high_a: 0.9,
+            bass_a: 0.03,
+            last_args: [-1.0, 0.0, 0.0, 0.0],
+        }
     }
 }
 
 impl WetEq {
     // Called every block; the gains/poles are only re-derived when an argument changes.
     pub fn set(&mut self, sr: f64, low_db: f64, high_db: f64, cutoff: f64) {
-        if sr == self.last_args[0] && low_db == self.last_args[1] && high_db == self.last_args[2] && cutoff == self.last_args[3] {
+        if sr == self.last_args[0]
+            && low_db == self.last_args[1]
+            && high_db == self.last_args[2]
+            && cutoff == self.last_args[3]
+        {
             return;
         }
         self.last_args = [sr, low_db, high_db, cutoff];
@@ -557,7 +650,10 @@ impl WetEq {
         let ch = ch & 1;
         self.bass[ch] += self.bass_a * (x as f64 - self.bass[ch]);
         self.treble[ch] += self.high_a * (x as f64 - self.treble[ch]);
-        clean((self.treble[ch] * self.high_gain + self.bass[ch] * (self.low_gain - self.high_gain)) as f32)
+        clean(
+            (self.treble[ch] * self.high_gain + self.bass[ch] * (self.low_gain - self.high_gain))
+                as f32,
+        )
     }
 
     pub fn reset(&mut self) {
@@ -590,7 +686,13 @@ pub struct Reverb {
 
 impl Reverb {
     pub fn new(rate: f64, kind: ReverbKind) -> Self {
-        Reverb { core: Core::new(rate), net: Network::new(rate), eq: WetEq::default(), kind, zero: ZeroMix::default() }
+        Reverb {
+            core: Core::new(rate),
+            net: Network::new(rate),
+            eq: WetEq::default(),
+            kind,
+            zero: ZeroMix::default(),
+        }
     }
 
     /// `Reverb::tailForParameters` for the given layout.
@@ -630,7 +732,13 @@ impl Processor for Reverb {
         Self::tail_estimate(self.kind, values)
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let p = self.core.p;
         let sr = self.core.sr;
@@ -665,12 +773,22 @@ impl Processor for Reverb {
             }
             ReverbKind::Plate => {
                 mix = p[5] * 0.01;
-                self.net.configure(2, 55.0, p[0], p[2], 25.0, 95.0, p[3], false);
+                self.net
+                    .configure(2, 55.0, p[0], p[2], 25.0, 95.0, p[3], false);
                 self.eq.set(sr, p[1], 0.0, p[4]);
             }
             ReverbKind::Algorithmic => {
                 mix = p[7] * 0.01;
-                self.net.configure(bounded(p[0], 0.0, 2.0) as i32, p[2], p[1], p[3], p[4], p[5], p[6], false);
+                self.net.configure(
+                    bounded(p[0], 0.0, 2.0) as i32,
+                    p[2],
+                    p[1],
+                    p[3],
+                    p[4],
+                    p[5],
+                    p[6],
+                    false,
+                );
                 self.eq.set(sr, p[9], 0.0, p[8]);
             }
         }
@@ -678,7 +796,12 @@ impl Processor for Reverb {
         let dry_l = if pan > 0.0 { 1.0 - pan } else { 1.0 };
         let dry_r = if pan < 0.0 { 1.0 + pan } else { 1.0 };
         let kind = self.kind;
-        let (skip, restart) = self.zero.skip(mix == 0.0 && !freeze, || Self::tail_estimate(kind, &p), sr, l.len());
+        let (skip, restart) = self.zero.skip(
+            mix == 0.0 && !freeze,
+            || Self::tail_estimate(kind, &p),
+            sr,
+            l.len(),
+        );
         if skip {
             for i in 0..l.len() {
                 l[i] = clean((l[i] as f64 * dry_l * (1.0 - mix)) as f32);
@@ -695,7 +818,8 @@ impl Processor for Reverb {
         let mut wet_r = [0.0f32; CHUNK];
         for (bl, br) in l.chunks_mut(CHUNK).zip(r.chunks_mut(CHUNK)) {
             let count = bl.len();
-            self.net.process(bl, br, &mut wet_l[..count], &mut wet_r[..count]);
+            self.net
+                .process(bl, br, &mut wet_l[..count], &mut wet_r[..count]);
             for i in 0..count {
                 let a = bl[i];
                 let b = br[i];
@@ -703,8 +827,14 @@ impl Processor for Reverb {
                 let wr = self.eq.tick(1, wet_r[i]);
                 let mid = (wl + wr) * 0.5f32;
                 let side = ((wl - wr) as f64 * 0.5 * width) as f32;
-                bl[i] = clean(((if freeze { 0.0 } else { a as f64 * dry_l }) * (1.0 - mix) + (mid + side) as f64 * mix) as f32);
-                br[i] = clean(((if freeze { 0.0 } else { b as f64 * dry_r }) * (1.0 - mix) + (mid - side) as f64 * mix) as f32);
+                bl[i] = clean(
+                    ((if freeze { 0.0 } else { a as f64 * dry_l }) * (1.0 - mix)
+                        + (mid + side) as f64 * mix) as f32,
+                );
+                br[i] = clean(
+                    ((if freeze { 0.0 } else { b as f64 * dry_r }) * (1.0 - mix)
+                        + (mid - side) as f64 * mix) as f32,
+                );
             }
         }
     }
@@ -719,7 +849,12 @@ pub struct Metaverb {
 
 impl Metaverb {
     pub fn new(rate: f64) -> Self {
-        Metaverb { core: Core::new(rate), net: Network::new(rate), eq: WetEq::default(), zero: ZeroMix::default() }
+        Metaverb {
+            core: Core::new(rate),
+            net: Network::new(rate),
+            eq: WetEq::default(),
+            zero: ZeroMix::default(),
+        }
     }
 
     /// `Metaverb::tailForParameters`.
@@ -745,15 +880,24 @@ impl Processor for Metaverb {
         Self::tail_estimate(values)
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let p = self.core.p;
         let sr = self.core.sr;
-        self.net.configure(3, p[0], 1.0 + p[0] * 0.09, 28.0, 35.0, 48.0, 0.0, false);
+        self.net
+            .configure(3, p[0], 1.0 + p[0] * 0.09, 28.0, 35.0, 48.0, 0.0, false);
         self.eq.set(sr, p[1], p[2], WET_EQ_OPEN);
         let mix = bounded(p[4] * 0.01, 0.0, 1.0);
         let pan = bounded(p[3] * 0.01, -1.0, 1.0);
-        let (skip, restart) = self.zero.skip(mix == 0.0, || Self::tail_estimate(&p), sr, l.len());
+        let (skip, restart) = self
+            .zero
+            .skip(mix == 0.0, || Self::tail_estimate(&p), sr, l.len());
         if skip {
             for i in 0..l.len() {
                 l[i] = clean((l[i] as f64 * (1.0 - max(0.0, pan)) * (1.0 - mix)) as f32);
@@ -770,14 +914,17 @@ impl Processor for Metaverb {
         let mut wet_r = [0.0f32; CHUNK];
         for (bl, br) in l.chunks_mut(CHUNK).zip(r.chunks_mut(CHUNK)) {
             let count = bl.len();
-            self.net.process(bl, br, &mut wet_l[..count], &mut wet_r[..count]);
+            self.net
+                .process(bl, br, &mut wet_l[..count], &mut wet_r[..count]);
             for i in 0..count {
                 let a = bl[i];
                 let b = br[i];
                 let x = self.eq.tick(0, wet_l[i]);
                 let y = self.eq.tick(1, wet_r[i]);
-                bl[i] = clean((a as f64 * (1.0 - max(0.0, pan)) * (1.0 - mix) + x as f64 * mix) as f32);
-                br[i] = clean((b as f64 * (1.0 + min(0.0, pan)) * (1.0 - mix) + y as f64 * mix) as f32);
+                bl[i] =
+                    clean((a as f64 * (1.0 - max(0.0, pan)) * (1.0 - mix) + x as f64 * mix) as f32);
+                br[i] =
+                    clean((b as f64 * (1.0 + min(0.0, pan)) * (1.0 - mix) + y as f64 * mix) as f32);
             }
         }
     }
@@ -841,7 +988,13 @@ impl Processor for Ice {
         Self::tail_estimate(values)
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let p = self.core.p;
         let sr = self.core.sr;
@@ -849,7 +1002,9 @@ impl Processor for Ice {
         let size = bounded(p[2] * 0.01, 0.0, 1.0);
         let mix = bounded(p[3] * 0.01, 0.0, 1.0);
         let color = bounded(p[0] * 0.01, 0.0, 1.0);
-        let (skip, restart) = self.zero.skip(mix == 0.0, || Self::tail_estimate(&p), sr, l.len());
+        let (skip, restart) = self
+            .zero
+            .skip(mix == 0.0, || Self::tail_estimate(&p), sr, l.len());
         if skip {
             for i in 0..l.len() {
                 l[i] = clean((l[i] as f64 * (1.0 - mix)) as f32);
@@ -868,7 +1023,9 @@ impl Processor for Ice {
         let (co, si) = (&mut self.co, &mut self.si);
         self.bank.get([ice, size, color], || {
             let radius = (-1.0 / (sr * (0.12 + ice * (0.22 + size * 1.7)))).exp();
-            const RATIOS: [f64; 12] = [-1.0, -0.83, -0.64, -0.47, -0.29, -0.13, 0.04, 0.19, 0.38, 0.59, 0.79, 1.0];
+            const RATIOS: [f64; 12] = [
+                -1.0, -0.83, -0.64, -0.47, -0.29, -0.13, 0.04, 0.19, 0.38, 0.59, 0.79, 1.0,
+            ];
             let base = 65.0 * 130.0f64.powf(color.powf(1.1));
             let width = 0.35 - 0.23 * color;
             for k in 0..12 {
@@ -882,8 +1039,19 @@ impl Processor for Ice {
         let bank_mix = ice.powf(4.0);
         let bank_gain = 0.12 * (0.4 + 0.6 * (color / 0.75).powf(1.6)) / (0.75 + 0.5 * size);
         let space_gain = 0.82 * (1.0 - 0.93 * ice.powf(1.3)) / (0.75 + 0.5 * size);
-        self.net.configure(1, p[2], 0.35 + size * 2.5 + ice * ice * (1.2 + size * 5.0), 70.0 - color * 60.0, 6.0, 75.0, 0.0, false);
-        const SIGN: [f64; 12] = [0.22, -0.22, 0.22, 0.22, -0.22, 0.22, 0.22, -0.22, 0.22, 0.22, -0.22, 0.22];
+        self.net.configure(
+            1,
+            p[2],
+            0.35 + size * 2.5 + ice * ice * (1.2 + size * 5.0),
+            70.0 - color * 60.0,
+            6.0,
+            75.0,
+            0.0,
+            false,
+        );
+        const SIGN: [f64; 12] = [
+            0.22, -0.22, 0.22, 0.22, -0.22, 0.22, 0.22, -0.22, 0.22, 0.22, -0.22, 0.22,
+        ];
         let mut net_l = [0.0f32; CHUNK];
         let mut net_r = [0.0f32; CHUNK];
         let mut wet_l = [0.0f32; CHUNK];
@@ -921,14 +1089,21 @@ impl Processor for Ice {
             }
             self.re = re;
             self.im = im;
-            self.net.process(&net_l[..count], &net_r[..count], &mut wet_l[..count], &mut wet_r[..count]);
+            self.net.process(
+                &net_l[..count],
+                &net_r[..count],
+                &mut wet_l[..count],
+                &mut wet_r[..count],
+            );
             for i in 0..count {
                 let a = bl[i];
                 let b = br[i];
-                self.color_state[0] +=
-                    damping * (wet_l[i] as f64 * space_gain + metallic_l[i] * bank_mix * bank_gain - self.color_state[0]);
-                self.color_state[1] +=
-                    damping * (wet_r[i] as f64 * space_gain + metallic_r[i] * bank_mix * bank_gain - self.color_state[1]);
+                self.color_state[0] += damping
+                    * (wet_l[i] as f64 * space_gain + metallic_l[i] * bank_mix * bank_gain
+                        - self.color_state[0]);
+                self.color_state[1] += damping
+                    * (wet_r[i] as f64 * space_gain + metallic_r[i] * bank_mix * bank_gain
+                        - self.color_state[1]);
                 bl[i] = clean((a as f64 * (1.0 - mix) + self.color_state[0] * mix) as f32);
                 br[i] = clean((b as f64 * (1.0 - mix) + self.color_state[1] * mix) as f32);
             }
@@ -996,7 +1171,13 @@ impl Processor for Reflex {
         Self::tail_estimate(values)
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let p = self.core.p;
         let sr = self.core.sr;
@@ -1005,7 +1186,9 @@ impl Processor for Reflex {
         let mix = bounded(p[3] * 0.01, 0.0, 1.0);
         let a = pole(500.0 + p[0] * p[0] * 1.8, sr);
         let fb = 0.72 + size * 0.265;
-        let (skip, restart) = self.zero.skip(mix == 0.0, || Self::tail_estimate(&p), sr, l.len());
+        let (skip, restart) = self
+            .zero
+            .skip(mix == 0.0, || Self::tail_estimate(&p), sr, l.len());
         if skip {
             for i in 0..l.len() {
                 l[i] = clean((l[i] as f64 * (1.0 - mix)) as f32);
@@ -1031,12 +1214,19 @@ impl Processor for Reflex {
                 self.time[k] += self.smooth_rate * (DS[k] * (0.5 + size * 7.0) * sr - self.time[k]);
                 let v = self.comb[k].read(self.time[k]);
                 self.low[k] += a * (v as f64 - self.low[k]);
-                self.comb[k].write(soft(((if k & 1 != 0 { y } else { x }) as f64 * 0.35 + self.low[k] * fb) as f32));
+                self.comb[k].write(soft(
+                    ((if k & 1 != 0 { y } else { x }) as f64 * 0.35 + self.low[k] * fb) as f32,
+                ));
                 wet[k & 1] += v * 0.45f32;
             }
             for ch in 0..2 {
-                let mut diffuse = self.ap[ch * 2].allpass(wet[ch], (0.0071 + ch as f64 * 0.0013) * sr, 0.72f32);
-                diffuse = self.ap[ch * 2 + 1].allpass(diffuse, (0.0127 + ch as f64 * 0.0017) * sr, 0.62f32);
+                let mut diffuse =
+                    self.ap[ch * 2].allpass(wet[ch], (0.0071 + ch as f64 * 0.0013) * sr, 0.72f32);
+                diffuse = self.ap[ch * 2 + 1].allpass(
+                    diffuse,
+                    (0.0127 + ch as f64 * 0.0017) * sr,
+                    0.62f32,
+                );
                 wet[ch] = (wet[ch] as f64 * (1.0 - smooth) + diffuse as f64 * smooth) as f32;
             }
             l[i] = clean((x as f64 * (1.0 - mix) + wet[0] as f64 * mix) as f32);
@@ -1045,8 +1235,17 @@ impl Processor for Reflex {
     }
 }
 
-const MODES: &[Label] = &[Label::new(c"Room"), Label::new(c"Hall"), Label::new(c"Plate")];
-const ROOMS: &[Label] = &[Label::new(c"General"), Label::new(c"Bright"), Label::new(c"Guitar"), Label::new(c"Shatter")];
+const MODES: &[Label] = &[
+    Label::new(c"Room"),
+    Label::new(c"Hall"),
+    Label::new(c"Plate"),
+];
+const ROOMS: &[Label] = &[
+    Label::new(c"General"),
+    Label::new(c"Bright"),
+    Label::new(c"Guitar"),
+    Label::new(c"Shatter"),
+];
 static ICE_PARAMS: [P; 4] = [
     P::new(c"color", c"Color", c"%", 0.0, 100.0, 65.0, 0),
     P::new(c"ice", c"Ice", c"%", 0.0, 100.0, 35.0, 0),
@@ -1082,10 +1281,26 @@ static REVERB_PARAMS: [P; 10] = [
     P::new(c"size", c"Size", c"%", 0.0, 100.0, 20.0, 0),
     P::new(c"damping", c"Damping", c"%", 0.0, 100.0, 50.0, 0),
     P::new(c"modulation", c"Modulation", c"%", 0.0, 100.0, 50.0, 0),
-    P::new(c"diffusion", c"Diffusion / Softness", c"%", 0.0, 100.0, 80.0, 0),
+    P::new(
+        c"diffusion",
+        c"Diffusion / Softness",
+        c"%",
+        0.0,
+        100.0,
+        80.0,
+        0,
+    ),
     P::new(c"predelay", c"Pre Delay", c"ms", 0.0, 250.0, 0.0, 0),
     P::new(c"mix", c"Mix", c"%", 0.0, 100.0, 50.0, 0),
-    P::new(c"highcut", c"High Cut", c"Hz", 2000.0, 20000.0, 20000.0, LOG),
+    P::new(
+        c"highcut",
+        c"High Cut",
+        c"Hz",
+        2000.0,
+        20000.0,
+        20000.0,
+        LOG,
+    ),
     P::new(c"lowshelf", c"Low Shelf", c"dB", -12.0, 0.0, 0.0, 0),
 ];
 static PLATE_PARAMS: [P; 6] = [
@@ -1093,12 +1308,28 @@ static PLATE_PARAMS: [P; 6] = [
     P::new(c"lowshelf", c"Low Shelf", c"dB", -24.0, 6.0, 0.0, 0),
     P::new(c"highdamp", c"High Damp", c"%", 0.0, 100.0, 45.0, 0),
     P::new(c"predelay", c"Pre Delay", c"ms", 0.0, 250.0, 0.0, 0),
-    P::new(c"highcut", c"High Cut", c"Hz", 2000.0, 20000.0, 16000.0, LOG),
+    P::new(
+        c"highcut",
+        c"High Cut",
+        c"Hz",
+        2000.0,
+        20000.0,
+        16000.0,
+        LOG,
+    ),
     P::new(c"mix", c"Mix", c"%", 0.0, 100.0, 35.0, 0),
 ];
 
 static DESCRIPTORS: [Descriptor; 6] = [
-    Descriptor::new(c"ice", c"Ice", c"Spatial", 0, &ICE_PARAMS, |sr, _| Box::new(Ice::new(sr)), |_, v, _| Ice::tail_estimate(v)),
+    Descriptor::new(
+        c"ice",
+        c"Ice",
+        c"Spatial",
+        0,
+        &ICE_PARAMS,
+        |sr, _| Box::new(Ice::new(sr)),
+        |_, v, _| Ice::tail_estimate(v),
+    ),
     Descriptor::new(
         c"metaverb",
         c"Metaverb",

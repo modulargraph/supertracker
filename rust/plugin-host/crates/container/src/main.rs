@@ -23,6 +23,7 @@ fn main() {
     }
     let mut runtime = Runtime::new(config);
     runtime.register_backend(Box::new(stpc_container::test_backend::TestBackend));
+    runtime.register_backend(Box::new(stpc_container::clap_backend::ClapBackend::new()));
     if let Err(err) = runtime.connect() {
         eprintln!("supertracker-plugin-container: {err}");
         std::process::exit(if matches!(err, RuntimeError::Rejected(_)) { 3 } else { 4 });

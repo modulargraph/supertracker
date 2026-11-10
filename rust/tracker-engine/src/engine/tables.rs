@@ -283,7 +283,7 @@ impl ChannelTables {
                 left: vec![0.0; channel_count],
                 right: vec![0.0; channel_count],
                 peaks: vec![0.0; channel_count],
-                touched: vec![0; (channel_count + 63) / 64],
+                touched: vec![0; channel_count.div_ceil(64)],
                 host_audible: vec![0; channel_count],
                 lane_ratchets: vec![RatchetState::default(); tracks as usize],
                 plugin_row_locks: vec![PluginRowLock::default(); tracks as usize * 2],

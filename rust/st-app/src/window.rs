@@ -366,7 +366,7 @@ mod desktop {
                 }
                 Event::Opened { urls } => {
                     // The system asks to open project files (Finder, the Dock icon).
-                    let project = urls.iter().filter_map(|url| url.to_file_path().ok()).filter(|path| is_project_file(path)).next_back();
+                    let project = urls.iter().filter_map(|url| url.to_file_path().ok()).rfind(|path| is_project_file(path));
                     if let Some(path) = project {
                         host.session.request_open(path);
                         window.set_minimized(false);
@@ -507,6 +507,10 @@ mod desktop {
             if spec.role == Role::Application && !cfg!(target_os = "macos") {
                 continue;
             }
+            // A menu whose items all belong to another platform (Window, outside macOS) is left out.
+            if !cfg!(target_os = "macos") && spec.items.iter().all(|item| !matches!(item, Item::Command { .. })) {
+                continue;
+            }
             let submenu = Submenu::new(spec.title, true);
             for (line, item) in spec.items.iter().enumerate() {
                 append_item(&submenu, menu_index, line, item)?;
@@ -575,8 +579,8 @@ mod desktop {
     }
 
     /// Builds the native menu for `ui.contextMenu` and shows it at the page's coordinates. Returns
-    /// the menu (to keep it alive) and the meaning of its ids. When the menu closes,
-    /// `ContextMenuClosed(serial)` is posted, after the choice if there was one.
+    /// the menu (its items must outlive the choice's menu event) and the meaning of its ids. When the
+    /// menu has closed, `ContextMenuClosed(serial)` is posted, after the choice if there was one.
     fn show_context_menu(window: &Window, payload: &ContextMenuPayload, serial: u64, poster: &Arc<Poster>) -> Result<(Menu, HashMap<String, String>), String> {
         let menu = Menu::new();
         let mut ids = HashMap::new();
@@ -585,31 +589,22 @@ mod desktop {
             menu.append(built.as_ref()).map_err(menu_error)?;
         }
         let position = muda::dpi::Position::Logical(muda::dpi::LogicalPosition::new(payload.x, payload.y));
+        // Both calls block until the menu closes (the platform runs its own loop meanwhile). A choice
+        // reaches the loop as a menu event, posted before the "closed" that follows here.
         #[cfg(target_os = "macos")]
         {
             use tao::platform::macos::WindowExtMacOS;
-            // Blocks until the menu closes; the choice is posted by the menu event handler meanwhile.
             // SAFETY: the pointer is this window's content view, alive for the duration of the call.
             unsafe { menu.show_context_menu_for_nsview(window.ns_view() as _, Some(position)) };
-            poster.post(UserEvent::ContextMenuClosed(serial));
         }
         #[cfg(target_os = "linux")]
         {
-            use gtk::prelude::*;
+            use gtk::prelude::Cast;
             use tao::platform::unix::WindowExtUnix;
-            let poster = poster.clone();
-            // GTK reports "closed" before it activates the chosen item; let the choice go first.
-            menu.gtk_context_menu().connect_deactivate(move |_| {
-                let poster = poster.clone();
-                gtk::glib::timeout_add_local_once(Duration::from_millis(60), move || {
-                    poster.post(UserEvent::ContextMenuClosed(serial));
-                });
-            });
             let window: &gtk::Window = window.gtk_window().upcast_ref();
-            if !menu.show_context_menu_for_gtk_window(window, Some(position)) {
-                return Err("The menu could not be shown.".to_string());
-            }
+            menu.show_context_menu_for_gtk_window(window, Some(position));
         }
+        poster.post(UserEvent::ContextMenuClosed(serial));
         Ok((menu, ids))
     }
 

@@ -6,13 +6,18 @@
 //! studio effects; these processors do not model or reproduce proprietary DSP.
 
 use super::common::{
-    clamp, clean, core_accessors, db_gain, fast_sin_2pi, fast_tanh, fast_tanh_f32, frame_buffers, max, min, mix, pole, pow2, wrap,
-    Biquad, BiquadType, Core, DelayLine, Descriptor, Label, ParameterCache, ParameterInfo as P, Processor, Smoother,
-    PARAMETER_INTEGER as INTEGER, PARAMETER_LOG as LOG, PARAMETER_TOGGLE as TOGGLE, PI,
+    clamp, clean, core_accessors, db_gain, fast_sin_2pi, fast_tanh, fast_tanh_f32, frame_buffers,
+    max, min, mix, pole, pow2, select, wrap, Biquad, BiquadType, Core, DelayLine, Descriptor,
+    Label, ParameterCache, ParameterInfo as P, Processor, Smoother, PARAMETER_INTEGER as INTEGER,
+    PARAMETER_LOG as LOG, PARAMETER_TOGGLE as TOGGLE, PI,
 };
 
 const DISTORTION_MODES: &[Label] = &[Label::new(c"Feedback Fuzz"), Label::new(c"Analog")];
-const SATURATION_MODES: &[Label] = &[Label::new(c"Classic"), Label::new(c"Tape"), Label::new(c"Tube")];
+const SATURATION_MODES: &[Label] = &[
+    Label::new(c"Classic"),
+    Label::new(c"Tape"),
+    Label::new(c"Tube"),
+];
 const SWITCHES: &[Label] = &[Label::new(c"Off"), Label::new(c"On")];
 
 static DISTORTION_PARAMETERS: [P; 16] = [
@@ -23,19 +28,77 @@ static DISTORTION_PARAMETERS: [P; 16] = [
     P::new(c"tone_mod", c"Fuzz Tone Mod", c"%", 0.0, 100.0, 0.0, 0),
     P::new(c"mix", c"Mix", c"%", 0.0, 100.0, 100.0, 0),
     P::new(c"output", c"Output", c"dB", -24.0, 12.0, -6.0, 0),
-    P::choice(c"mode", c"Mode", c"", 0.0, 1.0, 0.0, INTEGER, DISTORTION_MODES),
+    P::choice(
+        c"mode",
+        c"Mode",
+        c"",
+        0.0,
+        1.0,
+        0.0,
+        INTEGER,
+        DISTORTION_MODES,
+    ),
     P::new(c"bass", c"Analog Bass", c"%", 0.0, 100.0, 100.0, 0),
-    P::choice(c"focus", c"Analog Focus", c"", 0.0, 1.0, 0.0, TOGGLE, SWITCHES),
-    P::new(c"definition", c"Analog Definition", c"%", 0.0, 100.0, 50.0, 0),
+    P::choice(
+        c"focus",
+        c"Analog Focus",
+        c"",
+        0.0,
+        1.0,
+        0.0,
+        TOGGLE,
+        SWITCHES,
+    ),
+    P::new(
+        c"definition",
+        c"Analog Definition",
+        c"%",
+        0.0,
+        100.0,
+        50.0,
+        0,
+    ),
     P::choice(c"gate", c"Fuzz Gate", c"", 0.0, 1.0, 1.0, TOGGLE, SWITCHES),
-    P::new(c"gate_release", c"Gate Release", c"ms", 5.0, 2000.0, 100.0, LOG),
-    P::new(c"gate_threshold", c"Gate Threshold", c"dB", -96.0, -18.0, -60.0, 0),
+    P::new(
+        c"gate_release",
+        c"Gate Release",
+        c"ms",
+        5.0,
+        2000.0,
+        100.0,
+        LOG,
+    ),
+    P::new(
+        c"gate_threshold",
+        c"Gate Threshold",
+        c"dB",
+        -96.0,
+        -18.0,
+        -60.0,
+        0,
+    ),
     P::new(c"mod_rate", c"Fuzz Mod Rate", c"Hz", 0.05, 10.0, 0.4, LOG),
-    P::new(c"saturation", c"Analog Saturation", c"%", 0.0, 100.0, 25.0, 0),
+    P::new(
+        c"saturation",
+        c"Analog Saturation",
+        c"%",
+        0.0,
+        100.0,
+        25.0,
+        0,
+    ),
 ];
 
 static LOFI_PARAMETERS: [P; 8] = [
-    P::new(c"sample_rate", c"Sample Rate", c"Hz", 99.5, 48000.0, 12000.0, LOG),
+    P::new(
+        c"sample_rate",
+        c"Sample Rate",
+        c"Hz",
+        99.5,
+        48000.0,
+        12000.0,
+        LOG,
+    ),
     P::new(c"bits", c"Bits", c"bits", 1.0, 24.0, 12.0, 0),
     P::new(c"smooth", c"Smooth", c"%", 0.0, 100.0, 0.0, 0),
     P::new(c"stereo", c"Stereo Width", c"%", 0.0, 200.0, 100.0, 0),
@@ -46,7 +109,16 @@ static LOFI_PARAMETERS: [P; 8] = [
 ];
 
 static SATURATION_PARAMETERS: [P; 11] = [
-    P::choice(c"mode", c"Mode", c"", 0.0, 2.0, 0.0, INTEGER, SATURATION_MODES),
+    P::choice(
+        c"mode",
+        c"Mode",
+        c"",
+        0.0,
+        2.0,
+        0.0,
+        INTEGER,
+        SATURATION_MODES,
+    ),
     P::new(c"input", c"Input", c"dB", -24.0, 24.0, 0.0, 0),
     P::new(c"contour", c"Contour", c"%", 0.0, 100.0, 50.0, 0),
     P::new(c"drive", c"Drive", c"%", 0.0, 100.0, 25.0, 0),
@@ -56,7 +128,16 @@ static SATURATION_PARAMETERS: [P; 11] = [
     P::new(c"output", c"Output", c"dB", -24.0, 12.0, 0.0, 0),
     P::new(c"bass", c"Tube Bass", c"dB", -18.0, 18.0, 0.0, 0),
     P::new(c"treble", c"Tube Treble", c"dB", -18.0, 18.0, 0.0, 0),
-    P::choice(c"eq_bypass", c"Tube EQ Bypass", c"", 0.0, 1.0, 0.0, TOGGLE, SWITCHES),
+    P::choice(
+        c"eq_bypass",
+        c"Tube EQ Bypass",
+        c"",
+        0.0,
+        1.0,
+        0.0,
+        TOGGLE,
+        SWITCHES,
+    ),
 ];
 
 /// A raw parameter value clamped to its range; nonfinite values use the default.
@@ -82,7 +163,12 @@ struct Controls<const N: usize> {
 
 impl<const N: usize> Controls<N> {
     fn new() -> Self {
-        Controls { smooth: [Smoother::default(); N], target: [0.0; N], value: [0.0; N], settled: false }
+        Controls {
+            smooth: [Smoother::default(); N],
+            target: [0.0; N],
+            value: [0.0; N],
+            settled: false,
+        }
     }
 
     fn set_targets(&mut self, t: [f64; N]) {
@@ -165,7 +251,11 @@ impl OversampledShape {
         let mut second = Biquad::default();
         first.set(BiquadType::LowPass, sr * 0.45, 0.5411961001, 0.0, sr * 2.0);
         second.set(BiquadType::LowPass, sr * 0.45, 1.306562965, 0.0, sr * 2.0);
-        OversampledShape { first, second, previous: 0.0 }
+        OversampledShape {
+            first,
+            second,
+            previous: 0.0,
+        }
     }
 
     #[inline(always)]
@@ -390,7 +480,13 @@ impl Distortion {
 impl Processor for Distortion {
     core_accessors!(core);
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let sr = self.core.sr;
         if self.cache.changed(&self.core) {
@@ -415,7 +511,12 @@ impl Processor for Distortion {
                 1.0 + value(15) * 0.15,
             ]);
         }
-        let (bass_pole, focus_low_pole, focus_high_pole, dc_pole) = (self.bass_pole, self.focus_low_pole, self.focus_high_pole, self.dc_pole);
+        let (bass_pole, focus_low_pole, focus_high_pole, dc_pole) = (
+            self.bass_pole,
+            self.focus_low_pole,
+            self.focus_high_pole,
+            self.dc_pole,
+        );
         for i in 0..l.len() {
             self.c.tick(self.smoothing);
             let v = self.c.value;
@@ -424,7 +525,9 @@ impl Processor for Distortion {
             let level = max(a.abs(), b.abs());
             self.envelope = max(level, self.envelope * self.envelope_release);
             let target = if self.envelope >= v[13] { 1.0 } else { 0.0 };
-            self.gate_gain = target + (self.gate_gain - target) * (if target > self.gate_gain { self.gate_attack } else { v[12] });
+            self.gate_gain = target
+                + (self.gate_gain - target)
+                    * select(target > self.gate_gain, self.gate_attack, v[12]);
             let gate = mix(1.0, self.gate_gain, v[11]);
             let wet = v[5] != 0.0;
             let fuzz_on = wet && v[7] != 1.0;
@@ -442,8 +545,11 @@ impl Processor for Distortion {
             let mut rounded = [0.0f64; 2];
             if fuzz_on {
                 // Zero Tone Mod: the delay is exactly constant, skip the LFO.
-                let delay =
-                    if v[4] == 0.0 { sr * 0.0007 } else { sr * (0.0007 + 0.0045 * v[4] * (0.5 + 0.5 * fast_sin_2pi(self.phase))) };
+                let delay = if v[4] == 0.0 {
+                    sr * 0.0007
+                } else {
+                    sr * (0.0007 + 0.0045 * v[4] * (0.5 + 0.5 * fast_sin_2pi(self.phase)))
+                };
                 let mut x = [0.0f64; 2];
                 for k in 0..2 {
                     let ch = &mut self.channels[k];
@@ -456,7 +562,8 @@ impl Processor for Distortion {
                     // Bound filter overshoot before storing feedback. Its loop gain stays
                     // below one, including at the maximum Feedback setting.
                     ch.feedback.push(clamp(fuzz[k], -1.0, 1.0) * gate);
-                    colored[k] = lowpass(ch.fuzz_dc.tick(fuzz[k], dc_pole), &mut ch.color, v[1]) * gate;
+                    colored[k] =
+                        lowpass(ch.fuzz_dc.tick(fuzz[k], dc_pole), &mut ch.color, v[1]) * gate;
                 }
             }
             if analog_on {
@@ -464,14 +571,23 @@ impl Processor for Distortion {
                 for k in 0..2 {
                     let ch = &mut self.channels[k];
                     let low = lowpass(input[k], &mut ch.bass, bass_pole);
-                    let mid = lowpass(input[k], &mut ch.focus_high, focus_high_pole) - lowpass(input[k], &mut ch.focus_low, focus_low_pole);
-                    x[k] = (input[k] - low * (1.0 - v[8]) + mid * v[9] * (1.0 - v[10]) * 1.5) * v[0] * v[15];
+                    let mid = lowpass(input[k], &mut ch.focus_high, focus_high_pole)
+                        - lowpass(input[k], &mut ch.focus_low, focus_low_pole);
+                    x[k] = (input[k] - low * (1.0 - v[8]) + mid * v[9] * (1.0 - v[10]) * 1.5)
+                        * v[0]
+                        * v[15];
                 }
                 let drive = v[10];
-                let shaped = self.analog_shape.tick(&x, |y| mix(fast_tanh(y), clamp(y, -1.0, 1.0), drive));
+                let shaped = self
+                    .analog_shape
+                    .tick(&x, |y| mix(fast_tanh(y), clamp(y, -1.0, 1.0), drive));
                 for k in 0..2 {
                     let ch = &mut self.channels[k];
-                    rounded[k] = lowpass(ch.analog_dc.tick(shaped[k], dc_pole), &mut ch.analog_tone, v[3]);
+                    rounded[k] = lowpass(
+                        ch.analog_dc.tick(shaped[k], dc_pole),
+                        &mut ch.analog_tone,
+                        v[3],
+                    );
                 }
             }
             l[i] = clean(mix(a, mix(colored[0], rounded[0], v[7]) * v[6], v[5])) as f32;
@@ -547,7 +663,13 @@ impl Lofi {
 impl Processor for Lofi {
     core_accessors!(core);
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let sr = self.core.sr;
         let rate = min(parameter(&self.core, &LOFI_PARAMETERS, 0), sr);
@@ -766,7 +888,11 @@ impl Saturator {
     }
 
     /// Restarts the state of crossfade mode `m` (0 Classic, 1 Tape, 2 Tube).
-    fn reset_mode(channels: &mut [SaturatorChannel; 2], shapes: &mut [DecimatorState; 3], m: usize) {
+    fn reset_mode(
+        channels: &mut [SaturatorChannel; 2],
+        shapes: &mut [DecimatorState; 3],
+        m: usize,
+    ) {
         for ch in channels.iter_mut() {
             if m == 1 {
                 ch.tape_dc.reset();
@@ -788,7 +914,13 @@ impl Saturator {
 impl Processor for Saturator {
     core_accessors!(core);
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let sr = self.core.sr;
         let mode = parameter(&self.core, &SATURATION_PARAMETERS, 0).round() as i32;
@@ -815,8 +947,13 @@ impl Processor for Saturator {
             self.weights_settled = false;
         }
         let (attack, release) = (self.attack, self.release);
-        let (bass_pole, treble_pole, memory_pole, charge_pole, dc_pole) =
-            (self.bass_pole, self.treble_pole, self.memory_pole, self.charge_pole, self.dc_pole);
+        let (bass_pole, treble_pole, memory_pole, charge_pole, dc_pole) = (
+            self.bass_pole,
+            self.treble_pole,
+            self.memory_pole,
+            self.charge_pole,
+            self.dc_pole,
+        );
         let decimator = self.decimator;
         let tube_bias = self.tube_bias;
         for (bl, br) in l.chunks_mut(BLOCK).zip(r.chunks_mut(BLOCK)) {
@@ -850,8 +987,22 @@ impl Processor for Saturator {
                 self.ctl_constant = true;
             }
             let ctl = &self.ctl;
-            let (v0, v1, v2, v3, v4, v5) = (&ctl[0][..n], &ctl[1][..n], &ctl[2][..n], &ctl[3][..n], &ctl[4][..n], &ctl[5][..n]);
-            let (v6, v7, v8, v9, v10, v11) = (&ctl[6][..n], &ctl[7][..n], &ctl[8][..n], &ctl[9][..n], &ctl[10][..n], &ctl[11][..n]);
+            let (v0, v1, v2, v3, v4, v5) = (
+                &ctl[0][..n],
+                &ctl[1][..n],
+                &ctl[2][..n],
+                &ctl[3][..n],
+                &ctl[4][..n],
+                &ctl[5][..n],
+            );
+            let (v6, v7, v8, v9, v10, v11) = (
+                &ctl[6][..n],
+                &ctl[7][..n],
+                &ctl[8][..n],
+                &ctl[9][..n],
+                &ctl[10][..n],
+                &ctl[11][..n],
+            );
             let (w0, w1, w2) = (&ctl[12][..n], &ctl[13][..n], &ctl[14][..n]);
             let mut any_mix = false;
             for i in 0..n {
@@ -886,7 +1037,7 @@ impl Processor for Saturator {
                 let mut env = self.channels[k].envelope;
                 for i in 0..n {
                     let level = input[k][i].abs();
-                    env = level + (env - level) * (if level > env { attack } else { release });
+                    env = level + (env - level) * select(level > env, attack, release);
                     compression[k][i] = 1.0 / (1.0 + v2[i] * max(0.0, env - 0.25) * 2.0);
                 }
                 self.channels[k].envelope = env;
@@ -898,7 +1049,8 @@ impl Processor for Saturator {
                 for k in 0..2 {
                     let mut previous = st.previous[k];
                     for i in 0..n {
-                        let x = (input[k][i] * (1.0 + 24.0 * v3[i] * v3[i]) * compression[k][i]) as f32;
+                        let x =
+                            (input[k][i] * (1.0 + 24.0 * v3[i] * v3[i]) * compression[k][i]) as f32;
                         shaped[k][2 * i] = (previous + x) * 0.5f32;
                         shaped[k][2 * i + 1] = x;
                         previous = x;
@@ -926,7 +1078,8 @@ impl Processor for Saturator {
                         let ch = &mut self.channels[k];
                         let tape_low = lowpass(input[k][i], &mut ch.tape_bass, bass_pole);
                         // Tape Drive tilts the low-frequency response; Input drives compression.
-                        let x = (input[k][i] + tape_low * (v11[i] - 1.0) + ch.tape_memory * 0.12) as f32;
+                        let x = (input[k][i] + tape_low * (v11[i] - 1.0) + ch.tape_memory * 0.12)
+                            as f32;
                         mid[k] = fast_tanh_f32(1.4f32 * ((st.previous[k] + x) * 0.5f32));
                         cur[k] = fast_tanh_f32(1.4f32 * x);
                         st.previous[k] = x;
@@ -936,7 +1089,9 @@ impl Processor for Saturator {
                         let ch = &mut self.channels[k];
                         let shaped = clean(y[k] as f64);
                         lowpass(clamp(shaped, -1.0, 1.0), &mut ch.tape_memory, memory_pole);
-                        wet[k][i] += lowpass(ch.tape_dc.tick(shaped, dc_pole), &mut ch.tape_tone, v0[i]) * w1[i];
+                        wet[k][i] +=
+                            lowpass(ch.tape_dc.tick(shaped, dc_pole), &mut ch.tape_tone, v0[i])
+                                * w1[i];
                     }
                 }
             }
@@ -950,8 +1105,11 @@ impl Processor for Saturator {
                         let x_in = input[k][i];
                         let low = lowpass(x_in, &mut ch.bass, bass_pole);
                         let high = x_in - lowpass(x_in, &mut ch.treble, treble_pole);
-                        let eq = x_in + (low * (v8[i] - 1.0) + high * (v9[i] - 1.0)) * (1.0 - v10[i]);
-                        let x = ((eq + low * (v5[i] - 1.0)) * (1.0 + 32.0 * v3[i] * v3[i]) / (1.0 + 4.0 * v4[i] * ch.charge)) as f32;
+                        let eq =
+                            x_in + (low * (v8[i] - 1.0) + high * (v9[i] - 1.0)) * (1.0 - v10[i]);
+                        let x = ((eq + low * (v5[i] - 1.0)) * (1.0 + 32.0 * v3[i] * v3[i])
+                            / (1.0 + 4.0 * v4[i] * ch.charge))
+                            as f32;
                         const BIAS: f32 = 0.18;
                         mid[k] = fast_tanh_f32((st.previous[k] + x) * 0.5f32 + BIAS) - tube_bias;
                         cur[k] = fast_tanh_f32(x + BIAS) - tube_bias; // exactly 0 at x = 0
@@ -962,7 +1120,7 @@ impl Processor for Saturator {
                         let ch = &mut self.channels[k];
                         let tube = ch.tube_dc.tick(clean(y[k] as f64), dc_pole);
                         let charge_level = lowpass(tube, &mut ch.tube_bass, bass_pole).abs();
-                        let charge_pole_now = if charge_level > ch.charge { attack } else { charge_pole };
+                        let charge_pole_now = select(charge_level > ch.charge, attack, charge_pole);
                         lowpass(charge_level, &mut ch.charge, charge_pole_now);
                         wet[k][i] += tube * w2[i];
                     }
@@ -1005,7 +1163,15 @@ static DESCRIPTORS: [Descriptor; 3] = [
         |sr, _| Box::new(Distortion::new(sr)),
         |_, _, _| 3.0,
     ),
-    Descriptor::new(c"lofi", c"Lofi", c"Distortion", 0, &LOFI_PARAMETERS, |sr, _| Box::new(Lofi::new(sr)), |_, _, _| 0.5),
+    Descriptor::new(
+        c"lofi",
+        c"Lofi",
+        c"Distortion",
+        0,
+        &LOFI_PARAMETERS,
+        |sr, _| Box::new(Lofi::new(sr)),
+        |_, _, _| 0.5,
+    ),
     Descriptor::new(
         c"saturator",
         c"Saturator",

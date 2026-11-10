@@ -10,8 +10,8 @@
 //! Atomic set/get/bypass/tempo/tail may overlap process.
 
 use super::common::{
-    clamp, clean, Descriptor, EffectInfo, ParameterInfo, Processor, MAX_PARAMETERS, PARAMETER_INTEGER, PARAMETER_LOG,
-    PARAMETER_TOGGLE,
+    clamp, clean, Descriptor, EffectInfo, ParameterInfo, Processor, MAX_PARAMETERS,
+    PARAMETER_INTEGER, PARAMETER_LOG, PARAMETER_TOGGLE,
 };
 use super::{delay, distortion, drums, dynamics, filtering, modulation, perform, spatial};
 use std::cell::UnsafeCell;
@@ -42,7 +42,10 @@ fn families() -> [&'static [Descriptor]; 7] {
 
 /// Every catalogue descriptor, in catalogue order.
 pub fn catalogue() -> impl Iterator<Item = &'static Descriptor> {
-    families().into_iter().flat_map(|family| family.iter()).take(CATALOGUE_CAPACITY)
+    families()
+        .into_iter()
+        .flat_map(|family| family.iter())
+        .take(CATALOGUE_CAPACITY)
 }
 
 /// Looks an effect up by its persistent id.
@@ -69,7 +72,11 @@ unsafe fn parameter_raw(id: *const c_char, parameter: u32) -> Option<&'static Pa
 
 /// Normalized [0, 1] -> displayed physical value.
 pub fn physical(p: &ParameterInfo, n: f64) -> f64 {
-    let n = if n.is_finite() { clamp(n, 0.0, 1.0) } else { 0.0 };
+    let n = if n.is_finite() {
+        clamp(n, 0.0, 1.0)
+    } else {
+        0.0
+    };
     let mut v = if (p.flags & PARAMETER_LOG) != 0 && p.minimum > 0.0 {
         p.minimum * (p.maximum / p.minimum).powf(n)
     } else {
@@ -83,7 +90,11 @@ pub fn physical(p: &ParameterInfo, n: f64) -> f64 {
 
 /// Displayed physical value -> normalized [0, 1]. Nonfinite values map the default.
 pub fn normalized(p: &ParameterInfo, v: f64) -> f64 {
-    let mut v = clamp(if v.is_finite() { v } else { p.default_value }, p.minimum, p.maximum);
+    let mut v = clamp(
+        if v.is_finite() { v } else { p.default_value },
+        p.minimum,
+        p.maximum,
+    );
     if (p.flags & (PARAMETER_INTEGER | PARAMETER_TOGGLE)) != 0 {
         v = v.round();
     }
@@ -107,7 +118,10 @@ pub fn normalized(p: &ParameterInfo, v: f64) -> f64 {
 struct FlushDenormals {
     #[cfg(target_arch = "aarch64")]
     saved: u64,
-    #[cfg(any(target_arch = "x86_64", all(target_arch = "x86", target_feature = "sse")))]
+    #[cfg(any(
+        target_arch = "x86_64",
+        all(target_arch = "x86", target_feature = "sse")
+    ))]
     saved: u32,
 }
 
@@ -128,7 +142,10 @@ impl FlushDenormals {
         FlushDenormals { saved }
     }
 
-    #[cfg(any(target_arch = "x86_64", all(target_arch = "x86", target_feature = "sse")))]
+    #[cfg(any(
+        target_arch = "x86_64",
+        all(target_arch = "x86", target_feature = "sse")
+    ))]
     #[inline(always)]
     fn new() -> Self {
         let mut saved: u32 = 0;
@@ -142,7 +159,11 @@ impl FlushDenormals {
         FlushDenormals { saved }
     }
 
-    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64", all(target_arch = "x86", target_feature = "sse"))))]
+    #[cfg(not(any(
+        target_arch = "aarch64",
+        target_arch = "x86_64",
+        all(target_arch = "x86", target_feature = "sse")
+    )))]
     #[inline(always)]
     fn new() -> Self {
         FlushDenormals {}
@@ -161,7 +182,10 @@ impl Drop for FlushDenormals {
                 core::arch::asm!("msr fpcr, {}", in(reg) self.saved, options(nomem, nostack, preserves_flags));
             }
         }
-        #[cfg(any(target_arch = "x86_64", all(target_arch = "x86", target_feature = "sse")))]
+        #[cfg(any(
+            target_arch = "x86_64",
+            all(target_arch = "x86", target_feature = "sse")
+        ))]
         // SAFETY: restores the MXCSR value saved in `new`.
         unsafe {
             core::arch::asm!("ldmxcsr [{}]", in(reg) &self.saved, options(nostack, readonly, preserves_flags));
@@ -174,19 +198,12 @@ impl Drop for FlushDenormals {
 #[inline(always)]
 fn clean_sample(x: f32) -> f32 {
     let a = x.abs();
+    // Branch-free so the four-lane loops below compile to packed compares, min/max and a mask.
+    let keep = (a > 1e-30) & (a <= f32::MAX);
     // For the kept (finite, nonzero) samples this is fmin(1e6, fmax(-1e6, x)).
-    let clamped = if x > 1e6 {
-        1e6
-    } else if x < -1e6 {
-        -1e6
-    } else {
-        x
-    };
-    if a > 1e-30 && a <= f32::MAX {
-        clamped
-    } else {
-        0.0
-    }
+    let low = if x < -1e6 { -1e6 } else { x };
+    let clamped = if low > 1e6 { 1e6 } else { low };
+    f32::from_bits(clamped.to_bits() & (keep as u32).wrapping_neg())
 }
 
 /// `clean_sample` on four lanes; `peak` accumulates the largest |result| per lane. The lanes
@@ -298,10 +315,18 @@ impl STBuiltinEffect {
         let mut processor = (descriptor.create)(sample_rate, max_frames);
         let latency = processor.latency();
         let parameters: [AtomicU64; MAX_PARAMETERS] = std::array::from_fn(|i| {
-            let value = descriptor.params.get(i).map_or(0.0, |p| normalized(p, p.default_value));
+            let value = descriptor
+                .params
+                .get(i)
+                .map_or(0.0, |p| normalized(p, p.default_value));
             AtomicU64::new(value.to_bits())
         });
-        for (slot, p) in processor.core_mut().p.iter_mut().zip(descriptor.params.iter()) {
+        for (slot, p) in processor
+            .core_mut()
+            .p
+            .iter_mut()
+            .zip(descriptor.params.iter())
+        {
             *slot = p.default_value;
         }
         processor.reset();
@@ -337,7 +362,13 @@ impl STBuiltinEffect {
     fn refresh(&self, render: &mut Render) -> bool {
         let mut changed = false;
         let core = render.processor.core_mut();
-        for (i, info) in self.descriptor.params.iter().enumerate().take(MAX_PARAMETERS) {
+        for (i, info) in self
+            .descriptor
+            .params
+            .iter()
+            .enumerate()
+            .take(MAX_PARAMETERS)
+        {
             let n = f64::from_bits(self.parameters[i].load(Ordering::Relaxed));
             if n != render.mapped[i] {
                 render.mapped[i] = n;
@@ -360,11 +391,14 @@ impl STBuiltinEffect {
             let tail = render.processor.tail_for_parameters(&core.p, core.tempo);
             render.gate_tail = tail;
             // Sustaining/freeze modes report the 120 s export cap: never gate.
-            render.gate_frames = if !render.processor.gateable() || !tail.is_finite() || tail >= 120.0 {
-                u64::MAX
-            } else {
-                (((tail + 0.1) * core.sr) as u64).wrapping_add(self.latency as u64).wrapping_add(self.max_frames as u64)
-            };
+            render.gate_frames =
+                if !render.processor.gateable() || !tail.is_finite() || tail >= 120.0 {
+                    u64::MAX
+                } else {
+                    (((tail + 0.1) * core.sr) as u64)
+                        .wrapping_add(self.latency as u64)
+                        .wrapping_add(self.max_frames as u64)
+                };
         }
         render.gate_frames
     }
@@ -391,7 +425,9 @@ pub extern "C" fn st_builtin_effect_count() -> u32 {
 
 #[no_mangle]
 pub extern "C" fn st_builtin_effect_info(index: u32) -> *const STBuiltinEffectInfo {
-    catalogue().nth(index as usize).map_or(std::ptr::null(), |descriptor| &descriptor.info)
+    catalogue()
+        .nth(index as usize)
+        .map_or(std::ptr::null(), |descriptor| &descriptor.info)
 }
 
 /// # Safety
@@ -405,7 +441,10 @@ pub unsafe extern "C" fn st_builtin_effect_find(id: *const c_char) -> *const STB
 /// # Safety
 /// `id` is null or a valid NUL-terminated string.
 #[no_mangle]
-pub unsafe extern "C" fn st_builtin_effect_parameter_info(id: *const c_char, parameter: u32) -> *const STBuiltinParameterInfo {
+pub unsafe extern "C" fn st_builtin_effect_parameter_info(
+    id: *const c_char,
+    parameter: u32,
+) -> *const STBuiltinParameterInfo {
     // SAFETY: forwarded contract.
     unsafe { parameter_raw(id, parameter) }.map_or(std::ptr::null(), |p| p as *const _)
 }
@@ -413,15 +452,25 @@ pub unsafe extern "C" fn st_builtin_effect_parameter_info(id: *const c_char, par
 /// # Safety
 /// `id` is null or a valid NUL-terminated string.
 #[no_mangle]
-pub unsafe extern "C" fn st_builtin_effect_parameter_label(id: *const c_char, parameter: u32, label: u32) -> *const c_char {
+pub unsafe extern "C" fn st_builtin_effect_parameter_label(
+    id: *const c_char,
+    parameter: u32,
+    label: u32,
+) -> *const c_char {
     // SAFETY: forwarded contract.
-    unsafe { parameter_raw(id, parameter) }.and_then(|p| p.label(label)).map_or(std::ptr::null(), CStr::as_ptr)
+    unsafe { parameter_raw(id, parameter) }
+        .and_then(|p| p.label(label))
+        .map_or(std::ptr::null(), CStr::as_ptr)
 }
 
 /// # Safety
 /// `id` is null or a valid NUL-terminated string.
 #[no_mangle]
-pub unsafe extern "C" fn st_builtin_effect_to_normalized(id: *const c_char, parameter: u32, physical_value: f64) -> f64 {
+pub unsafe extern "C" fn st_builtin_effect_to_normalized(
+    id: *const c_char,
+    parameter: u32,
+    physical_value: f64,
+) -> f64 {
     // SAFETY: forwarded contract.
     unsafe { parameter_raw(id, parameter) }.map_or(0.0, |p| normalized(p, physical_value))
 }
@@ -429,10 +478,21 @@ pub unsafe extern "C" fn st_builtin_effect_to_normalized(id: *const c_char, para
 /// # Safety
 /// `id` is null or a valid NUL-terminated string.
 #[no_mangle]
-pub unsafe extern "C" fn st_builtin_effect_from_normalized(id: *const c_char, parameter: u32, normalized_value: f64) -> f64 {
+pub unsafe extern "C" fn st_builtin_effect_from_normalized(
+    id: *const c_char,
+    parameter: u32,
+    normalized_value: f64,
+) -> f64 {
     // SAFETY: forwarded contract.
     unsafe { parameter_raw(id, parameter) }.map_or(0.0, |p| {
-        physical(p, if normalized_value.is_finite() { normalized_value } else { normalized(p, p.default_value) })
+        physical(
+            p,
+            if normalized_value.is_finite() {
+                normalized_value
+            } else {
+                normalized(p, p.default_value)
+            },
+        )
     })
 }
 
@@ -442,7 +502,11 @@ pub unsafe extern "C" fn st_builtin_effect_from_normalized(id: *const c_char, pa
 /// # Safety
 /// `id` is null or a valid NUL-terminated string.
 #[no_mangle]
-pub unsafe extern "C" fn st_builtin_effect_create(id: *const c_char, sample_rate: f64, max_frames: u32) -> *mut STBuiltinEffect {
+pub unsafe extern "C" fn st_builtin_effect_create(
+    id: *const c_char,
+    sample_rate: f64,
+    max_frames: u32,
+) -> *mut STBuiltinEffect {
     // SAFETY: forwarded contract.
     let Some(descriptor) = (unsafe { find_raw(id) }) else {
         return std::ptr::null_mut();
@@ -473,7 +537,11 @@ pub unsafe extern "C" fn st_builtin_effect_destroy(effect: *mut STBuiltinEffect)
 /// # Safety
 /// `effect` is null or a live handle.
 #[no_mangle]
-pub unsafe extern "C" fn st_builtin_effect_set_parameter(effect: *mut STBuiltinEffect, parameter: u32, normalized_value: f64) -> i32 {
+pub unsafe extern "C" fn st_builtin_effect_set_parameter(
+    effect: *mut STBuiltinEffect,
+    parameter: u32,
+    normalized_value: f64,
+) -> i32 {
     // SAFETY: forwarded contract.
     let Some(effect) = (unsafe { handle(effect) }) else {
         return 0;
@@ -482,7 +550,10 @@ pub unsafe extern "C" fn st_builtin_effect_set_parameter(effect: *mut STBuiltinE
         return 0;
     }
     let p = &effect.descriptor.params[parameter as usize];
-    effect.parameters[parameter as usize].store(normalized(p, physical(p, normalized_value)).to_bits(), Ordering::Relaxed);
+    effect.parameters[parameter as usize].store(
+        normalized(p, physical(p, normalized_value)).to_bits(),
+        Ordering::Relaxed,
+    );
     effect.version.fetch_add(1, Ordering::Release);
     1
 }
@@ -490,7 +561,10 @@ pub unsafe extern "C" fn st_builtin_effect_set_parameter(effect: *mut STBuiltinE
 /// # Safety
 /// `effect` is null or a live handle.
 #[no_mangle]
-pub unsafe extern "C" fn st_builtin_effect_get_parameter(effect: *const STBuiltinEffect, parameter: u32) -> f64 {
+pub unsafe extern "C" fn st_builtin_effect_get_parameter(
+    effect: *const STBuiltinEffect,
+    parameter: u32,
+) -> f64 {
     // SAFETY: forwarded contract.
     match unsafe { handle(effect) } {
         Some(effect) if (parameter as usize) < effect.parameter_count() => {
@@ -519,7 +593,9 @@ pub unsafe extern "C" fn st_builtin_effect_set_tempo(effect: *mut STBuiltinEffec
     // SAFETY: forwarded contract.
     if let Some(effect) = unsafe { handle(effect) } {
         if bpm.is_finite() {
-            effect.tempo.store(clamp(bpm, 20.0, 999.0).to_bits(), Ordering::Relaxed);
+            effect
+                .tempo
+                .store(clamp(bpm, 20.0, 999.0).to_bits(), Ordering::Relaxed);
             effect.version.fetch_add(1, Ordering::Release);
         }
     }
@@ -561,12 +637,25 @@ pub unsafe extern "C" fn st_builtin_effect_tail_seconds(effect: *const STBuiltin
         return 0.0;
     };
     let mut values = [0.0f64; MAX_PARAMETERS];
-    for (i, info) in effect.descriptor.params.iter().enumerate().take(MAX_PARAMETERS) {
-        values[i] = physical(info, f64::from_bits(effect.parameters[i].load(Ordering::Relaxed)));
+    for (i, info) in effect
+        .descriptor
+        .params
+        .iter()
+        .enumerate()
+        .take(MAX_PARAMETERS)
+    {
+        values[i] = physical(
+            info,
+            f64::from_bits(effect.parameters[i].load(Ordering::Relaxed)),
+        );
     }
     // The descriptor's estimate is the processor's tail_for_parameters as a pure function, so
     // this never touches the processor the render thread may be running.
-    (effect.descriptor.tail)(effect.sample_rate, &values, f64::from_bits(effect.tempo.load(Ordering::Relaxed)))
+    (effect.descriptor.tail)(
+        effect.sample_rate,
+        &values,
+        f64::from_bits(effect.tempo.load(Ordering::Relaxed)),
+    )
 }
 
 /// In-place stereo render; see the header for the full contract. Returns 0 only for an
@@ -614,16 +703,30 @@ pub unsafe extern "C" fn st_builtin_effect_process(
         let count = effect.max_frames.min(frames - offset) as usize;
         let mut peak = 0.0f32;
         if sidechain {
-            let a = if !sidechain_left.is_null() { sidechain_left } else { sidechain_right };
-            let b = if !sidechain_right.is_null() { sidechain_right } else { sidechain_left };
+            let a = if !sidechain_left.is_null() {
+                sidechain_left
+            } else {
+                sidechain_right
+            };
+            let b = if !sidechain_right.is_null() {
+                sidechain_right
+            } else {
+                sidechain_left
+            };
             // The scratch buffers hold max_frames >= count samples.
-            let (Some(side_l), Some(side_r)) = (render.side_l.get_mut(..count), render.side_r.get_mut(..count)) else {
+            let (Some(side_l), Some(side_r)) = (
+                render.side_l.get_mut(..count),
+                render.side_r.get_mut(..count),
+            ) else {
                 return 0;
             };
             // SAFETY: both sidechain pointers cover `frames` floats and offset + count <= frames.
             // They are read before the mutable main slices below are created, so aliasing the
             // main inputs is fine; the scratch buffers are private to this handle.
-            peak = unsafe { clean_block_from(a.add(offset as usize), side_l).max(clean_block_from(b.add(offset as usize), side_r)) };
+            peak = unsafe {
+                clean_block_from(a.add(offset as usize), side_l)
+                    .max(clean_block_from(b.add(offset as usize), side_r))
+            };
         }
         // SAFETY: left and right are distinct arrays of at least `frames` floats and
         // offset + count <= frames; nothing else references them during this call.
@@ -676,7 +779,9 @@ pub extern "C" fn st_drum_model_count() -> u32 {
 
 #[no_mangle]
 pub extern "C" fn st_drum_model_info(index: u32) -> *const STBuiltinEffectInfo {
-    DRUM_MODELS.get(index as usize).map_or(std::ptr::null(), |info| info as *const _)
+    DRUM_MODELS
+        .get(index as usize)
+        .map_or(std::ptr::null(), |info| info as *const _)
 }
 
 /// # Safety
@@ -688,11 +793,16 @@ pub unsafe extern "C" fn st_drum_model_for_id(id: *const c_char) -> i32 {
     }
     // SAFETY: non-null, and the caller guarantees a valid C string.
     let id = unsafe { CStr::from_ptr(id) };
-    (1..=6).find(|&model| drums::model_id(model) == id).unwrap_or(0)
+    (1..=6)
+        .find(|&model| drums::model_id(model) == id)
+        .unwrap_or(0)
 }
 
 #[no_mangle]
-pub extern "C" fn st_drum_parameter_info(model: i32, parameter: u32) -> *const STBuiltinParameterInfo {
+pub extern "C" fn st_drum_parameter_info(
+    model: i32,
+    parameter: u32,
+) -> *const STBuiltinParameterInfo {
     drums::parameter_info(model, parameter).map_or(std::ptr::null(), |p| p as *const _)
 }
 
@@ -702,14 +812,29 @@ pub extern "C" fn st_drum_parameter_default(model: i32, parameter: u32) -> f64 {
 }
 
 #[no_mangle]
-pub extern "C" fn st_drum_parameter_to_normalized(model: i32, parameter: u32, physical_value: f64) -> f64 {
+pub extern "C" fn st_drum_parameter_to_normalized(
+    model: i32,
+    parameter: u32,
+    physical_value: f64,
+) -> f64 {
     drums::parameter_info(model, parameter).map_or(0.0, |p| normalized(p, physical_value))
 }
 
 #[no_mangle]
-pub extern "C" fn st_drum_parameter_from_normalized(model: i32, parameter: u32, normalized_value: f64) -> f64 {
+pub extern "C" fn st_drum_parameter_from_normalized(
+    model: i32,
+    parameter: u32,
+    normalized_value: f64,
+) -> f64 {
     drums::parameter_info(model, parameter).map_or(0.0, |p| {
-        physical(p, if normalized_value.is_finite() { normalized_value } else { normalized(p, p.default_value) })
+        physical(
+            p,
+            if normalized_value.is_finite() {
+                normalized_value
+            } else {
+                normalized(p, p.default_value)
+            },
+        )
     })
 }
 
@@ -728,7 +853,12 @@ pub unsafe extern "C" fn st_drum_render(
     out: *mut f32,
     capacity: u32,
 ) -> u32 {
-    if !drums::valid_model(model) || out.is_null() || capacity == 0 || !sample_rate.is_finite() || sample_rate < 8000.0 {
+    if !drums::valid_model(model)
+        || out.is_null()
+        || capacity == 0
+        || !sample_rate.is_finite()
+        || sample_rate < 8000.0
+    {
         return 0;
     }
     // Only the first eight controls are ever read.
@@ -736,7 +866,12 @@ pub unsafe extern "C" fn st_drum_render(
         &[]
     } else {
         // SAFETY: non-null and valid for `count` floats per the caller's contract.
-        unsafe { std::slice::from_raw_parts(normalized, (count as usize).min(drums::PARAMETER_COUNT as usize)) }
+        unsafe {
+            std::slice::from_raw_parts(
+                normalized,
+                (count as usize).min(drums::PARAMETER_COUNT as usize),
+            )
+        }
     };
     // SAFETY: non-null and valid for `capacity` floats per the caller's contract.
     let out = unsafe { std::slice::from_raw_parts_mut(out, capacity as usize) };

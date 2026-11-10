@@ -78,7 +78,13 @@ impl Rig {
     }
 
     /// No allocation in here: slices of preallocated buffers, arrays on the stack.
-    fn process(&mut self, instance: &Instance, frames: usize, events: &[Event], transport: Option<&Transport>) -> ProcessOutcome {
+    fn process(
+        &mut self,
+        instance: &Instance,
+        frames: usize,
+        events: &[Event],
+        transport: Option<&Transport>,
+    ) -> ProcessOutcome {
         let (left, right) = self.outputs.split_at_mut(1);
         let inputs: [&[f32]; 2] = [&self.inputs[0][..frames], &self.inputs[1][..frames]];
         let mut outputs: [&mut [f32]; 2] = [&mut left[0][..frames], &mut right[0][..frames]];
@@ -115,7 +121,8 @@ fn process_never_allocates_in_any_path() {
     let hang = active(env.sup(), InstanceConfig { deadline: Some(Duration::from_millis(5)), ..effect("hang") });
     let crash = active(env.sup(), effect("crash"));
     let mut rig = Rig::new();
-    let transport = Transport { flags: TRANSPORT_PLAYING | TRANSPORT_TEMPO_VALID, tempo_bpm: 120.0, ..Transport::default() };
+    let transport =
+        Transport { flags: TRANSPORT_PLAYING | TRANSPORT_TEMPO_VALID, tempo_bpm: 120.0, ..Transport::default() };
     let events = [
         Event::param(3, tb::gain::GAIN, 0.5),
         Event::note_on(10, 0, 64, 100),
@@ -232,6 +239,15 @@ fn measure(instance: &Instance, rig: &mut Rig, frames: usize, blocks: usize, pac
     }
 }
 
+/// Puts the calling thread into (or takes it out of) SCHED_FIFO, as a host's audio thread
+/// would be. Needs privileges; returns whether it worked.
+fn set_realtime(on: bool) -> bool {
+    let param = libc::sched_param { sched_priority: if on { 10 } else { 0 } };
+    let policy = if on { libc::SCHED_FIFO } else { libc::SCHED_OTHER };
+    // SAFETY: valid parameter block; 0 addresses the calling thread.
+    unsafe { libc::sched_setscheduler(0, policy, &param) == 0 }
+}
+
 /// A quick sanity bound that runs with the normal suite.
 #[test]
 fn round_trip_overhead_is_small() {
@@ -239,7 +255,10 @@ fn round_trip_overhead_is_small() {
     let copy = active(env.sup(), effect("copy"));
     let mut rig = Rig::new();
     let timing = measure(&copy, &mut rig, 128, 3000, None);
-    println!("128 frames, 3000 blocks back to back: median {:?}, p99 {:?}, worst {:?}", timing.median, timing.p99, timing.worst);
+    println!(
+        "128 frames, 3000 blocks back to back: median {:?}, p99 {:?}, worst {:?}",
+        timing.median, timing.p99, timing.worst
+    );
     assert_eq!(timing.fallbacks, 0);
     assert!(timing.median < Duration::from_millis(2), "median round trip {:?}", timing.median);
     env.finish();
@@ -253,13 +272,19 @@ fn measure_round_trip_overhead() {
     let blocks: usize = std::env::var("STPC_BENCH_BLOCKS").ok().and_then(|v| v.parse().ok()).unwrap_or(20_000);
     let paced_blocks = blocks / 10;
     println!("\nround trip of one stereo block through the `copy` plug-in (host process() call, wall clock)");
-    println!("{:<34} {:>6} {:>9} {:>9} {:>9} {:>9} {:>9}", "configuration", "frames", "median", "p99", "p99.9", "worst", "plug-in");
-    let configurations: [(&str, WakePreference, Duration); 3] = [
-        ("address wait (futex)", WakePreference::Address, Duration::ZERO),
-        ("address wait + 100 us spin", WakePreference::Address, Duration::from_micros(100)),
-        ("pipe wake-up", WakePreference::Pipe, Duration::ZERO),
+    println!(
+        "{:<44} {:>6} {:>9} {:>9} {:>9} {:>9} {:>9}",
+        "configuration", "frames", "median", "p99", "p99.9", "worst", "plug-in"
+    );
+    // (name, wake-up, spin, measuring thread at real-time priority like an audio thread)
+    let configurations: [(&str, WakePreference, Duration, bool); 5] = [
+        ("futex", WakePreference::Address, Duration::ZERO, false),
+        ("futex, RT host thread", WakePreference::Address, Duration::ZERO, true),
+        ("futex + 100us spin, RT host", WakePreference::Address, Duration::from_micros(100), true),
+        ("pipe", WakePreference::Pipe, Duration::ZERO, false),
+        ("pipe, RT host thread", WakePreference::Pipe, Duration::ZERO, true),
     ];
-    for (name, wake, spin) in configurations {
+    for (name, wake, spin, realtime) in configurations {
         let env = TestEnv::with(|c| {
             c.policy = GroupingPolicy::Shared;
             c.wake = wake;
@@ -267,23 +292,36 @@ fn measure_round_trip_overhead() {
         });
         let copy = active(env.sup(), effect("copy"));
         let mut rig = Rig::new();
+        // Only now, so that neither the supervisor's threads nor the container inherit it.
+        if realtime && !set_realtime(true) {
+            println!("{name}: skipped (no permission for SCHED_FIFO)");
+            env.finish();
+            continue;
+        }
         for frames in [64usize, 128, 512] {
             let period = Duration::from_secs_f64(frames as f64 / 48_000.0);
-            for (label, count, pace) in [("back to back", blocks, None), ("paced at block rate", paced_blocks, Some(period))] {
+            for (label, count, pace) in
+                [("back to back", blocks, None), ("paced at block rate", paced_blocks, Some(period))]
+            {
                 let t = measure(&copy, &mut rig, frames, count, pace);
                 println!(
-                    "{:<34} {:>6} {:>9.1?} {:>9.1?} {:>9.1?} {:>9.1?} {:>9.1?}{}",
-                    format!("{name}, {label}"),
+                    "{:<44} {:>6} {:>9.1?} {:>9.1?} {:>9.1?} {:>9.1?} {:>9.1?}{}",
+                    format!("{name}; {label}"),
                     frames,
                     t.median,
                     t.p99,
                     t.p999,
                     t.worst,
                     t.plugin_median,
-                    if t.fallbacks > 0 { format!("  ({} of {count} blocks missed the {:?} deadline)", t.fallbacks, LONG) } else { String::new() }
+                    if t.fallbacks > 0 {
+                        format!("  ({} of {count} blocks missed the {:?} deadline)", t.fallbacks, LONG)
+                    } else {
+                        String::new()
+                    }
                 );
             }
         }
+        set_realtime(false);
         env.finish();
     }
     // The in-process baseline: what the same copy costs without a process boundary.
@@ -300,6 +338,12 @@ fn measure_round_trip_overhead() {
             })
             .collect();
         samples.sort();
-        println!("{:<34} {:>6} {:>9.1?} {:>9.1?}", "in-process copy (baseline)", frames, samples[blocks / 2], samples[blocks * 99 / 100]);
+        println!(
+            "{:<44} {:>6} {:>9.1?} {:>9.1?}",
+            "in-process copy (baseline)",
+            frames,
+            samples[blocks / 2],
+            samples[blocks * 99 / 100]
+        );
     }
 }

@@ -1,0 +1,60 @@
+# End-to-end tests of the Rust host
+
+These run the real interface (`Resources/Web`) against the real host (`rust/st-app`), not against a
+stand-in. They need the executable to be built first:
+
+```sh
+cd rust && cargo build -p st-app
+```
+
+Both scripts take the path of `supertracker` as their argument; without one they use
+`$SUPERTRACKER_BIN`, then `$CARGO_TARGET_DIR/debug/supertracker`, then `rust/target/debug/supertracker`.
+Each run works in a temporary folder (its own support folder through `SUPERTRACKER_SUPPORT_DIR`) and
+removes it.
+
+## `run.js`: the page in Chromium, the host with `--serve`
+
+```sh
+node tests/host_e2e/run.js
+```
+
+Needs Node 22 and Playwright with Chromium (`require('playwright')`). It starts
+`supertracker --serve --dialog-answers <file>`, opens the URL the host prints, and checks that:
+
+1. the host prints `http://127.0.0.1:<port>/?token=<32 hex digits>`; files outside the interface
+   folder are not served; the bridge refuses a wrong token and a client that is not the served page;
+2. the page boots against the host over the WebSocket (`state.native`, transport `websocket`, the
+   host's version and command list), not in browser-preview mode;
+3. a note entered in the page is saved to a file through `project.save`, whose Save chooser is answered
+   from the answers file; the file on disk contains the note;
+4. an unimplemented command (`plugin.load`, and Play) is refused with "… is not implemented in the
+   Rust host yet …", the page shows it, and later requests still work;
+5. after a reload the page gets the session back; New clears it; `project.open` through the (scripted)
+   Open chooser brings the note back;
+6. `quit` on the host's standard input ends it with status 0, and the page reports the lost connection
+   instead of waiting;
+7. a second host process restores the session from the recovery copy, with its file and the settings.
+
+## `window_smoke.sh`: the window in a virtual display (Linux)
+
+```sh
+tests/host_e2e/window_smoke.sh
+```
+
+Needs `xvfb-run`, `xdotool` and the GTK 3 / WebKitGTK 4.1 runtime. It starts the window under Xvfb
+with `SUPERTRACKER_TRACE=1` and drives it with synthetic keys and clicks: handshake over the web
+view's channel, a menu shortcut, a native context menu, the native file chooser, and Quit through the
+handshake with the page. It reads the bridge trace; it does not look at pixels.
+
+## Scripted file choosers
+
+A test cannot click in a file chooser. `--dialog-answers <file>` (or `SUPERTRACKER_DIALOG_ANSWERS`)
+makes the host answer choosers from a JSON array instead of showing them:
+
+```json
+["/tmp/run/Song.supertracker", null, "/tmp/run/Song.supertracker"]
+```
+
+Each chooser takes the next element: a string is the chosen path, `null` is Cancel. The file is read
+again for every chooser, so a test can append answers while the host runs; when none is left, the
+command that needed the chooser fails with a message that says so.

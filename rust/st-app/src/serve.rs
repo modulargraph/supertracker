@@ -350,6 +350,7 @@ fn serve_bridge(stream: TcpStream, reader: BufReader<TcpStream>, head: &Head, sh
     connection.close();
     outbox.close();
     let _ = writer.join();
+    let _ = stream.shutdown(std::net::Shutdown::Both);
     shared.sockets.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).retain(|(open, _)| !Arc::ptr_eq(open, &outbox));
     Ok(())
 }

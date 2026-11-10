@@ -7,7 +7,7 @@
 //! | `delay`    | effect     | out[n] = in[n - L]; reports latency L (option `latency=`, parameter 1)     |
 //! | `ducker`   | effect     | out = main x (1 - min(1, abs(sidechain)))                                  |
 //! | `sine`     | instrument | one sine voice driven by MIDI notes; echoes MIDI in to MIDI out            |
-//! | `probe`    | effect     | writes what it was told about the block into output channel 0              |
+//! | `probe`    | effect     | writes what it was told about the block into output channel 0; can stall   |
 //! | `bigstate` | effect     | large state blob (option `size=`), 64 parameters with metadata             |
 //! | `crash`    | effect     | pass-through that aborts / segfaults / exits on request                    |
 //! | `hang`     | effect     | pass-through that stalls or hangs on request                               |
@@ -113,7 +113,9 @@ fn crash_now(how: u32) -> ! {
         2 => {
             // SAFETY: deliberately not safe: this is the segfault the tests ask for.
             #[allow(clippy::manual_dangling_ptr)]
-            unsafe { std::ptr::write_volatile(8 as *mut u64, 0xDEAD) };
+            unsafe {
+                std::ptr::write_volatile(8 as *mut u64, 0xDEAD)
+            };
             std::process::abort()
         }
         3 => std::process::exit(7),
@@ -316,7 +318,11 @@ impl Plugin for TestPlugin {
             Kind::BigState => (1..=bigstate::PARAMS)
                 .map(|id| ParameterInfo {
                     group: format!("Bank {}/Page {}", (id - 1) / 16 + 1, (id - 1) / 4 % 4 + 1),
-                    flags: if id % 8 == 0 { PARAM_AUTOMATABLE | PARAM_BOOLEAN | PARAM_STEPPED } else { PARAM_AUTOMATABLE },
+                    flags: if id % 8 == 0 {
+                        PARAM_AUTOMATABLE | PARAM_BOOLEAN | PARAM_STEPPED
+                    } else {
+                        PARAM_AUTOMATABLE
+                    },
                     step_count: if id % 8 == 0 { 1 } else { 0 },
                     ..simple_param(id, &format!("Param {id:02}"), 0.0, 1.0, (id - 1) as f64 / 64.0, "dB")
                 })
@@ -327,7 +333,9 @@ impl Plugin for TestPlugin {
 
     fn parameter_value(&mut self, id: u64) -> Option<f64> {
         match (self.shared.kind, id) {
-            (Kind::Gain, gain::GAIN) | (Kind::Delay, delay::FRAMES) | (Kind::Sine, sine::LEVEL) => Some(self.shared.value()),
+            (Kind::Gain, gain::GAIN) | (Kind::Delay, delay::FRAMES) | (Kind::Sine, sine::LEVEL) => {
+                Some(self.shared.value())
+            }
             (Kind::Gain, gain::MODE) => Some(self.shared.mode.load(Ordering::Relaxed) as f64),
             (Kind::BigState, id) if (1..=bigstate::PARAMS).contains(&id) => Some(self.params[id as usize - 1]),
             _ => None,
@@ -565,7 +573,8 @@ impl Processor for TestProcessor {
                     self.gain = current;
                 }
                 if channels == 0 {
-                    if let Some(event) = data.events.iter().rev().find(|e| e.kind == EVENT_PARAM && e.id == gain::GAIN) {
+                    if let Some(event) = data.events.iter().rev().find(|e| e.kind == EVENT_PARAM && e.id == gain::GAIN)
+                    {
                         self.gain = event.value;
                     }
                 }
@@ -645,6 +654,12 @@ impl Processor for TestProcessor {
                 }
             }
             Kind::Probe => {
+                // Like `hang`: a stall on request, to observe what follows a dropped block.
+                for event in data.events {
+                    if event.kind == EVENT_PARAM && event.id == hang::PROCESS_SLEEP_MS {
+                        std::thread::sleep(Duration::from_millis(event.value as u64));
+                    }
+                }
                 let report = [
                     frames as f32,
                     data.transport.tempo_bpm as f32,
@@ -683,11 +698,12 @@ impl Processor for TestProcessor {
             }
             Kind::Hang => {
                 for event in data.events {
-                    let note = (event.kind == EVENT_MIDI
-                        && event.midi_bytes().first().map(|s| s & 0xF0) == Some(0x90))
-                    .then(|| event.midi_bytes().get(1).copied())
-                    .flatten();
-                    if (event.kind == EVENT_PARAM && event.id == hang::PROCESS_FOREVER) || note == Some(hang::NOTE_FOREVER) {
+                    let note = (event.kind == EVENT_MIDI && event.midi_bytes().first().map(|s| s & 0xF0) == Some(0x90))
+                        .then(|| event.midi_bytes().get(1).copied())
+                        .flatten();
+                    if (event.kind == EVENT_PARAM && event.id == hang::PROCESS_FOREVER)
+                        || note == Some(hang::NOTE_FOREVER)
+                    {
                         loop {
                             std::thread::sleep(Duration::from_secs(3600));
                         }

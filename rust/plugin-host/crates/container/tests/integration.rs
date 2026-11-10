@@ -1,6 +1,11 @@
 //! Integration tests: the real container binary, the real supervisor, on this machine.
 
-#![allow(clippy::bool_assert_comparison, clippy::needless_range_loop, clippy::cloned_ref_to_slice_refs, clippy::unnecessary_map_or)]
+#![allow(
+    clippy::bool_assert_comparison,
+    clippy::needless_range_loop,
+    clippy::cloned_ref_to_slice_refs,
+    clippy::unnecessary_map_or
+)]
 
 mod common;
 
@@ -40,7 +45,11 @@ fn audio_round_trip_is_bit_exact_for_any_layout_and_block_size() {
             let block = run(&instance, &input, outputs, frames, &[]);
             assert_eq!(block.outcome.flags, PROCESS_OK, "layout {in_buses:?}->{out_buses:?} frames {frames}");
             for (channel, output) in block.outputs.iter().enumerate() {
-                assert_bits_eq(output, &input[channel % inputs], &format!("{in_buses:?}->{out_buses:?} ch {channel} frames {frames}"));
+                assert_bits_eq(
+                    output,
+                    &input[channel % inputs],
+                    &format!("{in_buses:?}->{out_buses:?} ch {channel} frames {frames}"),
+                );
             }
         }
         assert_eq!(instance.stats().fallback_blocks, 0);
@@ -161,7 +170,8 @@ fn parameter_events_are_sample_accurate() {
     ];
     for (index, (frames, changes)) in script.iter().enumerate() {
         let input = vec![rng.signal(*frames), rng.signal(*frames)];
-        let events: Vec<Event> = changes.iter().map(|&(offset, value)| Event::param(offset, tb::gain::GAIN, value)).collect();
+        let events: Vec<Event> =
+            changes.iter().map(|&(offset, value)| Event::param(offset, tb::gain::GAIN, value)).collect();
         let block = run(&instance, &input, 2, *frames, &events);
         assert_eq!(block.outcome.flags, PROCESS_OK);
         let mut expected = vec![vec![0.0f32; *frames]; 2];
@@ -242,7 +252,10 @@ fn transport_and_block_flags_reach_the_plugin() {
     let block = run_with(&instance, &input, 2, 32, &[Event::param(3, 9, 1.0)], Some(&transport));
     assert_eq!(block.outcome.flags, PROCESS_OK);
     let report = &block.outputs[0];
-    assert_eq!(report[..12], [32.0, 174.0, 96_000.0, transport.flags as f32, 0.0, 1.0, 0.0, 2.0, 12.5, 7.0, 8.0, 44_100.0]);
+    assert_eq!(
+        report[..12],
+        [32.0, 174.0, 96_000.0, transport.flags as f32, 0.0, 1.0, 0.0, 2.0, 12.5, 7.0, 8.0, 44_100.0]
+    );
     // Offline mode is announced per block; no transport means "stopped".
     instance.set_offline(true).unwrap();
     let block = run(&instance, &input, 2, 32, &[]);
@@ -260,7 +273,10 @@ fn parameter_metadata_values_and_text() {
     assert_eq!(list.len(), 2);
     assert_eq!(gain.info().parameter_count, 2);
     let (g, mode) = (&list[0], &list[1]);
-    assert_eq!((g.id, g.name.as_str(), g.unit_label.as_str(), g.identifier.as_str()), (tb::gain::GAIN, "Gain", "x", "gain"));
+    assert_eq!(
+        (g.id, g.name.as_str(), g.unit_label.as_str(), g.identifier.as_str()),
+        (tb::gain::GAIN, "Gain", "x", "gain")
+    );
     assert_eq!((g.min, g.max, g.default, g.step_count), (0.0, 4.0, 1.0, 0));
     assert_eq!(g.flags, PARAM_AUTOMATABLE);
     assert_eq!(mode.flags, PARAM_AUTOMATABLE | PARAM_STEPPED);
@@ -309,7 +325,10 @@ fn presets_and_plugin_side_notifications() {
     let gain = active(env.sup(), effect("gain"));
     let id = gain.id();
     let presets = gain.presets().unwrap();
-    assert_eq!(presets.iter().map(|p| (p.id, p.name.as_str())).collect::<Vec<_>>(), [(0, "Unity"), (1, "Half"), (2, "Double")]);
+    assert_eq!(
+        presets.iter().map(|p| (p.id, p.name.as_str())).collect::<Vec<_>>(),
+        [(0, "Unity"), (1, "Half"), (2, "Double")]
+    );
     gain.load_preset(2).unwrap();
     assert_eq!(gain.parameter(tb::gain::GAIN).unwrap(), Some(2.0));
     env.wait_event("rescan", LONG, |e| *e == HostEvent::ParametersRescan { instance: id });
@@ -359,7 +378,8 @@ fn presets_and_plugin_side_notifications() {
 fn state_of_several_megabytes_round_trips() {
     let env = TestEnv::new(GroupingPolicy::Shared);
     let size = 12 << 20;
-    let instance = env.sup().create_instance(InstanceConfig { options: format!("size={size}"), ..effect("bigstate") }).unwrap();
+    let instance =
+        env.sup().create_instance(InstanceConfig { options: format!("size={size}"), ..effect("bigstate") }).unwrap();
     let started = Instant::now();
     let first = instance.state().unwrap();
     let get_time = started.elapsed();
@@ -381,7 +401,11 @@ fn state_of_several_megabytes_round_trips() {
     // An instance can also be created with a state.
     let other = env
         .sup()
-        .create_instance(InstanceConfig { options: "size=16".into(), initial_state: Some(second.clone()), ..effect("bigstate") })
+        .create_instance(InstanceConfig {
+            options: "size=16".into(),
+            initial_state: Some(second.clone()),
+            ..effect("bigstate")
+        })
         .unwrap();
     assert!(other.state().unwrap() == second);
     // A state the plug-in refuses is an error, not a crash.
@@ -491,7 +515,8 @@ fn reconfigure_changes_block_size_and_sample_rate() {
 #[test]
 fn each_policy_yields_the_expected_number_of_processes() {
     // (manufacturer, plug-in): 6 instances, 2 manufacturers, 4 distinct plug-ins.
-    let plan = [("Acme", "gain"), ("Acme", "gain"), ("Acme", "copy"), ("Bolt", "delay"), ("Bolt", "delay"), ("Bolt", "sine")];
+    let plan =
+        [("Acme", "gain"), ("Acme", "gain"), ("Acme", "copy"), ("Bolt", "delay"), ("Bolt", "delay"), ("Bolt", "sine")];
     let mut all_pids = Vec::new();
     for (policy, expected) in [
         (GroupingPolicy::Shared, 1),
@@ -525,7 +550,10 @@ fn each_policy_yields_the_expected_number_of_processes() {
         let cross_vendor = instances[0].container() == instances[3].container();
         assert_eq!(cross_vendor, policy == GroupingPolicy::Shared);
         let same_vendor_other_plugin = instances[0].container() == instances[2].container();
-        assert_eq!(same_vendor_other_plugin, matches!(policy, GroupingPolicy::Shared | GroupingPolicy::PerManufacturer));
+        assert_eq!(
+            same_vendor_other_plugin,
+            matches!(policy, GroupingPolicy::Shared | GroupingPolicy::PerManufacturer)
+        );
         // All of them process audio.
         let mut rng = Rng(51);
         for (instance, (_, plugin)) in instances.iter().zip(plan) {
@@ -605,7 +633,11 @@ fn crash_in_process_is_contained_and_flagged_within_the_block() {
     // The block that carries the fatal note: the container dies while the host waits.
     // The call returns the dry signal, flagged, without waiting for the 10 s deadline.
     let block = run(&crasher, &input, 2, 256, &[Event::note_on(10, 0, tb::crash::NOTE_ABORT, 100)]);
-    assert!(block.outcome.fell_back() && block.outcome.flags & (PROCESS_LOST | PROCESS_LATE) != 0, "{:?}", block.outcome);
+    assert!(
+        block.outcome.fell_back() && block.outcome.flags & (PROCESS_LOST | PROCESS_LATE) != 0,
+        "{:?}",
+        block.outcome
+    );
     assert!(block.elapsed < Duration::from_secs(5), "returned after {:?}", block.elapsed);
     assert_bits_eq(&block.outputs[0], &input[0], "dry pass-through");
     assert_bits_eq(&block.outputs[1], &input[1], "dry pass-through");
@@ -641,14 +673,21 @@ fn crash_in_process_is_contained_and_flagged_within_the_block() {
     match exited {
         HostEvent::ContainerExited { container, pid, reason, mut lost } => {
             lost.sort();
-            assert_eq!((container, pid, reason), (crashed_container, crashed_pid, ExitReason::Crashed { signal: libc::SIGABRT }));
+            assert_eq!(
+                (container, pid, reason),
+                (crashed_container, crashed_pid, ExitReason::Crashed { signal: libc::SIGABRT })
+            );
             assert_eq!(lost, lost_ids);
         }
         _ => unreachable!(),
     }
     for id in lost_ids {
         env.wait_event("instance lost", LONG, |e| {
-            *e == HostEvent::InstanceLost { instance: id, container: crashed_container, reason: ExitReason::Crashed { signal: libc::SIGABRT } }
+            *e == HostEvent::InstanceLost {
+                instance: id,
+                container: crashed_container,
+                reason: ExitReason::Crashed { signal: libc::SIGABRT },
+            }
         });
     }
     // The same events are available by polling.
@@ -739,7 +778,11 @@ fn late_block_is_dropped_and_the_instance_recovers_by_itself() {
     // The plug-in stalls for 400 ms inside this block: the host waits 40 ms, not 400.
     let block = run(&instance, &input, 2, 128, &[Event::param(0, tb::hang::PROCESS_SLEEP_MS, 400.0)]);
     assert_eq!(block.outcome.flags, PROCESS_LATE | PROCESS_FALLBACK);
-    assert!(block.elapsed >= Duration::from_millis(40) && block.elapsed < Duration::from_millis(300), "{:?}", block.elapsed);
+    assert!(
+        block.elapsed >= Duration::from_millis(40) && block.elapsed < Duration::from_millis(300),
+        "{:?}",
+        block.elapsed
+    );
     assert_bits_eq(&block.outputs[0], &input[0], "dry signal while late");
     assert_eq!(instance.status(), InstanceStatus::Late);
     // While the container is still busy, blocks return at once.
@@ -748,7 +791,11 @@ fn late_block_is_dropped_and_the_instance_recovers_by_itself() {
     loop {
         let block = run(&instance, &input, 2, 128, &[]);
         if block.outcome.flags == PROCESS_LATE | PROCESS_FALLBACK {
-            assert!(block.elapsed < Duration::from_millis(20), "a late instance must not wait again: {:?}", block.elapsed);
+            assert!(
+                block.elapsed < Duration::from_millis(20),
+                "a late instance must not wait again: {:?}",
+                block.elapsed
+            );
             late_blocks += 1;
             std::thread::sleep(Duration::from_millis(1));
         } else {
@@ -771,6 +818,35 @@ fn late_block_is_dropped_and_the_instance_recovers_by_itself() {
 }
 
 #[test]
+fn plugin_is_told_about_dropped_blocks() {
+    let env = TestEnv::with(|c| {
+        c.policy = GroupingPolicy::Shared;
+        c.hang_timeout = Duration::from_secs(30);
+    });
+    let instance = active(env.sup(), InstanceConfig { deadline: Some(Duration::from_millis(30)), ..effect("probe") });
+    let input = vec![vec![0.0f32; 64], vec![0.0f32; 64]];
+    let discontinuity = |block: &Block| block.outputs[0][6];
+    let first = run(&instance, &input, 2, 64, &[]);
+    assert_eq!((first.outcome.flags, discontinuity(&first)), (PROCESS_OK, 0.0));
+    let stalled = run(&instance, &input, 2, 64, &[Event::param(0, tb::hang::PROCESS_SLEEP_MS, 200.0)]);
+    assert_eq!(stalled.outcome.flags, PROCESS_LATE | PROCESS_FALLBACK);
+    let started = Instant::now();
+    let resumed = loop {
+        let block = run(&instance, &input, 2, 64, &[]);
+        if block.outcome.processed() {
+            break block;
+        }
+        assert!(started.elapsed() < LONG);
+        std::thread::sleep(Duration::from_millis(1));
+    };
+    // The first block after the gap carries the discontinuity flag, and only that one.
+    assert_eq!((resumed.outcome.flags, discontinuity(&resumed)), (PROCESS_OK | PROCESS_RESYNCED, 1.0));
+    let next = run(&instance, &input, 2, 64, &[]);
+    assert_eq!((next.outcome.flags, discontinuity(&next)), (PROCESS_OK, 0.0));
+    env.finish();
+}
+
+#[test]
 fn hang_in_process_is_detected_killed_and_restorable() {
     let env = TestEnv::with(|c| {
         c.policy = GroupingPolicy::PerPlugin;
@@ -787,7 +863,11 @@ fn hang_in_process_is_detected_killed_and_restorable() {
     let started = Instant::now();
     let block = run(&hanger, &input, 2, 64, &[Event::note_on(0, 0, tb::hang::NOTE_FOREVER, 1)]);
     assert_eq!(block.outcome.flags, PROCESS_LATE | PROCESS_FALLBACK);
-    assert!(block.elapsed >= Duration::from_millis(50) && block.elapsed < Duration::from_millis(350), "{:?}", block.elapsed);
+    assert!(
+        block.elapsed >= Duration::from_millis(50) && block.elapsed < Duration::from_millis(350),
+        "{:?}",
+        block.elapsed
+    );
     // The audio thread keeps running at full speed; the instance is flagged throughout.
     let mut slowest = Duration::ZERO;
     while hanger.status() != InstanceStatus::Lost {
@@ -801,13 +881,20 @@ fn hang_in_process_is_detected_killed_and_restorable() {
     }
     assert!(slowest < Duration::from_millis(20), "slowest block while hung: {slowest:?}");
     let detected = started.elapsed();
-    assert!(detected >= Duration::from_millis(400) && detected < Duration::from_secs(5), "hang detected after {detected:?}");
+    assert!(
+        detected >= Duration::from_millis(400) && detected < Duration::from_secs(5),
+        "hang detected after {detected:?}"
+    );
     let id = hanger.id();
     env.wait_event("hung", LONG, |e| *e == HostEvent::InstanceHung { instance: id, container });
-    env.wait_event("lost", LONG, |e| *e == HostEvent::InstanceLost { instance: id, container, reason: ExitReason::Hung });
-    env.wait_event("exited", LONG, |e| {
-        matches!(e, HostEvent::ContainerExited { container: c, reason: ExitReason::Hung, .. } if *c == container)
+    env.wait_event("lost", LONG, |e| {
+        *e == HostEvent::InstanceLost { instance: id, container, reason: ExitReason::Hung }
     });
+    env.wait_event(
+        "exited",
+        LONG,
+        |e| matches!(e, HostEvent::ContainerExited { container: c, reason: ExitReason::Hung, .. } if *c == container),
+    );
     assert_eq!(run(&hanger, &input, 2, 64, &[]).outcome.flags, PROCESS_LOST | PROCESS_FALLBACK);
 
     // Restart on request: a new process, the instance active again.
@@ -856,9 +943,11 @@ fn hung_main_thread_times_out_requests_but_audio_continues() {
     // The host decides: kill the container, then bring everything back.
     let container = hanger.container();
     env.sup().kill_container(container).unwrap();
-    env.wait_event("killed", LONG, |e| {
-        matches!(e, HostEvent::ContainerExited { reason: ExitReason::Killed, lost, .. } if lost.len() == 2)
-    });
+    env.wait_event(
+        "killed",
+        LONG,
+        |e| matches!(e, HostEvent::ContainerExited { reason: ExitReason::Killed, lost, .. } if lost.len() == 2),
+    );
     let report = env.sup().restart_container(container).unwrap();
     assert_eq!(report.restored.len(), 2);
     assert_eq!(gain.parameter(tb::gain::GAIN).unwrap(), Some(1.0));
@@ -897,7 +986,8 @@ fn restart_restores_state_parameters_and_activation() {
     let env = TestEnv::new(GroupingPolicy::PerPlugin);
     let size = 2 << 20;
     let a = active(env.sup(), InstanceConfig { options: format!("size={size}"), ..effect("bigstate") });
-    let b = env.sup().create_instance(InstanceConfig { options: format!("size={size}"), ..effect("bigstate") }).unwrap();
+    let b =
+        env.sup().create_instance(InstanceConfig { options: format!("size={size}"), ..effect("bigstate") }).unwrap();
     let gain = active(env.sup(), effect("gain"));
     assert_eq!(a.container(), b.container());
     let container = a.container();
@@ -981,7 +1071,8 @@ fn restore_failure_is_reported_and_leaves_the_instance_lost() {
     let env = TestEnv::new(GroupingPolicy::PerInstance);
     // Activation crashes: creating works, activating kills the container, restoring
     // (which re-activates... no: the instance never became active) works again.
-    let instance = env.sup().create_instance(InstanceConfig { options: "crash_on_activate".into(), ..effect("gain") }).unwrap();
+    let instance =
+        env.sup().create_instance(InstanceConfig { options: "crash_on_activate".into(), ..effect("gain") }).unwrap();
     assert!(matches!(instance.activate(), Err(Error::ContainerDied)));
     env.wait_event("lost", LONG, |e| matches!(e, HostEvent::InstanceLost { .. }));
     assert_eq!(instance.status(), InstanceStatus::Lost);
@@ -995,7 +1086,11 @@ fn restore_failure_is_reported_and_leaves_the_instance_lost() {
     bad.set_state(b"crash").unwrap(); // accepted while lost, applied on restore
     let result = bad.restore();
     assert!(matches!(result, Err(Error::ContainerDied)), "{result:?}");
-    env.wait_event("restore failed", LONG, |e| matches!(e, HostEvent::InstanceRestoreFailed { instance, .. } if *instance == bad.id()));
+    env.wait_event(
+        "restore failed",
+        LONG,
+        |e| matches!(e, HostEvent::InstanceRestoreFailed { instance, .. } if *instance == bad.id()),
+    );
     assert_eq!(bad.status(), InstanceStatus::Lost);
     let report = env.sup().restart_container(bad.container()).unwrap();
     assert_eq!((report.restored.len(), report.failed.len()), (0, 1));
@@ -1109,9 +1204,10 @@ fn container_binary_refuses_bad_invocations_and_exits_when_the_host_goes_away() 
     let (mut child, stream, hello) = spawn("a.sock");
     assert_eq!((hello.magic, hello.protocol_version), (stpc_transport::HELLO_MAGIC, PROTOCOL_VERSION));
     assert_eq!((hello.pid, hello.token.as_str()), (child.id(), "secret"));
-    assert_eq!(hello.formats, ["test"]);
+    assert_eq!(hello.formats, ["clap", "test"]);
     // Refused by the host: the container exits with its "rejected" code.
-    let refusal = Welcome { accepted: false, protocol_version: PROTOCOL_VERSION, reason: "wrong connection token".into() };
+    let refusal =
+        Welcome { accepted: false, protocol_version: PROTOCOL_VERSION, reason: "wrong connection token".into() };
     stream.send(FrameKind::Handshake, 0, &refusal.encode(), &[]).unwrap();
     assert_eq!(child.wait().unwrap().code(), Some(3));
     // A host that speaks another protocol version is refused by the container as well.
@@ -1137,7 +1233,8 @@ fn container_binary_refuses_bad_invocations_and_exits_when_the_host_goes_away() 
 fn shutdown_with_live_instances_is_clean() {
     let env = TestEnv::new(GroupingPolicy::PerInstance);
     let instances: Vec<Instance> = (0..5).map(|_| active(env.sup(), effect("gain"))).collect();
-    let big = env.sup().create_instance(InstanceConfig { options: "size=1048576".into(), ..effect("bigstate") }).unwrap();
+    let big =
+        env.sup().create_instance(InstanceConfig { options: "size=1048576".into(), ..effect("bigstate") }).unwrap();
     assert_eq!(env.live_pids().len(), 6);
     assert_eq!(container_children().iter().filter(|p| env.pids.lock().unwrap().contains(p)).count(), 6);
     // While containers run, the socket directory holds no socket files (they are
@@ -1156,7 +1253,10 @@ fn shutdown_with_live_instances_is_clean() {
     // A regular shutdown is not reported as a loss.
     assert!(!env.events().iter().any(|e| matches!(e, HostEvent::InstanceLost { .. })));
     assert_eq!(
-        env.events().iter().filter(|e| matches!(e, HostEvent::ContainerExited { reason: ExitReason::Shutdown, .. })).count(),
+        env.events()
+            .iter()
+            .filter(|e| matches!(e, HostEvent::ContainerExited { reason: ExitReason::Shutdown, .. }))
+            .count(),
         6
     );
     let pids = env.pids.lock().unwrap().clone();

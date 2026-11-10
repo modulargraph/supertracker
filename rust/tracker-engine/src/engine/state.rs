@@ -625,6 +625,123 @@ impl Shared {
     }
 }
 
+impl Shared {
+    /// `st_engine_status`: a coherent snapshot of the published transport state (seqlock on
+    /// `status_publication`). Any thread.
+    pub fn status(&self) -> STStatus {
+        let mut s = STStatus::default();
+        let relaxed = Ordering::Relaxed;
+        loop {
+            let publication = self.status_publication.load(Ordering::SeqCst);
+            if publication & 1 != 0 {
+                std::hint::spin_loop();
+                continue;
+            }
+            let requested = self.transport_requested.load(Ordering::Acquire);
+            let applied = self.status_transport_applied.load(Ordering::Acquire);
+            s.transport_seek_revision = self.status_seek_revision.load(relaxed);
+            s.transport_pending = 0;
+            s.requested_playing = 0;
+            s.playing = self.status_playing.load(relaxed);
+            s.recording = self.status_recording.load(relaxed);
+            s.pattern = self.status_pattern.load(relaxed);
+            s.row = self.status_row.load(relaxed);
+            s.sequence = self.status_sequence.load(relaxed);
+            s.track_count = self.status_tracks.load(relaxed);
+            s.peak_l = self.peak_l.load(relaxed);
+            s.peak_r = self.peak_r.load(relaxed);
+            s.position = self.status_position.load(relaxed);
+            s.seconds = self.status_seconds.load(relaxed);
+            s.dropped_commands = self.dropped_commands.load(relaxed);
+            s.dropped_events = self.dropped_events.load(relaxed);
+            s.song_mode = self.status_song_mode.load(relaxed);
+            s.beat = self.status_beat.load(relaxed);
+            s.bpm = self.status_bpm.load(relaxed);
+            s.bar_start_beat = self.status_bar_start.load(relaxed);
+            s.bar = self.status_bar.load(relaxed);
+            s.numerator = self.status_numerator.load(relaxed);
+            s.denominator = self.status_denominator.load(relaxed);
+            s.timing_revision = self.status_timing_revision.load(relaxed);
+            s.queued_pattern = self.status_queued_pattern.load(relaxed);
+            s.queued_sequence = self.status_queued_sequence.load(relaxed);
+            s.count_in = self.status_count_in.load(relaxed);
+            // A queued Play/Stop/count-in not yet rendered: the rendered fields are stale until
+            // it is; see st_status_transport_playing.
+            if (requested.wrapping_sub(applied) as i32) > 0 {
+                s.transport_pending = 1;
+                s.requested_playing = self.transport_requested_playing.load(relaxed);
+            }
+            std::sync::atomic::fence(Ordering::SeqCst);
+            if publication == self.status_publication.load(Ordering::SeqCst) {
+                return s;
+            }
+        }
+    }
+
+    /// `st_engine_track_peak`. Any thread.
+    pub fn track_peak(&self, track: i32) -> f32 {
+        if track < 0 {
+            return 0.0;
+        }
+        let store = self.peak_store.load(Ordering::Acquire);
+        if store.is_null() {
+            return 0.0;
+        }
+        // SAFETY: peak stores only grow and old ones live until the engine is destroyed, so a
+        // pointer read from `peak_store` stays valid for any reader.
+        unsafe { &*store }.load(track as usize)
+    }
+
+    /// `st_engine_voice_positions`: copy the latest playhead snapshot into `out` (up to its
+    /// length). Returns the voice count and the snapshot serial, or `None` when no stable
+    /// snapshot could be read. Any thread; never blocks the renderer.
+    pub fn voice_positions(&self, out: &mut [STVoicePosition]) -> Option<(usize, u64)> {
+        for _ in 0..1000 {
+            let before = self.voice_seq.load(Ordering::Acquire);
+            if before & 1 != 0 {
+                continue;
+            }
+            let published = self.voice_snapshot_count.load(Ordering::Relaxed).clamp(0, ST_VOICE_POSITION_CAPACITY as i32);
+            let count = out.len().min(published as usize);
+            // SAFETY: seqlock read. The copy goes straight into the caller's storage without
+            // forming a reference to the snapshot, which the render thread may be rewriting; a
+            // copy that raced with a write is rejected below because `voice_seq` changed (or was
+            // odd), exactly as in the C++ engine.
+            unsafe {
+                std::ptr::copy_nonoverlapping(self.voice_snapshot.get() as *const STVoicePosition, out.as_mut_ptr(), count);
+            }
+            let serial = self.voice_serial.load(Ordering::Relaxed);
+            std::sync::atomic::fence(Ordering::Acquire);
+            if self.voice_seq.load(Ordering::Relaxed) == before {
+                return Some((count, serial));
+            }
+        }
+        None
+    }
+
+    /// `st_engine_watch_voice_positions`: instrument >= 0, -1 every instrument, less stops.
+    pub fn watch_voice_positions(&self, instrument: i32) {
+        self.voice_watch.store(if instrument < -1 { -2 } else { instrument }, Ordering::Relaxed);
+    }
+
+    /// `st_engine_refresh_automation`: coalescing mailbox, callable from any thread.
+    pub fn refresh_automation(&self) {
+        self.automation_refresh_requested.store(true, Ordering::Release);
+    }
+
+    /// `st_engine_reset_render_cache`: start a fresh timestamp epoch (graph stopped).
+    pub fn reset_render_cache(&self) {
+        self.cache_epoch.fetch_add(1, Ordering::Release);
+    }
+
+    /// `st_engine_pop_input_ack` (one serialized consumer).
+    pub fn pop_input_ack(&self) -> Option<STInputAck> {
+        let ack = self.input_acks.pop()?;
+        self.input_outstanding.fetch_sub(1, Ordering::Relaxed);
+        Some(ack)
+    }
+}
+
 /// Where events go: the part of the render state `emit` needs, kept separate so voices can be
 /// ended while other render fields are borrowed.
 pub struct EventOut {

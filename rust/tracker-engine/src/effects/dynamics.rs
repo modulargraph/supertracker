@@ -3,9 +3,10 @@
 //! Replaces `Sources/TrackerEngine/EffectsDynamics.hpp` (namespace `stfx::dynamics`).
 
 use super::common::{
-    clamp, clean, core_accessors, db_gain, fast_db_gain, frame_buffers, gain_db, max, min, mix, pole, Biquad, BiquadType, Core,
-    DelayLine, Descriptor, Label, Memo, ParameterCache, ParameterInfo as P, Processor, Smoother, EFFECT_SIDECHAIN,
-    PARAMETER_INTEGER as INTEGER, PARAMETER_LOG as LOG, PARAMETER_TOGGLE as TOGGLE,
+    clamp, clean, core_accessors, db_gain, fast_db_gain, frame_buffers, gain_db, max, min, mix,
+    pole, select, Biquad, BiquadType, Core, DelayLine, Descriptor, Label, Memo, ParameterCache,
+    ParameterInfo as P, Processor, Smoother, EFFECT_SIDECHAIN, PARAMETER_INTEGER as INTEGER,
+    PARAMETER_LOG as LOG, PARAMETER_TOGGLE as TOGGLE,
 };
 
 const MODES: &[Label] = &[Label::new(c"Classic"), Label::new(c"Feedback")];
@@ -20,14 +21,25 @@ static COMPRESSOR_PARAMS: [P; 12] = [
     P::new(c"mix", c"Mix", c"%", 0.0, 100.0, 100.0, 0),
     P::new(c"scgain", c"Detector gain", c"dB", -24.0, 24.0, 0.0, 0),
     P::new(c"scfilter", c"Detector filter", c"", 0.0, 1.0, 0.0, TOGGLE),
-    P::new(c"sccenter", c"Detector frequency", c"Hz", 20.0, 20000.0, 632.5, LOG),
+    P::new(
+        c"sccenter",
+        c"Detector frequency",
+        c"Hz",
+        20.0,
+        20000.0,
+        632.5,
+        LOG,
+    ),
     P::new(c"scwidth", c"Detector width", c"oct", 0.25, 6.0, 3.0, LOG),
 ];
 
 /// Resolves the optional sidechain channels to an external key pair: a missing channel
 /// duplicates the other one; `None` means internal detection.
 #[inline(always)]
-fn external_key<'a>(left: Option<&'a [f32]>, right: Option<&'a [f32]>) -> Option<(&'a [f32], &'a [f32])> {
+fn external_key<'a>(
+    left: Option<&'a [f32]>,
+    right: Option<&'a [f32]>,
+) -> Option<(&'a [f32], &'a [f32])> {
     match (left, right) {
         (Some(l), Some(r)) => Some((l, r)),
         (Some(l), None) => Some((l, l)),
@@ -45,7 +57,13 @@ pub struct Detector {
 impl Detector {
     pub fn configure(&mut self, hz: f64, width: f64, sr: f64) {
         for v in self.f.iter_mut() {
-            v.set(BiquadType::BandPass, hz, 1.0 / (2.0 * (2.0f64.ln() * width / 2.0).sinh()), 0.0, sr);
+            v.set(
+                BiquadType::BandPass,
+                hz,
+                1.0 / (2.0 * (2.0f64.ln() * width / 2.0).sinh()),
+                0.0,
+                sr,
+            );
         }
     }
 
@@ -135,7 +153,13 @@ impl Processor for Compressor {
         self.cache.reset();
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], sc_l: Option<&[f32]>, sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        sc_l: Option<&[f32]>,
+        sc_r: Option<&[f32]>,
+    ) {
         let (l, r, sc_l, sc_r) = frame_buffers(l, r, sc_l, sc_r);
         let p = self.core.p;
         let sr = self.core.sr;
@@ -162,8 +186,10 @@ impl Processor for Compressor {
                     }
                 }
             };
-            let peak = self.detector.sample(det_l, det_r, p[9] >= 0.5, self.sc_gain);
-            let c = if peak > self.envelope { self.attack } else { self.release };
+            let peak = self
+                .detector
+                .sample(det_l, det_r, p[9] >= 0.5, self.sc_gain);
+            let c = select(peak > self.envelope, self.attack, self.release);
             self.envelope = clean(peak + c * (self.envelope - peak));
             // A feedback detector needs R-1 rather than 1-1/R to reach the
             // requested steady-state ratio, because it observes reduced audio.
@@ -171,7 +197,9 @@ impl Processor for Compressor {
             if p[0] >= 0.5 && key.is_none() {
                 gr *= p[2];
             }
-            let g = self.reduction_gain.tick(fast_db_gain(-min(120.0, gr)), self.gain_smooth);
+            let g = self
+                .reduction_gain
+                .tick(fast_db_gain(-min(120.0, gr)), self.gain_smooth);
             self.feedback_l = dl * g;
             self.feedback_r = dr * g;
             let mg = self.makeup.tick(self.gain, self.smooth);
@@ -190,7 +218,15 @@ static GATE_PARAMS: [P; 9] = [
     P::new(c"mix", c"Mix", c"%", 0.0, 100.0, 100.0, 0),
     P::new(c"scgain", c"Detector gain", c"dB", -24.0, 24.0, 0.0, 0),
     P::new(c"scfilter", c"Detector filter", c"", 0.0, 1.0, 0.0, TOGGLE),
-    P::new(c"sccenter", c"Detector frequency", c"Hz", 20.0, 20000.0, 632.5, LOG),
+    P::new(
+        c"sccenter",
+        c"Detector frequency",
+        c"Hz",
+        20.0,
+        20000.0,
+        632.5,
+        LOG,
+    ),
     P::new(c"scwidth", c"Detector width", c"oct", 0.25, 6.0, 3.0, LOG),
 ];
 
@@ -239,7 +275,13 @@ impl Processor for Gate {
         self.cache.reset();
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], sc_l: Option<&[f32]>, sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        sc_l: Option<&[f32]>,
+        sc_r: Option<&[f32]>,
+    ) {
         let (l, r, sc_l, sc_r) = frame_buffers(l, r, sc_l, sc_r);
         let p = self.core.p;
         let sr = self.core.sr;
@@ -262,14 +304,21 @@ impl Processor for Gate {
             };
             let peak = self.detector.sample(kl, kr, p[6] >= 0.5, self.sc_gain);
             // 3 dB hysteresis prevents threshold chatter on long decays.
-            if peak > self.threshold * (if self.remaining != 0 { 0.707945784 } else { 1.0 }) {
+            if peak
+                > self.threshold
+                    * (if self.remaining != 0 {
+                        0.707945784
+                    } else {
+                        1.0
+                    })
+            {
                 self.remaining = self.hold.wrapping_add(1);
             }
             let target = if self.remaining != 0 { 1.0 } else { 0.0 };
             if self.remaining != 0 {
                 self.remaining -= 1;
             }
-            let c = if target > self.gain { self.attack } else { self.release };
+            let c = select(target > self.gain, self.attack, self.release);
             self.gain = clean(target + c * (self.gain - target));
             let g = mix(1.0, self.gain, self.wet.tick(p[4] / 100.0, self.smooth));
             l[i] = (dl * g) as f32;
@@ -332,7 +381,13 @@ impl Processor for Transient {
         self.shape.reset();
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], _sc_l: Option<&[f32]>, _sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        _sc_l: Option<&[f32]>,
+        _sc_r: Option<&[f32]>,
+    ) {
         let (l, r, _, _) = frame_buffers(l, r, None, None);
         let p = self.core.p;
         let input_gain = self.input_db.get([p[0]], || db_gain(p[0]));
@@ -341,15 +396,29 @@ impl Processor for Transient {
             let dl = l[i] as f64 * g;
             let dr = r[i] as f64 * g;
             let peak = max(dl.abs(), dr.abs());
-            self.fast = clean(peak + (if peak > self.fast { self.fa } else { self.fr }) * (self.fast - peak));
-            self.slow = clean(peak + (if peak > self.slow { self.sa } else { self.ss }) * (self.slow - peak));
+            self.fast =
+                clean(peak + select(peak > self.fast, self.fa, self.fr) * (self.fast - peak));
+            self.slow =
+                clean(peak + select(peak > self.slow, self.sa, self.ss) * (self.slow - peak));
             self.tail_env = clean(max(peak, self.tail_env * self.tr));
             let attack = clamp((self.fast - self.slow) / (self.fast + 1e-10), 0.0, 1.0);
-            let sustain = clamp((self.tail_env - self.fast) / (self.tail_env + 1e-10), 0.0, 1.0);
+            let sustain = clamp(
+                (self.tail_env - self.fast) / (self.tail_env + 1e-10),
+                0.0,
+                1.0,
+            );
             let change = (p[1] * 0.18) * attack + (p[2] * 0.18) * sustain;
             let sg = self.shape.tick(fast_db_gain(change), self.smooth);
-            l[i] = (if p[3] >= 0.5 { clamp(dl * sg, -1.0, 1.0) } else { dl * sg }) as f32;
-            r[i] = (if p[3] >= 0.5 { clamp(dr * sg, -1.0, 1.0) } else { dr * sg }) as f32;
+            l[i] = (if p[3] >= 0.5 {
+                clamp(dl * sg, -1.0, 1.0)
+            } else {
+                dl * sg
+            }) as f32;
+            r[i] = (if p[3] >= 0.5 {
+                clamp(dr * sg, -1.0, 1.0)
+            } else {
+                dr * sg
+            }) as f32;
         }
     }
 }
@@ -362,7 +431,15 @@ static LIMITER_PARAMS: [P; 8] = [
     P::new(c"ceiling", c"Ceiling", c"dB", -40.0, -0.3, -0.3, 0),
     P::new(c"scgain", c"Detector gain", c"dB", -24.0, 24.0, 0.0, 0),
     P::new(c"scfilter", c"Detector filter", c"", 0.0, 1.0, 0.0, TOGGLE),
-    P::new(c"sccenter", c"Detector frequency", c"Hz", 20.0, 20000.0, 632.5, LOG),
+    P::new(
+        c"sccenter",
+        c"Detector frequency",
+        c"Hz",
+        20.0,
+        20000.0,
+        632.5,
+        LOG,
+    ),
     P::new(c"scwidth", c"Detector width", c"oct", 0.25, 6.0, 3.0, LOG),
 ];
 
@@ -426,7 +503,13 @@ impl Processor for Limiter {
         self.cache.reset();
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], sc_l: Option<&[f32]>, sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        sc_l: Option<&[f32]>,
+        sc_r: Option<&[f32]>,
+    ) {
         let (l, r, sc_l, sc_r) = frame_buffers(l, r, sc_l, sc_r);
         let p = self.core.p;
         let sr = self.core.sr;
@@ -481,7 +564,15 @@ static MAXIMIZER_PARAMS: [P; 7] = [
     P::new(c"turbo", c"Turbo", c"", 0.0, 1.0, 0.0, TOGGLE),
     P::new(c"scgain", c"Detector gain", c"dB", -24.0, 24.0, 0.0, 0),
     P::new(c"scfilter", c"Detector filter", c"", 0.0, 1.0, 0.0, TOGGLE),
-    P::new(c"sccenter", c"Detector frequency", c"Hz", 20.0, 20000.0, 632.5, LOG),
+    P::new(
+        c"sccenter",
+        c"Detector frequency",
+        c"Hz",
+        20.0,
+        20000.0,
+        632.5,
+        LOG,
+    ),
     P::new(c"scwidth", c"Detector width", c"oct", 0.25, 6.0, 3.0, LOG),
 ];
 
@@ -528,7 +619,13 @@ impl Processor for Maximizer {
         self.cache.reset();
     }
 
-    fn process(&mut self, l: &mut [f32], r: &mut [f32], sc_l: Option<&[f32]>, sc_r: Option<&[f32]>) {
+    fn process(
+        &mut self,
+        l: &mut [f32],
+        r: &mut [f32],
+        sc_l: Option<&[f32]>,
+        sc_r: Option<&[f32]>,
+    ) {
         let (l, r, sc_l, sc_r) = frame_buffers(l, r, sc_l, sc_r);
         let p = self.core.p;
         let sr = self.core.sr;
@@ -584,7 +681,15 @@ static DESCRIPTORS: [Descriptor; 5] = [
         |sr, _| Box::new(Compressor::new(sr)),
         |_, _, _| 0.0,
     ),
-    Descriptor::new(c"gate", c"Gate", c"Dynamics", EFFECT_SIDECHAIN, &GATE_PARAMS, |sr, _| Box::new(Gate::new(sr)), |_, _, _| 0.0),
+    Descriptor::new(
+        c"gate",
+        c"Gate",
+        c"Dynamics",
+        EFFECT_SIDECHAIN,
+        &GATE_PARAMS,
+        |sr, _| Box::new(Gate::new(sr)),
+        |_, _, _| 0.0,
+    ),
     Descriptor::new(
         c"transient",
         c"Transient Shaper",

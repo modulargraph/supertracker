@@ -3,7 +3,10 @@
 //! * [`test_backend`]: format `"test"`, built-in plug-ins that exercise the transport, the
 //!   supervisor and the failure handling (they are what the integration tests load).
 //!
-//! Real formats (CLAP, VST3, Audio Units on macOS) are added here as further
+//! * [`clap_backend`]: format `"clap"`, CLAP plug-ins.
+//!
+//! Further formats (VST3, Audio Units on macOS) are added here as more
 //! [`stpc_runtime::PluginBackend`] implementations and registered in `main.rs`.
 
+pub mod clap_backend;
 pub mod test_backend;

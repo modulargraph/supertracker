@@ -28,11 +28,13 @@
 //! | [`voice`] | `noteOn`, `kill`/`release`, `voiceSample` and all voice DSP |
 //! | [`mixer`] | `process`, sends (delay/reverb), metronome, timeline clips |
 //! | [`render_cache`] | `renderCached`, bus rings, retained clock/freeze history and span queries |
-//! | [`capi`] | the `extern "C"` functions |
+//! | [`edits`] | the setters and command producers of the `extern "C"` block, as safe methods |
+//! | [`capi`] | the `extern "C"` functions (pointer conversion only) |
 
 pub mod abi;
 pub mod capi;
 pub mod control;
+pub mod edits;
 pub mod mixer;
 pub mod project;
 pub mod render_cache;
@@ -43,6 +45,9 @@ pub mod timing;
 pub mod transport;
 pub mod util;
 pub mod voice;
+
+#[cfg(test)]
+mod tests;
 
 pub use abi::*;
 pub use state::STEngine;
