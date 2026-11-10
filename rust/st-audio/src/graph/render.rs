@@ -286,6 +286,25 @@ impl Renderer {
         self.status.refresh_automation();
     }
 
+    /// The transport at the start of the block the engine just rendered (`count` frames).
+    fn block_info(&self, count: usize, cycle_end_ns: u64) -> super::insert::BlockInfo {
+        let status = self.status.status();
+        let playing = status.playing != 0 && status.count_in == 0;
+        // The engine reports the position after the block; a playing block started `count` frames before it.
+        let (beats, seconds) = if playing { (count as f64 * status.bpm / (60.0 * self.sample_rate), count as f64 / self.sample_rate) } else { (0.0, 0.0) };
+        super::insert::BlockInfo {
+            playing,
+            recording: status.recording != 0,
+            bpm: status.bpm,
+            numerator: status.numerator.clamp(1, 64) as u16,
+            denominator: status.denominator.clamp(1, 64) as u16,
+            sample_position: ((status.seconds - seconds).max(0.0) * self.sample_rate).round() as i64,
+            beat: (status.beat - beats).max(0.0),
+            bar_start_beat: status.bar_start_beat.min((status.beat - beats).max(0.0)),
+            cycle_end_ns,
+        }
+    }
+
     /// Renders `left.len()` frames (both slices must have that length) and advances the clock.
     /// Real-time safe: no allocation, no lock, no system call other than reading the clock.
     pub fn render(&mut self, left: &mut [f32], right: &mut [f32]) {
@@ -295,6 +314,8 @@ impl Renderer {
         }
         let _denormals = DenormalGuard::new();
         let started = std::time::Instant::now();
+        // Plug-ins in containers get the time left in this call as their deadline.
+        let cycle_end_ns = super::insert::monotonic_ns() + (frames as f64 / self.sample_rate * 1e9) as u64;
         let mut at = 0;
         while at < frames {
             self.adopt_pending();
@@ -316,6 +337,7 @@ impl Renderer {
                 break;
             }
             self.plan.begin_block(self.time, count);
+            self.plan.set_block(self.block_info(count, cycle_end_ns));
             self.midi.begin_block(&self.status, self.time, count, self.sample_rate);
             while let Some(message) = self.shared.messages.pop() {
                 if message.serial == self.plan.serial {

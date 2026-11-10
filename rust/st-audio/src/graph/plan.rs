@@ -124,6 +124,9 @@ pub struct InsertStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     pub latency_frames: u32,
+    /// The track's instrument plug-in rather than an insert effect.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub instrument: bool,
 }
 
 #[derive(Default)]
@@ -404,6 +407,7 @@ impl Compiler {
                     available: cell.unavailable.is_none(),
                     reason: cell.unavailable.clone(),
                     latency_frames: cell.latency,
+                    instrument: insert.instrument.is_some(),
                 });
                 inserts.push(PlanInsert { cell, bypass: insert.bypass, base, target: NO_TARGET, bypass_delay: None });
             }
