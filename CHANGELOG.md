@@ -63,3 +63,15 @@ open build/SuperTracker.app
 - The chord sets imported from the Maschine 3 software were replaced with 16 original harmony sets. Projects that used one open on the harmony set in the same position.
 - The private hardware-editor project template (Minilogue XD, Circuit Mono Station and Summit editor plug-ins) and its test tooling were removed.
 - Test fixtures use neutral device names and paths; tests that need installed content (Maschine expansions, a DX7 V NKS preset) take their location from `SUPERTRACKER_NI_CONTENT_DIR`, `SUPERTRACKER_1988_KIT` and `SUPERTRACKER_DX7_NKS_PRESET`.
+
+### Fixes from a full code review
+
+The web interface and engine changes are covered by the automated tests; the Swift changes were reviewed but not compiled on the review machine, so run `scripts/test.sh --native` on a Mac before relying on them.
+
+- **Keyboard:** the pattern list and the automation panel under the grid no longer swallow F6, Tab and the workspace keys; Enter in a rename prompt no longer reopens it; Escape in Tempo and Pattern length restores the value; dialogs open on their default button.
+- **Editing:** stale selections after New/Open, a new pattern or track, Stop and song edits; moving a track past the edge; clips in the audio timeline can be left with the arrow keys; edits that change nothing no longer add Undo steps; an emptied number field is ignored instead of read as 0; a refused edit on a frozen track keeps Redo.
+- **Layout:** the mixer's Live input panel and strip height in a new project, long names in every workspace, dialogs taller than the window, the key reference at the minimum window size, the Recording page header.
+- **Sound:** the tempo-synced send delay could read past its buffer; automating sample Start/End on a held note; a note swallowed after Seek or Panic; ratchets across a live tempo change.
+- **Sampler and browsers:** live playheads after switching pages, a stuck marker drag, background refreshes that threw the Kits/NKS selection back, your own control pages on built-in effects.
+- **AI control and MK3:** an NKS effect load could replace an existing effect; automation targets and step edits are validated; slow turns of stepped MK3 encoders; pattern-end overruns from pads.
+- **Projects and hosting:** saving a kit over itself broke its sample paths; old kit projects with out-of-range numbers or lane routing; plug-ins reporting an infinite tail made saves fail; audio restarting on every device change with separate input and output devices; text pasted or loaded from a file could add markup to the grid.
