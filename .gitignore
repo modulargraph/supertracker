@@ -9,3 +9,5 @@ __pycache__/
 
 # Rust build output
 target/
+# Checkouts of parallel workers.
+.claude/worktrees/
