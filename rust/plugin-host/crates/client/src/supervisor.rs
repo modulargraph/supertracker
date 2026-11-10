@@ -236,7 +236,29 @@ impl Container {
         }
         // The child is not reaped while `process` is Some, so the pid is still ours.
         let _ = process.child.kill();
+        // Requests in flight fail now rather than when the reader thread notices.
+        process.conn.fail_all();
         true
+    }
+
+    /// If the process is dead or dying (its connection failed, or it does not answer a
+    /// ping), waits until the reader thread has completed the death procedure: process
+    /// reaped, instances flagged lost. Returns at once for a healthy or stopped container.
+    fn settle(&self, timeout: Duration) {
+        let conn = self.inner.lock().unwrap().process.as_ref().map(|p| p.conn.clone());
+        let Some(conn) = conn else { return };
+        if !conn.is_dead() && !matches!(conn.call(&Request::Ping {}, &[], timeout), Err(Error::ContainerDied)) {
+            return;
+        }
+        let deadline = Instant::now() + timeout;
+        let mut inner = self.inner.lock().unwrap();
+        while inner.process.as_ref().is_some_and(|p| Arc::ptr_eq(&p.conn, &conn)) {
+            let now = Instant::now();
+            if now >= deadline {
+                return;
+            }
+            inner = self.reaped.wait_timeout(inner, deadline - now).unwrap().0;
+        }
     }
 
     /// Asks the process to exit, waits, and kills it if it does not comply.
@@ -417,10 +439,13 @@ impl Supervisor {
     }
 
     /// Kills a container process (e.g. on the user's request for an unresponsive plug-in).
-    /// Its instances become lost and can be restored.
+    /// Its instances become lost and can be restored. Returns once the process is reaped
+    /// and its instances are flagged.
     pub fn kill_container(&self, container: ContainerId) -> Result<()> {
         let target = self.inner.container_by_id(container)?;
-        target.kill(ExitReason::Killed);
+        if target.kill(ExitReason::Killed) {
+            target.settle(self.inner.config.shutdown_timeout);
+        }
         Ok(())
     }
 
@@ -428,6 +453,7 @@ impl Supervisor {
     /// configuration and last known state.
     pub fn restart_container(&self, container: ContainerId) -> Result<RestartReport> {
         let target = self.inner.container_by_id(container)?;
+        target.settle(self.inner.config.request_timeout);
         let mut report = RestartReport::default();
         for shared in target.live_instances() {
             if shared.status() != InstanceStatus::Lost {
@@ -553,10 +579,16 @@ impl SupInner {
             return Err(Error::Closed);
         }
         let mut inner = container.inner.lock().unwrap();
-        if let Some(process) = inner.process.as_ref() {
-            if process.conn.is_dead() {
-                return Err(Error::ContainerDied); // the death procedure has not finished yet
+        // A dead connection means the reader thread is about to reap the process: wait.
+        let deadline = Instant::now() + self.config.shutdown_timeout;
+        while inner.process.as_ref().is_some_and(|p| p.conn.is_dead()) {
+            let now = Instant::now();
+            if now >= deadline {
+                return Err(Error::ContainerDied);
             }
+            inner = container.reaped.wait_timeout(inner, deadline - now).unwrap().0;
+        }
+        if let Some(process) = inner.process.as_ref() {
             return Ok((process.conn.clone(), inner.generation));
         }
         // The previous process's reader thread is ending (it cleared `process`).
@@ -829,6 +861,9 @@ impl SupInner {
 
     fn restore(self: &Arc<Self>, shared: &Arc<InstanceShared>) -> Result<()> {
         let mut control = shared.control.lock().unwrap();
+        // The audio thread can see a crash before the supervisor has dealt with it: let
+        // the container's death settle so that the status below is final.
+        control.container.settle(self.config.request_timeout);
         match shared.status() {
             InstanceStatus::Running | InstanceStatus::Late => return Ok(()),
             InstanceStatus::Closed => return Err(Error::Closed),
