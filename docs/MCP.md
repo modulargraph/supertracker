@@ -17,7 +17,7 @@ Claude Code / Desktop ──stdio MCP──▶ SuperTracker --mcp ──Unix soc
   for a socket fall back to `$(getconf DARWIN_USER_TEMP_DIR)SuperTracker-<hash>.sock`).
 - Protocol: one JSON-RPC 2.0 request per line: `{"jsonrpc":"2.0","id":1,"method":"writeSteps","params":{…}}`.
   Methods are the `window.STAgent` API (`help` lists them) plus native `app.ping` and `app.screenshot`.
-- Requests run one at a time on the main thread. Nothing simulates key presses.
+- Requests run one at a time, in the page. Nothing simulates key presses.
 - **Settings › Allow AI control (MCP)** turns the socket on or off (on by default; the choice is
   stored in the `agent` section of `settings.json` in the support folder). The status bar shows **AI connected** while a
   client is connected and pulses while it edits.
@@ -25,12 +25,14 @@ Claude Code / Desktop ──stdio MCP──▶ SuperTracker --mcp ──Unix soc
 ## Set up in Claude Code
 
 Build the app first (`scripts/build.sh`). Inside this repository, the project `.mcp.json` already
-registers the server (`./build/SuperTracker.app/Contents/MacOS/SuperTracker --mcp`); Claude Code
-asks once to approve it. To use it from any folder:
+registers the server (`scripts/mcp.sh`, which starts the built executable with `--mcp`); Claude Code
+asks once to approve it. To use it from any folder, name the executable:
 
 ```sh
-claude mcp add supertracker -- /path/to/SuperTracker.app/Contents/MacOS/SuperTracker --mcp
-# e.g. claude mcp add --scope user supertracker -- "$PWD/build/SuperTracker.app/Contents/MacOS/SuperTracker" --mcp
+# macOS
+claude mcp add --scope user supertracker -- "$PWD/build/SuperTracker.app/Contents/MacOS/SuperTracker" --mcp
+# Linux
+claude mcp add --scope user supertracker -- "$PWD/build/supertracker/supertracker" --mcp
 ```
 
 Open SuperTracker, then talk: "Read pattern 1 and write a darker bassline on track 0", "Make the hats
@@ -38,7 +40,7 @@ swing and humanize them", "Load an 808 kick sample on a new track", "Take a scre
 
 ## Set up in Claude Desktop
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Add to `claude_desktop_config.json` (on macOS in `~/Library/Application Support/Claude/`), with the path of your executable:
 
 ```json
 { "mcpServers": { "supertracker": { "command": "/Applications/SuperTracker.app/Contents/MacOS/SuperTracker", "args": ["--mcp"] } } }

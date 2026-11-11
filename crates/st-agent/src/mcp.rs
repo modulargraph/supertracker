@@ -46,8 +46,7 @@ impl Tool {
 }
 
 /// The tool catalogue: the public contract of AI control. It lives in `tools.json` next to this
-/// file (ported from the Swift host's `MCPCatalogue`, one entry per tool, in the order clients list
-/// them).
+/// file (one entry per tool, in the order clients list them).
 #[derive(Debug)]
 pub struct Catalogue {
     /// The text clients show the model as the server's instructions.

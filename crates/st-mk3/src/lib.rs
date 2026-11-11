@@ -48,7 +48,7 @@
 //!
 //! # What is verified and what is not
 //!
-//! Tested here, without hardware: the protocol (ported from the Swift host's tests), rendering and
+//! Tested here, without hardware: the protocol, rendering and
 //! packet encoding (with the built-in font), and the whole driver against [`fake`] transports
 //! (ownership changes in every order, failures, hot-plug, LED and frame coalescing).
 //!

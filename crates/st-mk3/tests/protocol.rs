@@ -1,5 +1,4 @@
-//! The Maschine MK3 protocol on synthetic reports, no device: ported from
-//! tests/MaschineMK3ProtocolTests.swift.
+//! The Maschine MK3 protocol on synthetic reports, no device.
 
 use std::sync::Arc;
 

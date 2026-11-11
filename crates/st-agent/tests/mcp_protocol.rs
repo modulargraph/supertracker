@@ -1,5 +1,5 @@
 //! The MCP server without the application: initialize, tools/list, tools/call, notifications and
-//! errors (ported from tests/AgentMCPTests.swift, `mcpProtocol`), and the tool catalogue.
+//! errors, and the tool catalogue.
 
 use std::cell::RefCell;
 

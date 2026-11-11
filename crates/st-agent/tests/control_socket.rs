@@ -1,6 +1,5 @@
-//! The control socket from both ends: the client against a minimal stand-in for the application
-//! (ported from tests/AgentMCPTests.swift, `socketRoundTrip`), and the real server against a
-//! scripted page (the guarantees of tests/AgentConnectionTests.swift and of AgentControlServer).
+//! The control socket from both ends: the client against a minimal stand-in for the application,
+//! and the real server against a scripted page.
 #![cfg(unix)]
 
 mod common;

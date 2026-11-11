@@ -1,5 +1,5 @@
 {
- "instructions": "SuperTracker is a tracker DAW running on the user's Mac. These tools read and edit the song that is open right now; every edit appears in the app immediately and is one ⌘Z undo step labelled \"AI: …\". Start with get_song (and read_pattern / screenshot to see the music). Tracks, instruments and rows are 0-based; notes use names like C-4 (= MIDI 60). Buses, the master channel, outputs and sends: get_mixer (address them with channel: \"master\", a bus name or \"bus:<id>\"). Do not start playback unless the user asks.",
+ "instructions": "SuperTracker is a tracker DAW running on the user's computer. These tools read and edit the song that is open right now; every edit appears in the app immediately and is one undo step labelled \"AI: …\". Start with get_song (and read_pattern / screenshot to see the music). Tracks, instruments and rows are 0-based; notes use names like C-4 (= MIDI 60). Buses, the master channel, outputs and sends: get_mixer (address them with channel: \"master\", a bus name or \"bus:<id>\"). Do not start playback unless the user asks.",
  "tools": [
   {
    "name": "get_song",
@@ -1782,7 +1782,7 @@
   {
    "name": "undo",
    "method": "undo",
-   "description": "Undo the last edit(s) — yours (labelled \"AI: …\") or the user's — exactly like ⌘Z.",
+   "description": "Undo the last edit(s) — yours (labelled \"AI: …\") or the user's — exactly like Undo in the Edit menu.",
    "properties": {
     "steps": {
      "type": "integer",
@@ -1796,7 +1796,7 @@
   {
    "name": "redo",
    "method": "redo",
-   "description": "Redo, like ⌘⇧Z.",
+   "description": "Redo, like Redo in the Edit menu.",
    "properties": {
     "steps": {
      "type": "integer",
@@ -1869,7 +1869,7 @@
   {
    "name": "list_commands",
    "method": "listCommands",
-   "description": "List command-palette (⌘K) commands with ids.",
+   "description": "List command-palette commands with ids.",
    "properties": {
     "query": {
      "type": "string",
