@@ -44,6 +44,15 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
 - "Bounce track" (Render stem remains), the "Routing needs repair" state, base patch capture, the `audio.inputs`
   commands (a track's input is part of the project), former factory chord-set IDs.
 - The in-app self-test modes and the keyboard QA build.
+- **Looser project shapes.** A project must have a routing table and a `routingID` on every track; plug-ins and
+  their automation are addressed by mixer channel (`track:<id>`, `bus:<id>`, `master`), never by track number;
+  `routing.version`, `routing.mixModel` and the freeze record's `mixMode` are gone. Frozen tracks read as stale once.
+
+### Fixed along the way
+
+- Automation recorded for an instrument plug-in on a track now plays (it was silently dropped).
+- A plug-in loaded before the start-up scan had listed it is named properly.
+- Offline Track Freeze refuses a song longer than a print can be before rendering it.
 
 ### Known gaps
 
