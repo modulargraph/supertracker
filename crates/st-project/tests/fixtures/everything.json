@@ -65,7 +65,6 @@
      "pad-chorus"
     ],
     "fingerprint": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
-    "mixMode": "routed",
     "createdAt": "2026-10-01T10:00:00Z",
     "patternPrints": [
      {
@@ -3039,8 +3038,6 @@
   "numerator": 7,
   "denominator": 8
  },
- "metronome": true,
- "metronomeVolume": 0.4,
  "routing": {
   "version": 1,
   "mixModel": "standard",
@@ -3108,6 +3105,8 @@
   ],
   "futureRoutingField": "kept"
  },
+ "metronome": true,
+ "metronomeVolume": 0.4,
  "groups": [
   {
    "id": "fx000e",

@@ -659,7 +659,7 @@ pub fn freeze_track(context: &RenderContext<'_>, request: &FreezeRequest, direct
             "version": 1, "id": id, "path": song.path, "sha256": song.sha256, "sampleRate": prints.rate,
             "frames": song.frames, "musicalFrames": song.musical.min(song.frames), "tailFrames": song.frames.saturating_sub(song.musical),
             "musicalEndBeat": musical_end_beat, "tailSeconds": request.tail.unwrap_or(request.maximum_tail),
-            "dormantPluginIDs": dormant, "fingerprint": fingerprint(&canonical, index, hash)?, "mixMode": "routed", "createdAt": iso8601(now),
+            "dormantPluginIDs": dormant, "fingerprint": fingerprint(&canonical, index, hash)?, "createdAt": iso8601(now),
             "patternPrints": prints.patterns, "unprintedPatterns": prints.unprinted,
             "tailMode": if request.tail.is_some() { "fixed" } else { "auto" }, "method": if request.method == FreezeMethod::Record { "recorded" } else { "offline" },
         });

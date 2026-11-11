@@ -156,8 +156,6 @@ model! {
         "dormantPluginIDs" => dormant_plugin_ids: Vec<String>,
         /// The host's fingerprint of what was printed, to detect a stale print. Opaque here.
         "fingerprint" => fingerprint: String,
-        /// The mix model the print was made under (`flat` or `routed`).
-        "mixMode" => mix_mode: String,
         /// When the print was made (ISO 8601).
         "createdAt" => created_at: String,
         /// Prints of the patterns the track plays, for Pattern mode.

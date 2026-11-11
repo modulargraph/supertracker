@@ -106,7 +106,7 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
   p.tracks[7].audioInput = { enabled: true, deviceUID: 'BuiltInMicrophoneDevice', channels: [0, 1], gain: 1, monitor: false };
   // freeze.js stores what freeze.track returns (AudioFreezeTrack.Record.dictionary).
   p.tracks[2].frozen = { version: 1, id: 'frz-1', path: '/Prints/pad.wav', sha256: 'ab'.repeat(32), sampleRate: 48000, frames: 480000, musicalFrames: 400000, tailFrames: 80000,
-    musicalEndBeat: 64, tailSeconds: 10, dormantPluginIDs: ['pad-chorus'], fingerprint: 'cd'.repeat(32), mixMode: 'routed', createdAt: '2026-10-01T10:00:00Z',
+    musicalEndBeat: 64, tailSeconds: 10, dormantPluginIDs: ['pad-chorus'], fingerprint: 'cd'.repeat(32), createdAt: '2026-10-01T10:00:00Z',
     patternPrints: [{ pattern: 0, path: '/Prints/pad-p0.wav', sha256: 'ef'.repeat(32), frames: 120000, passFrames: 100000, passes: 2, loop: { path: '/Prints/pad-p0-loop.wav', sha256: '01'.repeat(32), frames: 120000 } }],
     unprintedPatterns: [1], tailMode: 'auto', method: 'offline' };
   // app-track-lanes.js, app-pattern-edit.js, app-automation-panel.js, app-song-scroll.js
