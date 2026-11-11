@@ -279,7 +279,7 @@ Interface → native commands:
 - `mk3.connect {exclusive?:bool}`, `mk3.disconnect`, `mk3.status`.
 
 Interface → audio host commands used by the controller (also available to the rest of the app):
-- `midi.expression {track, kind:"pitchBend"|"cc"|"aftertouch"|"polyAftertouch"|"sustain", value, controller?, note?}` —
+- `midi.expression {owner, kind:"pitchBend"|"cc"|"aftertouch"|"polyAftertouch"|"sustain", value, controller?, note?}` —
   live expression for the track's instrument through the same destinations as hardware MIDI input: a plug-in gets the
   message with its next block (as MIDI, or in its format's own terms), an external MIDI instrument gets it on its
   device and channel, built-in instruments get pitch bend (±2 semitones) and CC1 (the mod wheel, filter close) and

@@ -567,6 +567,17 @@ fn iso8601(seconds: u64) -> String {
     format!("{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z", rest / 3_600, rest % 3_600 / 60, rest % 60)
 }
 
+/// Refuses a song print the project format cannot record: the musical part and the longest tail
+/// it may get, in frames at `rate`, against `st_project::validate::MAX_FREEZE_FRAMES`. Both ways
+/// of freezing ask before they render or record anything.
+pub(crate) fn check_print_length(musical: u64, tail_limit: u64, rate: f64) -> Result<(), String> {
+    let limit = st_project::validate::MAX_FREEZE_FRAMES as u64;
+    if musical.saturating_add(tail_limit) > limit {
+        return Err(format!("The song is too long to freeze: a print holds {} minutes at most.", (limit as f64 / rate / 60.0).floor()));
+    }
+    Ok(())
+}
+
 /// The song and the patterns of `plan`, rendered on a private engine.
 fn offline_prints(context: &RenderContext<'_>, plan: &PrintPlan<'_>, written: &mut Vec<String>) -> Result<Prints, String> {
     let rate = RENDER_SAMPLE_RATE as f64;
@@ -576,10 +587,11 @@ fn offline_prints(context: &RenderContext<'_>, plan: &PrintPlan<'_>, written: &m
     let steps = 1 + 2 * plan.used.len();
     let mut offline = offline_engine(context, &print)?;
     let duration = offline.engine().duration(true);
-    if !(duration > 0.0 && duration < 86_400.0) {
-        return Err("The song is empty or too long to freeze.".to_string());
-    }
     let musical_frames = (duration * rate) as u64;
+    if duration.is_nan() || musical_frames == 0 {
+        return Err("The song is empty: there is nothing to freeze.".to_string());
+    }
+    check_print_length(musical_frames, fixed_tail.unwrap_or(maximum_tail), rate)?;
     let song_path = plan.file("song");
     written.push(song_path.to_string_lossy().into_owned());
     let start = whole(&plan.canonical["activePattern"], 0) as i32;

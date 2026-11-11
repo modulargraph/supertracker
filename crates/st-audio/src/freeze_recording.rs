@@ -214,9 +214,7 @@ impl Session<'_> {
         if duration.is_nan() || musical == 0 {
             return Err("The song is empty: there is nothing to record.".to_string());
         }
-        if musical + tail_limit > st_project::validate::MAX_FREEZE_FRAMES as u64 {
-            return Err(format!("The song is too long to freeze: a print holds {} minutes at most.", (st_project::validate::MAX_FREEZE_FRAMES as f64 / self.rate / 60.0).floor()));
-        }
+        crate::freeze::check_print_length(musical, tail_limit, self.rate)?;
         // The render thread takes the take's mixer with its next block.
         let waiting = Instant::now();
         while !live.plan_adopted() {

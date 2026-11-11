@@ -270,6 +270,17 @@ fn the_fingerprint_follows_content_not_paths() {
     let recorded = FreezeRequest::from_payload(&json!({ "track": 1, "method": "record", "patterns": false, "monitor": false })).unwrap();
     assert_eq!(recorded, FreezeRequest { method: FreezeMethod::Record, patterns: false, monitor: false, ..offline(1, None, 10.0) });
     assert!(FreezeRequest::from_payload(&json!({ "track": 0, "method": "bounce" })).unwrap_err().contains("offline or record"));
+    // A song whose print would be longer than a freeze record may say is refused before
+    // anything is rendered: eleven passes of 256 rows at 20 BPM are 35 minutes.
+    let mut long = fixture.project();
+    long["bpm"] = json!(20);
+    long["patterns"][0]["length"] = json!(256);
+    long["sequence"] = json!(vec![0; 11]);
+    fixture.publish(&long);
+    let started = std::time::Instant::now();
+    assert_eq!(refuse(offline(1, None, 10.0)), "The song is too long to freeze: a print holds 34 minutes at most.");
+    assert!(started.elapsed() < std::time::Duration::from_secs(60), "nothing was rendered first");
+    fixture.publish(&fixture.project());
     // Freeze by recording plays in real time: an engine without a device cannot (the takes
     // themselves are in tests/freeze_recording.rs).
     assert!(refuse(FreezeRequest { method: FreezeMethod::Record, ..offline(1, None, 10.0) }).contains("running audio device"));
