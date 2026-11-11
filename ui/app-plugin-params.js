@@ -162,10 +162,6 @@
         if (!old) return;
         const replacement = { ...old, ...snapshot };
         project.audioPlugins[project.audioPlugins.indexOf(old)] = replacement;
-        if (edit.target.kind === 'instrument' && edit.trackObject) {
-          const inst = project.instruments[edit.trackObject.instrument];
-          if (inst?.type === 'au') inst.plugin = { ...inst.plugin, ...replacement };
-        }
         committed = true;
       }, { render: false, nativeCapture: true });
       if (!committed) throw new Error('The control edit is still pending. Finish the current operation and retry.');

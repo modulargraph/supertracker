@@ -14,8 +14,8 @@ function fixture() {
       { id: 1, routingID: 'other', name: 'Shared Juno', instrument: 0, volume: .9, mute: false }
     ],
     instruments: [
-      { id: 0, name: 'Juno patch', type: 'au', plugin: { instanceID: 'instrument', owner: 'track:source', component: 'AU:synth', state: { instanceID: 'instrument', owner: 'track:source' }, nks: { identity: 'instrument', instanceID: 'instrument' } }, rootNote: 60 },
-      { id: 1, name: 'Slice', type: 'sample', samplePath: '/samples/chord.wav', slices: [.2, .4], zones: [{ samplePath: '/samples/zone.wav', lo: 20, hi: 127 }], plugin: { instanceID: 'dormant', owner: 'track:other', nks: { instanceID: 'fx-six' } } },
+      { id: 0, name: 'Juno patch', type: 'au', rootNote: 60 },
+      { id: 1, name: 'Slice', type: 'sample', samplePath: '/samples/chord.wav', slices: [.2, .4], zones: [{ samplePath: '/samples/zone.wav', lo: 20, hi: 127 }] },
       { id: 2, name: 'Unused', type: 'midi', midiChannel: 7 }
     ],
     audioPlugins: [
@@ -83,11 +83,12 @@ test('the plug-ins of the source channel are copied to the new channel with spar
   }
   assert.equal(copied[1].bypass, true); assert.deepEqual(result.project.audioPlugins.slice(0, original.audioPlugins.length), original.audioPlugins);
 });
-test('only known descriptor identity fields change while dormant descriptors and nested vendor metadata remain exact', () => {
-  const original = fixture(), result = build(original), instrument = result.project.instruments[3];
-  assert.equal(instrument.plugin.instanceID, result.instanceMap.instrument); assert.equal(instrument.plugin.owner, `track:${result.project.tracks[2].routingID}`);
-  assert.deepEqual(instrument.plugin.state, original.instruments[0].plugin.state); assert.deepEqual(instrument.plugin.nks, original.instruments[0].plugin.nks);
-  assert.deepEqual(result.project.instruments[4].plugin, original.instruments[1].plugin);
+test('the copied instrument plug-in is a descriptor of the new track: only its identity changes, and no instrument carries a copy', () => {
+  const original = fixture(), result = build(original), source = original.audioPlugins[0];
+  const copied = result.project.audioPlugins.find(plugin => plugin.instanceID === result.instanceMap.instrument);
+  assert.equal(copied.owner, `track:${result.project.tracks[2].routingID}`); assert.equal(copied.kind, 'instrument');
+  assert.deepEqual(copied.state, source.state); assert.deepEqual(copied.nks, source.nks);
+  assert(result.project.instruments.every(instrument => !Object.hasOwn(instrument, 'plugin')));
 });
 test('both step FX remap copied plug-in identities without changing exact addresses or unrelated targets', () => {
   const original = fixture(), result = build(original), steps = result.project.patterns[0].steps[2];
@@ -123,7 +124,7 @@ test('audio clips are independent copies with new IDs and unchanged paths, timin
 test('a frozen input remains unchanged and changing any duplicated nested data cannot alter its source or other tracks', () => {
   const original = fixture(), before = copy(original), result = build(freeze(original)), p = result.project;
   assert.deepEqual(original, before); assert.deepEqual(copy(result), result);
-  p.instruments[3].plugin.state.owner = 'edited'; p.instruments[4].zones[0].lo = 80; p.patterns[0].steps[2][0].chord[0] = 12;
+  p.instruments[3].rootNote = 61; p.instruments[4].zones[0].lo = 80; p.patterns[0].steps[2][0].chord[0] = 12;
   p.patterns[0].automation[7].points[0].value = .1; p.routing.sidechains[4].gain = .5; p.audioClips[2].path = '/edited.wav';
   assert.deepEqual(p.instruments.slice(0, 3), before.instruments); assert.deepEqual(p.patterns[0].steps.slice(0, 2), before.patterns[0].steps); assert.deepEqual(p.patterns[0].automation.slice(0, 7), before.patterns[0].automation);
   assert.deepEqual(p.routing.sidechains.slice(0, 4), before.routing.sidechains); assert.deepEqual(p.audioClips.slice(0, 2), before.audioClips); assert.deepEqual(original, before);
@@ -142,7 +143,7 @@ test('inactive descriptors do not become active plug-ins when the authoritative 
     const project = fixture(); project.routing = {}; project.audioPlugins = []; if (absent) delete project.audioPlugins;
     for (const pattern of project.patterns) pattern.automation = pattern.automation.filter(lane => !String(lane.target).startsWith('send:'));
     const result = build(project);
-    assert.deepEqual(result.instanceMap, {}); assert.deepEqual(result.project.instruments[3].plugin, project.instruments[0].plugin);
+    assert.deepEqual(result.instanceMap, {});
     assert.equal(Object.hasOwn(result.project, 'audioPlugins'), !absent); if (!absent) assert.deepEqual(result.project.audioPlugins, []);
     assert.deepEqual(Object.keys(result.project.routing), ['outputs'], 'collections the table left out are not invented');
   }

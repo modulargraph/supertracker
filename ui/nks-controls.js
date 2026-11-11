@@ -411,7 +411,6 @@
         if (!valid(entry)) return;
         const replacement = { ...old, ...snapshot, nks: old.nks };
         project.audioPlugins[project.audioPlugins.indexOf(old)] = replacement;
-        entry.inst.plugin = { ...entry.inst.plugin, ...replacement };
         entry.plugin = replacement; entries.set(replacement, entry); committed = true;
       }, { render: false, nativeCapture: true });
       if (!committed) throw new Error('The control edit is still pending. Finish the current operation before saving.');
@@ -474,7 +473,6 @@
       }
       const refreshValues = !entry.editing.size && entry.plugin.state !== replacement.state;
       entry.plugin = replacement; entry.identity = identity(replacement); entries.set(replacement, entry);
-      entry.inst.plugin = { ...entry.inst.plugin, ...replacement };
       if (refreshValues) {
         // Discard reads/drafts from the preceding opaque state. Leave the
         // existing DOM clearly loading until the exact instance is read again.

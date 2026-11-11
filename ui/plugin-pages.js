@@ -272,8 +272,6 @@
         if (index < 0) return;
         const old = project.audioPlugins[index], replacement = { ...old, ...snapshot, nks: old.nks, owner:old.owner, kind: old.kind, slot: old.slot };
         project.audioPlugins[index] = replacement;
-        const track = project.tracks?.find((_, i) => trackOwner(project, i) === old.owner);
-        if (old.kind === 'instrument') { const inst = project.instruments?.[track?.instrument]; if (inst?.plugin?.instanceID === entry.id || inst?.type === 'au') inst.plugin = { ...(inst.plugin || {}), ...replacement }; }
         committed = true;
       }, { render: false, nativeCapture: true });
       if (!committed) throw new Error('The control edit is still pending. Finish the current operation and try again.');

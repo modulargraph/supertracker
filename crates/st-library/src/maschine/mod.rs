@@ -360,7 +360,6 @@ impl Importer<'_> {
                 }
                 let descriptor = self.hosted(&state, true, module.enabled, name)?;
                 instrument.insert("type".to_string(), json!("au"));
-                instrument.insert("plugin".to_string(), json!({ "name": state.plugin_name, "id": descriptor["component"], "format": "VST2" }));
                 plugins.push(descriptor);
                 report["status"] = json!("external-state-retained");
             }

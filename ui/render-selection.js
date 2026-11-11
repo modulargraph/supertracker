@@ -59,7 +59,7 @@
   /** The sampler instrument for a rendered file: plays it back unchanged at C-4. */
   function renderedInstrument(base, name, path) {
     return Object.assign(base, {
-      type: 'sample', plugin: null, name, samplePath: path, rootNote: 60, mode: 'oneshot', volume: 1, pan: 0, tune: 0,
+      type: 'sample', name, samplePath: path, rootNote: 60, mode: 'oneshot', volume: 1, pan: 0, tune: 0,
       zones: [], slices: [], slicePoints: [], start: 0, end: 1, loopStart: 0, loopEnd: 1,
       attack: 0, decay: 0, sustain: 1, release: .05, cutoff: 20000, resonance: 0, drive: 0, lfoDepth: 0, lfo2Depth: 0
     });

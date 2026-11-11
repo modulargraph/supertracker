@@ -13,7 +13,7 @@
   const instrumentItems = p => p.instruments.map((x, i) => `<button class="sidebar-item ${i === state.instrument ? 'active' : ''}" id="sidebar-instrument-${i}"`
       + ` data-instrument="${i}" title="Right-click for more" tabindex="${i === state.instrument ? 0 : -1}"><span class="sidebar-number">${String(i).padStart(2, '0')}</span>`
       + `<span class="grow">${esc(x.name)}<div class="sub">${x.type === 'au'
-          ? esc(x.plugin?.format || 'Plug-in')
+          ? esc(window.STRoutingProject.instrumentPlugin(p, i)?.format || 'Plug-in')
           : x.type === 'midi'
           ? 'External MIDI'
           : x.mode === 'wavetable'

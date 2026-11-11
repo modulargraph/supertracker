@@ -53,8 +53,8 @@ fn interface_fields_are_typed() {
             assert!(track.extra.is_empty(), "{name}: track.extra {:?}", keys(&track.extra));
         }
         for instrument in project.instrument_list() {
-            // `plugin: null` (no instrument plug-in) stays as written.
-            assert!(instrument.extra.iter().all(|(key, value)| key == "plugin" && value.is_null()), "{name}: instrument.extra {:?}", keys(&instrument.extra));
+            assert!(instrument.extra.is_empty(), "{name}: instrument.extra {:?}", keys(&instrument.extra));
+            assert!(instrument.plugin.is_none(), "{name}: a played instrument keeps no copy of its plug-in");
         }
         for pattern in project.pattern_list() {
             assert!(pattern.extra.is_empty(), "{name}: pattern.extra {:?}", keys(&pattern.extra));
@@ -139,7 +139,7 @@ fn everything_fixture_reads_every_part_of_the_schema() {
     assert_eq!((pad.mode(), pad.lfo_target(), pad.lfo_shape(), pad.lfo2_target(), pad.voice_mode()), (SamplerMode::Granular, LfoTarget::Position, LfoShape::Random, LfoTarget::GrainSize, VoiceMode::Legato));
     let external = &project.instrument_list()[7];
     assert_eq!((external.kind(), external.midi_channel(), external.midi_program, external.midi_cc_map.as_ref().unwrap()["cutoff"]), (InstrumentKind::Midi, 5, Some(10), 74));
-    assert_eq!(project.instrument_list()[1].plugin.as_ref().unwrap().instance_id.as_deref(), Some("keys-1"));
+    assert_eq!((project.instrument_list()[1].kind(), project.instrument_list()[1].plugin.is_none()), (InstrumentKind::Plugin, true), "its plug-in is the descriptor on the track");
 
     let pattern = &project.pattern_list()[0];
     let columns = pattern.step(1, 0).unwrap();

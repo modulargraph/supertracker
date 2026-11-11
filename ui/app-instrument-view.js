@@ -150,7 +150,7 @@
         + `parameter list for keyboard editing and automation. Browse NKS presets in the Library; supported instruments `
         + `expose their mapped controls below.</p></details></div>` : `<div class="panel wide"><div class="panel-head"><h2>Plug-in instrument</h2>`
         + `<span class="chip teal">${plugin ? 'LOADED' : 'NO INSTRUMENT'}</span></div>`
-        + `<div class="panel-body stack"><div><h2>${esc(plugin?.name || inst.plugin?.name || 'Choose your sound')}</h2>`
+        + `<div class="panel-body stack"><div><h2>${esc(plugin?.name || window.STRoutingProject.instrumentPlugin(state.project, state.instrument)?.name || 'Choose your sound')}</h2>`
         + `<p class="muted" style="margin-top:8px;font-size:12px;line-height:1.6">Each track hosts one instrument plug-in. `
         + `Assign it to a track before entering notes; hosted plug-ins cannot switch per step. Use the native editor `
         + `for the complete interface, or the accessible parameter list for keyboard editing and automation.</p>`

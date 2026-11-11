@@ -6,6 +6,26 @@ const vm = require('node:vm');
 const routing = require('../ui/routing-project.js');
 
 {
+  // A plug-in instrument's descriptor is on the tracks that play it. The instrument keeps it only while none does.
+  const descriptor = (owner, instanceID) => ({ owner, kind: 'instrument', slot: 0, instanceID, component: 'vst3:synth', name: 'Synth', state: 'settings' });
+  const project = { tracks: [{ routingID: 'a', instrument: 1 }, { routingID: 'b', instrument: 1 }, { routingID: 'c', instrument: 0 }],
+    instruments: [{ type: 'sample' }, { type: 'au' }], audioPlugins: [descriptor('track:a', 'one'), descriptor('track:b', 'two'), { owner: 'track:a', kind: 'effect', slot: 0, instanceID: 'fx' }] };
+  assert.equal(routing.instrumentPlugin(project, 1), project.audioPlugins[0]); assert.equal(routing.instrumentPlugin(project, 0), null);
+  // One of two tracks leaves: the other still plays it, nothing is kept.
+  routing.keepInstrumentPlugins(project, [project.tracks[0]]); assert.equal(Object.hasOwn(project.instruments[1], 'plugin'), false);
+  project.tracks[0].instrument = 0; project.audioPlugins.splice(0, 1);
+  assert.equal(routing.instrumentPlugin(project, 1).instanceID, 'two');
+  // The last one leaves: the instrument keeps the descriptor, without the channel and the instance it had.
+  routing.keepInstrumentPlugins(project, [project.tracks[1]]);
+  assert.deepEqual(project.instruments[1].plugin, { kind: 'instrument', slot: 0, component: 'vst3:synth', name: 'Synth', state: 'settings' });
+  project.tracks[1].instrument = 0; project.audioPlugins.splice(0, 1);
+  assert.equal(routing.instrumentPlugin(project, 1), project.instruments[1].plugin);
+  // A sampler track and an instrument that is no plug-in keep nothing.
+  routing.keepInstrumentPlugins(project, [project.tracks[2]]); assert.equal(Object.hasOwn(project.instruments[0], 'plugin'), false);
+  console.log('PASS an instrument keeps its plug-in only while no track plays it');
+}
+
+{
   const project = { tracks: [{ id: 0 }, { id: 0 }, { routingID: 'saved' }] };
   routing.ensureTrackIDs(project, () => 'saved');
   assert.deepEqual(project.tracks.map(track => track.routingID), ['saved-1', 'saved-2', 'saved']);

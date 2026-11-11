@@ -75,7 +75,7 @@ test('model: the applied edit (render only, bounce to a new track, to the first 
   assert.deepEqual(copy(applied), { instrument: 3, track: null });
   const inst = p.instruments[3];
   assert.equal(inst.samplePath, '/r.wav'); assert.equal(inst.mode, 'oneshot'); assert.equal(inst.rootNote, 60);
-  assert.equal(inst.volume, 1); assert.equal(inst.attack, 0); assert.equal(inst.sustain, 1); assert.equal(inst.plugin, null);
+  assert.equal(inst.volume, 1); assert.equal(inst.attack, 0); assert.equal(inst.sustain, 1); assert.equal(Object.hasOwn(inst, 'plugin'), false);
   assert.deepEqual(copy(p.patterns[0].steps), copy(h.ST.state.project.patterns[0].steps), 'a plain render leaves the notes alone');
 
   p = copy(h.ST.state.project);

@@ -107,7 +107,7 @@
       await edit.commit('load sample', p => {
         const inst = p.instruments[id];
         inst.type = 'sample';
-        inst.plugin = null;
+        delete inst.plugin;
         inst.samplePath = result.path || path;
         inst.name = result.name || path.split('/').pop().replace(/\.[^.]+$/, '');
         inst.slicePoints = [];

@@ -68,7 +68,32 @@
     return before - project.audioPlugins.length;
   }
 
-  const api = { ensureTrackIDs, trackOwner, appendTrack, removeTrackReferences, pruneOrphanPlugins };
+  /* The plug-in of a plug-in instrument (type 'au'). It is in one place: the `audioPlugins` entry of kind
+     `instrument` on a track that plays the instrument. Only while no track plays it does the instrument keep
+     the descriptor itself (`instruments[i].plugin`, without owner or instance), so that it can be assigned to
+     a track again with its settings. */
+  const trackInstrumentPlugin = (project, track) => project.audioPlugins.find(plugin => plugin.kind === 'instrument' && plugin.owner === trackOwner(track));
+  function instrumentPlugin(project, index) {
+    for (const track of project.tracks) {
+      const plugin = track.instrument === index && trackInstrumentPlugin(project, track);
+      if (plugin) return plugin;
+    }
+    return project.instruments[index]?.plugin || null;
+  }
+  /* Called before `tracks` stop playing their instruments (reassigned or removed): a plug-in instrument
+     that none of the remaining tracks plays keeps the descriptor of the first of them. */
+  function keepInstrumentPlugins(project, tracks) {
+    const leaving = new Set(tracks);
+    for (const track of tracks) {
+      const index = track.instrument, instrument = project.instruments[index], plugin = trackInstrumentPlugin(project, track);
+      if (!plugin || instrument?.type !== 'au' || instrument.plugin) continue;
+      if (project.tracks.some(other => !leaving.has(other) && other.instrument === index && trackInstrumentPlugin(project, other))) continue;
+      const { owner, instanceID, ...kept } = JSON.parse(JSON.stringify(plugin));
+      instrument.plugin = kept;
+    }
+  }
+
+  const api = { ensureTrackIDs, trackOwner, appendTrack, removeTrackReferences, pruneOrphanPlugins, instrumentPlugin, keepInstrumentPlugins };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.STRoutingProject = api;
 })();

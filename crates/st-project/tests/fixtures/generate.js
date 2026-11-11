@@ -72,7 +72,7 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
     { owner: 'master', kind: 'effect', slot: 15, instanceID: 'limit-1', component: 'stfx:limiter', name: 'Limiter', format: 'Builtin', state: 'AAAA', stateError: 'busy' },
     { owner: 'instrument:2', kind: 'effect', slot: 1, instanceID: 'pad-chorus', component: 'stfx:chorus', name: 'Chorus', format: 'Builtin', state: 'AAAA' }
   ];
-  p.instruments[1].type = 'au'; p.instruments[1].plugin = clone(p.audioPlugins[1]);
+  p.instruments[1].type = 'au';
   // plugin-pages.js
   p.pluginPages = { 'comp-1': { name: 'Squash', pages: [{ name: 'Main', addresses: ['1', '18446744073709551615', null, null, null, null, null, null] }] } };
   // sampler.js: zones and slice markers; modulation.js; granular.js.

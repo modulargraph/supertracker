@@ -360,6 +360,29 @@ fn built_in_effect_components() {
     assert_eq!(project.plugin_list().iter().map(|plugin| plugin.is_builtin()).collect::<Vec<_>>(), [true, false, false]);
 }
 
+/// A plug-in instrument's descriptor is on the tracks that play it; the instrument keeps it only
+/// while none does, and then without an owner or an instance.
+#[test]
+fn the_plug_in_an_instrument_keeps() {
+    let kept = json!({ "kind": "instrument", "slot": 0, "component": "com.vendor.synth", "format": "VST3", "name": "Synth", "state": "AA==" });
+    let unplayed = |p: &mut Value| {
+        p["instruments"] = json!([{ "id": 0, "type": "sample" }, { "id": 1, "type": "au", "plugin": kept.clone() }]);
+    };
+    accepted(unplayed);
+    // Played with its plug-in on the track: the instrument holds no second copy.
+    let played = |p: &mut Value| {
+        unplayed(p);
+        p["tracks"][1]["instrument"] = json!(1);
+        p["audioPlugins"] = json!([{ "owner": "track:t1", "kind": "instrument", "slot": 0, "instanceID": "synth-1", "component": "com.vendor.synth" }]);
+    };
+    assert_eq!(rejected(played), "Instrument 2 keeps a second copy of the plug-in a track plays it with.");
+    accepted(|p| { played(p); p["instruments"][1].as_object_mut().unwrap().remove("plugin"); });
+    assert_eq!(rejected(|p| { unplayed(p); p["instruments"][1]["type"] = json!("sample"); }), "Instrument 2 keeps a plug-in but is not a plug-in instrument.");
+    assert_eq!(rejected(|p| { unplayed(p); p["instruments"][1]["plugin"]["owner"] = json!("track:t0"); }), "Instrument 2: a plug-in kept by its instrument has no owner and no instance.");
+    assert_eq!(rejected(|p| { unplayed(p); p["instruments"][1]["plugin"]["instanceID"] = json!("synth-1"); }), "Instrument 2: a plug-in kept by its instrument has no owner and no instance.");
+    assert_eq!(rejected(|p| { unplayed(p); p["instruments"][1]["plugin"] = Value::Null; }), "Instrument 2: the plug-in it keeps must be an object.");
+}
+
 #[test]
 fn identifiers() {
     assert!(is_identifier("a-b_c.9") && is_identifier(&"x".repeat(128)));

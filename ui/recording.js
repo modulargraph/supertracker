@@ -307,9 +307,9 @@
           instruments: [{ id: index, type: 'sample', name: session.name }]
         }).instruments[0]);
         const instrument = p.instruments[index];
+        delete instrument.plugin;
         Object.assign(instrument, {
           type: 'sample',
-          plugin: null,
           name: session.name,
           samplePath: sample.path,
           rootNote: session.rootNote,
@@ -340,6 +340,7 @@
           for (const pattern of p.patterns || []) { pattern.steps ||= []; pattern.steps.push(Array.from({length:pattern.length},()=>null)); }
           attachedTrack = track;
         } else {
+          window.STRoutingProject.keepInstrumentPlugins(p, [session.trackObject]);
           const channel = `track:${session.trackObject.routingID}`, own = plugin => plugin.owner === channel && plugin.kind === 'instrument';
           const removed = new Set((p.audioPlugins || []).filter(own).map(plugin => plugin.instanceID).filter(Boolean));
           p.audioPlugins = (p.audioPlugins || []).filter(plugin => !own(plugin));

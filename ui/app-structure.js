@@ -93,7 +93,8 @@
         ownsPlugin = x => x.owner === removedOwner,
         // A lane names its channel by owner, or (the engine's own track parameters) its track by index.
         ownsLane = x => x.owner ? x.owner === removedOwner : x.track === index;
-      window.STRoutingProject?.removeTrackReferences(p, p.tracks[index], p.audioPlugins.filter(ownsPlugin));
+      window.STRoutingProject.keepInstrumentPlugins(p, [p.tracks[index]]);
+      window.STRoutingProject.removeTrackReferences(p, p.tracks[index], p.audioPlugins.filter(ownsPlugin));
       p.tracks.splice(index, 1);
       p.audioClips = (p.audioClips || []).filter(x => x.track !== index).map(x => ({
         ...x,

@@ -39,7 +39,8 @@
       const name = result.nks?.name || result.name || options.name || 'Plug-in';
       await edit.commit(`Load ${name}`, candidate => {
         append(candidate);
-        Object.assign(candidate.instruments[destination], { type: 'au', name, plugin: copy(result) });
+        Object.assign(candidate.instruments[destination], { type: 'au', name });
+        delete candidate.instruments[destination].plugin;
         candidate.tracks[targetTrack].instrument = destination;
         if (create) candidate.tracks[targetTrack].name = name;
         candidate.audioPlugins = candidate.audioPlugins.filter(value => !(value.owner === owner && value.kind === 'instrument'));
@@ -71,10 +72,11 @@
       catch (error) { app.toast(error.message || String(error), 'error'); return false; }
       finally { loading = false; }
     }
-    const previousAssignment = track.instrument, hadInstanceID = !!instrument.plugin?.instanceID;
+    const pluginOf = () => window.STRoutingProject.instrumentPlugin(owner, instrumentIndex);
+    const previousAssignment = track.instrument, hadInstanceID = !!pluginOf()?.instanceID;
     const pluginIdentity = plugin => [plugin?.component, plugin?.format, plugin?.bundlePath, hadInstanceID ? plugin?.instanceID : undefined,
         plugin?.nks?.path, plugin?.nks?.identity];
-    const destination = value => JSON.stringify({ ...value, plugin: pluginIdentity(value.plugin) });
+    const destination = value => JSON.stringify({ ...value, plugin: pluginIdentity(pluginOf()) });
     const previousDestination = destination(instrument); let previousInstrument = null;
     const current = () => state.project === owner && owner.tracks[trackIndex] === track &&
       owner.instruments[instrumentIndex] === instrument && track.instrument === previousAssignment &&
@@ -107,12 +109,14 @@
       const applied = app.mutate('load NKS preset', project => {
         let destination = instrumentIndex;
         if (options.newInstrument) {
+          // The track's previous plug-in instrument stays available.
+          window.STRoutingProject.keepInstrumentPlugins(project, [track]);
           destination = project.instruments.length;
           const defaults = app.normalize({ instruments: [{ id: destination, type: 'au', name: result.nks.name || result.name }] }).instruments[0];
           project.instruments.push(defaults);
         }
         const selected = project.instruments[destination];
-        selected.type = 'au'; selected.name = result.nks.name || result.name; selected.plugin = copy(result);
+        selected.type = 'au'; selected.name = result.nks.name || result.name; delete selected.plugin;
         track.instrument = destination;
         if (stillSelected) state.instrument = destination;
         project.audioPlugins = (project.audioPlugins || []).filter(plugin => !ownInstrument(plugin));

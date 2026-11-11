@@ -26,7 +26,7 @@ function harness(){
   function plugin(track=0,component='old'){
     S.state.project.instruments[track].type='au';S.state.project.tracks[track].instrument=track;
     const plugin={owner:own(track),kind:'instrument',slot:0,instanceID:component+track,component,state:'saved state'};
-    S.state.project.instruments[track].plugin=copy(plugin);S.state.project.audioPlugins.push(plugin);native=copy(S.state.project);return plugin;
+    S.state.project.audioPlugins.push(plugin);native=copy(S.state.project);return plugin;
   }
   return {S,window,calls,handlers,element,plugin,own,get native(){return native;},set native(v){native=v;},get toast(){return element('#toast-region').innerHTML;},failPublish:()=>failPublish=true};
 }
@@ -117,7 +117,13 @@ async function run(){
     const h=harness(),target=h.plugin(0,'target');h.plugin(1,'source');h.S.state.instrument=1;
     const capture=h.handlers.get('plugin.state');h.handlers.set('plugin.state',p=>{const v=capture(p);return {...v,state:p.owner===h.own(0)&&v.component==='target'?'live target':v.state};});
     assert.equal(await h.S.perform('assignInstrument'),true);assert.equal(h.S.state.project.tracks[0].instrument,1);assert.equal(h.S.state.project.audioPlugins.find(x=>x.owner===h.own(0)).component,'source');assert.equal(h.S.state.undo[0].project.audioPlugins.find(x=>x.owner===h.own(0)).state,'live target');assert.equal(h.S.state.undo[0].project.tracks[0].instrument,0);
-    console.log('PASS assigning an AU captures the retiring target and commits the replacement with correct Undo');
+    // No track plays the retired instrument now: it keeps its plug-in, as captured, without a channel or an instance.
+    const kept=h.S.state.project.instruments[0].plugin;assert.equal(kept.component,'target');assert.equal(kept.state,'live target');assert.equal(kept.owner,undefined);assert.equal(kept.instanceID,undefined);
+    assert.equal(Object.hasOwn(h.S.state.project.instruments[1],'plugin'),false,'an instrument a track plays keeps no copy');
+    // Assigned again, it is loaded from what it kept, and stops keeping it.
+    h.S.state.instrument=0;assert.equal(await h.S.perform('assignInstrument'),true);const back=h.S.state.project.audioPlugins.find(x=>x.owner===h.own(0));
+    assert.equal(back.component,'target');assert.equal(h.S.state.project.tracks[0].instrument,0);assert.equal(Object.hasOwn(h.S.state.project.instruments[0],'plugin'),false);
+    console.log('PASS assigning an AU captures the retiring target and commits the replacement with correct Undo; the retired instrument keeps its plug-in until it is assigned again');
   }
   {
     const h=harness(),gate=deferred();h.handlers.set('sample.load',()=>gate.promise);const task=h.S.loadSample('/new.wav');await until(()=>h.calls.some(x=>x.command==='sample.load'));

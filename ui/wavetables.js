@@ -121,7 +121,8 @@
     const table = parse(path);
     if (!table) return false;
     return ST().mutate('wavetable table', () => {
-      Object.assign(inst, { type: 'sample', plugin: null, samplePath: path, mode: 'wavetable', start: 0, end: 1, loopStart: 0, loopEnd: 1,
+      delete inst.plugin;
+      Object.assign(inst, { type: 'sample', samplePath: path, mode: 'wavetable', start: 0, end: 1, loopStart: 0, loopEnd: 1,
         slicePoints: [], slices: [], zones: [] });
     });
   }

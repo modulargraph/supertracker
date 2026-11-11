@@ -156,6 +156,7 @@ pub fn validate(project: &Project) -> Result<()> {
         if instrument.extra.contains_key("type") {
             return fail(format!("Instrument {} has an unknown type.", index + 1));
         }
+        validate_kept_plugin(project, tracks, index, instrument)?;
         if instrument.zones.as_ref().is_some_and(|zones| zones.len() > MAX_ZONES) {
             return fail(format!("An instrument can contain up to {MAX_ZONES} sample zones."));
         }
@@ -191,6 +192,31 @@ pub fn validate(project: &Project) -> Result<()> {
         if let Some(input) = &track.audio_input {
             validate_audio_input(input).map_err(|error| Error::invalid(format!("{}: {}", track.display_name(index), error.message())))?;
         }
+    }
+    Ok(())
+}
+
+/// The plug-in of a plug-in instrument is in one place: on the tracks that play it
+/// (`audioPlugins`, kind `instrument`). Only an instrument that no track plays with its plug-in
+/// keeps the descriptor itself (`instruments[i].plugin`), without an owner or an instance.
+fn validate_kept_plugin(project: &Project, tracks: &[Track], index: usize, instrument: &Instrument) -> Result<()> {
+    let name = format!("Instrument {}", index + 1);
+    if instrument.extra.contains_key("plugin") {
+        return fail(format!("{name}: the plug-in it keeps must be an object."));
+    }
+    let Some(kept) = &instrument.plugin else { return Ok(()) };
+    if instrument.kind() != InstrumentKind::Plugin {
+        return fail(format!("{name} keeps a plug-in but is not a plug-in instrument."));
+    }
+    if kept.owner.is_some() || kept.instance_id.is_some() || kept.extra.contains_key("owner") || kept.extra.contains_key("instanceID") {
+        return fail(format!("{name}: a plug-in kept by its instrument has no owner and no instance."));
+    }
+    let played = tracks.iter().any(|track| {
+        track.instrument() == index as i64
+            && track.owner().is_some_and(|owner| project.plugin_list().iter().any(|plugin| plugin.kind() == PluginKind::Instrument && plugin.owner.as_deref() == Some(owner.as_str())))
+    });
+    if played {
+        return fail(format!("{name} keeps a second copy of the plug-in a track plays it with."));
     }
     Ok(())
 }

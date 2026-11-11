@@ -159,7 +159,8 @@ fn opaque_state_and_unknown_fields_are_never_treated_as_media() {
     value["audioPlugins"] = json!([{ "owner": "master", "id": "vendor", "state": state }]);
     value["extensions"] = json!({ "future": { "path": opaque.to_string_lossy(), "samplePath": "unknown.wav" } });
     value["mediaRelinkHistory"] = json!([{ "path": opaque.to_string_lossy(), "samplePath": "historical.wav" }]);
-    value["instruments"][0]["plugin"] = json!({ "state": state });
+    // A plug-in instrument no track plays keeps its descriptor; its state is opaque too.
+    value["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "au", "plugin": { "state": state } }));
     let destination = root.join("Opaque.supertracker");
     let saved = write_project(&Project::from_value(value.clone()).unwrap(), &destination, None, true).unwrap().project.to_value();
     let opened = read_project(&destination).unwrap().to_value();
@@ -167,7 +168,7 @@ fn opaque_state_and_unknown_fields_are_never_treated_as_media() {
         for key in ["audioPlugins", "extensions", "mediaRelinkHistory"] {
             assert_eq!(difference(&candidate[key], &value[key], key), None, "save and open must not reinterpret opaque or historical fields");
         }
-        assert_eq!(difference(&candidate["instruments"][0]["plugin"], &value["instruments"][0]["plugin"], "plugin"), None);
+        assert_eq!(difference(&candidate["instruments"][1]["plugin"], &value["instruments"][1]["plugin"], "plugin"), None);
     }
     assert_eq!(names_in(&root.join("Opaque.media")).len(), 1, "opaque state is not a collection candidate");
 }

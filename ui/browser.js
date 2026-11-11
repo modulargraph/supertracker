@@ -1153,6 +1153,8 @@
         const snapshot = await call('plugin.state', {});
         if (!stillValid()) { await stale(); return; }
         app().mutate(`Load ${plugin.name}`, () => {
+          // The track's previous plug-in instrument stays available when the track moves on to a new one.
+          if (target.kind === 'instrument' && createInstrument) window.STRoutingProject.keepInstrumentPlugins(state.project, [destinationTrack]);
           state.project.audioPlugins = snapshot;
           const track = destinationTrack;
           if (target.kind === 'instrument') {
@@ -1163,7 +1165,7 @@
             const instrument = state.project.instruments[destination];
             if (instrument) {
               instrument.type = 'au';
-              instrument.plugin = result;
+              delete instrument.plugin;
               instrument.name = plugin.name;
               track.instrument = destination;
               if (state.track === trackIndex && state.instrument === instrumentIndex) state.instrument = destination;

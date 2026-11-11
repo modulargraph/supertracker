@@ -50,7 +50,7 @@ function harness() {
     assert.equal(h.calls.filter(call => call.command === 'plugin.parameter').at(-1).payload.value, .42);
     assert.equal(h.calls.filter(call => call.command === 'plugin.state').length, 1);
     assert.deepEqual(h.undo, ['Adjust plug-in control']); assert.equal(h.project.audioPlugins[0].state, 'captured');
-    assert.equal(h.project.instruments[0].plugin.state, 'captured'); assert.equal(h.api.hasPendingEdits, false);
+    assert.equal(h.api.hasPendingEdits, false);
     console.log('PASS edits flush, capture state and record one Undo step before saving');
   }
   {
@@ -73,7 +73,6 @@ function harness() {
     const target=h.calls.filter(x=>x.command==='plugin.parameter').at(-1).payload;
     assert.equal(target.owner,owner);assert.equal(target.instanceID,'kit-fx');assert.equal(target.track,undefined);
     assert.equal(h.project.audioPlugins.find(x=>x.instanceID==='kit-fx').owner,owner);
-    assert.equal(h.project.instruments[0].plugin.state,undefined,'Sound gestures never alter global instrument state');
     console.log('PASS owner-bound Sound/Group pages, NKS mapping, chain navigation and captured gestures');
   }
 })().catch(error => { console.error(error); process.exit(1); });

@@ -28,7 +28,7 @@ function harness() {
   for (const file of ['app.js','nks-controls.js','studio.js']) web.load(context, file);
   const ST=window.ST, p=ST.demoProject();p.audioPlugins=[];p.tracks=p.tracks.slice(0,1);p.tracks[0].instrument=0;p.instruments=p.instruments.slice(0,1);p.instruments[0].type='au';p.patterns[0].automation=[];
   const plugin={owner:'track:'+p.tracks[0].routingID,kind:'instrument',slot:0,instanceID:'fixture-instance',component:'fixture',name:'Original fixture',state:'state:0.25',nks:{name:'Original mapping fixture',path:'/fixture.nksf',pages:[{name:'Colour',parameters:[{slot:0,parameterID:270544960,mapped:true,name:'Brightness',section:'Filter'}]},{name:'Tone alias',parameters:[{slot:0,parameterID:270544960,mapped:true,name:'Sheen',section:'Air'}]}]}};
-  p.audioPlugins=[plugin];p.instruments[0].plugin=copy(plugin);ST.state.project=p;ST.state.view='instrument';ST.state.track=0;ST.state.instrument=0;ST.state.engineReady=true;
+  p.audioPlugins=[plugin];ST.state.project=p;ST.state.view='instrument';ST.state.track=0;ST.state.instrument=0;ST.state.engineReady=true;
   let value=.25;
   const parameters=()=>[{address:'270544960',name:'Generic Macro 7',normalized:value,writable:true,automatable:true}];
   handlers.set('plugin.parameters',parameters);handlers.set('plugin.parameter',payload=>{value=payload.value;return {display:String(value)};});
@@ -50,7 +50,7 @@ const adoptDescriptors=(h,plugins)=>{h.window.STNKSControls.adoptPlugins(plugins
 // A routing change through the real transaction: the group's output moves from "no output" to Master.
 function prepareRoutingChange(h) {
   h.loadModule('routing.js');h.p.tracks[0].routingID='fixture-tone';
-  for(const descriptor of [h.p.audioPlugins[0],h.p.instruments[0].plugin,h.plugin])descriptor.owner='track:fixture-tone';
+  for(const descriptor of [h.p.audioPlugins[0],h.plugin])descriptor.owner='track:fixture-tone';
   h.p.routing={buses:[{id:'repair-group',name:'Repair group',type:'group',volume:1,pan:0,mute:false,solo:false}],outputs:{'track:fixture-tone':'bus:repair-group','bus:repair-group':null},sends:[],sidechains:[]};
   const capabilities={buses:{max:16},sends:{taps:['preFader','postFader'],max:128},sidechains:{taps:['preInserts','preFader','postFader'],max:128,inputs:[]}};
   h.handlers.set('routing.capabilities',()=>capabilities);
@@ -238,7 +238,7 @@ function prepareRoutingChange(h) {
     adoptDescriptors(h,[incoming]);
     assert.equal(h.controls.hasPendingEdits,true,'a late clone of the same native instance must adopt the current gesture');
     assert.equal(await bounded(h.controls.flushEdits()),true);
-    assert.equal(h.value,.82);assert.equal(h.p.audioPlugins[0].state,'state:0.82');assert.equal(h.p.instruments[0].plugin.state,'state:0.82');
+    assert.equal(h.value,.82);assert.equal(h.p.audioPlugins[0].state,'state:0.82');assert.equal(Object.hasOwn(h.p.instruments[0],'plugin'),false);
     assert(h.calls.filter(call=>call.command==='plugin.parameter').every(call=>call.payload.instanceID===h.plugin.instanceID));
     console.log('PASS a late native descriptor notification for the same exact instance preserves and captures the newer mapped-control input');
   }
@@ -372,12 +372,12 @@ function prepareRoutingChange(h) {
     console.log('PASS a canceled preview preserves the queued committed update and its required Undo restore');
   }
   {
-    for(const cachedIdentity of [true,false]){
-      const h=harness();await tick();h.loadModule('nks-loader.js');if(!cachedIdentity)delete h.p.instruments[0].plugin.instanceID;h.edit(.87);
+    {
+      const h=harness();await tick();h.loadModule('nks-loader.js');h.edit(.87);
       h.handlers.set('plugin.loadNKS',()=>({...copy(h.plugin),instanceID:'next-preset-instance',state:'next-preset-state',nks:{...copy(h.plugin.nks),name:'Next preset',path:'/next.nksf'}}));
       assert.equal(await bounded(h.window.STNKS.load('/next.nksf')),true,'settling current mapped edits must not be mistaken for a changed preset destination');
       assert.equal(h.calls.filter(call=>call.command==='plugin.loadNKS').length,1);
-      assert.equal(h.p.audioPlugins[0].instanceID,'next-preset-instance');assert.equal(h.p.instruments[0].plugin.state,'next-preset-state');
+      assert.equal(h.p.audioPlugins[0].instanceID,'next-preset-instance');assert.equal(h.p.audioPlugins[0].state,'next-preset-state');
       assert(h.ST.state.undo.some(item=>item.label==='load NKS preset'&&item.project.audioPlugins[0].state==='state:0.87'),'Undo of a new preset must retain the final edited previous preset');
     }
     console.log('PASS a new NKS preset waits for the previous pending gesture and preserves that final previous patch for Undo');

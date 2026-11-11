@@ -147,12 +147,6 @@
       if (plugin.instanceID) instanceMap.set(plugin.instanceID, copied.instanceID);
       return copied;
     });
-    function remapDescriptor(descriptor) {
-      if (!object(descriptor) || !instanceMap.has(descriptor.instanceID)) return;
-      descriptor.instanceID = instanceMap.get(descriptor.instanceID);
-      descriptor.owner = newOwner;
-    }
-    for (const next of instrumentMap.values()) remapDescriptor(instruments[next].plugin);
     for (const send of sourceSends) { const copied = clone(send); copied.id = fresh(); copied.source = newOwner; sendMap.set(send.id, copied.id); sends.push(copied); }
     for (const route of sourceSidechains) {
       const copied = clone(route); copied.id = fresh(); copied.destination = instanceMap.get(route.destination);

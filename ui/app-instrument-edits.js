@@ -20,7 +20,10 @@
   const instrumentPluginOf = (project, track) => project.audioPlugins.find(x => x.kind === 'instrument'
       && x.owner === trackOwner(project, track));
 
-  function removeInstrumentDescriptors(project, tracks) {
+  /* Takes the instrument plug-in off `tracks` (indices). A plug-in instrument that no other track plays keeps
+     its descriptor (routing-project.js), unless `discard`: the instrument stops being a plug-in. */
+  function removeInstrumentDescriptors(project, tracks, { discard = false } = {}) {
+    if (!discard) window.STRoutingProject.keepInstrumentPlugins(project, tracks.map(track => project.tracks[track]));
     const owners = new Set(tracks.map(track => trackOwner(project, track)));
     const removed = project.audioPlugins.filter(x => x.kind === 'instrument' && owners.has(x.owner));
     const ids = new Set(removed.map(x => x.instanceID).filter(Boolean));
@@ -58,14 +61,18 @@
         && tracks.every((track, i) => project.tracks[track] === targets[i]);
     const signature = () => stableJSON([inst, tracks.map(track => project.tracks[track]),
         tracks.map(track => instrumentPluginOf(project, track)).filter(Boolean)]);
-    const hadPluginInstance = !!inst?.plugin?.instanceID;
-    const preparationSignature = () => stableJSON([{
-      ...inst,
-      plugin: inst?.plugin
-          ? [inst.plugin.component, inst.plugin.format, inst.plugin.bundlePath,
-              hadPluginInstance ? inst.plugin.instanceID : null, inst.plugin.nks?.path, inst.plugin.nks?.identity]
-          : null
-    }, tracks.map(track => project.tracks[track])]);
+    // What the instrument is, without the settings a capture may refresh while the edit is prepared.
+    const pluginOf = () => id === null ? null : window.STRoutingProject.instrumentPlugin(project, id);
+    const hadPluginInstance = !!pluginOf()?.instanceID;
+    const preparationSignature = () => {
+      const plugin = pluginOf();
+      return stableJSON([{
+        ...inst,
+        plugin: plugin
+            ? [plugin.component, plugin.format, plugin.bundlePath, hadPluginInstance ? plugin.instanceID : null, plugin.nks?.path, plugin.nks?.identity]
+            : null
+      }, tracks.map(track => project.tracks[track])]);
+    };
     const preparationBaseline = preparationSignature();
     let baseline = signature();
     const current = () => owned() && signature() === baseline;
@@ -236,8 +243,8 @@
         await edit.commit('instrument type', p => {
           p.instruments[id].type = type;
           if (type !== 'au') {
-            p.instruments[id].plugin = null;
-            removeInstrumentDescriptors(p, tracks);
+            delete p.instruments[id].plugin;
+            removeInstrumentDescriptors(p, tracks, { discard: true });
           }
         });
         return true;
@@ -273,6 +280,7 @@
           return true;
         }
         const sourceTrack = project.tracks.findIndex((t, i) => t.instrument === index && instrumentPluginOf(project, i));
+        // From a track that plays the instrument, or what the instrument kept while none did.
         const source = sourceTrack >= 0 ? instrumentPluginOf(project, sourceTrack) : inst.plugin;
         // runInstrumentEdit secured both lanes and protects their native events.
         // A second unowned source capture could refresh descriptors during publication.
@@ -301,7 +309,7 @@
           removeInstrumentDescriptors(p, [track]);
           p.audioPlugins.push(descriptor);
           p.tracks[track].instrument = index;
-          p.instruments[index].plugin = clone(descriptor);
+          delete p.instruments[index].plugin;
         });
         return true;
       });

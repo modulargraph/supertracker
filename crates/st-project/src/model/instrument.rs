@@ -12,7 +12,7 @@ string_enum! {
         /// The built-in sampler (one-shot, loops, slices, wavetable, granular).
         Sample = "sample",
         /// A plug-in instrument; its descriptor is the `audioPlugins` entry of kind `instrument`
-        /// on each track that plays it. (The name is historical: any plug-in format.)
+        /// on each track that plays it (`Instrument::plugin` while none does). Any plug-in format.
         Plugin = "au",
         /// An external MIDI instrument: notes go to a MIDI output, nothing is rendered.
         Midi = "midi",
@@ -244,8 +244,11 @@ model! {
         "voiceMode" => voice_mode: VoiceMode = VoiceMode::Poly,
         /// Choke group, 0 = none.
         "chokeGroup" => choke_group: i64 = 0,
-        /// The interface's copy of the instrument plug-in's descriptor (name, format, NKS preset);
-        /// `null` for none. The host loads plug-ins from `project.audioPlugins`, never from here.
+        /// The plug-in of a plug-in instrument that no track plays: its descriptor without owner
+        /// and instance, kept so the instrument can be assigned to a track again with its settings.
+        /// Absent otherwise: while a track plays the instrument, the plug-in is that track's
+        /// `audioPlugins` entry of kind `instrument` and nowhere else. The host loads nothing
+        /// from here.
         "plugin" => plugin: PluginDescriptor,
         /// MIDI input device for playing this instrument (0 = any).
         "midiInput" => midi_input: i64 = 0,

@@ -67,7 +67,6 @@
       grainStereo: 0,
       wavetablePosition: 0,
       wavetableFrameSize: 0,
-      plugin: null,
       midiInput: 0,
       midiOutput: 0,
       midiInputChannel: 0,

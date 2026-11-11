@@ -66,7 +66,7 @@ function harness() {
     const h=harness();h.mount();await tick();const input=h.input();input.focus();
     for(const value of [.3,.4,.6]){input.value=String(value);input.fire('input');}
     assert.equal(h.requests.filter(r=>r.command==='plugin.parameter').length,0);h.flush(35);await tick();assert.equal(h.requests.filter(r=>r.command==='plugin.parameter').length,1);assert.equal(h.requests.at(-1).payload.value,.6);assert.equal(h.mutations.length,0);
-    input.fire('change');await tick();assert.equal(h.mutations.length,1);assert.equal(h.mutations[0].before.audioPlugins[0].state,'baseline');assert.equal(h.state.project.audioPlugins[0].state,'saved:0.6');assert.equal(h.state.project.audioPlugins[0].custom,'preserved');assert.deepEqual(h.state.project.audioPlugins[0].nks,h.plugin.nks);assert.equal(h.inst.plugin.state,'saved:0.6');assert.equal(h.document.activeElement,input);assert.equal(h.mutations[0].options.render,false);
+    input.fire('change');await tick();assert.equal(h.mutations.length,1);assert.equal(h.mutations[0].before.audioPlugins[0].state,'baseline');assert.equal(h.state.project.audioPlugins[0].state,'saved:0.6');assert.equal(h.state.project.audioPlugins[0].custom,'preserved');assert.deepEqual(h.state.project.audioPlugins[0].nks,h.plugin.nks);assert.equal(h.document.activeElement,input);assert.equal(h.mutations[0].options.render,false);
     input.value='';input.fire('change');await tick();assert.equal(h.mutations.length,1);assert.equal(input.value,'0.6');
   }
   {
@@ -173,7 +173,7 @@ function harness() {
     const h=harness();h.mount();await tick();const saved=copy(h.state.project);
     h.handlers.set('plugin.state',()=>({component:'vst3:ABCD',state:'stale-fallback-blob',stateError:'The plug-in failed to capture its edited state.'}));
     h.change(.8);await tick();assert.equal(h.mutations.length,0,'stateError must reject a fallback even when its component and opaque state look valid');
-    assert.deepEqual(h.state.project,saved);assert.equal(h.inst.plugin.state,'baseline');assert(h.notices.some(notice=>notice.message==='The plug-in failed to capture its edited state.'));
+    assert.deepEqual(h.state.project,saved);assert(h.notices.some(notice=>notice.message==='The plug-in failed to capture its edited state.'));
     h.handlers.delete('plugin.state');h.change(.6);await tick();assert.equal(h.mutations.length,1,'snapshot failure must not block a later successful edit');assert.equal(h.state.project.audioPlugins[0].state,'saved:0.6');
   }
   {

@@ -20,6 +20,7 @@
   'use strict';
   const S = () => window.ST, st = () => S().state;
   const { clone } = window.STUtil;
+  const instrumentPlugin = (p, index) => window.STRoutingProject.instrumentPlugin(p, index);
   const clampNum = (n, a, b) => Math.max(a, Math.min(b, n));
   const round = (value, digits = 4) => Number(Number(value).toFixed(digits));
   const isInt = value => Number.isInteger(value);
@@ -538,14 +539,14 @@
         index: i, name: x.name, type: x.type === 'au' ? 'plugin' : x.type,
         ...(x.type === 'sample' ? { sample: x.samplePath || null, mode: x.mode } : {}),
         ...(x.type === 'sample' && x.mode === 'wavetable' ? { wavetablePosition: formatValue('pct', x.wavetablePosition ?? 0) } : {}),
-        ...(x.type === 'au' && x.plugin ? {
+        ...(x.type === 'au' && instrumentPlugin(p, i) ? (plugin => ({
           plugin: {
-            name: x.plugin.name,
-            format: x.plugin.format,
-            manufacturer: x.plugin.manufacturer,
-            ...(x.plugin.nks ? { nks: x.plugin.nks.name || x.plugin.nks.path } : {})
+            name: plugin.name,
+            format: plugin.format,
+            manufacturer: plugin.manufacturer,
+            ...(plugin.nks ? { nks: plugin.nks.name || plugin.nks.path } : {})
           }
-        } : {}),
+        }))(instrumentPlugin(p, i)) : {}),
         usedBy: p.tracks.map((t, ti) => (t.instrument ?? 0) === i ? ti : -1).filter(ti => ti >= 0)
       })),
       patterns: p.patterns.map((pat, i) => ({
@@ -1115,13 +1116,13 @@
       type: inst.type === 'au' ? 'plugin' : inst.type,
       usedBy: p.tracks.map((t, ti) => (t.instrument ?? 0) === i ? ti : -1).filter(ti => ti >= 0),
       ...(inst.type === 'sample' ? { sample: inst.samplePath || null } : {}),
-      ...(inst.type === 'au' && inst.plugin ? {
-        plugin: {
-          name: inst.plugin.name,
-          format: inst.plugin.format,
-          manufacturer: inst.plugin.manufacturer,
-          nks: inst.plugin.nks ? { name: inst.plugin.nks.name, path: inst.plugin.nks.path } : null
-        },
+      ...(inst.type === 'au' && instrumentPlugin(p, i) ? {
+        plugin: (plugin => ({
+          name: plugin.name,
+          format: plugin.format,
+          manufacturer: plugin.manufacturer,
+          nks: plugin.nks ? { name: plugin.nks.name, path: plugin.nks.path } : null
+        }))(instrumentPlugin(p, i)),
         hint: 'Use pluginParameters/setPluginParameters on the track that plays it.'
       } : {}),
       params
@@ -1208,7 +1209,7 @@
             && params.type !== inst.type, instrument: describeInstrument(project(), i) };
     const result = commit(params.label
         || `edit instrument ${current.name}${Object.keys(plan).length ? ' (' + Object.keys(plan).join(', ') + ')' : ''}`, target => {
-      const x = target.instruments[i]; if (name) x.name = name; if (params.type && x.type !== 'au') { x.type = params.type; x.plugin = null; }
+      const x = target.instruments[i]; if (name) x.name = name; if (params.type && x.type !== 'au') x.type = params.type;
       applyParams(x, plan); return {};
     });
     return { ...result, instrument: describeInstrument(project(), i) };
@@ -1362,6 +1363,8 @@
     }
     let instrumentIndex = null;
     const out = commit(`load ${plugin.name} on ${trackObject.name}`, project => {
+      // The track's previous plug-in instrument stays available when the track moves on to a new one.
+      if (kind === 'instrument' && instrument === 'new') window.STRoutingProject.keepInstrumentPlugins(project, [project.tracks[track]]);
       project.audioPlugins = clone(snapshot);
       // Never record a load the project does not hold.
       if (!attached([pluginOn(project, track, kind, slot)].filter(Boolean))) fail(`${plugin.name} was not attached to track ${track}.`);
@@ -1374,7 +1377,7 @@
         }
         const inst = project.instruments[instrumentIndex];
         inst.type = 'au';
-        inst.plugin = clone(result);
+        delete inst.plugin;
         inst.name = plugin.name;
         project.tracks[track].instrument = instrumentIndex;
       }
@@ -1484,10 +1487,6 @@
             || old.instanceID !== edit.target.instanceID
             || old.component !== edit.component) fail('The plug-in changed before capture completed.');
         const replacement = { ...old, ...clone(snapshot) }; project.audioPlugins[project.audioPlugins.indexOf(old)] = replacement;
-        if (edit.target.kind === 'instrument') {
-          const inst = project.instruments[project.tracks[edit.ref.channel.track].instrument ?? 0];
-          if (inst?.type === 'au') inst.plugin = { ...inst.plugin, ...replacement };
-        }
         return {};
       }, { nativeCapture: true, render: false });
       parameterEdits.delete(edit); edit.result = result; edit.error = null;

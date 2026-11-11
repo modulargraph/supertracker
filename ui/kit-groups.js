@@ -57,7 +57,6 @@
       const instrumentIndex = q.instruments.length,
         instrument = clone(source.instruments[member.instrument] || defaultInstrument(instrumentIndex, member.name));
       instrument.id = instrumentIndex;
-      delete instrument.plugin;
       q.instruments.push(instrument);
       // The pad's instrument takes its insert chain (instrument-effects.js).
       owners.add(`instrument:${member.instrument}`); owner.set(`instrument:${member.instrument}`, `instrument:${instrumentIndex}`);
@@ -72,11 +71,6 @@
       const copy = { ...clone(plugin), owner: owner.get(plugin.owner), instanceID: fresh('plugin:' + plugin.instanceID) };
       instances.set(plugin.instanceID, copy.instanceID);
       q.audioPlugins.push(copy);
-      const track = copy.kind === 'instrument' && q.tracks.find(t => trackOwner(t) === copy.owner);
-      if (track) {
-        const instrument = q.instruments[track.instrument];
-        if (instrument?.type === 'au') instrument.plugin = clone(copy);
-      }
     }
     const r = q.routing;
     for (const bus of source.routing?.buses || []) {
@@ -140,7 +134,7 @@
       removeTrackPlugins(q, track);
       const instrumentIndex = track.instrument;
       const instrument = clone(source.instruments[member.instrument] || defaultInstrument(instrumentIndex, member.name));
-      instrument.id = instrumentIndex; delete instrument.plugin;
+      instrument.id = instrumentIndex;
       q.instruments[instrumentIndex] = instrument;
       for (const key of ['name', 'volume', 'pan', 'delaySend', 'reverbSend', 'chokeGroup', 'voiceMode', 'padNote']) {
         if (member[key] === undefined) delete track[key]; else track[key] = clone(member[key]);
@@ -150,7 +144,6 @@
         if (plugin.owner !== trackOwner(member)) continue;
         const copy = { ...clone(plugin), owner: trackOwner(track), instanceID: fresh('plugin:' + plugin.instanceID) };
         q.audioPlugins.push(copy);
-        if (copy.kind === 'instrument' && instrument.type === 'au') instrument.plugin = clone(copy);
       }
     };
     for (const index of existing) {
@@ -314,7 +307,8 @@
       for (const index of [...G().members(q, groupID)].reverse()) {
         // A lane names its channel by owner, or (the engine's own track parameters) its track by index.
         const track = q.tracks[index], owner = trackOwner(track), belongs = x => x.owner ? x.owner === owner : x.track === index;
-        window.STRoutingProject?.removeTrackReferences(q, track, q.audioPlugins.filter(x => x.owner === owner));
+        window.STRoutingProject.keepInstrumentPlugins(q, [track]);
+        window.STRoutingProject.removeTrackReferences(q, track, q.audioPlugins.filter(x => x.owner === owner));
         q.tracks.splice(index, 1);
         q.audioPlugins = q.audioPlugins.filter(x => x.owner !== owner);
         q.audioClips = (q.audioClips || []).filter(x => x.track !== index).map(x => ({ ...x, track: x.track > index ? x.track - 1 : x.track }));
