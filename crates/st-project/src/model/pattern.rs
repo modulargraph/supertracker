@@ -9,7 +9,13 @@ pub const NOTE_CUT: i64 = -2;
 /// The value a step without a `note` reads as: no note (an effect-only step).
 pub const NOTE_NONE: i64 = -3;
 /// A step's gate, in rows, when it has no `gate` key (`DEFAULT_GATE` in `app-project-model.js`).
-/// A note without a gate is written with `gate: 0`.
+///
+/// The two note places differ on purpose in what a missing key means, and both sides agree on
+/// it: a step (note column 0) without `gate` is this long, while a cell of an extra note column
+/// without `gate` has none ([`ColumnCell`]: 0). The interface never leaves the key out of a
+/// note it writes: a note without a gate is written `gate: 0` in either place, and the engine
+/// then lets it sound until the next note, an OFF or a CUT in its column, or the end of a
+/// one-shot sample. So the default only decides how a hand-written step without the key plays.
 pub const DEFAULT_GATE: f64 = 0.8;
 /// The longest gate, in rows.
 pub const MAX_GATE: f64 = 256.0;
@@ -97,7 +103,7 @@ model! {
         "instrument" => instrument: i64 = -1,
         /// Velocity 0..127.
         "velocity" => velocity: i64 = 100,
-        /// Length in rows; 0 or absent: no gate.
+        /// Length in rows; 0 or absent: no gate (see [`DEFAULT_GATE`] for why a step differs).
         "gate" => gate: f64 = 0.0,
     }
 }

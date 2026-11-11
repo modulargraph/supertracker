@@ -80,6 +80,7 @@
     if (!column) return step;
     const cell = noteCell(step, column);
     if (!cell) return null;
+    // A cell without a gate key has no gate (a step without one is DEFAULT_GATE rows long: app-project-model.js).
     const out = { ...cell, gate: cell.gate ?? 0 };
     for (const key of ['fx1', 'fx2']) if (step?.[key]) out[key] = step[key];
     return out;

@@ -293,8 +293,12 @@
   }
 
   /* Note length. A step's gate is its length in pattern rows; gate 0 is no gate: tracker semantics, the note
-     sounds until the next note on its track, an OFF/CUT or the end of a one-shot sample. New notes get no gate.
-     A step without a gate key is DEFAULT_GATE rows long. */
+     sounds until the next note on its track, an OFF/CUT or the end of a one-shot sample. New notes get no gate:
+     every note this page writes carries `gate`, 0 or a length.
+     A step without a gate key is DEFAULT_GATE rows long, while a cell of an extra note column without one has
+     no gate (app-note-columns.js). The difference is on purpose and the host reads both the same way
+     (DEFAULT_GATE and ColumnCell in crates/st-project/src/model/pattern.rs); it only decides how a hand-written
+     step plays. */
   const DEFAULT_GATE = .8;
   function stepGate(step) {
     if (!step || step.note < 0) return null;
