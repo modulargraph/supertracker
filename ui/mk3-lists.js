@@ -77,7 +77,7 @@
     const track = st().track, pat = pattern(), patternId = pat.id, targets = rows || [st().row];
     const first = targets[0];
     const read = field => p => {
-      const s = p.patterns.find(item => item.id === patternId)?.steps?.[track]?.[first];
+      const s = p.patterns.find(item => item.id === patternId)?.steps[track]?.[first];
       return s ? s[field] : null;
     };
     const writeAll = (field, transform) => (p, value) => {
@@ -129,7 +129,7 @@
     knobs.push(s ? numKnob({
       key: key('gate'),
       label: 'Gate',
-      read: p => S().stepGate(p.patterns.find(item => item.id === patternId)?.steps?.[track]?.[first]) ?? NO_GATE,
+      read: p => S().stepGate(p.patterns.find(item => item.id === patternId)?.steps[track]?.[first]) ?? NO_GATE,
       write: writeAll('gate', (step, v) => {
         step.gate = v <= NO_GATE ? 0 : v;
       }),
@@ -149,7 +149,7 @@
       fxKey = 'fx' + column;
     const s = stepAt(track, first, pat), fx = s?.[fxKey];
     const types = ['', ...Object.keys(S().FX)];
-    const typeKnob = enumKnob({ key: `fxtype:${patternId}:${track}:${targets.join(',')}:${column}`, label: `FX${column} type`, read: p => p.patterns.find(item => item.id === patternId)?.steps?.[track]?.[first]?.[fxKey]?.type
+    const typeKnob = enumKnob({ key: `fxtype:${patternId}:${track}:${targets.join(',')}:${column}`, label: `FX${column} type`, read: p => p.patterns.find(item => item.id === patternId)?.steps[track]?.[first]?.[fxKey]?.type
         || '', options: types.map(type => [type, type ? FX_NAMES[type] || type : 'None']), detent: .06,
       write: (p, type) => { const target = p.patterns.find(item => item.id === patternId); if (!target) return; for (const row of targets) { let step = target.steps[track][row]; if (!type) { if (step) { delete step[fxKey]; if (step.note === -3
           && !step.fx1
@@ -161,7 +161,7 @@
     let valueKnob = null;
     if (fx && fx.type !== 'plugin') {
       const [min, max, step] = S().FX[fx.type] || [0, 1, .01];
-      const read = p => Number(p.patterns.find(item => item.id === patternId)?.steps?.[track]?.[first]?.[fxKey]?.value ?? min);
+      const read = p => Number(p.patterns.find(item => item.id === patternId)?.steps[track]?.[first]?.[fxKey]?.value ?? min);
       const write = (p, v) => {
         const target = p.patterns.find(item => item.id === patternId);
         for (const row of targets) {
@@ -183,9 +183,9 @@
         key: `fxval:${patternId}:${track}:${first}:${column}`,
         label: `FX${column} PLG`,
         name: fx.name || 'Plug-in parameter',
-        read: p => Number(p.patterns.find(item => item.id === patternId)?.steps?.[track]?.[first]?.[fxKey]?.value ?? 0),
+        read: p => Number(p.patterns.find(item => item.id === patternId)?.steps[track]?.[first]?.[fxKey]?.value ?? 0),
         write: (p, v) => {
-          const st_ = p.patterns.find(item => item.id === patternId)?.steps?.[track]?.[first];
+          const st_ = p.patterns.find(item => item.id === patternId)?.steps[track]?.[first];
           if (st_?.[fxKey]) st_[fxKey].value = v;
         },
         min: 0,
@@ -201,7 +201,7 @@
     const [min, max, step] = S().FX[type];
     const find = s => ['fx1', 'fx2'].find(key => s?.[key]?.type === type);
     const read = p => {
-      const s = p.patterns.find(item => item.id === patternId)?.steps?.[track]?.[row];
+      const s = p.patterns.find(item => item.id === patternId)?.steps[track]?.[row];
       const key = find(s);
       return key ? s[key].value : null;
     };
@@ -245,7 +245,7 @@
   }
   function addStep(track, row, note) {
     const inst = P().tracks[track]?.instrument ?? 0;
-    const steps = pattern().steps[track] || [],
+    const steps = pattern().steps[track],
       previous = [...steps.slice(0, row)].reverse().find(s => s?.note >= 0) || steps.find(s => s?.note >= 0);
     const padNote = Number.isInteger(P().tracks[track]?.padNote) ? P().tracks[track].padNote : null;
     const value = note ?? M.lastNote.get(track) ?? previous?.note ?? padNote ?? P().instruments[inst]?.rootNote ?? 60;

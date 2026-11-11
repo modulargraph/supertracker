@@ -159,10 +159,10 @@
     if (member === undefined) return false;
     const track = state.project.tracks[member];
     state.track = member;
-    state.instrument = track.instrument || 0;
+    state.instrument = track.instrument;
     state.column = 0;
     state.noteColumn = 0;
-    app.noteOn(Number.isInteger(track.padNote) ? track.padNote : 60, key, options.record !== false, track.instrument || 0,
+    app.noteOn(Number.isInteger(track.padNote) ? track.padNote : 60, key, options.record !== false, track.instrument,
         member, false, options.velocity ?? state.keyVelocity, options.repeatable !== false);
     if (!state.playing) refresh();
     return true;
@@ -201,7 +201,7 @@
       const members = G().members(state.project, head.dataset.groupId);
       if (!members.length || members.includes(state.track)) return;
       state.track = members[0];
-      state.instrument = state.project.tracks[state.track].instrument || 0;
+      state.instrument = state.project.tracks[state.track].instrument;
       state.selection = null;
       refresh();
     };
@@ -214,7 +214,7 @@
       if (Number.isInteger(row)) state.row = row;
       if (group) setCollapsed(group.id, false, { track, refresh: false });
       state.track = track;
-      state.instrument = state.project.tracks[track].instrument || 0;
+      state.instrument = state.project.tracks[track].instrument;
       refresh();
       $('#tracker')?.focus({ preventScroll: true });
     };

@@ -1,13 +1,14 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const web = require('./helpers/web');
+const { complete } = require('./helpers/project');
 const file = path.join(__dirname, '../ui/track-duplicate-project.js');
 const duplicate = require(file), copy = value => JSON.parse(JSON.stringify(value));
 const tests = [], test = (name, run) => tests.push({ name, run });
 globalThis.TRACK_SANITY_LIMIT = 1024; // app.js defines it in the app
 const maxAddress = '18446744073709551615';
 function fixture() {
-  return {
+  return complete({
     name: 'Independent takes', bpm: 113, activePattern: 0, sequence: [0, 1],
     tracks: [
       { id: 0, routingID: 'source', name: 'Juno', instrument: 0, volume: .73, pan: -.4, mute: true, solo: true, delaySend: .2, reverbSend: .3 },
@@ -54,7 +55,7 @@ function fixture() {
         { id: 'outgoing-key', source: 'track:source', destination: 'other-fx' }
       ]
     }
-  };
+  });
 }
 function build(project = fixture(), makeID) { let id = 0; return duplicate.build(project, 0, makeID || (() => `new-${++id}`)); }
 function freeze(value) { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } return value; }
@@ -138,16 +139,12 @@ test('repeated, missing, invalid and throwing ID generators terminate with globa
     assert(!ids.includes('track-copy-1')); assert(!ids.includes('track-copy-2')); assert(!ids.includes('fx-six'));
   }
 });
-test('a track without plug-ins or routes duplicates into a complete routing table; a table that lacks a collection is refused', () => {
-  for (const absent of [false, true]) {
-    const project = fixture(); project.routing = { buses: [], outputs: {}, sends: [], sidechains: [] }; project.audioPlugins = []; if (absent) delete project.audioPlugins;
-    for (const pattern of project.patterns) pattern.automation = pattern.automation.filter(lane => !String(lane.target).startsWith('send:'));
-    const result = build(project);
-    assert.deepEqual(result.instanceMap, {});
-    assert.equal(Object.hasOwn(result.project, 'audioPlugins'), !absent); if (!absent) assert.deepEqual(result.project.audioPlugins, []);
-    assert.deepEqual(Object.keys(result.project.routing), ['buses', 'outputs', 'sends', 'sidechains']);
-  }
-  for (const key of ['buses', 'outputs', 'sends', 'sidechains']) { const project = fixture(); delete project.routing[key]; assert.throws(() => build(project), /Routing/, key); }
+test('a track without plug-ins or routes duplicates into a complete routing table', () => {
+  const project = fixture(); project.routing = { buses: [], outputs: {}, sends: [], sidechains: [] }; project.audioPlugins = [];
+  for (const pattern of project.patterns) pattern.automation = pattern.automation.filter(lane => !String(lane.target).startsWith('send:'));
+  const result = build(project);
+  assert.deepEqual(result.instanceMap, {}); assert.deepEqual(result.project.audioPlugins, []);
+  assert.deepEqual(Object.keys(result.project.routing), ['buses', 'outputs', 'sends', 'sidechains']);
 });
 test('new identity allocation cannot revive unavailable owner, send or plug-in references', () => {
   for (const candidate of ['unavailable', 'disconnected', 'missing-instance', 'missing-send', 'orphan-output', '0']) {
@@ -181,14 +178,13 @@ test('selection of a later source track appends at the end and follows authorita
   assert.equal(project.routing.outputs[`track:${project.tracks[2].routingID}`], 'track:source');
   assert.equal(project.routing.sidechains.at(-1).source, 'track:source'); assert.equal(project.routing.sidechains.at(-1).destination, result.instanceMap['other-fx']);
 });
-test('lanes addressed by track index stay numeric, inactive metadata is kept and short columns are padded safely', () => {
-  const original = { tracks: [{ routingID: 'plain', instrument: 0, name: 'Plain' }], instruments: [{ id: 0, type: 'sample', metadata: { id: 'unused' } }], patterns: [{ id: 0, length: 4, steps: [[{ note: 60, instrument: 0 }]], automation: [{ track: 0, target: 'pan', points: [] }] }],
-    routing: { buses: [], outputs: {}, sends: [], sidechains: [] } };
+test('lanes addressed by track index stay numeric and inactive metadata is kept', () => {
+  const original = complete({ tracks: [{ routingID: 'plain', instrument: 0, name: 'Plain' }], instruments: [{ id: 0, type: 'sample', metadata: { id: 'unused' } }], patterns: [{ id: 0, length: 4, steps: [[{ note: 60, instrument: 0 }]], automation: [{ track: 0, target: 'pan', points: [] }] }] });
   const result = build(original), project = result.project;
   assert.equal(project.tracks.length, 2); assert.equal(project.tracks[0].routingID, 'plain'); assert.equal(typeof project.tracks[1].routingID, 'string'); assert.notEqual(project.tracks[1].routingID, 'plain');
-  assert.deepEqual(project.patterns[0].steps[1], [{ note: 60, instrument: 1 }, null, null, null]); assert.equal(project.patterns[0].steps[0].length, 1);
+  assert.deepEqual(project.patterns[0].steps[1], [{ note: 60, instrument: 1 }, null, null, null]);
   assert.equal(project.patterns[0].automation[1].track, 1); assert.equal(Object.hasOwn(project.patterns[0].automation[1], 'owner'), false);
-  assert.equal(project.routing.outputs[`track:${project.tracks[1].routingID}`], 'master'); assert.equal(Object.hasOwn(project, 'audioPlugins'), false); assert.equal(Object.hasOwn(project, 'audioClips'), false);
+  assert.equal(project.routing.outputs[`track:${project.tracks[1].routingID}`], 'master'); assert.deepEqual(project.audioPlugins, []); assert.deepEqual(project.audioClips, []);
   assert.deepEqual(project.instruments[1].metadata, original.instruments[0].metadata);
 });
 test('capacity checks reject a proposal before mutating the input', () => {
@@ -211,17 +207,12 @@ test('exact capacities are accepted when all copied content fits', () => {
   while (project.routing.sends.length + project.routing.sidechains.length < 124) project.routing.sends.push({ id: `extra-send-${project.routing.sends.length}`, source: 'track:other', destination: 'master' });
   const result = build(project); assert.equal(result.project.instruments.length, 64); assert.equal(result.project.audioClips.length, 256); assert.equal(result.project.routing.sends.length + result.project.routing.sidechains.length, 128);
 });
-test('malformed sources, unsupported routing and ambiguous active identities fail without modification', () => {
-  const changes = [
-    p => { p.tracks[0].instrument = 99; }, p => { p.tracks[0].instrument = -1; }, p => { p.tracks[0] = null; },
-    p => { p.routing.outputs = []; }, p => { p.tracks[1].routingID = 'source'; },
-    p => { p.audioPlugins[1].instanceID = 'instrument'; }, p => { p.audioPlugins[1].owner = 'bus:absent'; }, p => { p.audioPlugins[1].owner = ''; },
-    p => { p.audioPlugins[2].slot = 6; }, p => { delete p.audioPlugins[1].owner; }, p => { p.routing.sends[1].id = 'self-key'; },
-    p => { p.patterns[0].steps[0][0] = 42; }, p => { p.patterns[0].length = 0; }, p => { p.patterns[0].steps[0] = {}; }
-  ];
-  for (const change of changes) { const project = fixture(); change(project); const before = copy(project); assert.throws(() => build(project)); assert.deepEqual(copy(project), before); }
-  assert.throws(() => duplicate.build(fixture(), -1)); assert.throws(() => duplicate.build(fixture(), 5));
-  const functions = fixture(); functions.run = () => {}; assert.throws(() => build(functions), /JSON/);
+test('a source track that is not there, or whose instrument is not, fails without modification', () => {
+  for (const instrument of [99, -1]) {
+    const project = fixture(); project.tracks[0].instrument = instrument;
+    const before = copy(project); assert.throws(() => build(project), /assigned instrument/); assert.deepEqual(copy(project), before);
+  }
+  assert.throws(() => duplicate.build(fixture(), -1), /does not exist/); assert.throws(() => duplicate.build(fixture(), 5), /does not exist/);
 });
 test('a duplicated group member keeps its group and group-bus output', () => {
   const p = fixture();

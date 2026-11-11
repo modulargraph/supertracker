@@ -704,13 +704,13 @@
   function renderDestination(item) {
     const S=app();
     const ready=!!item&&resultsCurrent()&&item.available!==false&&!local.busy,isNKS=item?.kind==='nks';
-    const title=S.state.project?.instruments?.[S.state.instrument]?.name||'Instrument';
+    const title=S.state.project?.instruments[S.state.instrument]?.name||'Instrument';
     return `<section class="browser-destination" aria-label="Load destination">
       <label class="browser-destination-label" for="browser-destination-instrument">Instrument to replace (optional)</label>`
       + `<select id="browser-destination-instrument">${(S.state.project?.instruments||[]).map((inst,index)=>`<option value="${index}" ${index===S.state.instrument?'selected':''}>${String(index).padStart(2,'0')} · ${html(inst.name)}</option>`).join('')}</select>
       <p class="browser-destination-name" title="${html(title)}">${html(title)}</p>
       <button class="btn primary" id="browser-load" ${ready
-          &&(isNKS||(S.state.project?.tracks?.length||0)<(window.TRACK_SANITY_LIMIT??Infinity))
+          &&(isNKS||(S.state.project?.tracks.length||0)<(window.TRACK_SANITY_LIMIT??Infinity))
           ?''
           :'disabled'}>${local.busy?'Loading…':isNKS?'Load preset':'Add sample on new track'}`
           + ` <kbd>↵</kbd></button>
@@ -813,7 +813,7 @@
   function effectSlots() {
     const state = app().state;
     const effects = [];
-    const owner = `track:${state.project?.tracks?.[state.track]?.routingID}`;
+    const owner = `track:${state.project?.tracks[state.track]?.routingID}`;
     (state.project?.audioPlugins || []).filter(value => value.owner === owner && value.kind === 'effect').forEach(value => { effects[value.slot] = value; });
     return effects;
   }
@@ -842,7 +842,7 @@
     const plugins = filteredPlugins();
     local.pluginSelected = Math.max(0, Math.min(local.pluginSelected, plugins.length - 1));
     const plugin = plugins[local.pluginSelected];
-    const track = app().state.project?.tracks?.[app().state.track];
+    const track = app().state.project?.tracks[app().state.track];
     const ownerName = track?.name || `Track ${Number(app().state.track || 0) + 1}`;
     const effects = effectSlots();
     const slots = Math.min(INSERT_SLOTS, Math.max(1, effects.length + 1));
@@ -875,7 +875,7 @@
               (_, index) => `<option value="${index}" ${local.slot === index ? 'selected' : ''}>${index + 1} · ${html(effects[index]?.name || 'New effect')}</option>`).join('')}</select>`
           + `</label>` : ''}<button `
           + `class="btn primary" id="browser-plugin-load" ${local.busy
-              || (local.pluginKind === 'instrument' && (app().state.project?.tracks?.length||0)>=(window.TRACK_SANITY_LIMIT??Infinity))
+              || (local.pluginKind === 'instrument' && (app().state.project?.tracks.length||0)>=(window.TRACK_SANITY_LIMIT??Infinity))
               ? 'disabled'
               : ''}>${local.busy
                   ? 'Loading plug-in…'
@@ -1054,13 +1054,13 @@
       instrument: app().state.instrument
     };
     // A deletion can leave the cursor on the same index, now occupied by another destination.
-    const trackObject = destination.project?.tracks?.[destination.track],
-      instrumentObject = destination.project?.instruments?.[destination.instrument];
+    const trackObject = destination.project?.tracks[destination.track],
+      instrumentObject = destination.project?.instruments[destination.instrument];
     const destinationCurrent = () => app().state.project === destination.project
         && app().state.track === destination.track
         && app().state.instrument === destination.instrument
-        && destination.project?.tracks?.[destination.track] === trackObject
-        && destination.project?.instruments?.[destination.instrument] === instrumentObject;
+        && destination.project?.tracks[destination.track] === trackObject
+        && destination.project?.instruments[destination.instrument] === instrumentObject;
     local.busy = true;
     try {
       if (item.kind === 'nks') {
@@ -1321,7 +1321,7 @@
     document.querySelectorAll('[data-browser-tag]').forEach(button => button.addEventListener('click', () => {
       toggleFilter('tags', button.dataset.browserTag);
     }));
-    const destinationProject=app().state.project,instruments=destinationProject?.instruments?.slice()||[];
+    const destinationProject=app().state.project,instruments=destinationProject?.instruments.slice()||[];
     on('browser-destination-instrument','change',event=>{
       const index=Number(event.target.value);
       if(app().state.project!==destinationProject

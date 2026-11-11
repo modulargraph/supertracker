@@ -201,7 +201,7 @@
             : 'Return', min: 0, max: 2, step: .01, value: number(channel.entity.volume, 1), format: db, available: true },
         { target: 'pan', name: 'Channel pan', group: 'Mixer', min: -1, max: 1, step: .01, value: number(channel.entity.pan), format: pan, available: true }];
     const t = project().tracks[track] || {};
-    const inst = project().instruments[t.instrument || 0] || {};
+    const inst = project().instruments[t.instrument] || {};
     const targets = [
       { target: 'volume', name: 'Track volume', group: 'Mixer', min: 0, max: 1.5, step: .01, value: number(t.volume, .8), format: db },
       { target: 'pan', name: 'Track pan', group: 'Mixer', min: -1, max: 1, step: .01, value: number(t.pan), format: pan },
@@ -1530,7 +1530,7 @@
     if (!settleAutomationEdit()) return;
     const lane = selectedLane(); if (!lane) return;
     const info = targetInfo(lane), points = ordered(lane.points), occupied = new Set(points.map(p => p.row));
-    let row = points.length ? Math.min(pattern().length - 1, points[ui.point]?.row + (project().linesPerBeat || 4)) : 0;
+    let row = points.length ? Math.min(pattern().length - 1, points[ui.point]?.row + project().linesPerBeat) : 0;
     if (occupied.has(row)) { row = 0; while (occupied.has(row) && row < pattern().length) row++; }
     if (row >= pattern().length) { S().toast('Every row already has an automation point.'); return; }
     points.push({ row, value: points[ui.point]?.value ?? info.value });
@@ -1781,7 +1781,7 @@
       const point = points[ui.point];
       if (['Delete', 'Backspace'].includes(event.key)) points.splice(ui.point, 1);
       else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') point.row = clamp(point.row
-          + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? project().linesPerBeat || 4 : 1),
+          + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? project().linesPerBeat : 1),
           0, pattern().length - 1);
       else { const delta = (event.key === 'ArrowUp' ? 1 : -1) * (event.shiftKey ? .1 : .01); point.value = fromUnit(clamp(toUnit(point.value, info) + delta,
           0, 1),

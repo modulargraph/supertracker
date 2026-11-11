@@ -81,7 +81,7 @@
       if (column?.slim || e.target.dataset.column !== undefined || e.target.hasAttribute?.('data-gate-inspector')) {
         state.noteColumn = column?.slim ? 0 : Number(e.target.dataset.noteColumn ?? 0);
       }
-      state.instrument = state.project.tracks[state.track].instrument || 0;
+      state.instrument = state.project.tracks[state.track].instrument;
       refresh();
       $(e.target.hasAttribute?.('data-gate-inspector') ? '#step-gate' : '#tracker')?.focus({ preventScroll: true });
     };
@@ -99,7 +99,7 @@
         if (index !== state.track) {
           app.stopHeld();
           state.track = index;
-          state.instrument = state.project.tracks[index].instrument || 0;
+          state.instrument = state.project.tracks[index].instrument;
           state.selection = null;
           refresh();
         }
@@ -109,7 +109,7 @@
     for (const el of $$('th[data-track]')) {
       el.onclick = () => {
         state.track = Number(el.dataset.track);
-        state.instrument = state.project.tracks[state.track].instrument || 0;
+        state.instrument = state.project.tracks[state.track].instrument;
         refresh();
       };
       // Double-click the name to rename; elsewhere on the header (or a slim column) to collapse / expand the track.

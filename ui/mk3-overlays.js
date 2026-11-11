@@ -99,7 +99,7 @@
           q.swing = x;
         }, v), { on: Math.abs((p.swing || 0) - v) < .005 })).concat([null, null]),
         knobs: [swingKnob(),
-            enumKnob({ key: 'lpb', label: 'Lines/beat', read: q => q.linesPerBeat || 4, write: (q, v) => { q.linesPerBeat = v; }, options: [1, 2, 3, 4, 6, 8, 12, 16].map(v => [v, String(v)]) })] });
+            enumKnob({ key: 'lpb', label: 'Lines/beat', read: q => q.linesPerBeat, write: (q, v) => { q.linesPerBeat = v; }, options: [1, 2, 3, 4, 6, 8, 12, 16].map(v => [v, String(v)]) })] });
       case 'tempo': return encoderMode(id, 'Tempo', { title: 'TEMPO', target: 'Project', value: `${fmt.bpm(burstValue('tempo', q => Number(q.bpm ?? 120)))} BPM`, hint: '4-D: 1 BPM (Shift: 0.1) · TAP: tap tempo' }, {
         main: {
           turn(delta) {
@@ -374,12 +374,12 @@
     const track = st().track, patternId = pattern().id;
     if (!settleEventOrder(patternId, track, false)) return;
     const key = `events:${label}:${patternId}:${track}:${rows.join(',')}`;
-    const read = p => JSON.stringify(rows.map(r => p.patterns.find(item => item.id === patternId)?.steps?.[track]?.[r] || null));
+    const read = p => JSON.stringify(rows.map(r => p.patterns.find(item => item.id === patternId)?.steps[track]?.[r] || null));
     const before = bursts.get(key)?.value ?? read(P());
     const draft = JSON.parse(before), next = fn(draft) || draft;
     const value = JSON.stringify(next); if (value === before) return;
     burstEdit(key, label, read, (p, value) => {
-      const steps = p.patterns.find(item => item.id === patternId)?.steps?.[track]; if (!steps) return;
+      const steps = p.patterns.find(item => item.id === patternId)?.steps[track]; if (!steps) return;
       JSON.parse(value).forEach((step, i) => {
         const current = steps[rows[i]]; if (!step || !current) return;
         // Keep simultaneous edits from the other EVENTS encoders.
@@ -393,7 +393,7 @@
     if (!rows.length) return;
     const track = st().track, pat = pattern(), patternId = pat.id, len = pat.length, d = Math.sign(direction);
     if (!settleEventOrder(patternId, track, true)) return;
-    const read = p => JSON.stringify(p.patterns.find(item => item.id === patternId)?.steps?.[track] ?? []);
+    const read = p => JSON.stringify(p.patterns.find(item => item.id === patternId)?.steps[track] ?? []);
     const key = `events:nudge:${patternId}:${track}`;
     const steps = JSON.parse(bursts.get(key)?.value ?? read(P()));
     const moving = rows.map(r => steps[r]);

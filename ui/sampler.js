@@ -448,7 +448,7 @@
       destinationProject = context.project;
     if (!path) return;
     const duration = sampleMeta(inst)?.duration;
-    const bpm = Number(state().project.bpm || 120);
+    const bpm = Number(state().project.bpm);
     ST().openModal('Time stretch sample', `<div class="stack"><p class="sampler-help">Create a new audio file with a different duration while preserving pitch. The original `
         + `stays unchanged. This edits the main sample; multisample zone files stay as they are.</p><label class="field">`
         + `<span>Length ratio · 0.25 to 4.00</span><input id="sampler-stretch-ratio" type="number" min=".25" max="4" step=".01"`
@@ -1105,7 +1105,7 @@
     if (p.tracks[track]?.instrument !== id) { ST().toast(`Assign this instrument to ${p.tracks[track]?.name || 'the track'} first, so the pattern plays it.`); return; }
     const points = slicePoints(inst), count = points.length, root = Math.round(limit(inst.rootNote ?? 60, 0, 127));
     const regionSeconds = sampleSeconds(inst) * ((inst.end ?? 1) - (inst.start ?? 0)),
-      rowSeconds = 60 / Number(p.bpm || 120) / Number(p.linesPerBeat || 4);
+      rowSeconds = 60 / Number(p.bpm) / Number(p.linesPerBeat);
     let rows = points.map((point, index) => index);
     const timed = regionSeconds > 0 ? points.map(point => Math.round(point * regionSeconds / rowSeconds)) : null;
     if (timed && timed.every((row, index) => !index || row > timed[index - 1]) && regionSeconds / rowSeconds <= 256) rows = timed;

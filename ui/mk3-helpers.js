@@ -6,7 +6,7 @@
 
   // ---- Small app helpers -------------------------------------------------------------------------
   const pattern = () => S().pattern();
-  const trackColor = index => P()?.tracks?.[index]?.color || TRACK_COLORS[index % 8];
+  const trackColor = index => P()?.tracks[index]?.color || TRACK_COLORS[index % 8];
   const playing = () => !!st().playing;
   const patternRow = () => playing() && st().status?.pattern === pattern()?.id ? Number(st().status.row) || 0 : st().row;
   function flash(text, ms = 1300) { M.flash = { text: String(text), until: now() + ms }; mk.schedule(); }
@@ -31,13 +31,13 @@
   }
   function selectTrack(index, { silent = false } = {}) {
     const p = P(); if (!p?.tracks[index]) return false;
-    st().track = index; st().instrument = p.tracks[index].instrument || 0; st().selection = null;
+    st().track = index; st().instrument = p.tracks[index].instrument; st().selection = null;
     if (!silent) flash(`${String(index + 1).padStart(2, '0')} ${p.tracks[index].name}`, 700);
     scheduleRefresh(); return true;
   }
   function setCursor({ row, track, column }) {
     const state = st(), p = P(), pat = pattern();
-    if (track != null) { state.track = clamp(track, 0, p.tracks.length - 1); state.instrument = p.tracks[state.track].instrument || 0; }
+    if (track != null) { state.track = clamp(track, 0, p.tracks.length - 1); state.instrument = p.tracks[state.track].instrument; }
     if (row != null) state.row = clamp(row, 0, pat.length - 1);
     if (column != null) state.column = clamp(column, 0, 4);
     state.selection = null; scheduleRefresh(60);
@@ -49,7 +49,7 @@
   const app = () => window.STApp;
   const groupOf = (track = st().track, p = P()) => G()?.ofTrack(p, track) || null;
   const membersOf = (group, p = P()) => group ? G().members(p, group) : [];
-  const busOf = (group, p = P()) => group ? p?.routing.buses?.find(bus => bus.id === group.busID) || null : null;
+  const busOf = (group, p = P()) => group ? p?.routing.buses.find(bus => bus.id === group.busID) || null : null;
   /* Entries: what the group buttons show, in track order. Each ungrouped track is one entry and each group one
      entry (all its members). { group, index (first track), members } */
   function entries(p = P()) {
@@ -72,7 +72,7 @@
     const source = entry.group ? busOf(entry.group, p) || {} : p.tracks[entry.index] || {};
     return { mute: !!source.mute, solo: !!source.solo };
   }
-  const anySolo = (p = P()) => p.tracks.some(t => t.solo) || !!p.routing.buses?.some(bus => bus.type === 'group' && bus.solo);
+  const anySolo = (p = P()) => p.tracks.some(t => t.solo) || !!p.routing.buses.some(bus => bus.type === 'group' && bus.solo);
   function toggleEntry(entry, property) {
     if (!entry) return;
     if (entry.group) app()?.toggleBus?.(entry.group.id, property);
@@ -82,7 +82,7 @@
   // The member a group button selects: the last member selected in that group (if still a member), else its first.
   M.groupMember = new Map();
   function rememberMember(track = st().track, p = P()) {
-    const group = groupOf(track, p), t = p?.tracks?.[track];
+    const group = groupOf(track, p), t = p?.tracks[track];
     if (group && t) M.groupMember.set(group.id, t.routingID || t);
   }
   function memberFor(group, p = P()) {
@@ -150,7 +150,7 @@
     if (!step) step = pat.steps[track][row] = { note: -3, instrument: p.tracks[track]?.instrument ?? 0, velocity: 100, gate: 0 };
     return step;
   }
-  function stepAt(track = st().track, row = st().row, pat = pattern()) { return pat?.steps?.[track]?.[row] || null; }
+  function stepAt(track = st().track, row = st().row, pat = pattern()) { return pat?.steps[track]?.[row] || null; }
   function patternIndex(id = P().activePattern) { return P().patterns.findIndex(pat => pat.id === id); }
   const AR = () => window.STAutomationRecord;
   function arRef(track, target, name) { try { return AR()?.makeRef?.(track, target, name) || null; } catch { return null; } }
@@ -160,8 +160,8 @@
      or 'track:<routingID>'. */
   function channelOf(owner, project = P()) {
     if (owner === 'master') return project;
-    if (owner?.startsWith('bus:')) return project?.routing.buses?.find(bus => `bus:${bus.id}` === owner) || null;
-    if (owner?.startsWith('track:')) return project?.tracks?.find(track => `track:${track.routingID}` === owner) || null;
+    if (owner?.startsWith('bus:')) return project?.routing.buses.find(bus => `bus:${bus.id}` === owner) || null;
+    if (owner?.startsWith('track:')) return project?.tracks.find(track => `track:${track.routingID}` === owner) || null;
     return null;
   }
   function ownerMixKnob(owner, kind, label) {

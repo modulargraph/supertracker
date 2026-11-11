@@ -139,7 +139,7 @@
     chain.push({ key: 'sends', label: 'Sends', name: 'Volume · pan · sends', sends: true });
     return { chain, slots, nks, view };
   }
-  const isBypassed = instanceID => !!instanceID && !!P().audioPlugins?.find(plugin => plugin.instanceID === instanceID)?.bypass;
+  const isBypassed = instanceID => !!instanceID && !!P().audioPlugins.find(plugin => plugin.instanceID === instanceID)?.bypass;
   function chainItems(chain) {
     return chain.map(item => ({
       name: item.name || 'Empty',

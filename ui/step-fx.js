@@ -92,7 +92,7 @@
     let committed = false;
     S().mutate(fx ? 'set step effect' : 'remove step effect', () => {
       const steps = entry.pattern.steps[entry.trackIndex];
-      if (!steps[entry.row] && fx) steps[entry.row] = { note: -3, instrument: entry.track.instrument ?? 0, velocity: 100, gate: 0 };
+      if (!steps[entry.row] && fx) steps[entry.row] = { note: -3, instrument: entry.track.instrument, velocity: 100, gate: 0 };
       if (steps[entry.row]) steps[entry.row]['fx' + number] = fx;
       committed = true;
     });

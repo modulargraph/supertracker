@@ -343,7 +343,7 @@
      no gate (app-note-columns.js). The difference is on purpose and the host reads both the same way
      (DEFAULT_GATE and ColumnCell in crates/st-project/src/model/pattern.rs); it only decides how a hand-written
      step plays. */
-  const DEFAULT_GATE = .8;
+  const { DEFAULT_GATE } = window.STUtil;
   function stepGate(step) {
     if (!step || step.note < 0) return null;
     const gate = step.gate === undefined || step.gate === null ? DEFAULT_GATE : Number(step.gate);

@@ -46,9 +46,9 @@
       type,
       badge,
       kind,
-      slot: String(t.instrument ?? 0).padStart(2, '0'),
+      slot: String(t.instrument).padStart(2, '0'),
       name: inst.name || 'No instrument',
-      full: `${kind} ${String(t.instrument ?? 0).padStart(2, '0')} ${inst.name || ''}`
+      full: `${kind} ${String(t.instrument).padStart(2, '0')} ${inst.name || ''}`
     };
   }
 

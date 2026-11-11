@@ -61,7 +61,7 @@
     const center = state.playing && state.follow && state.status?.pattern === pat.id ? patternRow() : state.row;
     const start = clamp(center - half, 0, Math.max(0, pat.length - rows));
     const tracks = homeColumns(width).columns;
-    const sel = S().selectedBounds(), loop = S().patternLoopFor?.(pat), lpb = p.linesPerBeat || 4, bar = lpb * S().beatsPerBar(p);
+    const sel = S().selectedBounds(), loop = S().patternLoopFor?.(pat), lpb = p.linesPerBeat, bar = lpb * S().beatsPerBar(p);
     const playRow = state.playing && state.status?.pattern === pat.id ? Number(state.status.row) : -1;
     // EVENTS: the rows the encoders edit are marked on the cursor column.
     const events = active('events') ? new Set(mk.eventRows()) : null;
@@ -79,7 +79,7 @@
             const s = pat.steps[t]?.[r];
             return { track: t, current: current(c), selected: inSelection(t), chord: s?.chord?.length > 1,
               ...(events?.has(r) && t === state.track ? { event: true } : {}),
-              text: [noteText(s?.note), s ? String(s.instrument ?? p.tracks[t].instrument ?? 0).padStart(2, '0') : '··',
+              text: [noteText(s?.note), s ? String(s.instrument ?? p.tracks[t].instrument).padStart(2, '0') : '··',
                 s ? String(s.velocity ?? 100).padStart(3, '0') : '···', fxText(s?.fx1), fxText(s?.fx2)] };
           }) };
       }) };
@@ -241,7 +241,7 @@
             button('Sends FX', () => perform('sendEffects')), null, null]),
         knobs: [mk.masterKnob(), mk.swingKnob(), mk.tempoKnob(), null, null, null, null, null],
         data: { kind: 'levels', level, levels: mk.levelList(), title: 'Master', subtitle: 'Master output', color: C_MASTER, lines: [`Volume ${fmt.db(burstValue('master', q => Number(q.masterVolume ?? .7)))}`,
-            `Swing ${fmt.pct(Number(p.swing || 0))} · ${Number(p.bpm || 120).toFixed(1)} BPM`, 'Master inserts: PLUG-IN · Master'] } };
+            `Swing ${fmt.pct(Number(p.swing || 0))} · ${Number(p.bpm).toFixed(1)} BPM`, 'Master inserts: PLUG-IN · Master'] } };
     }
     return { id: 'channel', title: 'Channel', pages: ['Levels'], page: 0, main: { turn(delta) { mk.mixKnob(track, 'volume')?.turn(delta / 40); }, push() {}, tilt(direction) { if (direction === 'left'
         || direction === 'right') selectTrack(track + (direction === 'right' ? 1 : -1)); } },

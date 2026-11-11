@@ -198,7 +198,7 @@
       const parsed = parseFX(info.code + current.text, step?.[key]);
       if (parsed.error) return reject(parsed.error);
       mutate('type step effect', () => {
-        const target = steps[current.row] || { note: -3, instrument: state.project.tracks[current.track].instrument ?? 0, velocity: 100, gate: 0 };
+        const target = steps[current.row] || { note: -3, instrument: state.project.tracks[current.track].instrument, velocity: 100, gate: 0 };
         steps[current.row] = { ...target, [key]: parsed.fx };
       });
       if (!(step?.note >= 0) && ['probability', 'glide', 'microtiming', 'arpeggio', 'slice'].includes(info.type)) {

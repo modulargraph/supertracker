@@ -20,7 +20,7 @@
     zones: ['[data-sampler-zone-field]', '#sampler-add-zone'], modulation: ['input[type="number"]', 'select']
   };
   const selectedPage = { sample: 'sample' };
-  const currentInstrument = () => S().state.project?.instruments?.[S().state.instrument];
+  const currentInstrument = () => S().state.project?.instruments[S().state.instrument];
   const pageFocusable = node => node && !node.disabled && visible(node) && !node.closest('[hidden]') && Number(node.tabIndex ?? 0) >= 0;
   const pages = {
     list(inst = currentInstrument()) { return PAGES[inst?.type] || []; },

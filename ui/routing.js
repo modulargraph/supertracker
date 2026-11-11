@@ -364,7 +364,7 @@
 
   function removeSendLanes(p,ids) {
     const targets=new Set([...ids].map(id=>`send:${id}`));
-    for(const pattern of p.patterns||[])if(pattern.automation)pattern.automation=pattern.automation.filter(lane=>!targets.has(lane.target));
+    for(const pattern of p.patterns)pattern.automation=pattern.automation.filter(lane=>!targets.has(lane.target));
   }
 
   function addSend(owner,focusID) {
@@ -389,7 +389,7 @@
     if(!available())return S().toast(unavailable());
     if(!['group','return'].includes(kind))return;
     const p=project();
-    if((routing(p).buses||[]).length>=Math.min(window.TRACK_SANITY_LIMIT??Infinity,
+    if(routing(p).buses.length>=Math.min(window.TRACK_SANITY_LIMIT??Infinity,
         number(ui.capabilities.buses.max,window.TRACK_SANITY_LIMIT??Infinity)))return S().toast('This project has reached its bus limit.');
     const selected=endpoints(p).find(item=>item.owner===owner), canAssign=kind==='group'&&selected?.type==='track';
     S().openModal(`Create ${kind === 'group' ? 'group' : 'return'} bus`, `<div class="routing-dialog"><label>Name<input id="routing-bus-name" value="${kind === 'group' ? 'Group' : 'Return'} ${routing(p).buses.filter(bus => bus.type === kind).length + 1}"`
@@ -441,7 +441,7 @@
       else S().toast(`${bus.name} is the bus of the track group ${group.name}. Ungroup or delete the group to remove it.`);
       return;
     }
-    const destination=activeOutput(owner,p), children=Object.entries(routing(p).outputs||{}).filter(([,to])=>to===owner).length;
+    const destination=activeOutput(owner,p), children=Object.entries(routing(p).outputs).filter(([,to])=>to===owner).length;
     S().openModal('Remove bus', `<div class="routing-dialog"><p>Remove ${esc(bus.name)} and its insert effects?</p><p>${children} output connection${children === 1 ? '' : 's'}`
         + ` will move to ${esc(channelName(destination, p))}. Sends and sidechains connected to this bus will be removed.</p>`
         + `</div>`, '<button id="routing-delete-cancel">Cancel</button><button id="routing-delete-apply">Remove bus</button>', {
@@ -460,8 +460,8 @@
       removeSendLanes(draft, removedSends);
       r.sends = r.sends.filter(send => !removedSends.has(send.id));
       r.sidechains = r.sidechains.filter(route => route.source !== owner && !removed.has(route.destination));
-      draft.audioPlugins=(draft.audioPlugins||[]).filter(plugin=>pluginOwner(plugin)!==owner);
-      for(const pattern of draft.patterns||[])if(pattern.automation)pattern.automation=pattern.automation.filter(lane=>lane.owner!==owner);
+      draft.audioPlugins=draft.audioPlugins.filter(plugin=>pluginOwner(plugin)!==owner);
+      for(const pattern of draft.patterns)pattern.automation=pattern.automation.filter(lane=>lane.owner!==owner);
     },{owner}).then(()=>{if(project()===p)selectChannel(destination||'master',true);}));});
   }
 
@@ -525,7 +525,7 @@
     for(const section of document.querySelectorAll('[data-routing-plugin]')){
       if(section.dataset.routingPluginOwner!==owner||section.dataset.routingBound==='true')continue;
       section.dataset.routingBound='true';const instanceID=section.dataset.routingPlugin;
-      const currentPlugin=(p=project())=>(p.audioPlugins||[]).find(plugin=>plugin.instanceID===instanceID);
+      const currentPlugin=(p=project())=>p.audioPlugins.find(plugin=>plugin.instanceID===instanceID);
       section.querySelector('[data-routing-key-action="add"]')?.addEventListener('click',()=>{
         if(!available()||!keyTaps().length)return;
         const focusID=`routing-key-add-${key(instanceID)}`;

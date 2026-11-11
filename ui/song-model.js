@@ -174,7 +174,7 @@
   }
   /* Quarter-note beat at which a flat sequence index starts (patterns use linesPerBeat). */
   function startBeat(project, flat) {
-    const lpb = project.linesPerBeat || 4;
+    const lpb = project.linesPerBeat;
     return project.sequence.slice(0, flat).reduce((sum, id) => sum
         + (project.patterns.find(pattern => pattern.id === id)?.length || 0) / lpb,
         0);

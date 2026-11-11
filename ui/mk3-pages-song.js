@@ -80,7 +80,7 @@
       knobs: [actionKnob('Pattern', `${String(index + 1).padStart(2, '0')}`, direction => select(index + direction), { detent: .05, list: true }),
         intKnob({ key: `length:${pat.id}`, label: 'Length', read: q => q.patterns.find(item => item.id === pat.id)?.length
             || 64, write: (q, v) => { const target = q.patterns.find(item => item.id === pat.id); if (!target) return; target.length = v; target.steps.forEach(steps => { steps.length = v; for (let r = 0; r < v; r++) steps[r] = steps[r] || null; }); target.automation.forEach(lane => { lane.points = lane.points.filter(point => point.row < v); }); }, min: 1, max: 256, fmt: v => `${v} rows`, detent: .02 }),
-        enumKnob({ key: 'lpb', label: 'Lines/beat', read: q => q.linesPerBeat || 4, write: (q, v) => { q.linesPerBeat = v; }, options: [1, 2, 3, 4, 6, 8, 12, 16].map(v => [v, String(v)]) }),
+        enumKnob({ key: 'lpb', label: 'Lines/beat', read: q => q.linesPerBeat, write: (q, v) => { q.linesPerBeat = v; }, options: [1, 2, 3, 4, 6, 8, 12, 16].map(v => [v, String(v)]) }),
         actionKnob('Colour', '', direction => S().mutate('pattern colour', q => window.STSongModel?.cycleColor(q, pat.id, direction)),
             { detent: .1 }),
         null, null, swingKnob(), tempoKnob()],

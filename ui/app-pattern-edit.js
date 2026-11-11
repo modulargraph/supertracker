@@ -259,7 +259,7 @@
     }
     // Song scroll (app-song-scroll.js): moving past a pattern edge continues in the neighbouring song slot.
     if (!(dr && !select && app.songScrollStep?.(state.row + dr))) state.row = clamp(state.row + dr, 0, pattern().length - 1);
-    state.instrument = state.project.tracks[state.track].instrument || 0;
+    state.instrument = state.project.tracks[state.track].instrument;
     refresh();
     const after = patternColumns(),
       shown = after[app.columnFor(after)];

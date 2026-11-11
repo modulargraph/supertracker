@@ -14,7 +14,7 @@
 
   function selected() {
     const s = ST()?.state;
-    return s?.project?.instruments?.[s.instrument] || null;
+    return s?.project?.instruments[s.instrument] || null;
   }
   function canvases() {
     const wave = document.getElementById('sampler-wave-canvas'), overlay = document.getElementById('sampler-playhead-canvas');

@@ -255,7 +255,7 @@
     const app = S(), state = app.state, index = Number(header.dataset.track), track = state.project.tracks[index];
     if (!track) return null;
     const L = window.STApp || {}, lanes = L.laneSelection?.() || [index], inSelection = lanes.length > 1 && lanes.includes(index);
-    if (state.track !== index && !inSelection) { state.track = index; state.instrument = track.instrument || 0; app.refresh(); }
+    if (state.track !== index && !inSelection) { state.track = index; state.instrument = track.instrument; app.refresh(); }
     return [
       { header: true, title: track.name || `Track ${index + 1}` },
       window.STPatternTools

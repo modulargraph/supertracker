@@ -109,7 +109,7 @@
 
   // Everything that belongs to one member's sound source: its instrument plug-in and inserts.
   function removeTrackPlugins(q, track) {
-    const ownerID = trackOwner(track), chainID = `instrument:${track.instrument ?? 0}`;
+    const ownerID = trackOwner(track), chainID = `instrument:${track.instrument}`;
     const removed = new Set(q.audioPlugins.filter(p => p.owner === ownerID || p.owner === chainID).map(p => p.instanceID));
     q.audioPlugins = q.audioPlugins.filter(p => p.owner !== ownerID && p.owner !== chainID);
     q.routing.sidechains = q.routing.sidechains.filter(route => !removed.has(route.destination));
@@ -315,7 +315,7 @@
       q.tracks.forEach((track, i) => { track.id = i; });
       G().dissolve(q, groupID);
       state().track = Math.min(members[0], q.tracks.length - 1);
-      state().instrument = q.tracks[state().track].instrument || 0;
+      state().instrument = q.tracks[state().track].instrument;
       state().selection = null;
     });
   }

@@ -118,7 +118,7 @@
   function renderPatternCellContent(s, t, i, active) {
     if ((app.noteColumnCount?.(i) || 1) > 1) return renderNoteColumnsContent(s, t, i, active);
     return `${[noteText(s?.note),
-        s ? String(s.instrument ?? t.instrument ?? 0).padStart(2, '0') : '··',
+        s ? String(s.instrument ?? t.instrument).padStart(2, '0') : '··',
         s ? String(s.velocity ?? 100).padStart(3, '0') : '···', fxText(s?.fx1), fxText(s?.fx2)].map((v, c) => `<span data-column="${c}"${c >= 3 && s?.['fx' + (c - 2)] && app.fxTitle
             ? ` title="${esc(app.fxTitle(s['fx' + (c - 2)]))}"` : ''} class="${s ? c === 0 ? 'has-note' : c === 1 ? 'has-instrument' : c === 2 ? 'has-velocity' : 'has-fx' : ''}`
         + ` ${active && state.column === c ? 'active-column' : ''}">${esc(v)}</span>`).join('')}${app.gateColumnShown() ? `<span `
@@ -137,7 +137,7 @@
     for (let n = 0; n < count; n++) {
       const cell = n ? app.noteCell(s, n) : app.isColumnHolder(s) ? null : s, pitched = n ? cell?.note >= 0 : !!cell;
       html += span(n, 0, noteText(cell?.note), cell ? 'has-note' : '')
-          + span(n, 1, pitched ? String(cell.instrument ?? t.instrument ?? 0).padStart(2, '0') : '··', pitched ? 'has-instrument' : '')
+          + span(n, 1, pitched ? String(cell.instrument ?? t.instrument).padStart(2, '0') : '··', pitched ? 'has-instrument' : '')
           + span(n, 2, pitched ? String(cell.velocity ?? 100).padStart(3, '0') : '···', pitched ? 'has-velocity' : '');
     }
     for (const c of [3, 4]) {

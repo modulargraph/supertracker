@@ -288,7 +288,7 @@
     const done = mutate(indices.length > 1 ? 'delete tracks' : 'delete track', q => {
       G().removeTracks(q, indices);
       state.track = clamp(first, 0, q.tracks.length - 1);
-      state.instrument = q.tracks[state.track].instrument || 0;
+      state.instrument = q.tracks[state.track].instrument;
       state.selection = null;
       state.column = 0;
       state.noteColumn = 0;

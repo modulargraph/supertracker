@@ -28,7 +28,7 @@
   function patternOf(id) { return project().patterns.find(pattern => pattern.id === id); }
   function lengthLabel(pattern) {
     const p = project(), rows = pattern?.length || 0;
-    const bars = rows / ((p.linesPerBeat || 4) * (app().beatsPerBar?.(p) || 4));
+    const bars = rows / (p.linesPerBeat * (app().beatsPerBar?.(p) || 4));
     return (Number.isInteger(bars) ? bars : bars.toFixed(2)) + (bars === 1 ? ' bar' : ' bars');
   }
   function barLabel(flat) {

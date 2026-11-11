@@ -23,7 +23,7 @@
   const chain = (p, index) => p.audioPlugins.filter(item => item.owner === owner(index) && (item.kind || 'effect') === 'effect')
       .sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0));
   /** Indices of the tracks whose assigned instrument is `index` (each runs an instance of the chain). */
-  const tracksPlaying = (p, index) => p.tracks.flatMap((track, i) => Number(track.instrument || 0) === Number(index) ? [i] : []);
+  const tracksPlaying = (p, index) => p.tracks.flatMap((track, i) => Number(track.instrument) === Number(index) ? [i] : []);
 
   /** Copies instrument `from`'s chain (of `source`, default `p`) to instrument `to` in `p`: fresh instance IDs,
       the same states, bypass and curated page settings. Returns the copies. */

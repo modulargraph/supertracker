@@ -30,7 +30,7 @@
     app.startupPending = false;
     readPerformance(state.project);
     state.track = 0;
-    state.instrument = state.project.tracks[0].instrument || 0;
+    state.instrument = state.project.tracks[0].instrument;
     state.row = 0;
     state.column = 0;
     state.noteColumn = 0;

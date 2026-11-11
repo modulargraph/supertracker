@@ -86,7 +86,7 @@
         state.track = Math.max(0, q.tracks.indexOf(cursor));
         if (anchor && state.selection) state.selection = { ...state.selection, track: Math.max(0, q.tracks.indexOf(anchor)) };
       }
-      state.instrument = q.tracks[state.track].instrument || 0;
+      state.instrument = q.tracks[state.track].instrument;
     });
   }
 

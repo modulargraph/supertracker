@@ -25,7 +25,7 @@
 
   // A note in column 0 or in an extra note column (step.columns, app-note-columns.js).
   const hasNote = step => !!step && (Number.isFinite(step.note) && step.note >= 0 || (step.columns || []).some(cell => cell?.note >= 0));
-  const patternId = (p, pat) => pat?.id ?? Math.max(0, (p?.patterns || []).indexOf(pat));
+  const patternId = (p, pat) => pat.id;
 
   /** The render request for a selection: {pattern, tracks, firstRow, lastRow}. */
   function selection(p, pat, bounds) {

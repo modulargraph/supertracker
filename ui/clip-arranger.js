@@ -43,7 +43,7 @@
   const selected = () => clips().find(clip => String(clip.id) === String(state().clipSelected));
   function sequenceBeat(index = state().sequence || 0) {
     return project().sequence.slice(0, index).reduce((sum, id) => sum
-        + (project().patterns.find(pattern => pattern.id === id)?.length || 0) / (project().linesPerBeat || 4),
+        + (project().patterns.find(pattern => pattern.id === id)?.length || 0) / project().linesPerBeat,
         0);
   }
   function playheadBeat(payload = state().status || {}) {
@@ -56,8 +56,8 @@
         : state().sequence || 0;
     const position = typeof payload.position === 'number' && Number.isFinite(payload.position) ? payload.position : Number(payload.row || 0);
     if (payload.pattern !== undefined && payload.pattern !== project().sequence[occurrence]) return sequenceBeat(state().sequence || 0)
-        + (state().row || 0) / (project().linesPerBeat || 4);
-    return clamp(sequenceBeat(occurrence) + Math.max(0, position) / (project().linesPerBeat || 4), 0, maxBeat());
+        + (state().row || 0) / project().linesPerBeat;
+    return clamp(sequenceBeat(occurrence) + Math.max(0, position) / project().linesPerBeat, 0, maxBeat());
   }
   function barAt(value) { return timing().barAtBeat(clamp(value, 0, maxBeat())); }
   function totalBeats() {

@@ -521,7 +521,7 @@
       masterVolume: { value: p.masterVolume, display: formatValue('db', p.masterVolume) }, loopSong: !!p.loopSong, metronome: !!p.metronome,
       activePattern: p.activePattern,
       tracks: p.tracks.map((t, i) => ({
-        index: i, name: t.name, instrument: t.instrument ?? 0, instrumentName: p.instruments[t.instrument ?? 0]?.name, mute: !!t.mute, solo: !!t.solo,
+        index: i, name: t.name, instrument: t.instrument, instrumentName: p.instruments[t.instrument]?.name, mute: !!t.mute, solo: !!t.solo,
         volume: formatValue('db', t.volume ?? .8),
         pan: formatValue('pan', t.pan ?? 0),
         delaySend: formatValue('pct', t.delaySend ?? 0),
@@ -547,7 +547,7 @@
             ...(plugin.nks ? { nks: plugin.nks.name || plugin.nks.path } : {})
           }
         }))(instrumentPlugin(p, i)) : {}),
-        usedBy: p.tracks.map((t, ti) => (t.instrument ?? 0) === i ? ti : -1).filter(ti => ti >= 0)
+        usedBy: p.tracks.map((t, ti) => t.instrument === i ? ti : -1).filter(ti => ti >= 0)
       })),
       patterns: p.patterns.map((pat, i) => ({
         id: pat.id,
@@ -605,7 +605,7 @@
             steps.push(describeStep(step, r));
           } else if (params.includeEmpty) steps.push({ row: r, empty: true });
         }
-        return { track: t, name: p.tracks[t].name, instrument: p.tracks[t].instrument ?? 0, ...(noteColumns(p, t) > 1 ? { noteColumns: noteColumns(p, t) } : {}), steps };
+        return { track: t, name: p.tracks[t].name, instrument: p.tracks[t].instrument, ...(noteColumns(p, t) > 1 ? { noteColumns: noteColumns(p, t) } : {}), steps };
       })
     };
   });
@@ -661,7 +661,7 @@
         plan.instrument = findInstrument(p, entry.instrument, `${at}.instrument`);
         const inst = p.instruments[plan.instrument];
         if (inst?.type === 'plugin'
-            && (p.tracks[track].instrument ?? 0) !== plan.instrument) fail(`${at}: instrument ${plan.instrument} "${inst.name}" is a plug-in on another track. Plug-in instruments only play on their own track.`);
+            && p.tracks[track].instrument !== plan.instrument) fail(`${at}: instrument ${plan.instrument} "${inst.name}" is a plug-in on another track. Plug-in instruments only play on their own track.`);
       }
       if (entry.velocity !== undefined) {
         if (!isInt(entry.velocity) || entry.velocity < 1 || entry.velocity > 127) fail(`${at}.velocity must be a whole number 1–127.`);
@@ -692,7 +692,7 @@
     if (!existing && plan.note === undefined) fail(`Track ${plan.track} row ${plan.row} column ${column} is empty: give a note to create it.`);
     // Only a written cell adds its column to the track; clearing a column the track does not have changes nothing.
     if (p.tracks[plan.track] && noteColumns(p, plan.track) <= column) p.tracks[plan.track].noteColumns = column + 1;
-    const cell = { ...(existing || { instrument: p.tracks[plan.track].instrument ?? 0, velocity: 100, gate: 0 }) };
+    const cell = { ...(existing || { instrument: p.tracks[plan.track].instrument, velocity: 100, gate: 0 }) };
     if (plan.note !== undefined) cell.note = plan.note;
     if (plan.instrument !== undefined) cell.instrument = plan.instrument;
     if (plan.velocity !== undefined) cell.velocity = plan.velocity;
@@ -710,7 +710,7 @@
     let step = steps[plan.row] ? { ...steps[plan.row] } : null;
     const creating = !step;
     // A new note has no gate (it plays until the next note, OFF or CUT on its track) unless the entry gives one.
-    if (!step) step = { note: -3, instrument: p.tracks[plan.track].instrument ?? 0, velocity: 100, gate: 0 };
+    if (!step) step = { note: -3, instrument: p.tracks[plan.track].instrument, velocity: 100, gate: 0 };
     if (plan.note !== undefined) step.note = plan.note === null ? -3 : plan.note;
     if (creating
         && plan.note === undefined
@@ -822,7 +822,7 @@
     if (op === 'instrument') {
       setValue = findInstrument(p, params.set, 'set');
       // As writeSteps and the grid's instrument column: a plug-in instrument only plays on its own track.
-      const foreign = p.instruments[setValue].type === 'plugin' ? tracks.find(t => (p.tracks[t].instrument ?? 0) !== setValue) : undefined;
+      const foreign = p.instruments[setValue].type === 'plugin' ? tracks.find(t => p.tracks[t].instrument !== setValue) : undefined;
       if (foreign !== undefined) fail(`Instrument ${setValue} "${p.instruments[setValue].name}" is a plug-in that track ${foreign} "${p.tracks[foreign].name}" does not play. `
           + 'Plug-in instruments only play on their own track; limit tracks to it.');
     }
@@ -1027,7 +1027,7 @@
         delaySend: 0,
         reverbSend: 0
       };
-      if (window.STRoutingProject?.appendTrack) window.STRoutingProject.appendTrack(target, track, S().uid); else target.tracks.push(track);
+      window.STRoutingProject.appendTrack(target, track, S().uid);
       target.patterns.forEach(pat => pat.steps.push(Array(pat.length).fill(null)));
       return { track: i, name: track.name };
     });
@@ -1044,10 +1044,10 @@
     if (params.instrument !== undefined) {
       const i = findInstrument(p, params.instrument);
       if (p.instruments[i].type === 'plugin'
-          && (p.tracks[t].instrument ?? 0) !== i) fail(`"${p.instruments[i].name}" is a plug-in instrument bound to another track. Use loadPlugin on track ${t} instead.`);
-      if (p.instruments[p.tracks[t].instrument ?? 0]?.type === 'plugin'
+          && p.tracks[t].instrument !== i) fail(`"${p.instruments[i].name}" is a plug-in instrument bound to another track. Use loadPlugin on track ${t} instead.`);
+      if (p.instruments[p.tracks[t].instrument]?.type === 'plugin'
           && pluginOn(p, t, 'instrument')
-          && (p.tracks[t].instrument ?? 0) !== i) fail(`Track ${t} plays a plug-in instrument. Switch it with runCommand "assignInstrument" (select the track and instrument with show) `
+          && p.tracks[t].instrument !== i) fail(`Track ${t} plays a plug-in instrument. Switch it with runCommand "assignInstrument" (select the track and instrument with show) `
           + `so the plug-in is removed safely.`);
       changes.instrument = i;
     }
@@ -1114,7 +1114,7 @@
       index: i,
       name: inst.name,
       type: inst.type,
-      usedBy: p.tracks.map((t, ti) => (t.instrument ?? 0) === i ? ti : -1).filter(ti => ti >= 0),
+      usedBy: p.tracks.map((t, ti) => t.instrument === i ? ti : -1).filter(ti => ti >= 0),
       ...(inst.type === 'sample' ? { sample: inst.samplePath || null } : {}),
       ...(inst.type === 'plugin' && instrumentPlugin(p, i) ? {
         plugin: (plugin => ({
@@ -1196,7 +1196,7 @@
     if (params.type !== undefined && !['sample', 'midi'].includes(params.type)) fail('type must be "sample" or "midi".');
     // Validate the parameters before the type switch below: it retires the hosted plug-in and must not run for a call that is then refused.
     const plan = planParams({ ...inst, type: params.type || inst.type }, params.params);
-    requireUnfrozen(p, p.tracks.map((t, ti) => (t.instrument ?? 0) === i ? ti : -1).filter(ti => ti >= 0));
+    requireUnfrozen(p, p.tracks.map((t, ti) => t.instrument === i ? ti : -1).filter(ti => ti >= 0));
     if (params.type !== undefined && params.type !== inst.type && inst.type === 'plugin') {
       // Leaving a plug-in instrument removes the hosted plug-in natively; use the app's own command.
       st().instrument = i; await S().perform('instrumentType:' + params.type);
@@ -1254,7 +1254,7 @@
     // Built-in samples are project references the host resolves itself (createInstrument names one).
     if (typeof path !== 'string' || !(path.startsWith('/') || /^builtin:./.test(path))) fail('path must be an absolute file path, or a built-in sample such as "builtin:wavetables/Basic/Saw.wav".');
     const track = params.track === undefined ? st().track : findTrack(p, params.track);
-    const index = params.instrument === undefined ? (p.tracks[track].instrument ?? 0) : findInstrument(p, params.instrument);
+    const index = params.instrument === undefined ? p.tracks[track].instrument : findInstrument(p, params.instrument);
     requireUnfrozen(p, [track]);
     const busy = blockedByBusyUI(); if (busy) fail(`Cannot load a sample while ${busy}.`);
     st().track = track;
@@ -1332,7 +1332,7 @@
     const busy = blockedByBusyUI(); if (busy) fail(`Cannot load a plug-in while ${busy}.`);
     let instrument = null;
     if (kind === 'instrument') {
-      const own = p.tracks[track].instrument ?? 0, shared = p.tracks.some((t, ti) => ti !== track && (t.instrument ?? 0) === own);
+      const own = p.tracks[track].instrument, shared = p.tracks.some((t, ti) => ti !== track && t.instrument === own);
       instrument = params.instrument === undefined
           ? shared ? 'new' : own
           : params.instrument === 'new'
@@ -1694,7 +1694,7 @@
           || options.slot < 0
           || options.slot >= LIMITS.effectSlots) fail(`slot must be 0–${LIMITS.effectSlots - 1}.`);
     } else {
-      const own = p.tracks[track].instrument ?? 0, shared = p.tracks.some((t, ti) => ti !== track && (t.instrument ?? 0) === own);
+      const own = p.tracks[track].instrument, shared = p.tracks.some((t, ti) => ti !== track && t.instrument === own);
       const choice = params.instrument === undefined
           ? shared ? 'new' : own
           : params.instrument === 'new'
@@ -1703,7 +1703,7 @@
       if (choice !== 'new' && choice !== own) fail('An NKS instrument replaces the instrument the track plays. Leave instrument out (or "new").');
       if (choice === 'new') options.newInstrument = true;
     }
-    st().track = track; if (kind === 'instrument' && !options.newInstrument) st().instrument = p.tracks[track].instrument ?? 0;
+    st().track = track; if (kind === 'instrument' && !options.newInstrument) st().instrument = p.tracks[track].instrument;
     const before = st().undo[st().undo.length - 1];
     const ok = await window.STNKS.load(path, options);
     if (!ok || st().undo[st().undo.length - 1] === before) fail(`The preset was not loaded${toastText() ? ': ' + toastText() : '.'}`);
@@ -2340,7 +2340,7 @@
       if (s.patternLoop && s.patternLoop.pattern !== shown.id) s.patternLoop = null;
       S().syncEngine?.();
     }
-    if (track !== null) { s.track = track; s.instrument = p.tracks[track].instrument ?? 0; }
+    if (track !== null) { s.track = track; s.instrument = p.tracks[track].instrument; }
     if (params.row !== undefined) s.row = params.row;
     if (column !== null) s.column = column;
     if (instrument !== null) s.instrument = instrument;

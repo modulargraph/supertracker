@@ -63,7 +63,7 @@
 
   function selected() {
     const s = ST()?.state;
-    return s?.project?.instruments?.[s.instrument] || null;
+    return s?.project?.instruments[s.instrument] || null;
   }
 
   /** Redraw the map and summary while a control moves (before the edit commits). */

@@ -35,7 +35,7 @@
 
   function copySelection(cut = false) {
     const b = selectedBounds() || cursorBounds();
-    state.clipboardInstruments = state.project.tracks.slice(b.t0, b.t1 + 1).map(t => t.instrument ?? 0);
+    state.clipboardInstruments = state.project.tracks.slice(b.t0, b.t1 + 1).map(t => t.instrument);
     state.clipboard = pattern().steps.slice(b.t0, b.t1 + 1).map(t => clone(t.slice(b.r0, b.r1 + 1)));
     toast(`Copied ${b.r1 - b.r0 + 1} steps × ${b.t1 - b.t0 + 1} tracks`);
     if (cut) clearSelection();
@@ -46,7 +46,7 @@
   const pastedStep = (cell, index, column) => {
     const step = clone(cell), track = state.project.tracks[index];
     if (step && track && window.STGroups?.ofTrack(state.project, index)
-        && step.instrument !== undefined && step.instrument === state.clipboardInstruments?.[column]) step.instrument = track.instrument ?? 0;
+        && step.instrument !== undefined && step.instrument === state.clipboardInstruments?.[column]) step.instrument = track.instrument;
     return step;
   };
 

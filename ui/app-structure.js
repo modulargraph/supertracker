@@ -66,11 +66,7 @@
         delaySend: 0,
         reverbSend: 0
       };
-    if (window.STRoutingProject) {
-      window.STRoutingProject.appendTrack(project, track, makeID);
-    } else {
-      project.tracks.push(track);
-    }
+    window.STRoutingProject.appendTrack(project, track, makeID);
     project.patterns.forEach(pat => pat.steps.push(Array(pat.length).fill(null)));
     return index;
   }
@@ -112,7 +108,7 @@
       // Removing a group's last track removes the group and its bus.
       if (group && !window.STGroups.members(p, group).length) window.STGroups.dissolve(p, group.id);
       state.track = Math.min(index, p.tracks.length - 1);
-      state.instrument = p.tracks[state.track].instrument || 0;
+      state.instrument = p.tracks[state.track].instrument;
     });
   }
 

@@ -212,7 +212,7 @@
     const group = state?.padMode === 'pad' && !state?.padAlt ? controller?.groupOf?.() : null;
     const members = group ? list.find(entry => entry.group === group)?.members.slice((state.padBank?.pad || 0) * 16, (state.padBank?.pad || 0) * 16 + 16) || [] : [];
     root.querySelectorAll('[data-mk3-button^="group"]').forEach((node, i) => {
-      const color = leds.groups[i], entry = bank[i], name = entry ? entry.group ? entry.group.name : project?.tracks?.[entry.index]?.name || '' : '';
+      const color = leds.groups[i], entry = bank[i], name = entry ? entry.group ? entry.group.name : project?.tracks[entry.index]?.name || '' : '';
       const selected = !!entry && entry.members.includes(cursor);
       node.style.background = color || ''; node.classList.toggle('off', !color); node.classList.toggle('selected', selected); node.classList.toggle('named', !!name);
       node.querySelector('.mk3-group-name').textContent = name;
@@ -220,7 +220,7 @@
       node.setAttribute('aria-label', node.title); node.setAttribute('aria-pressed', String(selected));
     });
     for (const pad of root.querySelectorAll('[data-mk3-pad]')) {
-      const index = Number(pad.dataset.mk3Pad) - 1, color = leds.pads[index], member = members[index], name = member !== undefined ? project?.tracks?.[member]?.name || '' : '';
+      const index = Number(pad.dataset.mk3Pad) - 1, color = leds.pads[index], member = members[index], name = member !== undefined ? project?.tracks[member]?.name || '' : '';
       pad.style.background = color || ''; pad.classList.toggle('off', !color); pad.classList.toggle('selected', member !== undefined && member === cursor);
       pad.querySelector('.mk3-pad-name').textContent = name;
       pad.title = name ? `Pad ${index + 1} · ${name}` : `Pad ${index + 1}`;

@@ -96,7 +96,7 @@
       `stretch` fills the container's width (compact, dot-less boxes in the Automation view). */
   function laneMarkup(list, info, px, { height = HEIGHT, top = TOP, bottom = BOTTOM, cursor = null, dots = true, stretch = false } = {}) {
     const p = state.project, rows = totalRows(list), width = Math.max(1, rows * px);
-    const beat = Math.max(1, (p.linesPerBeat || 4) * 4 / p.timeSignature.denominator), bar = Math.max(1, (p.linesPerBeat || 4) * app.beatsPerBar(p));
+    const beat = Math.max(1, p.linesPerBeat * 4 / p.timeSignature.denominator), bar = Math.max(1, p.linesPerBeat * app.beatsPerBar(p));
     const y = value => bottom - toUnit(value, info) * (bottom - top);
     let grid = '', curve = '', marks = '';
     for (const slot of list) {
@@ -257,7 +257,7 @@
   function panelKey(event, ref, info) {
     const list = slots(ref, info), at = cursorSlot(list);
     if (!at) return false;
-    const k = event.key, global = at.start + state.row, beat = Math.max(1, state.project.linesPerBeat || 4);
+    const k = event.key, global = at.start + state.row, beat = Math.max(1, state.project.linesPerBeat);
     const done = () => { event.preventDefault(); event.stopPropagation?.(); return true; };
     if (event.metaKey || event.ctrlKey) return false;
     if (k === 'Escape' || event.altKey && event.shiftKey && (event.code === 'KeyA' || String(k).toLowerCase() === 'a')) {

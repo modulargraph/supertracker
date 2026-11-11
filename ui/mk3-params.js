@@ -131,7 +131,7 @@
     const o = { min: range[0], max: range[1], curve: range[2] };
     const burstKey = `lock:${patternId}:${track}:${row}:${lock.type}:${lock.plugin?.address ?? ''}`;
     const read = p => {
-      const s = p.patterns.find(item => item.id === patternId)?.steps?.[track]?.[row];
+      const s = p.patterns.find(item => item.id === patternId)?.steps[track]?.[row];
       const fx = ['fx1', 'fx2'].map(key => s?.[key]).find(sameFx);
       return fx ? fx.value : null;
     };

@@ -1,7 +1,8 @@
 'use strict';
 const assert = require('node:assert/strict');
 const duplicate = require('../ui/track-duplicate-project.js');
-const project = {
+const { complete } = require('./helpers/project');
+const project = complete({
   tracks: [{id: 0, routingID: 'performance', name: 'Performance', instrument: 0}], instruments: [{id: 0, type: 'sample'}],
   routing: {buses: [], outputs: {}, sends: [], sidechains: []},
   patterns: [{id: 0, length: 1, steps: [[null]]}], sequence: [0],
@@ -10,7 +11,7 @@ const project = {
       {id: 'a', name: 'Original', path: '/takes/current.wav', sourceOffset: .2, sourceDuration: 8},
       {id: 'b', name: 'Alternate', path: '/takes/alternate.wav', sourceOffset: .4, sourceDuration: 9}
     ]}}]
-};
+});
 const before = JSON.parse(JSON.stringify(project));
 const result = duplicate.build(project, 0);
 const source = result.project.audioClips[0], copied = result.project.audioClips[1];
