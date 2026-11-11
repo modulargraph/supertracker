@@ -13,7 +13,7 @@ module.exports = function installEngineSyncBoundary(ST) {
     if (ST.state.project !== owner) return false;
     const project = makeProject();
     if (project == null) return false;
-    return ST.request('engine.project', { project, awaitPlugins: true, ...(options.replace ? { replace: true } : {}) });
+    return ST.request('engine.project', { project, ...(options.replace ? { replace: true } : {}) });
   };
   return syncs;
 };

@@ -64,7 +64,7 @@ test('bounce snapshots after shared synchronization waits and awaits native rest
   const h=harness({standard:true}),edits=deferred(),applied=deferred();h.ST.beforeEngineSync=()=>edits.promise;h.handlers.set('engine.project',()=>applied.promise);
   h.clips.bounceTrack();const render=h.start();await tick();assert.equal(h.syncs.length,1);assert.equal(h.syncs[0].options.capture,undefined);assert.equal(h.calls.length,0);
   h.state.project.audioPlugins[0].state='settled mapped edit';edits.resolve();await tick();
-  assert.equal(h.calls[0].command,'engine.project');assert.equal(h.calls[0].payload.project.audioPlugins[0].state,'settled mapped edit');assert.equal(h.calls[0].payload.awaitPlugins,true);
+  assert.equal(h.calls[0].command,'engine.project');assert.equal(h.calls[0].payload.project.audioPlugins[0].state,'settled mapped edit');
   assert.equal(h.calls.some(x=>x.command==='audio.bounceTrack'),false);applied.resolve({});await render;
   assert.equal(h.undo.length,1);assert.equal(h.state.project.audioPlugins[0].state,'settled mapped edit');
 });

@@ -106,7 +106,6 @@
       const publishedSamplePaths = project.instruments?.map(inst => inst.samplePath) || [];
       const result = await request('engine.project', {
         project,
-        awaitPlugins: true,
         ...(job.replace ? { replace: true } : {})
       }, {
         instrumentEdit: job.instrumentEdit === true,

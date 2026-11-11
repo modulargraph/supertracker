@@ -188,7 +188,7 @@ const facet = (h, field, value) => h.node(`${field}-${value}`, { browserFacet: f
     finishSync(); await loading;
     const native = b.calls.filter(call => call.command === 'engine.project');
     if (outcome === 'replaced-again') assert.equal(native.length, 0);
-    else { assert.equal(native.length, 1); assert.equal(native[0].payload.project.audioPlugins[0].state, 'settled mapped edit'); assert.equal(native[0].payload.awaitPlugins, true); }
+    else { assert.equal(native.length, 1); assert.equal(native[0].payload.project.audioPlugins[0].state, 'settled mapped edit'); }
     assert.equal(original.instruments[0].name, 'Sample'); assert.equal(b.state.project.instruments[0].name, 'Sample');
     if (outcome === 'failed') { assert(b.toasts.some(toast => toast.kind === 'error' && /restoration failed/.test(toast.message))); assert(!b.toasts.some(toast => toast.kind === 'info')); }
     // A rejected restoration releases the browser's local lock for the next action.

@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use crate::bridge::{BridgeBuilder, CallError, Calls, EventSink};
 use crate::dialogs::Dialogs;
 use crate::media::MediaRelink;
-use crate::session::{PublishOptions, Session};
+use crate::session::Session;
 use crate::settings::Settings;
 use crate::{Error, NoPayload, Result};
 
@@ -134,10 +134,7 @@ impl Handshake {
         let mut warnings = self.session.startup_warnings();
         warnings.extend(self.settings.load_warning().map(str::to_string));
         // The window gets the session even when its audio cannot be prepared: it often holds unsaved work.
-        let audio_error = project.as_ref().and_then(|project| {
-            let options = PublishOptions { replace: true, force_plugin_state: true, await_plugins: false };
-            self.session.prepare_audio(project, options).err()
-        });
+        let audio_error = project.as_ref().and_then(|project| self.session.prepare_audio(project, true).err());
         let no_devices = || json!({ "inputs": [], "outputs": [] });
         let mut result = json!({
             "version": env!("CARGO_PKG_VERSION"),

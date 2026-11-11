@@ -30,7 +30,7 @@ function harness(count=4){
  const ST={state,escapeHTML:value=>String(value).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),
   mutate(label,fn){mutations.push({label,before:clone(state.project)});fn(state.project);mount();},
   request(command,payload){requests.push({command,payload:clone(payload)});try{return Promise.resolve(handlers.has(command)?handlers.get(command)(payload):command==='step.preview'?{auditioning:payload.step.note>=0}:{ok:true});}catch(e){return Promise.reject(e);}},
-  async syncEngineProject(makeProject){syncCalls++;const owner=state.project;await gate;await pendingEdits();if(state.project!==owner)return false;const project=makeProject();if(project==null)return false;return ST.request('engine.project',{project,awaitPlugins:true});},
+  async syncEngineProject(makeProject){syncCalls++;const owner=state.project;await gate;await pendingEdits();if(state.project!==owner)return false;const project=makeProject();if(project==null)return false;return ST.request('engine.project',{project });},
   waitForGraphEdit(){return gate;},cancelPendingEngineSync(){cancelSyncs++;},toast(message,type){notices.push({message,type});},showRecording(){},refresh(){mount();}};
  const window={ST};web.runText('sampler.js', source, {window,document,queueMicrotask,setTimeout(fn,ms){timers.set(++nextTimer,{fn,ms});return nextTimer;},clearTimeout(id){timers.delete(id);}},{filename:'sampler.js'});
  const module=window.STSampler;
@@ -62,7 +62,7 @@ test('128 slices use one audition tab stop and distinct selection/focus; numeric
 });
 test('audition selects exact native instrument and slice at root pitch without recording or transport changes',async()=>{
  const h=harness(128);h.instrument.rootNote=127;h.mount();const before=clone(h.state);await h.click('sampler-audition-127');
- assert.deepEqual(h.requests.map(x=>x.command),['engine.project','step.preview']);assert.equal(h.cancelSyncs,0);assert.equal(h.syncCalls,1);assert.equal(h.requests[0].payload.awaitPlugins,true);
+ assert.deepEqual(h.requests.map(x=>x.command),['engine.project','step.preview']);assert.equal(h.cancelSyncs,0);assert.equal(h.syncCalls,1);
  assert.deepEqual(h.previews()[0].payload,{track:0,step:{note:127,instrument:1,velocity:100,fx1:{type:'slice',value:128}},duration:2});
  assert.deepEqual(clone(h.state),before);assert.equal(h.mutations.length,0);assert.equal(h.timers.size,1);assert.equal([...h.timers.values()][0].ms,2000);
  assert(h.nodes.get('sampler-audition-status').textContent.includes('Auditioning slice 128'));

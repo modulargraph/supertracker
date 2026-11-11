@@ -320,7 +320,7 @@ test('export builds fresh state after shared synchronization waits and waits for
   assert(!h.calls.some(call => call.command === 'engine.project')); assert.equal(exported(h).length, 0);
   h.state.project.audioPlugins[0].state = 'settled mapped edit'; edits.resolve(); await h.settle();
   const prepared = h.calls.find(call => call.command === 'engine.project').payload;
-  assert.equal(prepared.project.audioPlugins[0].state, 'settled mapped edit'); assert.equal(prepared.awaitPlugins, true);
+  assert.equal(prepared.project.audioPlugins[0].state, 'settled mapped edit');
   assert.equal(exported(h).length, 0, 'Export cannot outrun pending plug-in restoration');
   applied.resolve({}); await running; assert.equal(exported(h).length, 1); assert.equal(successes(h).length, 1);
 });

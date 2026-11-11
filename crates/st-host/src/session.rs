@@ -28,21 +28,10 @@ use crate::{Commands, Error, NoPayload, Result};
 pub trait ProjectAudio: Send + Sync + 'static {
     /// Builds the audio graph for `project`. The returned value is the result of `engine.project`.
     /// Called before the session accepts the project: an error leaves the session as it was.
-    fn prepare(&self, project: &Project, options: &PublishOptions) -> Result<Value>;
+    /// With `replace` the project replaces the session (opened, recovered, restored) instead of
+    /// editing it: plug-in state is loaded from the project even into instances that already run.
+    fn prepare(&self, project: &Project, replace: bool) -> Result<Value>;
 }
-
-/// How a project is being published.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct PublishOptions {
-    /// The project replaces the session (opened, recovered) instead of editing it.
-    pub replace: bool,
-    /// Restore plug-in state from the project even for instances that already run.
-    pub force_plugin_state: bool,
-    /// Answer only when the project's plug-ins have been instantiated.
-    pub await_plugins: bool,
-}
-
-const REPLACING: PublishOptions = PublishOptions { replace: true, force_plugin_state: true, await_plugins: false };
 
 /// The session service. Created by [`crate::install`].
 pub struct Session {
@@ -80,8 +69,6 @@ impl Drop for Foreground<'_> {
 pub struct PublishPayload {
     pub project: Option<Value>,
     pub replace: bool,
-    pub force_plugin_state: bool,
-    pub await_plugins: bool,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -275,8 +262,8 @@ impl Session {
         }
     }
 
-    pub(crate) fn prepare_audio(&self, project: &Project, options: PublishOptions) -> Result<Option<Value>> {
-        let result = self.audio.get().map(|audio| audio.prepare(project, &options)).transpose()?;
+    pub(crate) fn prepare_audio(&self, project: &Project, replace: bool) -> Result<Option<Value>> {
+        let result = self.audio.get().map(|audio| audio.prepare(project, replace)).transpose()?;
         let observers = self.project_observers.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
         for observer in observers {
             observer(project);
@@ -343,12 +330,7 @@ impl Session {
         let project = Project::from_value(project)?;
         st_project::validate::validate(&project)?;
         let _foreground = self.foreground();
-        let options = PublishOptions {
-            replace: payload.replace,
-            force_plugin_state: payload.force_plugin_state || payload.replace,
-            await_plugins: payload.await_plugins,
-        };
-        let result = self.prepare_audio(&project, options)?;
+        let result = self.prepare_audio(&project, payload.replace)?;
         self.document().update(project, true)?;
         Ok(result.unwrap_or_else(|| json!({ "audio": false })))
     }
@@ -415,7 +397,7 @@ impl Session {
         self.document().autosave()?;
         // Read once for the audio engine, which may refuse it, before the session changes.
         let project = st_project::files::read_project(&chosen)?;
-        self.prepare_audio(&project, REPLACING)?;
+        self.prepare_audio(&project, true)?;
         self.call_if_present("transport.recordArm", json!({ "armed": false }))?;
         let mut document = self.document();
         let opened = document.open(&chosen)?.to_value();
@@ -527,7 +509,7 @@ impl Session {
         self.document().autosave()?;
         let project = st_project::midi::import_file(&chosen)?;
         st_project::validate::validate(&project)?;
-        self.prepare_audio(&project, REPLACING)?;
+        self.prepare_audio(&project, true)?;
         self.call_if_present("transport.recordArm", json!({ "armed": false }))?;
         let value = project.to_value();
         let mut document = self.document();

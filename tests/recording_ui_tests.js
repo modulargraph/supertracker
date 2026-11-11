@@ -165,7 +165,7 @@ test('recording waits for settled project and native acknowledgment and cancels 
     if (changed) h.state.project.tracks[0] = {...h.state.project.tracks[0]};
     edits.resolve(); await new Promise(resolve => setImmediate(resolve));
     assert(!h.calls.some(c => c.command === 'audio.record'));
-    if (!changed) { const sync = h.calls.find(c => c.command === 'engine.project'); assert.equal(sync.payload.project.audioPlugins[0].state,'settled mapped edit'); assert.equal(sync.payload.awaitPlugins,true); }
+    if (!changed) { const sync = h.calls.find(c => c.command === 'engine.project'); assert.equal(sync.payload.project.audioPlugins[0].state,'settled mapped edit'); }
     else assert(!h.calls.some(c => c.command === 'engine.project'));
     native.resolve({}); await starting; assert.equal(h.ui.isRecording,!changed);
   }

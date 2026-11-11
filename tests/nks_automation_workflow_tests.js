@@ -144,7 +144,6 @@ function prepareRoutingChange(h) {
     assert.equal(h.p.audioPlugins[0].state,'state:0.6');assert.equal(h.value,.6);
     const updates=h.calls.filter(call=>call.command==='engine.project');assert(updates.length>0);
     assert(updates.every(call=>call.payload.project.audioPlugins[0].state==='state:0.6'));
-    assert(updates.every(call=>call.payload.awaitPlugins===true),'the barrier requires an acknowledgment after native plug-in restoration settles');
     console.log('PASS a queued engine update cannot restore an older snapshot over a newer mapped-control capture');
   }
   {
@@ -192,7 +191,7 @@ function prepareRoutingChange(h) {
       h.handlers.get('plugin.parameter')({value:Number(payload.project.audioPlugins[0].state.split(':')[1])});resolve({});
     };}));
     h.ST.mutate('rename the session',project=>{project.name='New session name';});assert(h.fireTimer(100)>0);await tick();
-    assert.equal(typeof finishUpdate,'function');assert.equal(h.calls.find(call=>call.command==='engine.project').payload.awaitPlugins,true);
+    assert.equal(typeof finishUpdate,'function');
     h.edit(.57);h.knob.fire('change');await tick();
     assert.equal(h.calls.filter(call=>call.command==='plugin.parameter').length,0,'mapped writes must wait for a native engine update already in flight');
     finishUpdate();assert.equal(await bounded(h.controls.flushEdits()),true);await tick();
@@ -284,7 +283,7 @@ function prepareRoutingChange(h) {
     assert.equal(factories,0,'preview cloning must wait for an unmounted control to commit its final native state');
     finishCapture();await bounded(sync);assert.equal(factories,1);
     const update=h.calls.findLast(call=>call.command==='engine.project');assert.equal(update.payload.project.audioPlugins[0].state,'state:0.86');
-    assert.equal(update.payload.project.tracks[0].volume,.42);assert.equal(update.payload.awaitPlugins,true);
+    assert.equal(update.payload.project.tracks[0].volume,.42);
     assert.equal(h.p.tracks[0].volume,originalVolume,'a preview factory must not mutate its source project');
     console.log('PASS the shared engine helper builds a preview from the latest state only after unmounted mapped controls have settled');
   }
@@ -335,7 +334,7 @@ function prepareRoutingChange(h) {
     h.handlers.set('engine.project',()=>new Promise(resolve=>{finishUpdate=()=>resolve({ok:true});}));
     assert.equal(audition(),true);await tick();assert.equal(typeof finishCapture,'function');assert(!h.calls.some(call=>call.command==='engine.project'));
     finishCapture();await tick();assert.equal(typeof finishUpdate,'function');
-    const update=h.calls.find(call=>call.command==='engine.project');assert.equal(update.payload.project.audioPlugins[0].state,'state:0.93');assert.equal(update.payload.awaitPlugins,true);
+    const update=h.calls.find(call=>call.command==='engine.project');assert.equal(update.payload.project.audioPlugins[0].state,'state:0.93');
     assert(!h.calls.some(call=>call.command==='step.preview'),'sample audition must await native plug-in restoration acknowledgment');
     finishUpdate();await bounded(h.ST.waitForEngineUpdate());await tick();
     const preview=h.calls.find(call=>call.command==='step.preview'&&call.payload.step.note>=0);assert(preview);assert.equal(preview.payload.step.instrument,1);assert.equal(preview.payload.step.fx1.value,1);

@@ -132,6 +132,6 @@ pub use commands::{Commands, Lane, NoPayload, Reply, Scoped};
 pub use dialogs::{DialogKind, Dialogs, FileDialog, FileFilter, NoDialogs, ScriptedDialogs};
 pub use error::{Error, Result};
 pub use paths::support_dir;
-pub use session::{ProjectAudio, PublishOptions, Session};
+pub use session::{ProjectAudio, Session};
 pub use settings::Settings;
 pub use transport::{Next, Outbox, Outgoing, Transport};

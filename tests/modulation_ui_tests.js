@@ -77,7 +77,7 @@ function harness() {
       while (context.window.STStudio?.isMovingEffect) await context.window.STStudio.waitForEffectMove();
       await pendingEdits(); if (state.project !== owner) return false;
       const project = makeProject(); if (project == null) return false;
-      return ST.request('engine.project', { project, awaitPlugins: true });
+      return ST.request('engine.project', { project });
     },
     mutate(label, fn) {
       const focusedID = document.activeElement?.id;
@@ -188,7 +188,7 @@ test('preview updates twins and visual feedback without mutating the project or 
   assert.equal(h.synth.lfoDepth, .25); assert.equal(h.mutations.length, 0); assert.equal(h.rerenderCount, 0);
   await h.flushTimers();
   assert.equal(h.requests.length, 1); assert.equal(h.requests[0].command, 'engine.project');
-  assert.equal(h.syncCalls, 1); assert.equal(h.requests[0].payload.awaitPlugins, true);
+  assert.equal(h.syncCalls, 1);
   assert.equal(h.requests[0].payload.project.instruments[0].lfoDepth, .75);
   assert.equal(h.state.project.instruments[0].lfoDepth, .25);
 });

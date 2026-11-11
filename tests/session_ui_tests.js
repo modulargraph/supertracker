@@ -165,7 +165,7 @@ async function run(){
     h.window.STNKSControls={get hasPendingEdits(){return pending;},async flushEdits(){await gate;h.ST.state.project.audioPlugins=[{state:'settled mapped state'}];pending=false;return true;}};
     h.ST.state.view='song';h.ST.perform('modeSong');h.ST.state.row=13;h.ST.state.sequence=1;
     const playing=h.ST.perform('play');await tick();assert(!h.calls.some(x=>x.command==='engine.project'));finish();assert.equal(await playing,true);
-    const synced=h.calls.find(x=>x.command==='engine.project');assert.equal(synced.payload.awaitPlugins,true);assert.equal(synced.payload.project.audioPlugins[0].state,'settled mapped state');
+    const synced=h.calls.find(x=>x.command==='engine.project');assert.equal(synced.payload.project.audioPlugins[0].state,'settled mapped state');
     const start=h.calls.find(x=>x.command==='transport.play');assert.equal(start.payload.mode,'song');assert.equal(start.payload.row,0);assert.equal(start.payload.sequence,1);
     console.log('PASS Play serializes settled mapped state and uses the same song start position for seek and play');
   }
@@ -195,7 +195,7 @@ async function run(){
       const assigning=s.element('#assign-instrument').click();await new Promise(resolve=>setImmediate(resolve));assert(s.calls.some(x=>x.command==='plugin.'+operation));
       const replacement=s.ST.normalize({name:'Different owner',audioPlugins:[{track:0,kind:'instrument',slot:0,component:'keep',state:'replacement state'}]});s.ST.state.project=replacement;
       finishNative({component:'fixture'});await assigning;
-      const restored=s.calls.filter(x=>x.command==='engine.project').at(-1);assert.equal(restored.payload.project.name,'Different owner');assert.equal(restored.payload.replace,true);assert.equal(restored.payload.awaitPlugins,true);
+      const restored=s.calls.filter(x=>x.command==='engine.project').at(-1);assert.equal(restored.payload.project.name,'Different owner');assert.equal(restored.payload.replace,true);
       assert.equal(replacement.audioPlugins[0].state,'replacement state');assert.equal(replacement.audioPlugins[0].component,'keep');
     }
     console.log('PASS late plug-in assignment and removal restore the current owner without filtering its retained descriptors');

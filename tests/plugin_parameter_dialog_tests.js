@@ -74,7 +74,7 @@ test('Save settles a closed dialog edit before engine capture and file serializa
 });
 test('strict synchronization flushes an input-only edit without self-deadlock',async()=>{
  const h=harness();await h.open();await h.inputValue(.7,false);assert(h.window.STPluginParameters.hasPendingEdits);
- await h.ST.syncEngineProject(()=>copy(h.state.project));const apply=h.calls.filter(x=>x.command==='engine.project').at(-1);assert.equal(apply.payload.project.audioPlugins[0].state,'B:0.7');assert.equal(apply.payload.awaitPlugins,true);assert.equal(h.window.STPluginParameters.hasPendingEdits,false);
+ await h.ST.syncEngineProject(()=>copy(h.state.project));const apply=h.calls.filter(x=>x.command==='engine.project').at(-1);assert.equal(apply.payload.project.audioPlugins[0].state,'B:0.7');assert.equal(h.window.STPluginParameters.hasPendingEdits,false);
 });
 test('successive edits serialize and never publish the older capture over the final gesture',async()=>{
  const h=harness();await h.open();const gate=deferred();let captures=0;h.handlers.set('plugin.state',()=>++captures===1?gate.promise:copy(h.native));

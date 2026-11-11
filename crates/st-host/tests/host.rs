@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 use st_host::testing::{TempDir, TestHost};
-use st_host::{install, Host, HostOptions, NoPayload, Opener, ProjectAudio, PublishOptions, QuitProgress, QuitRequest, Result, ScriptedDialogs};
+use st_host::{install, Host, HostOptions, NoPayload, Opener, ProjectAudio, QuitProgress, QuitRequest, Result, ScriptedDialogs};
 
 #[derive(Default)]
 struct RecordingOpener(Mutex<Vec<String>>);
@@ -120,7 +120,7 @@ fn ready_collects_what_other_areas_have_registered() {
 fn publish_save_new_open_round_trip() {
     let fixture = Fixture::new();
     let file = fixture.file("Song.supertracker");
-    assert_eq!(fixture.host.request("engine.project", json!({"project": project("Song"), "awaitPlugins": true})), Ok(json!({"audio": false})));
+    assert_eq!(fixture.host.request("engine.project", json!({"project": project("Song")})), Ok(json!({"audio": false})));
 
     // Save without a known file asks where, with the project's name proposed.
     fixture.dialogs.push(None);
@@ -224,16 +224,16 @@ fn a_reloading_interface_gets_the_session_back() {
 }
 
 struct Graph {
-    prepared: Mutex<Vec<(String, PublishOptions)>>,
+    prepared: Mutex<Vec<(String, bool)>>,
 }
 
 impl ProjectAudio for Graph {
-    fn prepare(&self, project: &st_project::Project, options: &PublishOptions) -> Result<Value> {
+    fn prepare(&self, project: &st_project::Project, replace: bool) -> Result<Value> {
         let name = project.display_name().to_string();
         if name == "Broken graph" {
             st_host::fail!("The audio device is gone.");
         }
-        self.prepared.lock().unwrap().push((name, *options));
+        self.prepared.lock().unwrap().push((name, replace));
         Ok(json!({"latency": 128}))
     }
 }
@@ -260,7 +260,7 @@ fn an_attached_audio_engine_prepares_publications_and_can_refuse_them() {
     fixture.services.session.attach_audio(graph.clone());
 
     assert_eq!(fixture.host.request("engine.project", json!({"project": project("Song"), "replace": true})), Ok(json!({"latency": 128})));
-    assert_eq!(graph.prepared.lock().unwrap()[0], ("Song".to_string(), PublishOptions { replace: true, force_plugin_state: true, await_plugins: false }));
+    assert_eq!(graph.prepared.lock().unwrap()[0], ("Song".to_string(), true));
     // A refused publication leaves the session as it was.
     assert_eq!(fixture.host.request("engine.project", json!({"project": project("Broken graph")})), Err("The audio device is gone.".to_string()));
     assert_eq!(fixture.services.session.project().unwrap().display_name(), "Song");
@@ -278,7 +278,7 @@ fn an_attached_audio_engine_prepares_publications_and_can_refuse_them() {
     fixture.host.request("project.new", json!({})).unwrap();
     fixture.host.request("project.open", json!({"path": file})).unwrap();
     assert_eq!(*quieted.lock().unwrap(), ["panic", "disarm", "disarm"]);
-    assert_eq!(graph.prepared.lock().unwrap().last().unwrap().1, PublishOptions { replace: true, force_plugin_state: true, await_plugins: false });
+    assert_eq!(graph.prepared.lock().unwrap().last().unwrap().1, true);
 
     // The handshake prepares the session's audio and reports a failure without withholding the session.
     let ready = fixture.host.request("ready", json!({})).unwrap();

@@ -182,7 +182,7 @@ test('stale relink restoration builds after shared sync waits and surfaces stric
     sync.resolve(); await running;
     const native = h.calls.filter(call => call.command === 'engine.project');
     if (result === 'replaced-again') assert.equal(native.length, 0);
-    else { assert.equal(native.length, 1); assert.equal(native[0].payload.project.audioPlugins[0].state, 'settled mapped edit'); assert.equal(native[0].payload.awaitPlugins, true); }
+    else { assert.equal(native.length, 1); assert.equal(native[0].payload.project.audioPlugins[0].state, 'settled mapped edit'); }
     assert.equal(h.edits.length, 0); assert(!h.toasts.some(toast => toast.kind === 'success'));
     if (result === 'failed') assert(h.toasts.some(toast => toast.kind === 'error' && /Relink restoration failed/.test(toast.message)));
   }

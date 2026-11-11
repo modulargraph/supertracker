@@ -39,7 +39,7 @@ use st_project::model::Step;
 use st_project::Project;
 
 use crate::commands::{Commands, NoPayload, Reply};
-use crate::session::{ProjectAudio, PublishOptions};
+use crate::session::ProjectAudio;
 use crate::{fail, Error, EventSink, Result, Settings};
 
 /// Which output the host starts on.
@@ -108,9 +108,9 @@ pub struct Audio {
 pub type ExternalMidi = Box<dyn Fn(usize, [u8; 3]) -> Option<bool> + Send + Sync>;
 
 impl ProjectAudio for Audio {
-    fn prepare(&self, project: &Project, options: &PublishOptions) -> Result<Value> {
+    fn prepare(&self, project: &Project, replace: bool) -> Result<Value> {
         // An opened or replaced project loads every plug-in's saved state again.
-        let report = self.engine.publish_with(project, options.force_plugin_state).map_err(Error::new)?;
+        let report = self.engine.publish_with(project, replace).map_err(Error::new)?;
         self.report_samples(report);
         crate::areas::samples::retain_for(&self.samples, project);
         // A publication is what routes line inputs: the page hears what became of them.

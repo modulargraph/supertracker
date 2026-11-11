@@ -75,7 +75,7 @@ function harness() {
     mutate(label, fn, options = {}) { mutations.push({ label, before: copy(state.project), options: { ...options } }); fn(state.project); if (options.render !== false) ST.refresh(); },
     refresh() { mount(); },
     request(command, payload) { requests.push({ command, payload: copy(payload) }); return Promise.resolve({ ok: true, auditioning: payload?.step?.note >= 0 }); },
-    async syncEngineProject(factory) { const project = factory(); return project ? ST.request('engine.project', { project, awaitPlugins: true }) : false; },
+    async syncEngineProject(factory) { const project = factory(); return project ? ST.request('engine.project', { project }) : false; },
     toast(message, type) { notices.push({ message, type }); }, showRecording() {},
   };
   const window = { ST, addEventListener(type, fn) { const list = windowEvents.get(type) || []; list.push(fn); windowEvents.set(type, list); } };

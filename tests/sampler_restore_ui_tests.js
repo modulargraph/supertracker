@@ -30,7 +30,7 @@ function harness(options = {}) {
       await options.helperGraph?.promise; events.push('helper-graph-ready'); await options.nks?.promise; options.flushNKS?.(state); events.push('nks-flushed');
       const draft = factory(); events.push('factory'); assert(!draft || typeof draft.then !== 'function', 'The project factory must be synchronous');
       if (draft == null) return false;
-      nativeDrafts.push({ project: draft, awaitPlugins: true, ...settings }); events.push('restore-start');
+      nativeDrafts.push({ project: draft, ...settings }); events.push('restore-start');
       const result = options.native ? await options.native.promise : options.hasOwnProperty('restoreResult') ? options.restoreResult : { accepted: true };
       events.push('restore-finished'); return result;
     },
@@ -50,7 +50,7 @@ test('stale stretch recovery clones only after pending NKS flush and awaits nati
   assert.equal(h.synchronizations.length, 1); assert.equal(h.nativeDrafts.length, 0); assert.equal(h.notices.length, 0); assert.equal(h.mutations.length, 0);
   // The user can replace/edit again while a pending mapped control is being captured.
   h.state.project = project('Latest session', '/samples/latest.wav'); h.state.project.bpm = 137; nks.resolve(); await h.settle();
-  const sent = h.nativeDrafts[0]; assert.equal(sent.awaitPlugins, true); assert.equal(sent.project.name, 'Latest session'); assert.equal(sent.project.bpm, 137); assert.equal(sent.project.instruments[0].samplePath, '/samples/latest.wav'); assert.equal(sent.project.audioPlugins[0].state, 'latest-captured-NKS-state'); assert.equal(sent.project.audioPlugins[0].parameters[0].normalized, .82);
+  const sent = h.nativeDrafts[0]; assert.equal(sent.project.name, 'Latest session'); assert.equal(sent.project.bpm, 137); assert.equal(sent.project.instruments[0].samplePath, '/samples/latest.wav'); assert.equal(sent.project.audioPlugins[0].state, 'latest-captured-NKS-state'); assert.equal(sent.project.audioPlugins[0].parameters[0].normalized, .82);
   assert.notEqual(sent.project, h.state.project); assert.notEqual(sent.project.audioPlugins, h.state.project.audioPlugins); assert.equal(h.notices.length, 0, 'Do not report recovery before native acceptance');
   h.state.project.bpm = 138; assert.equal(sent.project.bpm, 137, 'Native input is an isolated snapshot'); native.resolve({ accepted: true }); await pending;
   assert.equal(h.mutations.length, 0); assert.deepEqual(h.state.samples, samples); assert.equal(original.instruments[0].samplePath, '/samples/original.wav'); assert.equal(h.state.project.instruments[0].samplePath, '/samples/latest.wav'); assert.equal(h.notices.length, 1); assert.equal(h.notices[0].type, 'error'); assert.match(h.notices[0].message, /destination changed/); assert(h.notices[0].message.includes(rendered.path)); assert(h.events.indexOf('restore-finished') < h.events.indexOf('notice')); assert.equal(h.get('sampler-stretch-apply').disabled, false);

@@ -16,7 +16,7 @@ function environment() {
     normalize: value => value,
     mutate: (label, fn) => { undo.push(copy(state.project)); fn(state.project); },
     request: async (command, payload) => { calls.push({ command, payload }); return copy(descriptor); } };
-  app.syncEngineProject=async(makeProject,options={})=>{const project=makeProject();return project?app.request('engine.project',{project,awaitPlugins:true,...(options.replace?{replace:true}:{})}):false;};
+  app.syncEngineProject=async(makeProject,options={})=>{const project=makeProject();return project?app.request('engine.project',{project,...(options.replace?{replace:true}:{})}):false;};
   const sandbox = { window: { ST: app } }; web.runText('nks-loader.js', source, sandbox);
   return { app, state, project, calls, undo, notices, loader: sandbox.window.STNKS };
 }

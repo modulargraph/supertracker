@@ -102,7 +102,7 @@ function harness(setup = () => {}) {
     automate(owner, target, name) { automationCalls.push({ owner, target, name }); },
     refresh() { refreshes++; html = state.view === 'mixer' ? studio.renderMixer() : studio.renderAutomation(); mountHTML(html); if (state.view === 'mixer') studio.bindMixer(); else studio.bindAutomation(); }
   };
-  ST.syncEngineProject=async(makeProject,options={})=>{const project=makeProject();return project?ST.request('engine.project',{project,awaitPlugins:true,...(options.replace?{replace:true}:{})}):false;};
+  ST.syncEngineProject=async(makeProject,options={})=>{const project=makeProject();return project?ST.request('engine.project',{project,...(options.replace?{replace:true}:{})}):false;};
   const context = vm.createContext({ window: { ST, STRouting: routing }, document, requestAnimationFrame: fn => fn(), setTimeout(fn) { const id = ++timerID; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); } });
   web.load(context, 'studio.js', { text: source }); studio = context.window.STStudio; ST.refresh();
   async function settle() { for (let i = 0; i < 12; i++) await tick(); }

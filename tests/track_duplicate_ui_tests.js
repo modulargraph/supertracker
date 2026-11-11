@@ -45,7 +45,6 @@ test('Cmd-K command prepares exact state, publishes atomically once, verifies sp
   const verified = h.calls.filter(call => call.command === 'plugin.parameters').map(call => call.payload);
   assert.deepEqual(verified.map(value => value.slot).sort(), [0, 6]); assert(verified.every(value => value.track === 1 && !['synth', 'effect'].includes(value.instanceID)));
   assert.equal(owner.audioPlugins[2].state, 'opaque-original'); assert.equal(owner.audioPlugins[3].state, 'opaque-effect');
-  assert(h.calls.find(call => call.command === 'engine.project').payload.awaitPlugins);
 });
 test('undo and redo keep the same independent identities and opaque copied state', async () => {
   const h = harness(), original = copy(h.ST.state.project); assert.equal(await h.run(), true); const duplicated = copy(h.ST.state.project);

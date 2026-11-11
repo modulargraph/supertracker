@@ -42,7 +42,7 @@ function harness(p=fixture()){
     origin=document.activeElement;state.modal=options.kind||'dialog';modals.push({title,body,footer});
     for(const match of `${body}${footer}`.matchAll(/<(?:input|button|div)\b[^>]*\bid="([^"]+)"[^>]*>/g)){const element=new Element(match[1],document),value=match[0].match(/\bvalue="([^"]*)"/);if(value)element.value=value[1];document.elements.set(element.id,element);}
   },closeModal:()=>{state.modal=null;origin?.focus();}};
-  ST.syncEngineProject=async(makeProject,options={})=>{const project=makeProject();return project?ST.request('engine.project',{project,awaitPlugins:true,...(options.replace?{replace:true}:{})}):false;};
+  ST.syncEngineProject=async(makeProject,options={})=>{const project=makeProject();return project?ST.request('engine.project',{project,...(options.replace?{replace:true}:{})}):false;};
   const context={window:{ST,STStudio:{isEditingPlugin:false,isMovingEffect:false}},document,queueMicrotask};web.runText('routing.js', source, context,{filename:'routing.js'});
   const R=context.window.STRouting;R.event('routing.capabilities',capabilities());
   return {R,ST,state,document,requests,mutations,notices,modals,context,get refreshes(){return refreshes;},handle:fn=>{handler=fn;},capture:fn=>{captureHandler=fn;},element:id=>document.getElementById(id),focus:id=>{const element=new Element(id,document);document.elements.set(id,element);element.focus();return element;}};
