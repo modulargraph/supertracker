@@ -22,4 +22,13 @@ function hostStub(channel = {}) {
   };
 }
 
-module.exports = { hostStub };
+// What the host says about audio export in its answer to routing.capabilities
+// (st_samples::export::format::capabilities), and the delivery it confirms in an audio.export result.
+const audioExport = () => ({ container: 'wav', sampleRate: 48000, sampleRates: [44100, 48000, 96000], defaultSampleRate: 48000,
+  encodings: ['pcm16', 'pcm24', 'float32'], defaultEncoding: 'pcm24', dithers: ['none', 'tpdf'], defaultDither: 'tpdf' });
+function exportDelivery(payload = {}) {
+  const encoding = payload.encoding ?? 'pcm24';
+  return { container: 'wav', encoding, sampleRate: payload.sampleRate ?? 48000, dither: encoding === 'float32' ? 'none' : payload.dither ?? 'tpdf' };
+}
+
+module.exports = { hostStub, audioExport, exportDelivery };

@@ -2,6 +2,7 @@
 // Actual renderer + STAgent handlers, with controlled native promises. No app/audio/vendor execution.
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
 const web = require('./helpers/web');
+const { audioExport, exportDelivery } = require('./helpers/host');
 const fixture=fs.readFileSync(path.join(__dirname,'agent_api_tests.js'),'utf8');
 const makeHarness=new Function('require','__dirname',fixture.slice(0,fixture.indexOf('\nconst tests = [], test ='))+'\nreturn harness;')(require,__dirname);
 const clone=x=>JSON.parse(JSON.stringify(x)),tick=async()=>{for(let i=0;i<60;i++)await Promise.resolve()};
@@ -9,9 +10,12 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{reso
 const parameters=[{address:'7',name:'Cutoff',id:'cutoff',min:0,max:100,normalized:.2,writable:true},{address:'8',name:'Resonance',id:'res',min:0,max:1,normalized:0,writable:true}];
 function harness(){const h=makeHarness();web.load(h.context, 'export.js');h.state.native=true;h.ST.captureNativeEdits=async()=>true;h.ST.waitForGraphEdit=async()=>{};h.ST.waitForEngineUpdate=async()=>{};faithfulReads(h);return h;}
 // Like a real plug-in, parameter reads report the values written before (setPluginParameters reads them back).
+// Like the real host, routing.capabilities describes the export formats and a finished export confirms its delivery.
 function faithfulReads(h){
  const live=new Map();let request=h.ST.request;
  Object.defineProperty(h.ST,'request',{configurable:true,get:()=>request,set:fn=>{request=async(command,payload)=>{const result=await fn(command,payload);
+  if(command==='routing.capabilities')return{exportTargets:[],...result,audioExport:audioExport()};
+  if(command==='audio.export'&&result&&(result.path||result.paths))return{...exportDelivery(payload),...result};
   if(command==='plugin.parameter'&&payload?.address!==undefined&&Number.isFinite(result?.normalized))live.set(String(payload.address),result.normalized);
   return command==='plugin.parameters'&&Array.isArray(result)?result.map(item=>live.has(String(item.address))?{...item,normalized:live.get(String(item.address))}:item):result;};}});
 }

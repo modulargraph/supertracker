@@ -1,6 +1,6 @@
 // Actual app + Maschine controller save/history/quit boundaries; no native I/O.
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
-const { hostStub } = require('./helpers/host');
+const { hostStub, audioExport, exportDelivery } = require('./helpers/host');
 const web = require('./helpers/web');
 function harness(){
   const nodes=new Map(),calls=[],handlers=new Map(),timers=new Map();let context,clock=0,nextTimer=1;
@@ -75,7 +75,8 @@ test('pending tempo settles during Export preparation',async()=>{
 });
 test('export preparation captures pending controller tempo before rendering',async()=>{
  const h=timedController();h.load('export.js');let sawRender=false;
- h.handlers.set('audio.export',payload=>{sawRender=true;assert.equal(h.window.STExport.isPreparing,false);assert.equal(h.ST.state.project.bpm,125);return {paths:[payload.path]};});
+ h.handlers.set('routing.capabilities',()=>({audioExport:audioExport(),exportTargets:[]}));
+ h.handlers.set('audio.export',payload=>{sawRender=true;assert.equal(h.window.STExport.isPreparing,false);assert.equal(h.ST.state.project.bpm,125);return {paths:[payload.path],...exportDelivery(payload)};});
  const result=await h.window.STExport.exportTo({path:'/tmp/mk3-tempo.wav'});
  assert(sawRender);assert.equal(result.paths[0],'/tmp/mk3-tempo.wav');assert.equal(h.m.hasPendingEdits,false);assert.equal(h.ST.state.undo.length,1);
  assert.equal(h.window.STExport.isBusy,false);assert.equal(h.window.STExport.isPreparing,false);

@@ -12,8 +12,10 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const decode = value => value.replace(/&(amp|lt|gt|quot|#39);/g, (_, c) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" }[c]));
+// What the host answers to routing.capabilities for the fixture project, and how it confirms a delivery.
+const { audioExport, exportDelivery: delivered } = require('./helpers/host');
 function capabilities() {
-  return { fullGraphStems: true, exportTargets: [
+  return { fullGraphStems: true, audioExport: audioExport(), exportTargets: [
     { owner: 'track:keys', name: 'Keys', kind: 'track', boundary: 'postFaderPreParent', available: true },
     { owner: 'track:bass', name: 'Bass', kind: 'track', boundary: 'postFaderPreParent', available: true },
     { owner: 'bus:drums', name: 'Drum group', kind: 'group', boundary: 'postFaderPreParent', available: true },
@@ -56,7 +58,7 @@ function harness(overrides = {}) {
     }
     return result;
   }
-  const defaults = { 'routing.capabilities': capabilities, 'dialog.export': payload => ({ path: payload.mode === 'stems' ? '/exports/stems' : '/exports/mix.wav' }), 'engine.project': () => ({}), 'audio.export': payload => ({ path: payload.path, paths: payload.mode === 'stems' ? (payload.owners || ['track:keys', 'track:bass']).map((_, i) => `/exports/stems/Stem-${i + 1}.wav`) : [payload.path] }), 'transport.stop': () => ({}) };
+  const defaults = { 'routing.capabilities': capabilities, 'dialog.export': payload => ({ path: payload.mode === 'stems' ? '/exports/stems' : '/exports/mix.wav' }), 'engine.project': () => ({}), 'audio.export': payload => ({ path: payload.path, paths: payload.mode === 'stems' ? (payload.owners || ['track:keys', 'track:bass']).map((_, i) => `/exports/stems/Stem-${i + 1}.wav`) : [payload.path], ...delivered(payload) }), 'transport.stop': () => ({}) };
   const ST = { state, escapeHTML, pattern: () => state.project.patterns[0], request(command, payload = {}) { calls.push({ command, payload: clone(payload) }); return Promise.resolve().then(() => (overrides[command] || defaults[command] || (() => ({})))(payload)); },
     waitForGraphEdit: async () => { calls.push({ command: 'waitForGraphEdit' }); }, captureNativeEdits: async () => { calls.push({ command: 'captureNativeEdits' }); return true; }, syncEngine: async () => { throw new Error('Export must use strict engine.project, not best-effort syncEngine'); },
     mutate(label, callback) { mutations.push(label); callback(state.project); }, toast(message, kind) { toasts.push({ message, kind }); },
@@ -112,7 +114,7 @@ test('headless export shares strict preparation and the public edit lock without
   assert.deepEqual(h.calls.filter(c=>['captureNativeEdits','engine.project','audio.export'].includes(c.command)).map(c=>c.command),['captureNativeEdits','engine.project','audio.export']);
   assert.equal(await h.ui.show(),false);await assert.rejects(h.ui.exportTo({path:'/exports/duplicate.wav'}),/current audio export/);
   h.ui.event('audio.exportProgress',{path:'/exports/headless.wav',progress:.4});assert.equal(h.ui.progress,.4);
-  gate.resolve({path:'/exports/headless.wav',paths:['/exports/headless.wav']});const result=await run;assert.deepEqual(clone(result.paths),['/exports/headless.wav']);assert(!h.ui.isBusy);assert.equal(h.ui.progress,null);assert.equal(h.state.modal,null);
+  gate.resolve({path:'/exports/headless.wav',paths:['/exports/headless.wav'],...delivered(exported(h)[0].payload)});const result=await run;assert.deepEqual(clone(result.paths),['/exports/headless.wav']);assert(!h.ui.isBusy);assert.equal(h.ui.progress,null);assert.equal(h.state.modal,null);
 });
 test('headless preflight waits for graph commits before locking and rejects replaced pattern identities at every boundary',async()=>{
   for(const stage of ['wait','capture','sync'])for(const change of ['project','pattern','pattern-id']){
@@ -137,12 +139,18 @@ test('headless cancellation is single-flight and holds the lock until both nativ
   const run=h.ui.exportTo({path:'/exports/canceled.wav'}),rejected=assert.rejects(run,/canceled/);await h.settle();assert.equal(h.ui.cancel(),true);assert.equal(h.ui.cancel(),false);
   render.resolve({cancelled:true});await h.settle();assert(h.ui.isBusy);stop.resolve({});await rejected;assert(!h.ui.isBusy);assert.equal(h.calls.filter(c=>c.command==='transport.stop').length,1);
 });
-test('headless encoding and selected stems honor capabilities and require actual delivery confirmation',async()=>{
-  const caps=capabilities();caps.audioExport={container:'wav',sampleRate:48000,defaultEncoding:'pcm24',encodings:['pcm16','pcm24','float32'],defaultSampleRate:48000,sampleRates:[44100,48000,96000]};
-  const h=harness({'routing.capabilities':()=>caps,'audio.export':p=>({path:p.path,paths:['/exports/stems/Keys.wav'],container:'wav',encoding:p.encoding,sampleRate:p.sampleRate})});
-  await h.ui.exportTo({mode:'stems',path:'/exports/stems',owners:['track:keys'],encoding:'float32',sampleRate:96000});assert.deepEqual(exported(h)[0].payload.owners,['track:keys']);assert.equal(exported(h)[0].payload.sampleRate,96000);
-  h.overrides['audio.export']=p=>({paths:['/exports/stems/Keys.wav'],container:'wav',encoding:p.encoding,sampleRate:48000});await assert.rejects(h.ui.exportTo({path:'/exports/test.wav',sampleRate:96000}),/sample rate/);assert(!h.ui.isBusy);
+test('headless format and selected stems honor capabilities and require actual delivery confirmation',async()=>{
+  const h=harness({'audio.export':p=>({path:p.path,paths:['/exports/stems/Keys.wav'],...delivered(p)})});
+  await h.ui.exportTo({mode:'stems',path:'/exports/stems',owners:['track:keys'],encoding:'float32',sampleRate:96000});assert.deepEqual(exported(h)[0].payload.owners,['track:keys']);assert.equal(exported(h)[0].payload.sampleRate,96000);assert.equal(exported(h)[0].payload.dither,undefined,'a float file has no dither');
+  await h.ui.exportTo({path:'/exports/defaults.wav'});assert.deepEqual([exported(h)[1].payload.encoding,exported(h)[1].payload.sampleRate,exported(h)[1].payload.dither],['pcm24',48000,'tpdf'],'the host\'s defaults');
+  await h.ui.exportTo({path:'/exports/plain.wav',encoding:'pcm16',dither:'none'});assert.deepEqual([exported(h)[2].payload.encoding,exported(h)[2].payload.dither],['pcm16','none']);
+  for(const unadvertised of [{encoding:'pcm32'},{sampleRate:192000},{dither:'shaped'}]){await assert.rejects(h.ui.exportTo({path:'/exports/test.wav',...unadvertised}),/does not advertise/);assert(!h.ui.isBusy);}
+  assert.equal(exported(h).length,3);
+  h.overrides['audio.export']=p=>({paths:['/exports/stems/Keys.wav'],...delivered(p),sampleRate:48000});await assert.rejects(h.ui.exportTo({path:'/exports/test.wav',sampleRate:96000}),/sample rate/);assert(!h.ui.isBusy);
+  h.overrides['audio.export']=p=>({paths:['/exports/test.wav'],...delivered(p),dither:'none'});await assert.rejects(h.ui.exportTo({path:'/exports/test.wav'}),/dither/);assert(!h.ui.isBusy);
   await assert.rejects(h.ui.exportTo({mode:'stems',path:'/exports/stems',owners:['track:missing']}),/unavailable/);assert(!h.ui.isBusy);
+  const failing=harness({'routing.capabilities':()=>{throw new Error('Mixer is rebuilding');}});await assert.rejects(failing.ui.exportTo({path:'/exports/test.wav'}),/Mixer is rebuilding/);assert(!failing.ui.isBusy);assert.equal(exported(failing).length,0);
+  const silent=harness({'routing.capabilities':()=>({exportTargets:capabilities().exportTargets})});await assert.rejects(silent.ui.exportTo({path:'/exports/test.wav'}),/did not describe its export formats/);assert.equal(exported(silent).length,0);
 });
 test('opening advertises graph targets and selects only tracks without requesting an export or editing the project', async () => {
   const h = harness(), before = clone(h.state.project); await h.open(); await h.change('export-mode', 'stems');
@@ -171,7 +179,7 @@ test('full graph stems use selected owners after ordered native preflight and co
 
 test('song and pattern exports omit stem owners and use the actual host output path', async () => {
   for (const mode of ['song', 'pattern']) {
-    const h = harness({ 'audio.export': () => ({ path: '/actual/renamed.wav', paths: ['/actual/renamed.wav'] }) }); await h.open(); await h.change('export-mode', mode); await h.start();
+    const h = harness({ 'audio.export': payload => ({ path: '/actual/renamed.wav', paths: ['/actual/renamed.wav'], ...delivered(payload) }) }); await h.open(); await h.change('export-mode', mode); await h.start();
     assert.equal(exported(h).length, 1); assert.equal(exported(h)[0].payload.mode, mode); assert.equal(exported(h)[0].payload.owners, undefined); assert(resultPath(h).includes('/actual/renamed.wav')); assert(!resultPath(h).includes('/exports/mix.wav'));
   }
 });
@@ -212,7 +220,7 @@ test('render cancellation sends Stop once and stays busy until the export respon
   for (const lateSuccess of [false, true]) {
     const gate = deferred(), h = harness({ 'audio.export': () => gate.promise }); await h.open(); const start = h.start(); await h.settle(); assert.equal(exported(h).length, 1); assert(h.ui.isBusy);
     await h.ui.cancel(); await h.ui.cancel(); h.ST.closeModal(); assert.equal(h.state.modal, 'export'); assert(h.ui.isBusy); assert.equal(h.calls.filter(call => call.command === 'transport.stop').length, 1);
-    gate.resolve(lateSuccess ? { path: '/exports/mix.wav', paths: ['/exports/mix.wav'] } : { cancelled: true }); await start;
+    gate.resolve(lateSuccess ? { path: '/exports/mix.wav', paths: ['/exports/mix.wav'], ...delivered(exported(h)[0].payload) } : { cancelled: true }); await start;
     assert(!h.ui.isBusy); assert.equal(successes(h).length, lateSuccess ? 1 : 0); assert.equal(h.mutations.length, 0);
     if (lateSuccess) assert.match(h.get('export-progress').textContent, /finished before cancellation/); else assert.match(h.get('export-progress').textContent, /cancel/i);
   }
@@ -226,17 +234,23 @@ test('missing, malformed or incomplete output file lists never claim export succ
   }
 });
 
-test('legacy and unavailable capability hosts export all tracks without owners', async () => {
-  for (const cap of [null, { fullGraphStems: false, exportTargets: capabilities().exportTargets }, 'unavailable']) {
-    const h = harness({ 'routing.capabilities': () => { if (cap === 'unavailable') throw new Error('Not supported'); return cap; } }); await h.open(); await h.change('export-mode', 'stems'); await h.start();
-    assert.equal(stems(h).length, 0); assert.equal(exported(h).length, 1); assert.equal(exported(h)[0].payload.owners, undefined); assert.equal(successes(h).length, 1); assert.match(h.get('export-progress').textContent, /2 stems exported/);
+test('export options that cannot be read keep every range from starting and say why', async () => {
+  for (const [cap, message] of [['unavailable', /could not be read: The mixer is being rebuilt\./], [null, /did not describe its export formats/], [{ exportTargets: capabilities().exportTargets }, /did not describe its export formats/],
+      [{ ...capabilities(), audioExport: { ...audioExport(), container: 'aiff' } }, /did not describe/], [{ ...capabilities(), audioExport: { ...audioExport(), encodings: ['float32'] } }, /did not describe/],
+      [{ ...capabilities(), audioExport: { ...audioExport(), sampleRates: [44100] } }, /did not describe/], [{ ...capabilities(), audioExport: { ...audioExport(), defaultDither: 'shaped' } }, /did not describe/]]) {
+    const h = harness({ 'routing.capabilities': () => { if (cap === 'unavailable') throw new Error('The mixer is being rebuilt.'); return cap; } }); await h.open();
+    assert.match(h.get('export-progress').textContent, message); assert.match(h.get('export-progress').textContent, /open Export again/);
+    for (const mode of ['song', 'pattern', 'stems']) { await h.change('export-mode', mode); assert(h.get('export-start').disabled, mode); await h.start(); }
+    for (const id of ['export-encoding', 'export-sample-rate', 'export-dither']) assert(h.get(id).disabled, id);
+    assert.equal(stems(h).length, 0); assert(!h.calls.some(call => ['dialog.export', 'engine.project', 'audio.export'].includes(call.command))); assert.equal(successes(h).length, 0); assert(!h.ui.isBusy);
+    h.ST.closeModal(); assert.equal(h.state.modal, null);
   }
 });
 
 test('malformed target metadata is filtered and an empty advertised graph cannot start stems', async () => {
   const badTargets = [null, {}, { ...capabilities().exportTargets[0], owner: '' }, { ...capabilities().exportTargets[0], name: '' }, { ...capabilities().exportTargets[0], kind: 'unknown' }, { ...capabilities().exportTargets[0], boundary: 'masterOutput' }, { owner: 'master', name: 'Bad master', kind: 'master', boundary: 'postFaderPreParent', available: true }, { owner: 'return:chorus', name: 'Unadvertisable return', kind: 'return', boundary: 'postFaderPreParent', available: true }];
   for (const exportTargets of ['malformed', badTargets]) {
-    const h = harness({ 'routing.capabilities': () => ({ fullGraphStems: true, exportTargets }) }); await h.open(); await h.change('export-mode', 'stems'); await h.start();
+    const h = harness({ 'routing.capabilities': () => ({ ...capabilities(), exportTargets }) }); await h.open(); await h.change('export-mode', 'stems'); await h.start();
     assert.equal(stems(h).length, 0); assert(h.get('export-start').disabled); assert(!h.calls.some(call => call.command === 'dialog.export')); assert.equal(successes(h).length, 0);
     await h.change('export-mode', 'song'); await h.start(); assert.equal(exported(h).length, 1); assert.equal(successes(h).length, 1);
   }
@@ -275,7 +289,7 @@ test('matching progress updates only an active render and cancellation waits for
   h.ui.event('audio.exportProgress', { path: '/elsewhere/mix.wav', progress: .9 }); assert.equal(h.get('export-meter').value, 0);
   h.ui.event('audio.exportProgress', { path: '/exports/mix.wav', progress: .65 }); assert.equal(h.get('export-meter').value, .65); assert.match(h.get('export-progress').textContent, /65%/);
   h.ui.event('audio.exportProgress', { path: '/exports/mix.wav', progress: 'invalid' }); assert.equal(h.get('export-meter').value, .65);
-  assert.equal(h.ui.cancel(), true); assert.equal(h.ui.cancel(), false); render.resolve({ path: '/exports/mix.wav', paths: ['/exports/mix.wav'] }); await h.settle();
+  assert.equal(h.ui.cancel(), true); assert.equal(h.ui.cancel(), false); render.resolve({ path: '/exports/mix.wav', paths: ['/exports/mix.wav'], ...delivered(exported(h)[0].payload) }); await h.settle();
   assert(h.ui.isBusy); assert.equal(successes(h).length, 0); assert.equal(h.ui.closed(), false);
   stop.resolve({}); await starting; assert(!h.ui.isBusy); assert.equal(successes(h).length, 1); assert.match(h.get('export-progress').textContent, /finished before cancellation/);
   const completed = h.get('export-progress').textContent; h.ui.event('audio.exportProgress', { progress: .1 }); assert.equal(h.get('export-progress').textContent, completed);
@@ -364,19 +378,21 @@ test('a save or session transition beginning during the initial graph wait stops
   h.ST.isChangingSession = false; await h.start(); assert.equal(exported(h).length, 1); assert.equal(successes(h).length, 1);
 });
 
-function encodingCapabilities(overrides = {}) {
-  return {...capabilities(), audioExport:{container:'wav', sampleRate:48000, encodings:['pcm16','pcm24','float32'], defaultEncoding:'pcm24', ...overrides}};
+function formatCapabilities(overrides = {}) {
+  return {...capabilities(), audioExport:{...audioExport(), ...overrides}};
 }
-function encodedResult(payload) {
-  return {path:payload.path, paths:payload.mode === 'stems' ? payload.owners.map((_, i) => `${payload.path}/${i}.wav`) : [payload.path], container:'wav', encoding:payload.encoding, sampleRate:48000};
+function deliveredResult(payload) {
+  return {path:payload.path, paths:payload.mode === 'stems' ? payload.owners.map((_, i) => `${payload.path}/${i}.wav`) : [payload.path], ...delivered(payload)};
 }
 
-test('encoding is capability gated with a PCM24 default and native selector keyboard behavior', async () => {
-  const h = harness({'routing.capabilities':encodingCapabilities}); await h.open();
+test('the host\'s encodings are offered with its default selected and native selector keyboard behavior', async () => {
+  const h = harness(); await h.open();
   const select = h.get('export-encoding');
   assert.deepEqual(select.children.map(option => option.value), ['pcm16','pcm24','float32']);
   assert.equal(select.value,'pcm24'); assert(!select.disabled); assert.equal(select.attributes['aria-describedby'],'export-format-note');
-  assert.match(h.get('export-format-note').textContent,/fixed 48 kHz stereo/);
+  assert.match(select.innerHTML,/PCM 24-bit · default/); assert.equal((select.innerHTML.match(/· default/g) || []).length,1);
+  const other = harness({'routing.capabilities':()=>formatCapabilities({encodings:['float32','pcm16'],defaultEncoding:'pcm16'})}); await other.open();
+  assert.deepEqual(other.get('export-encoding').children.map(option => option.value), ['pcm16','float32']); assert.equal(other.get('export-encoding').value,'pcm16'); assert.match(other.get('export-encoding').innerHTML,/PCM 16-bit · default/);
   select.focus(); await h.change('export-encoding','float32');
   for (const key of ['ArrowUp','ArrowDown',' ','Enter','Tab']) { const event = await select.fire('keydown',{key}); assert(!event.defaultPrevented,key); }
   await h.change('export-mode','stems'); await h.change('export-tail','7.5');
@@ -386,7 +402,7 @@ test('encoding is capability gated with a PCM24 default and native selector keyb
 
 test('each advertised encoding reaches song pattern and stem export with confirmed metadata and unchanged names', async () => {
   for (const encoding of ['pcm16','pcm24','float32']) for (const mode of ['song','pattern','stems']) {
-    const h = harness({'routing.capabilities':encodingCapabilities,'audio.export':encodedResult}); const before=clone(h.state.project);
+    const h = harness({'audio.export':deliveredResult}); const before=clone(h.state.project);
     await h.open(); await h.change('export-mode',mode); await h.change('export-encoding',encoding); await h.start();
     assert.equal(exported(h).length,1); const payload=exported(h)[0].payload;
     assert.equal(payload.encoding,encoding); assert.equal(payload.sampleRate,48000); assert.equal(payload.mode,mode);
@@ -395,90 +411,69 @@ test('each advertised encoding reaches song pattern and stem export with confirm
   }
 });
 
-test('old unavailable or invalid format capabilities expose only fixed PCM24 and send legacy payloads', async () => {
-  const invalid = [null,{fullGraphStems:false},'error',encodingCapabilities({container:'aiff'}),encodingCapabilities({sampleRate:44100}),encodingCapabilities({sampleRate:true}),encodingCapabilities({encodings:['float32']}),encodingCapabilities({defaultEncoding:'float32'})];
-  for (const cap of invalid) {
-    const h=harness({'routing.capabilities':()=>{if(cap==='error')throw new Error('Unavailable');return cap;}}); await h.open();
-    const select=h.get('export-encoding'); assert(select.disabled); assert.deepEqual(select.children.map(option=>option.value),['pcm24']);
-    assert.match(h.get('export-format-note').textContent,/supports PCM 24-bit/);
-    await h.start(); assert.equal(exported(h).length,1); assert.equal(exported(h)[0].payload.encoding,undefined); assert.equal(exported(h)[0].payload.sampleRate,undefined); assert.equal(successes(h).length,1);
-  }
-});
-
-test('unknown capabilities never add unsafe options and unsupported or malformed encoding stops before the chooser', async () => {
-  for (const nativeFormats of [false,true]) for (const choice of ['pcm32','PCM24',' pcm24','',true,24,'float32']) {
-    const h=harness(nativeFormats?{'routing.capabilities':()=>encodingCapabilities({encodings:['pcm24','pcm16','bogus','<script>']})}:{}); await h.open();
-    const select=h.get('export-encoding'); assert(!select.children.some(option=>/script|bogus/.test(option.value)));
+test('encodings the page cannot name are not offered and an unadvertised or malformed encoding stops before the chooser', async () => {
+  for (const choice of ['pcm32','PCM24',' pcm24','',true,24,'float32']) {
+    const h=harness({'routing.capabilities':()=>formatCapabilities({encodings:['pcm24','pcm16','bogus','<script>']})}); await h.open();
+    const select=h.get('export-encoding'); assert.deepEqual(select.children.map(option=>option.value),['pcm16','pcm24']);
     select.value=choice; await h.start(); assert(!h.calls.some(call=>call.command==='dialog.export')); assert.equal(exported(h).length,0); assert.equal(successes(h).length,0); assert.match(h.get('export-progress').textContent,/supported/);
   }
 });
 
 test('the chosen encoding is immutable while a chooser or graph wait is pending and a canceled chooser preserves its draft', async () => {
   for (const phase of ['graph','chooser']) {
-    const gate=deferred(),h=harness({'routing.capabilities':encodingCapabilities,'dialog.export':phase==='chooser'?()=>gate.promise:()=>({path:'/exports/mix.wav'}),'audio.export':encodedResult});
+    const gate=deferred(),h=harness({'dialog.export':phase==='chooser'?()=>gate.promise:()=>({path:'/exports/mix.wav'}),'audio.export':deliveredResult});
     if(phase==='graph')h.ST.waitForGraphEdit=()=>gate.promise;
     await h.open(); await h.change('export-encoding','pcm16'); const pending=h.start(); await h.settle(); assert(h.get('export-encoding').disabled);
     h.get('export-encoding').value='float32'; gate.resolve(phase==='chooser'?{path:'/exports/mix.wav'}:undefined); await pending;
     assert.equal(exported(h)[0].payload.encoding,'pcm16'); assert.equal(successes(h).length,1);
   }
-  const h=harness({'routing.capabilities':encodingCapabilities,'dialog.export':()=>({cancelled:true})}); await h.open(); await h.change('export-encoding','float32'); h.get('export-tail').value='4.5'; await h.start();
+  const h=harness({'dialog.export':()=>({cancelled:true})}); await h.open(); await h.change('export-encoding','float32'); h.get('export-tail').value='4.5'; await h.start();
   assert.equal(h.get('export-encoding').value,'float32'); assert.equal(h.get('export-tail').value,'4.5'); assert(!h.get('export-encoding').disabled); assert.equal(exported(h).length,0);
 });
 
-test('an advertised host must confirm the actual encoding and rate before success is reported', async () => {
+test('the host must confirm the actual encoding and rate before success is reported', async () => {
   for (const mismatch of [{encoding:undefined},{encoding:'pcm24'},{sampleRate:44100},{sampleRate:'48000'},{sampleRate:true},{container:'aiff'},{container:undefined}]) {
-    const h=harness({'routing.capabilities':encodingCapabilities,'audio.export':payload=>({...encodedResult(payload),...mismatch})}); await h.open(); await h.change('export-encoding','float32'); await h.start();
+    const h=harness({'audio.export':payload=>({...deliveredResult(payload),...mismatch})}); await h.open(); await h.change('export-encoding','float32'); await h.start();
     assert.equal(exported(h).length,1); assert.equal(successes(h).length,0); assert.match(h.get('export-progress').textContent,/did not confirm.*encoding/); assert(!h.ui.isBusy);
   }
 });
 
 test('progress and cancel leave the captured encoding intact and never turn a canceled render into success', async () => {
-  const gate=deferred(),h=harness({'routing.capabilities':encodingCapabilities,'audio.export':()=>gate.promise}); await h.open(); await h.change('export-encoding','float32');
+  const gate=deferred(),h=harness({'audio.export':()=>gate.promise}); await h.open(); await h.change('export-encoding','float32');
   const pending=h.start();await h.settle();h.ui.event('audio.exportProgress',{path:'/exports/mix.wav',progress:.5});
   assert.equal(h.get('export-meter').value,.5); assert.equal(h.get('export-encoding').value,'float32'); assert(h.get('export-encoding').disabled);
   assert(h.ui.cancel());gate.resolve({cancelled:true});await pending;
   assert.equal(successes(h).length,0); assert.equal(h.calls.filter(call=>call.command==='transport.stop').length,1); assert.equal(h.get('export-encoding').value,'float32');assert(!h.get('export-encoding').disabled);
 });
 
-function rateCapabilities(overrides = {}) {
-  return encodingCapabilities({sampleRates:[44100,48000,96000],defaultSampleRate:48000,...overrides});
-}
-const rateResult = payload => ({...encodedResult(payload),sampleRate:payload.sampleRate});
-
-test('delivery rates are explicitly advertised with a 48k default and native keyboard selection', async () => {
-  const h=harness({'routing.capabilities':rateCapabilities});await h.open();const rate=h.get('export-sample-rate');
-  assert.deepEqual(rate.children.map(option=>option.value),['44100','48000','96000']);assert.equal(rate.value,'48000');assert(!rate.disabled);
-  assert.equal(rate.attributes['aria-describedby'],'export-format-note');assert.match(h.html,/<span>Sample rate<\/span>/);assert.match(h.get('export-format-note').textContent,/engine and track bounce remain at 48 kHz/);
+test('the host\'s delivery rates are offered with its default selected and native keyboard selection', async () => {
+  const h=harness();await h.open();const rate=h.get('export-sample-rate');
+  assert.deepEqual(rate.children.map(option=>option.value),['44100','48000','96000']);assert.equal(rate.value,'48000');assert(!rate.disabled);assert.match(rate.innerHTML,/48 kHz · default/);
+  const other=harness({'routing.capabilities':()=>formatCapabilities({sampleRates:[96000,44100],defaultSampleRate:96000})});await other.open();
+  assert.deepEqual(other.get('export-sample-rate').children.map(option=>option.value),['44100','96000']);assert.equal(other.get('export-sample-rate').value,'96000');assert.match(other.get('export-sample-rate').innerHTML,/96 kHz · default/);
+  assert.equal(rate.attributes['aria-describedby'],'export-format-note');assert.match(h.html,/<span>Sample rate<\/span>/);assert.match(h.html,/id="export-format-note"[^>]*>Stereo WAV delivery · engine and track bounce remain at 48 kHz/);
   rate.focus();for(const key of ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter',' ','Tab'])assert(!(await rate.fire('keydown',{key})).defaultPrevented,key);
   assert.equal(h.document.activeElement,rate);assert.deepEqual(h.calls.map(c=>c.command),['routing.capabilities']);assert.equal(h.mutations.length,0);
 });
 
 test('all advertised rates and encodings reach all three export ranges and confirm the selected delivery rate', async () => {
   for(const sampleRate of [44100,48000,96000])for(const encoding of ['pcm16','pcm24','float32'])for(const mode of ['song','pattern','stems']){
-    const h=harness({'routing.capabilities':rateCapabilities,'audio.export':rateResult}),before=clone(h.state.project);await h.open();await h.change('export-mode',mode);await h.change('export-encoding',encoding);await h.change('export-sample-rate',String(sampleRate));await h.start();
+    const h=harness({'audio.export':deliveredResult}),before=clone(h.state.project);await h.open();await h.change('export-mode',mode);await h.change('export-encoding',encoding);await h.change('export-sample-rate',String(sampleRate));await h.start();
     assert.equal(exported(h).length,1);assert.equal(exported(h)[0].payload.sampleRate,sampleRate);assert.equal(exported(h)[0].payload.encoding,encoding);assert.equal(successes(h).length,1);assert(h.get('export-progress').textContent.includes(`${sampleRate/1000} kHz`));assert.equal(h.mutations.length,0);assert.deepEqual(h.state.project,before);
   }
 });
 
-test('old or malformed rate advertisements cannot enable conversion and preserve existing encoding support', async () => {
-  for(const cap of [encodingCapabilities(),rateCapabilities({sampleRates:null}),rateCapabilities({sampleRates:[]}),rateCapabilities({sampleRates:[44100,96000]}),rateCapabilities({sampleRates:['48000',96000]}),rateCapabilities({defaultSampleRate:96000}),rateCapabilities({defaultSampleRate:'48000'}),rateCapabilities({defaultSampleRate:true}),rateCapabilities({sampleRates:[48000]})]){
-    const h=harness({'routing.capabilities':()=>cap,'audio.export':rateResult});await h.open();const rate=h.get('export-sample-rate');assert(rate.disabled);assert.deepEqual(rate.children.map(option=>option.value),['48000']);assert(!h.get('export-encoding').disabled);
-    await h.change('export-encoding','float32');await h.start();assert.equal(exported(h)[0].payload.sampleRate,48000);assert.equal(exported(h)[0].payload.encoding,'float32');assert.equal(successes(h).length,1);
-  }
-  const h=harness();await h.open();assert(h.get('export-sample-rate').disabled);await h.start();assert.equal(exported(h)[0].payload.sampleRate,undefined);assert.equal(successes(h).length,1);
-});
-
 test('rate options reject malformed numeric capabilities and unadvertised values before destination or preparation', async () => {
-  const h=harness({'routing.capabilities':()=>rateCapabilities({sampleRates:[96000,44100,48000,44100,'96000',true,NaN,Infinity,48000.5,192000,null]})});await h.open();assert.deepEqual(h.get('export-sample-rate').children.map(option=>option.value),['44100','48000','96000']);
+  const h=harness({'routing.capabilities':()=>formatCapabilities({sampleRates:[96000,44100,48000,'96000',true,NaN,Infinity,48000.5,null]})});await h.open();assert.deepEqual(h.get('export-sample-rate').children.map(option=>option.value),['44100','48000','96000']);
   for(const value of ['96000','48000.0',' 48000','48e3','0xBB80','48000 ','NaN','Infinity','',true,48000,'192000','44100.5']){
-    const h=harness({'routing.capabilities':()=>rateCapabilities({sampleRates:[44100,48000]})});await h.open();h.get('export-sample-rate').value=value;await h.start();
+    const h=harness({'routing.capabilities':()=>formatCapabilities({sampleRates:[44100,48000]})});await h.open();h.get('export-sample-rate').value=value;await h.start();
     assert(!h.calls.some(c=>['dialog.export','engine.project','audio.export'].includes(c.command)),String(value));assert.equal(successes(h).length,0);assert.match(h.get('export-progress').textContent,/sample rate advertised/);
   }
 });
 
 test('capability arrival and stem searches preserve current focus and format/range drafts', async () => {
   const gate=deferred(),h=harness({'routing.capabilities':()=>gate.promise}),opening=h.open();await h.settle();
-  await h.change('export-mode','stems');h.get('export-tail').value='5.5';h.get('export-tail').focus();gate.resolve(rateCapabilities());await opening;
+  await h.change('export-mode','stems');h.get('export-tail').value='5.5';h.get('export-tail').focus();gate.resolve(capabilities());await opening;
   assert.equal(h.document.activeElement.id,'export-tail');assert.equal(h.get('export-tail').value,'5.5');assert.equal(h.get('export-mode').value,'stems');
   await h.change('export-sample-rate','96000');await h.change('export-encoding','float32');const rate=h.get('export-sample-rate');rate.focus();await h.change('export-mode','pattern');assert.equal(h.document.activeElement,rate);
   await h.change('export-mode','stems');h.get('export-search').focus();h.get('export-search').value='Bass';await h.get('export-search').fire('input');
@@ -487,35 +482,81 @@ test('capability arrival and stem searches preserve current focus and format/ran
 
 test('rate is captured before a graph wait or chooser and survives canceled destination selection', async () => {
   for(const phase of ['graph','chooser']){
-    const gate=deferred(),h=harness({'routing.capabilities':rateCapabilities,'dialog.export':phase==='chooser'?()=>gate.promise:()=>({path:'/exports/mix.wav'}),'audio.export':rateResult});
+    const gate=deferred(),h=harness({'dialog.export':phase==='chooser'?()=>gate.promise:()=>({path:'/exports/mix.wav'}),'audio.export':deliveredResult});
     if(phase==='graph')h.ST.waitForGraphEdit=()=>gate.promise;await h.open();await h.change('export-sample-rate','44100');const pending=h.start();await h.settle();assert(h.get('export-sample-rate').disabled);
     h.get('export-sample-rate').value='96000';gate.resolve(phase==='chooser'?{path:'/exports/mix.wav'}:undefined);await pending;assert.equal(exported(h)[0].payload.sampleRate,44100);assert.match(h.get('export-progress').textContent,/44\.1 kHz/);assert.equal(successes(h).length,1);
   }
-  const h=harness({'routing.capabilities':rateCapabilities,'dialog.export':()=>({cancelled:true})});await h.open();await h.change('export-sample-rate','96000');await h.start();assert.equal(h.get('export-sample-rate').value,'96000');assert(!h.get('export-sample-rate').disabled);assert.equal(exported(h).length,0);
+  const h=harness({'dialog.export':()=>({cancelled:true})});await h.open();await h.change('export-sample-rate','96000');await h.start();assert.equal(h.get('export-sample-rate').value,'96000');assert(!h.get('export-sample-rate').disabled);assert.equal(exported(h).length,0);
 });
 
 test('wrong or missing delivery-rate acknowledgment never claims success', async () => {
   for(const requested of [44100,96000])for(const actual of [48000,String(requested),undefined,true,null,NaN]){
-    const h=harness({'routing.capabilities':rateCapabilities,'audio.export':payload=>({...rateResult(payload),sampleRate:actual})});await h.open();await h.change('export-sample-rate',String(requested));await h.start();
+    const h=harness({'audio.export':payload=>({...deliveredResult(payload),sampleRate:actual})});await h.open();await h.change('export-sample-rate',String(requested));await h.start();
     assert.equal(exported(h).length,1);assert.equal(successes(h).length,0);assert.match(h.get('export-progress').textContent,/did not confirm.*sample rate/);assert(h.get('export-progress').textContent.includes(`${requested/1000} kHz`));assert(!h.ui.isBusy);
   }
 });
 
 test('rate-aware progress and cancellation keep the locked draft and cannot report canceled success', async () => {
-  const gate=deferred(),h=harness({'routing.capabilities':rateCapabilities,'audio.export':()=>gate.promise});await h.open();await h.change('export-sample-rate','96000');const pending=h.start();await h.settle();
+  const gate=deferred(),h=harness({'audio.export':()=>gate.promise});await h.open();await h.change('export-sample-rate','96000');const pending=h.start();await h.settle();
   h.ui.event('audio.exportProgress',{path:'/exports/mix.wav',progress:.25});assert.match(h.get('export-progress').textContent,/96 kHz.*25%/);assert(h.get('export-sample-rate').disabled);assert.equal(h.get('export-sample-rate').value,'96000');
   assert(h.ui.cancel());gate.resolve({cancelled:true});await pending;assert.equal(successes(h).length,0);assert.equal(h.get('export-sample-rate').value,'96000');assert(!h.get('export-sample-rate').disabled);
 });
 
-test('headless routed stems expect one file per track, group members included, like the host default', async () => {
-  const h=harness({'audio.export':payload=>({path:payload.path,paths:['keys','bass','kick'].map(name=>`/exports/stems/${name}.wav`)})});
+test('the Dither choice offers the host\'s dithers with its default selected and belongs to the PCM encodings', async () => {
+  const h=harness();await h.open();const dither=h.get('export-dither');
+  assert.match(h.html,/<span>Dither<\/span>/);assert.deepEqual(dither.children.map(option=>option.value),['tpdf','none']);assert.equal(dither.value,'tpdf');
+  assert.match(dither.innerHTML,/>TPDF · default</);assert.match(dither.innerHTML,/>None</);assert.equal(dither.attributes['aria-describedby'],'export-format-note');assert(!dither.disabled);
+  await h.change('export-encoding','float32');assert(dither.disabled,'a float file is written as rendered');assert.equal(dither.value,'tpdf');
+  await h.change('export-encoding','pcm16');assert(!dither.disabled);
+  dither.focus();for(const key of ['ArrowUp','ArrowDown','Enter',' ','Tab'])assert(!(await dither.fire('keydown',{key})).defaultPrevented,key);
+  assert.deepEqual(h.calls.map(c=>c.command),['routing.capabilities']);assert.equal(h.mutations.length,0);
+  const plain=harness({'routing.capabilities':()=>formatCapabilities({dithers:['none'],defaultDither:'none'})});await plain.open();
+  assert.deepEqual(plain.get('export-dither').children.map(option=>option.value),['none']);assert.equal(plain.get('export-dither').value,'none');assert.match(plain.get('export-dither').innerHTML,/>None · default</);
+  const pending=deferred(),loading=harness({'routing.capabilities':()=>pending.promise}),opening=loading.open();await loading.settle();assert(loading.get('export-dither').disabled);pending.resolve(capabilities());await opening;assert(!loading.get('export-dither').disabled);
+});
+
+test('the chosen dither reaches every export range for the PCM encodings, and a float export sends none', async () => {
+  for(const mode of ['song','pattern','stems'])for(const encoding of ['pcm16','pcm24','float32'])for(const choice of ['tpdf','none']){
+    const h=harness({'audio.export':deliveredResult}),before=clone(h.state.project);await h.open();await h.change('export-mode',mode);await h.change('export-encoding',encoding);h.get('export-dither').value=choice;await h.start();
+    assert.equal(exported(h).length,1);const payload=exported(h)[0].payload,message=h.get('export-progress').textContent;
+    assert.equal(payload.dither,encoding==='float32'?undefined:choice,`${mode} ${encoding} ${choice}`);assert.equal(payload.encoding,encoding);assert.equal(successes(h).length,1);
+    if(encoding==='float32')assert(!/dither/i.test(message),message);else assert.match(message,choice==='tpdf'?/kHz · TPDF dither\./:/kHz · no dither\./);
+    assert.equal(h.mutations.length,0);assert.deepEqual(h.state.project,before);
+  }
+  const h=harness({'audio.export':deliveredResult});await h.open();await h.start();assert.equal(exported(h)[0].payload.dither,'tpdf','the host default when the field is left alone');
+});
+
+test('a dither the host does not offer stops before the chooser, except for a float export that has none', async () => {
+  for(const choice of ['shaped','TPDF',' tpdf','',true,null]){
+    const h=harness();await h.open();h.get('export-dither').value=choice;await h.start();
+    assert(!h.calls.some(c=>['dialog.export','engine.project','audio.export'].includes(c.command)),String(choice));assert.equal(successes(h).length,0);assert.match(h.get('export-progress').textContent,/dither supported/);assert.equal(h.document.activeElement.id,'export-dither');
+  }
+  const narrowed=harness({'routing.capabilities':()=>formatCapabilities({dithers:['tpdf']})});await narrowed.open();narrowed.get('export-dither').value='none';await narrowed.start();assert.equal(exported(narrowed).length,0);
+  const float=harness({'audio.export':deliveredResult});await float.open();await float.change('export-encoding','float32');float.get('export-dither').value='shaped';await float.start();assert.equal(exported(float).length,1);assert.equal(exported(float)[0].payload.dither,undefined);assert.equal(successes(float).length,1);
+});
+
+test('the dither is captured before a graph wait or chooser and the host must confirm it', async () => {
+  for(const phase of ['graph','chooser']){
+    const gate=deferred(),h=harness({'dialog.export':phase==='chooser'?()=>gate.promise:()=>({path:'/exports/mix.wav'}),'audio.export':deliveredResult});
+    if(phase==='graph')h.ST.waitForGraphEdit=()=>gate.promise;await h.open();await h.change('export-dither','none');const pending=h.start();await h.settle();assert(h.get('export-dither').disabled);
+    h.get('export-dither').value='tpdf';gate.resolve(phase==='chooser'?{path:'/exports/mix.wav'}:undefined);await pending;assert.equal(exported(h)[0].payload.dither,'none');assert.match(h.get('export-progress').textContent,/no dither/);assert.equal(successes(h).length,1);assert(!h.get('export-dither').disabled);
+  }
+  for(const requested of ['tpdf','none'])for(const actual of [requested==='tpdf'?'none':'tpdf',undefined,null,true,'shaped']){
+    const h=harness({'audio.export':payload=>({...deliveredResult(payload),dither:actual})});await h.open();await h.change('export-dither',requested);await h.start();
+    assert.equal(exported(h).length,1);assert.equal(successes(h).length,0,`${requested} answered ${actual}`);assert.match(h.get('export-progress').textContent,/did not confirm the requested dither/);assert(!h.ui.isBusy);
+  }
+  const float=harness({'audio.export':payload=>({...deliveredResult(payload),dither:undefined})});await float.open();await float.change('export-encoding','float32');await float.start();assert.equal(successes(float).length,1,'a float export has no dither to confirm');
+});
+
+test('headless stems without chosen channels expect one file per track, group members included, like the host default', async () => {
+  const h=harness({'audio.export':payload=>({path:payload.path,paths:['keys','bass','kick'].map(name=>`/exports/stems/${name}.wav`),...delivered(payload)})});
   h.state.project.routing={version:1,mixModel:'standard',buses:[{id:'g0',type:'group',groupID:'k0'}]};
   h.state.project.tracks.push({routingID:'kick',name:'Kick',groupID:'k0',instrument:0});
   h.state.project.groups=[{id:'k0',name:'Kit',busID:'g0'}];
   const result=await h.ui.exportTo({mode:'stems',path:'/exports/stems'});
   assert.equal(result.paths.length,3);assert.equal(exported(h).length,1);assert.equal(exported(h)[0].payload.owners,undefined);
-  const legacy=harness({'audio.export':payload=>({path:payload.path,paths:['keys','bass'].map(name=>`/exports/stems/${name}.wav`)})});
-  assert.equal((await legacy.ui.exportTo({mode:'stems',path:'/exports/stems'})).paths.length,2);
+  const flat=harness({'audio.export':payload=>({path:payload.path,paths:['keys','bass'].map(name=>`/exports/stems/${name}.wav`),...delivered(payload)})});
+  assert.equal((await flat.ui.exportTo({mode:'stems',path:'/exports/stems'})).paths.length,2);
 });
 
 (async () => {

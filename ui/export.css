@@ -5,7 +5,7 @@
 .export-content{display:flex;flex-direction:column;gap:13px;font-size:12px;min-width:0}
 .export-description{margin:0;color:var(--muted,#b0aa9d);font-size:12px;line-height:1.55}
 .export-options{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:15px}
-.export-format{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:6px 15px;align-items:end}.export-format .export-description{grid-column:1/-1;font-size:11px;line-height:1.5;padding-bottom:0}
+.export-format{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,1fr);gap:6px 15px;align-items:end}.export-format .export-description{grid-column:1/-1;font-size:11px;line-height:1.5;padding-bottom:0}
 .export-content .field>span{font-size:11px}.export-content input,.export-content select,.export-content button{font-size:12px;min-height:28px}
 .export-stems{border-top:1px solid var(--line,#49463b);padding-top:13px;min-width:0}.export-stems[hidden],.export-content [hidden]{display:none}
 .export-selection-tools{display:flex;gap:12px;align-items:center}.export-selection-tools>input{flex:1;min-width:0}.export-selection-tools>output{font:11px var(--mono,Menlo,monospace);color:var(--muted,#b0aa9d);white-space:nowrap}
