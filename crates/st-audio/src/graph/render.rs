@@ -16,7 +16,7 @@
 //! | a new plan | control -> render | [`RenderShared::publish`] swaps a pointer into `pending`; the render takes it at its next block and calls `Plan::adopt` |
 //! | the replaced plan | render -> control | pushed onto the `retired` ring; [`RenderShared::collect`] frees it (the render never frees a plan) |
 //! | "the project changed" | control -> render | `automation_epoch` counter: the render resets automated values to the plan's defaults and asks the engine to re-send lanes |
-//! | play, stop, seek | engine status -> render | the render compares the status of each block with the last one and returns inserts to their base parameters when playback started, stopped or moved ([`Plan::transport_changed`]) |
+//! | play, seek | engine status -> render | the render compares the status of each block with the last one and returns inserts to their base parameters when playback started or moved ([`Plan::playback_begins`]); not when it stops, so that tails ring out with the values the song left |
 //! | a knob turned | control -> render | `messages` ring of [`Message`]s, addressed by plan serial and target |
 //! | silence everything (panic) | control -> render | `clear_tails` flag |
 //! | meters | render -> reader | atomics in the plan's [`MeterBank`](super::meters::MeterBank) |
@@ -370,8 +370,11 @@ impl Renderer {
             let info = self.block_info(count, cycle_end_ns);
             let transport = (info.playing, self.status.status().transport_seek_revision);
             if transport != self.seen_transport {
+                // A start or a seek; a stop changes nothing here.
+                if transport.1 != self.seen_transport.1 || transport.0 {
+                    self.plan.playback_begins();
+                }
                 self.seen_transport = transport;
-                self.plan.transport_changed();
             }
             self.plan.set_block(info);
             if self.plan.wants_song_frame() {

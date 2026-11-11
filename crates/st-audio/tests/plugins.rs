@@ -331,16 +331,36 @@ fn a_parameter_a_step_lock_moved_returns_to_the_value_the_user_set() {
         // reading the values shows the lock's value and does not take it for the user's.
         engine.render_offline(ROW / 2, 512);
         wait_until("the lock's value in the plug-in", || value_of(&hosted, gain) == 0.5 * unity);
+        // An offline copy made at this moment (an export, a kit preview) gets the live
+        // instance's state, which has the lock's value in it, and still starts from the
+        // user's value.
+        let copy = common::engine();
+        copy.set_plugins(manager.offline().unwrap());
+        let (rendered, _) = play(&copy, &project, 3 * ROW, 512);
+        assert_bits(&rendered[..2 * ROW], |i| reference[i] * 1.5, &format!("{format}: an offline copy starts at the user's value"));
+        assert_bits(&rendered[2 * ROW..], |i| reference[i + 2 * ROW] * 0.5, &format!("{format}: and plays the lock"));
+        drop(copy);
         let (left, _) = engine.render_offline(ROW / 2 + 2 * ROW, 512);
         assert_bits(&left[ROW / 2..], |i| reference[i + 19 * ROW] * 1.5, &format!("{format}: after the lock, back at what the user set"));
 
-        // Stopped in the locked row of the next start: the plug-in has its base value again,
-        // so a state saved now is the patch the user made, not what the song did to it.
+        // Stopped in the locked row of the next start. Stopping changes nothing in the
+        // plug-in: what rings out keeps the values the song left.
         engine.play(&playing);
         engine.render_offline(2 * ROW + ROW / 2, 512);
         engine.stop();
         engine.render_offline(1_024, 512);
-        wait_until("the base value after stop", || value_of(&hosted, gain) == 1.5 * unity);
+        wait_until("the lock's value after stop", || value_of(&hosted, gain) == 0.5 * unity);
+        // A state captured now is the patch the user made, not what the song did to it: the
+        // capture has the audio thread (here: this one) bring the parameter back first.
+        let snapshot = std::thread::scope(|scope| {
+            let capture = scope.spawn(|| engine.snapshot());
+            while !capture.is_finished() {
+                engine.render_offline(512, 512);
+            }
+            capture.join().unwrap()
+        });
+        assert!(snapshot["audioPlugins"][0]["state"].is_string() && snapshot["audioPlugins"][0].get("stateError").is_none(), "{snapshot}");
+        wait_until("the base value in the captured plug-in", || value_of(&hosted, gain) == 1.5 * unity);
         // A new start, and a seek, begin at the base value as well.
         engine.play(&playing);
         let (left, _) = engine.render_offline(2 * ROW + ROW / 2, 512);

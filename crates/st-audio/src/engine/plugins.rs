@@ -111,13 +111,28 @@ impl AudioEngine {
     }
 
     /// `engine.snapshot` for one plug-in descriptor: its state read from its instance now
-    /// (`stateError` when that fails). A descriptor without a hosted instance (not installed,
+    /// (`stateError` when that fails), at its base values when the song does not play. A descriptor without a hosted instance (not installed,
     /// held back) keeps exactly what it carries; a lost instance gives the last state known.
     pub(super) fn capture_plugin_state(&self, descriptor: &PluginDescriptor, item: &mut Value) {
         let Some(manager) = self.plugins.get() else { return };
         let owner = descriptor.owner.as_deref().unwrap_or_default();
         let instrument = descriptor.kind() == PluginKind::Instrument;
         let Some(hosted) = manager.find(owner, instrument, descriptor.slot().max(0) as usize, descriptor.instance_id.as_deref()) else { return };
+        // While the song does not play, the state is the patch as the user made it: what the
+        // last lanes and step locks left in the plug-in goes back to its base values first.
+        // (While it plays, the state has the values of that moment.) A Stop the audio thread
+        // has not applied yet counts as stopped: a save that follows a Stop at once waits
+        // for it, briefly, and gives up when nobody renders.
+        let status = || self.lock().core.status.status();
+        if !status().transport_playing() {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(250);
+            while status().playing != 0 && std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            if status().playing == 0 {
+                hosted.return_to_base();
+            }
+        }
         match hosted.snapshot_state() {
             Ok(Some(state)) => {
                 item["state"] = json!(state);

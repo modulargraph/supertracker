@@ -11,7 +11,7 @@
 //! | `transport.play`, `.stop`, `.seek`, `.loop`, `.queue`, `.recordArm` | the reply of the first four is the status |
 //! | `note.on`, `note.off` | with `captureInput` the reply waits for the audio thread's acknowledgement (`inputAcknowledgement`) |
 //! | `step.preview`, `engine.panic`, `engine.instrumentParameter` | |
-//! | `midi.expression` | pitch bend, controllers, channel and poly pressure for a track's instrument: the device of an external MIDI instrument, a plug-in instrument, the engine's own voices ([`Audio::expression`]) |
+//! | `midi.expression` | pitch bend, controllers, channel and poly pressure for a track's instrument: the device of an external MIDI instrument, a plug-in instrument, the engine's own voices (see the handler, `Audio::expression`) |
 //! | `engine.snapshot` | the project with built-in effect state captured; plug-in descriptors keep the state they carry |
 //! | `audio.devices`, `audio.configure` | outputs and the input; the choice is remembered in the settings section `audio.devices`. `audio.devices` also reports the line inputs of the published project (`lineInputs`, `lineInputError`) |
 //! | `builtin.effects`, `routing.status` | |

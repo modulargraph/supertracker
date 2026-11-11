@@ -3,9 +3,10 @@
 //! Like `realtime.rs`: the global allocator counts while a thread-local switch is on, and the
 //! switch is on only around `Renderer::render`. Here the mixer holds a CLAP effect, a VST3
 //! effect with a sidechain and automation, and a CLAP instrument playing a pattern; the count
-//! covers steady playback, a plan swap, live notes, controllers and pressure, a stop, a
-//! seek and a new start (parameters go back to their base values), a panic, and a plug-in
-//! that crashes in the middle (its insert then passes through).
+//! covers steady playback, a plan swap, live notes, controllers and pressure, a stop with a
+//! request for the base values (a state capture), a seek and a new start (parameters go
+//! back to their base values), a panic, and a plug-in that crashes in the middle (its
+//! insert then passes through).
 
 mod common;
 
@@ -130,10 +131,17 @@ fn rendering_with_plug_ins_never_allocates_also_when_one_of_them_crashes() {
     loudest = loudest.max(render_counted(&engine, 50, 4096));
     assert!(engine.expression(2, [0xD0, 0, 0]), "the queue was drained on the render path");
     engine.note_off(2, 72);
-    // Stop, seek and start again: the parameters the lanes and the lock moved go back to
-    // their base values each time.
+    // Stop; a control thread asks for the base values (as a state capture does); a seek and
+    // a new start return the parameters the lanes and the lock moved as well.
     engine.stop();
     render_counted(&engine, 4, 512);
+    std::thread::scope(|scope| {
+        let hosted = manager.hosted("vst3-fx").unwrap();
+        let request = scope.spawn(move || hosted.return_to_base());
+        while !request.is_finished() {
+            render_counted(&engine, 2, 512);
+        }
+    });
     engine.seek(None, 3, 0);
     render_counted(&engine, 4, 512);
     engine.play(&PlayOptions { song: false, from_start: true, ..Default::default() });

@@ -311,7 +311,9 @@ unsafe fn handle_event(instance: &mut Instance, header: *const clap_event_header
                     }
                 }
                 0xD0 => instance.set_probe(PARAM_PROBE_PRESSURE, event.data[1] as u32),
-                0xA0 => instance.set_probe(PARAM_PROBE_POLY_PRESSURE, event.data[1] as u32 * 128 + event.data[2] as u32),
+                0xA0 => {
+                    instance.set_probe(PARAM_PROBE_POLY_PRESSURE, event.data[1] as u32 * 128 + event.data[2] as u32)
+                }
                 0xE0 => instance.set_probe(PARAM_PROBE_BEND, event.data[1] as u32 | (event.data[2] as u32) << 7),
                 _ => {}
             }
@@ -481,7 +483,15 @@ const GAIN_PARAMS: [ParamSpec; 7] = [
 ];
 
 const fn probe(id: clap_id, name: &'static str, max: f64, default: f64) -> ParamSpec {
-    ParamSpec { id, name, module: "Test/Probe", min: 0.0, max, default, flags: CLAP_PARAM_IS_READONLY | CLAP_PARAM_IS_STEPPED }
+    ParamSpec {
+        id,
+        name,
+        module: "Test/Probe",
+        min: 0.0,
+        max,
+        default,
+        flags: CLAP_PARAM_IS_READONLY | CLAP_PARAM_IS_STEPPED,
+    }
 }
 
 const SINE_PARAMS: [ParamSpec; 5] = [
@@ -717,8 +727,11 @@ unsafe extern "C" fn note_ports_get(
     }
     let info = &mut *info;
     info.id = 300;
-    info.supported_dialects =
-        if this(plugin).midi_dialect { CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI } else { CLAP_NOTE_DIALECT_CLAP };
+    info.supported_dialects = if this(plugin).midi_dialect {
+        CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI
+    } else {
+        CLAP_NOTE_DIALECT_CLAP
+    };
     info.preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
     copy_str(&mut info.name, "Notes");
     true

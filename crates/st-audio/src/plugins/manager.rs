@@ -207,22 +207,27 @@ pub struct Placement {
     pub instance_id: String,
 }
 
-/// The parameters automation (lanes, step locks) has moved away from their base value and not
-/// yet returned. Written by the audio thread only; control threads read it to tell a value the
-/// user set from one a lane holds for the moment. A reader that races a change sees the set
-/// before or after it, which is all it needs.
+/// The parameters automation (lanes, step locks) holds away from their base values: from the
+/// moment a lane or a lock moves one until the plug-in has received its return. Written by
+/// the audio thread only; control threads read it to tell a value the user set from one a
+/// lane holds for the moment.
+///
+/// `changes` counts every change of the set. A control thread that reads the plug-in's
+/// values notes the count before it asks and takes nothing for a base value when the count
+/// has moved by the time the answer is there: the answer may then be older than the change.
 pub(crate) struct AutomatedSet {
     count: AtomicU32,
     addresses: Box<[AtomicU64]>,
+    changes: AtomicU64,
 }
 
-impl AutomatedSet {
-    /// Parameters remembered per instance; a parameter automated beyond that is not returned
-    /// to its base value by the host.
-    const CAPACITY: usize = 512;
+/// Parameters remembered per instance as moved by automation; a parameter automated beyond
+/// that is not returned to its base value by the host.
+pub(crate) const AUTOMATED_CAPACITY: usize = 512;
 
+impl AutomatedSet {
     fn new() -> AutomatedSet {
-        AutomatedSet { count: AtomicU32::new(0), addresses: (0..Self::CAPACITY).map(|_| AtomicU64::new(0)).collect() }
+        AutomatedSet { count: AtomicU32::new(0), addresses: (0..AUTOMATED_CAPACITY).map(|_| AtomicU64::new(0)).collect(), changes: AtomicU64::new(0) }
     }
 
     #[inline]
@@ -235,6 +240,21 @@ impl AutomatedSet {
         self.position(address).is_some()
     }
 
+    pub(crate) fn is_empty(&self) -> bool {
+        self.count.load(Ordering::Acquire) == 0
+    }
+
+    /// How often the set has changed.
+    pub(crate) fn changes(&self) -> u64 {
+        self.changes.load(Ordering::Acquire)
+    }
+
+    /// The address at `index`, for the audio thread to walk the set.
+    #[inline]
+    pub(crate) fn get(&self, index: usize) -> Option<u64> {
+        (index < self.count.load(Ordering::Relaxed) as usize).then(|| self.addresses[index].load(Ordering::Relaxed))
+    }
+
     /// Audio thread: automation moved `address`.
     #[inline]
     pub(crate) fn insert(&self, address: u64) {
@@ -242,17 +262,18 @@ impl AutomatedSet {
         if count < self.addresses.len() && self.position(address).is_none() {
             self.addresses[count].store(address, Ordering::Relaxed);
             self.count.store(count as u32 + 1, Ordering::Release);
+            self.changes.fetch_add(1, Ordering::AcqRel);
         }
     }
 
-    /// Audio thread: `address` goes back to its base value. False when automation never moved it.
+    /// Audio thread: the plug-in has `address` at its base value again.
     #[inline]
-    pub(crate) fn remove(&self, address: u64) -> bool {
-        let Some(index) = self.position(address) else { return false };
+    pub(crate) fn remove(&self, address: u64) {
+        let Some(index) = self.position(address) else { return };
         let last = self.count.load(Ordering::Relaxed) as usize - 1;
         self.addresses[index].store(self.addresses[last].load(Ordering::Relaxed), Ordering::Relaxed);
         self.count.store(last as u32, Ordering::Release);
-        true
+        self.changes.fetch_add(1, Ordering::AcqRel);
     }
 }
 
@@ -293,6 +314,12 @@ pub struct Hosted {
     /// Serializes the senders of `midi`: the ring takes one producer at a time.
     midi_senders: Mutex<()>,
     pub(crate) automated: AutomatedSet,
+    /// A control thread asks the audio thread to return what automation moved to its base
+    /// values with the next block ([`Hosted::return_to_base`]).
+    pub(crate) base_requested: AtomicBool,
+    /// Returns to base values the audio thread has queued and the plug-in has not received
+    /// yet (they go with the next block it answers).
+    pub(crate) returns_pending: AtomicU32,
     /// The latency the mixer was last told about.
     pub(crate) planned_latency: AtomicU32,
     pub(crate) offline: bool,
@@ -334,13 +361,17 @@ impl Hosted {
         self.midi.push(&[bytes[0], bytes[1] & 0x7F, if length == 3 { bytes[2] & 0x7F } else { 0 }, length])
     }
 
-    /// The values just read from the plug-in as base values. With `keep_held`, what
-    /// automation holds at the moment keeps the base it had (the value read is the lane's or
-    /// the lock's, not the user's); without, every value counts (a state was just loaded).
-    fn adopt_values(&self, read: &[(u64, f64)], keep_held: bool) {
+    /// The values just read from the plug-in as base values.
+    ///
+    /// `held` is `Some` for an ordinary read, with [`AutomatedSet::changes`] as it was before
+    /// the plug-in was asked: what automation holds keeps the base value it had (the value
+    /// read is the lane's or the lock's, not the user's), and when automation took or
+    /// released a parameter while the answer was on its way, nothing is taken at all (the
+    /// next read does it). `None`: every value counts (a state was just loaded).
+    fn adopt_values(&self, read: &[(u64, f64)], held: Option<u64>) {
         let table = self.table();
         for (id, plain) in read {
-            if keep_held && self.automated.contains(*id) && table.base(*id).is_some() {
+            if held.is_some_and(|changes| table.base(*id).is_some() && (self.automated.changes() != changes || self.automated.contains(*id))) {
                 continue;
             }
             if let Some(normalized) = table.normalized(*id, *plain) {
@@ -380,8 +411,9 @@ impl Hosted {
     fn read_parameters(&self, keep_held: bool) -> Result<Arc<Vec<ParameterInfo>>, String> {
         let parameters = Arc::new(self.instance.parameters().map_err(|error| self.explain(error))?);
         self.install_table(&parameters);
+        let changes = self.automated.changes();
         let values: Vec<(u64, f64)> = self.instance.parameter_values().map_err(|error| self.explain(error))?.into_iter().map(|value| (value.id, value.value)).collect();
-        self.adopt_values(&values, keep_held);
+        self.adopt_values(&values, keep_held.then_some(changes));
         self.control().parameters = Some(parameters.clone());
         Ok(parameters)
     }
@@ -401,6 +433,7 @@ impl Hosted {
             let table = self.table();
             return Ok(table.base_values().into_iter().filter_map(|(id, normalized)| table.plain(id, normalized).map(|plain| (id, plain))).collect());
         }
+        let changes = self.automated.changes();
         let mut values = self.instance.parameter_values().map_err(|error| self.explain(error))?;
         let mut control = self.control();
         // A value set a moment ago may not have reached the plug-in yet: it reads as set.
@@ -413,19 +446,21 @@ impl Hosted {
         }
         let values: Vec<(u64, f64)> = values.into_iter().map(|value| (value.id, value.value)).collect();
         drop(control);
-        self.adopt_values(&values, true);
+        self.adopt_values(&values, Some(changes));
         Ok(values)
     }
 
-    /// Waits (briefly) until the values set last have reached the plug-in with a block, so
-    /// that a state read next contains them. Gives up when no audio is running.
+    /// Waits (briefly) until the values set last, and the returns to base values on their
+    /// way, have reached the plug-in with a block, so that a state read next contains them.
+    /// Gives up when no audio is running.
     fn settle(&self) {
         let deadline = std::time::Instant::now() + Duration::from_millis(250);
         loop {
             let blocks = self.instance.stats().blocks;
             let mut control = self.control();
             control.pending_sets.retain(|(_, _, at)| blocks < at + 2);
-            if control.pending_sets.is_empty() || std::time::Instant::now() >= deadline || self.instance.status() != InstanceStatus::Running {
+            let arrived = control.pending_sets.is_empty() && self.returns_pending.load(Ordering::Acquire) == 0;
+            if arrived || std::time::Instant::now() >= deadline || self.instance.status() != InstanceStatus::Running {
                 return;
             }
             drop(control);
@@ -436,6 +471,33 @@ impl Hosted {
     /// The base values (normalized): what automation and step locks return to.
     pub fn base_values(&self) -> Vec<(u64, f64)> {
         self.table().base_values()
+    }
+
+    /// Brings every parameter a lane or a step lock moved back to its base value, and waits
+    /// (briefly) until the plug-in has it: for a state that is the patch as the user made
+    /// it. For when the song does not play; while it plays, the lanes would move the
+    /// parameters again at once. Gives up when no audio is running.
+    pub fn return_to_base(&self) {
+        if (self.automated.is_empty() && self.returns_pending.load(Ordering::Acquire) == 0) || self.lost().is_some() {
+            return;
+        }
+        self.base_requested.store(true, Ordering::Release);
+        let deadline = std::time::Instant::now() + Duration::from_millis(250);
+        // The audio thread takes the request with its next block and clears the count once
+        // the plug-in has answered a block that carried the values.
+        while self.base_requested.load(Ordering::Acquire) || self.returns_pending.load(Ordering::Acquire) > 0 {
+            if std::time::Instant::now() >= deadline || self.instance.status() != InstanceStatus::Running {
+                // Nobody renders: the request must not wait for a playback that starts later.
+                self.base_requested.store(false, Ordering::Release);
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    /// The base values of the parameters automation holds away from them at this moment.
+    pub fn held_base_values(&self) -> Vec<(u64, f64)> {
+        self.table().base_values().into_iter().filter(|(id, _)| self.automated.contains(*id)).collect()
     }
 
     fn remember_value(&self, id: u64, normalized: f64) {
@@ -920,6 +982,8 @@ impl PluginManager {
             midi: Ring::new(256),
             midi_senders: Mutex::new(()),
             automated: AutomatedSet::new(),
+            base_requested: AtomicBool::new(false),
+            returns_pending: AtomicU32::new(0),
             offline: self.options.offline,
             min_deadline_ns: self.options.min_deadline.as_nanos() as u64,
             control: Mutex::new(HostedControl::default()),
@@ -1043,10 +1107,20 @@ impl PluginManager {
                 }
             }
             // An offline copy starts from what the live instance holds now.
-            let live_state = self.live.as_ref().and_then(Weak::upgrade).and_then(|live| live.hosted(&insert.key)).and_then(|hosted| hosted.snapshot_state().ok().flatten());
+            let live_instance = self.live.as_ref().and_then(Weak::upgrade).and_then(|live| live.hosted(&insert.key));
+            let live_state = live_instance.as_ref().and_then(|hosted| hosted.snapshot_state().ok().flatten());
             let state_text = live_state.or_else(|| insert.state.clone()).filter(|state| !state.is_empty());
             let state = state_text.as_deref().and_then(base64_decode).filter(|bytes| !bytes.is_empty());
             let created = self.create(&identity, &insert.key, instrument, state, sample_rate, max_frames);
+            if let (Ok(hosted), Some(live)) = (&created, &live_instance) {
+                // That state has the values lanes and step locks hold in the live instance at
+                // this moment. The copy starts from the user's values, like a new playback.
+                for (id, base) in live.held_base_values() {
+                    if let Some(plain) = hosted.table().plain(id, base) {
+                        let _ = hosted.set_parameter(id, plain);
+                    }
+                }
+            }
             let mut inner = self.inner();
             match created {
                 Ok(hosted) => {

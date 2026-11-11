@@ -413,11 +413,14 @@ fn sine_instrument_notes_are_sample_accurate() {
     let events = [Event::midi(3, &[0xB0, 74, 99]), Event::midi(7, &[0xA0, 60, 45]), Event::midi(40, &[0xD0, 127])];
     let block = run(&instance, &[], 2, 64, &events);
     let set = 64.0 / 127.0;
-    let expected: Vec<f32> =
-        (128..192).map(|k| plug::sine_sample(60, k, rate, if k < 168 { set } else { set * plug::pressure_gain(1.0) })).collect();
+    let expected: Vec<f32> = (128..192)
+        .map(|k| plug::sine_sample(60, k, rate, if k < 168 { set } else { set * plug::pressure_gain(1.0) }))
+        .collect();
     assert_bits_eq(&block.outputs[0], &expected, "channel pressure at its frame");
     wait_until("pressure in the controller", || instance.parameter(plug::PARAM_PRESSURE as u64).unwrap() == Some(1.0));
-    wait_until("controller 74 in the controller", || instance.parameter(plug::PARAM_BRIGHTNESS as u64).unwrap() == Some(99.0 / 127.0));
+    wait_until("controller 74 in the controller", || {
+        instance.parameter(plug::PARAM_BRIGHTNESS as u64).unwrap() == Some(99.0 / 127.0)
+    });
     wait_until("poly pressure in the plug-in", || {
         instance.parameter(plug::PARAM_POLY_PRESSURE as u64).unwrap() == Some((60 * 128 + 45) as f64 / 16383.0)
     });

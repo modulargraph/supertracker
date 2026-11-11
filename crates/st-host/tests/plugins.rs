@@ -333,3 +333,52 @@ fn a_plug_in_that_crashes_while_playing_is_reported_and_retry_restores_it() {
     fixture.request("plugin.parameter", with(target, json!({ "address": clap_gain::GAIN.to_string(), "value": 0.0 })));
     fixture.status_where("and is in the signal path again", |status| status["peakL"] == 0.0);
 }
+
+/// There is no command to capture a "base patch": the value the user sets is what a
+/// parameter returns to, and a state saved while stopped has it.
+#[test]
+fn a_locked_parameter_returns_to_what_the_user_set_and_a_state_captured_while_stopped_has_it() {
+    let fixture = start("plugins-base");
+    let ready = fixture.request("ready", json!({}));
+    assert!(!ready["commands"].as_array().unwrap().contains(&json!("plugin.captureBasePatch")));
+    assert!(fixture.host.request("plugin.captureBasePatch", json!({})).unwrap_err().contains("is not a command this host knows"));
+
+    let mut project = project();
+    fixture.publish(&project);
+    let target = json!({ "owner": "track:a", "kind": "effect", "slot": 0 });
+    let loaded = fixture.request("plugin.load", with(target.clone(), fixture.clap(CLAP_GAIN)));
+    // The user's value: a gain of 1.5 (the parameter's range is 0..2).
+    fixture.request("plugin.parameter", with(target.clone(), json!({ "address": clap_gain::GAIN.to_string(), "value": 0.75 })));
+    // A step lock halves the gain on each row of the pattern's first half (a second); on the
+    // rows after it the gain returns to 1.5.
+    let lock = json!({ "type": "plugin", "instanceID": loaded["instanceID"], "address": clap_gain::GAIN.to_string(), "value": 0.25 });
+    for row in 0..8 {
+        let step = &mut project["patterns"][0]["steps"][0][row];
+        *step = if step.is_null() { json!({ "fx1": lock }) } else { with(step.clone(), json!({ "fx1": lock })) };
+    }
+    fixture.adopt(&mut project);
+    let gain = || parameter(&fixture.request("plugin.parameters", target.clone())["parameters"], clap_gain::GAIN)["value"].as_f64().unwrap();
+    let wait_for_gain = |what: &str, wanted: f64| {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while gain() != wanted {
+            assert!(Instant::now() < deadline, "{what}: the gain is {}", gain());
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    };
+    wait_for_gain("the value the user set", 1.5);
+    fixture.request("transport.play", json!({ "mode": "pattern", "fromStart": true }));
+    wait_for_gain("the lock applies while the pattern plays", 0.5);
+    wait_for_gain("and the rows without it are back at what the user set", 1.5);
+    wait_for_gain("until the pattern starts again", 0.5);
+    // Stop and capture at once, in a locked row: the capture waits for the stop to take
+    // effect, and its state is the user's patch, and so is the plug-in.
+    fixture.request("transport.stop", json!({}));
+    let captured = fixture.request("plugin.state", with(target.clone(), json!({ "instanceID": loaded["instanceID"] })));
+    assert!(captured["state"].is_string() && captured.get("stateError").is_none(), "{captured}");
+    wait_for_gain("the capture brought the parameter back to its base value", 1.5);
+    // The state is that patch: loaded into the plug-in again after a change, the gain is 1.5.
+    fixture.request("plugin.parameter", with(target.clone(), json!({ "address": clap_gain::GAIN.to_string(), "value": 0.1 })));
+    wait_for_gain("another value", 0.2);
+    fixture.request("plugin.state", with(target.clone(), json!({ "state": captured["state"] })));
+    wait_for_gain("the captured state has the user's value", 1.5);
+}

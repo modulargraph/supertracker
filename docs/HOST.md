@@ -415,8 +415,9 @@ Exercised on Linux (Ubuntu 24.04, x86-64):
   (`cargo test -p st-audio --test plugins --test plugins_realtime`, `cargo test -p st-host --test
   plugins`; the tests build the container and the plug-ins when they are missing): an effect in
   the graph bit for bit, delay compensation following a latency change, automation lanes and step
-  locks on their frames, a locked parameter back at the value the user set (after its row, on
-  stop, start and seek), a plug-in instrument playing a pattern, controllers and pressure
+  locks on their frames, a locked parameter back at the value the user set (after its row, at
+  the next start or seek, and before a state is captured while stopped), a plug-in
+  instrument playing a pattern, controllers and pressure
   played live reaching it with the next block (as MIDI, as CLAP note expressions, as the
   parameters a VST3 plug-in maps them to), a sidechain, state into
   `engine.snapshot` and back from a reopened project, an offline copy equal to the live render, a
@@ -534,10 +535,12 @@ Behaviour worth knowing:
   state, set from the interface, changed in the plug-in's editor) is its base value, which the
   host keeps for every plug-in of every format (`st_audio::plugins::manager::ParamTable`). A
   lane or a step lock moves the parameter only while it applies: it is back at its base value
-  at the end of a locked row where no lane takes over, and when playback stops, starts or seeks,
-  so a state captured while stopped is the patch as the user made it. There is no command to
-  capture a base patch: nothing needs capturing. A state captured while a lane holds a
-  parameter contains the lane's value.
+  at the end of a locked row where no lane takes over, and when playback starts or seeks.
+  Stopping returns nothing (tails ring out with the values the song left); a state captured
+  while the song does not play (`engine.snapshot`, `plugin.state`, `project.save`) brings the
+  parameters back first, so it is the patch as the user made it. There is no command to
+  capture a base patch: nothing needs capturing. A state captured while the song plays
+  contains what the lanes and locks hold at that moment.
 - Expression: controllers, channel and poly pressure, pitch bend and program changes played
   live (`midi.expression`, a MIDI keyboard) go to the instrument of their track. An external
   MIDI instrument gets them on its device and channel at once. A plug-in instrument gets them

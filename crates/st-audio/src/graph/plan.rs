@@ -957,12 +957,13 @@ impl Plan {
         }
     }
 
-    /// Render owner: playback started, stopped or moved (a seek). The engine returns its own
+    /// Render owner: playback started or moved (a seek). The engine returns its own
     /// automated targets to the project's values at those moments; the inserts return to
     /// their base parameters here, so a value a lane or a step lock left behind does not
-    /// outlive the stretch of playback that set it. Lanes that apply from the new position
-    /// follow as events of the same block.
-    pub fn transport_changed(&mut self) {
+    /// reach into the next stretch of playback. Lanes that apply from the new position
+    /// follow as events of the same block. A stop is not such a moment: what rings out
+    /// after it keeps the values the song left.
+    pub fn playback_begins(&mut self) {
         self.apply_insert_bases();
     }
 

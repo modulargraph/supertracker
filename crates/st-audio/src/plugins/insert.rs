@@ -29,16 +29,19 @@
 //!
 //! Base values: a parameter a lane or a step lock moved is remembered ([`Hosted`]'s automated
 //! set) and goes back to the value the user left it at when the graph says so
-//! ([`InsertProcessor::base_parameter`]: a new plan, a changed project, every start, stop
-//! and seek of the transport, and the end of a step lock's row where no lane takes over).
-//! Parameters automation never touched are left alone: the plug-in holds its own values.
+//! ([`InsertProcessor::base_parameter`]: a new plan, a changed project, every start and seek
+//! of the transport, and the end of a step lock's row where no lane takes over) or a control
+//! thread asks for it ([`Hosted::return_to_base`], before a state is captured while the song
+//! does not play). A stop alone returns nothing: tails ring out with the values the song
+//! left. Parameters automation never touched are left alone: the plug-in holds its own values.
 //!
 //! Nothing here allocates, locks or blocks beyond the client's bounded wait.
 
-use super::manager::{Hosted, Lookup, PluginManager, EVENT_CAPACITY};
+use super::manager::{Hosted, Lookup, PluginManager, AUTOMATED_CAPACITY, EVENT_CAPACITY};
 use crate::graph::insert::{monotonic_ns, BlockInfo, InsertFactory, InsertProcessor, ProcessContext};
 use crate::graph::pdc::DelayLine;
 use crate::graph::spec::InsertSpec;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use stpc_client::{
     Event, RawBlock, Transport, DEADLINE_NONE, EVENT_FLAG_SEQUENCED, PROCESS_OK, PROCESS_RESYNCED, TRANSPORT_PLAYING, TRANSPORT_PPQ_VALID, TRANSPORT_RECORDING, TRANSPORT_TEMPO_VALID,
@@ -71,6 +74,12 @@ pub struct PluginInsert {
     parameters: Vec<Event>,
     /// Notes and controllers of the next block, in arrival order.
     notes: Vec<Event>,
+    /// Parameters on their way back to their base values: the address, the frame offset,
+    /// and whether automation moved the parameter again after the return was queued. They
+    /// are sent with every block until the plug-in answers one, so a block it did not
+    /// answer cannot lose a return (nothing would send it again); until then the parameter
+    /// counts as held by automation.
+    returning: Vec<(u64, u32, bool)>,
     merged: Vec<Event>,
     out_events: Vec<Event>,
     scratch_left: Vec<f32>,
@@ -96,6 +105,7 @@ impl PluginInsert {
             sample_rate: 48_000.0,
             parameters: Vec::new(),
             notes: Vec::new(),
+            returning: Vec::new(),
             merged: Vec::new(),
             out_events: Vec::new(),
             scratch_left: Vec::new(),
@@ -127,9 +137,10 @@ impl PluginInsert {
         }
     }
 
-    /// Builds the block's event list: note silence first when it is due, then notes and
-    /// parameter changes by frame (a parameter change before a note on the same frame, so a
-    /// step's lock applies to the step's note).
+    /// Builds the block's event list: note silence first when it is due, then returns to base
+    /// values, parameter changes and notes by frame. On the same frame a return comes before
+    /// a parameter change (a new start returns a parameter, then the first row's lock sets
+    /// it) and a parameter change before a note (a step's lock applies to the step's note).
     fn merge_events(&mut self, frames: u32, silence: bool) {
         self.merged.clear();
         if let (true, Some(instrument)) = (silence, self.instrument.as_mut()) {
@@ -142,6 +153,19 @@ impl PluginInsert {
                 }
             }
             instrument.held = [0; 2];
+        }
+        let table = self.hosted.table();
+        for (address, offset, _) in &self.returning {
+            let Some(value) = table.base(*address).and_then(|base| table.plain(*address, base)) else { continue };
+            if self.merged.len() == self.merged.capacity() {
+                break;
+            }
+            let event = Event::param((*offset).min(frames.saturating_sub(1)), *address, value);
+            let mut at = self.merged.len();
+            while at > 0 && self.merged[at - 1].offset > event.offset {
+                at -= 1;
+            }
+            self.merged.insert(at, event);
         }
         let (mut note, mut parameter) = (0, 0);
         while note < self.notes.len() || parameter < self.parameters.len() {
@@ -172,6 +196,18 @@ impl PluginInsert {
         self.parameters.clear();
     }
 
+    /// Queues the return of a parameter automation holds to its base value, `offset` frames
+    /// into the next block.
+    fn queue_return(&mut self, address: u64, offset: u32) {
+        if let Some(entry) = self.returning.iter_mut().find(|(known, _, _)| *known == address) {
+            // Queued already (the plug-in has not answered a block since): what was moved
+            // again in between returns after all.
+            entry.2 = false;
+        } else if self.returning.len() < self.returning.capacity() {
+            self.returning.push((address, offset, false));
+        }
+    }
+
     fn deadline_ns(&self, block: &BlockInfo) -> u64 {
         if self.hosted.offline {
             return DEADLINE_NONE;
@@ -187,9 +223,10 @@ impl InsertProcessor for PluginInsert {
     fn prepare(&mut self, sample_rate: f64, max_frames: usize) {
         self.sample_rate = sample_rate;
         self.latency = self.hosted.latency();
-        self.hosted.planned_latency.store(self.latency, std::sync::atomic::Ordering::Relaxed);
+        self.hosted.planned_latency.store(self.latency, Ordering::Relaxed);
         self.parameters = Vec::with_capacity(EVENT_CAPACITY);
         self.notes = Vec::with_capacity(EVENT_CAPACITY);
+        self.returning = Vec::with_capacity(AUTOMATED_CAPACITY);
         self.merged = Vec::with_capacity(EVENT_CAPACITY);
         self.out_events = vec![Event::default(); 64];
         self.scratch_left = vec![0.0; max_frames.max(1)];
@@ -222,10 +259,26 @@ impl InsertProcessor for PluginInsert {
         if frames == 0 {
             return;
         }
+        if self.hosted.base_requested.load(Ordering::Acquire) {
+            // A control thread wants the plug-in at its base values (its state is about to
+            // be captured while the song does not play): what automation moved goes back now.
+            // The count is published before the request is taken, so the waiter never sees
+            // "taken, nothing on its way" too early.
+            let mut index = 0;
+            while let (false, Some(address)) = (self.bypass, self.hosted.automated.get(index)) {
+                self.queue_return(address, 0);
+                index += 1;
+            }
+            self.hosted.returns_pending.store(self.returning.len() as u32, Ordering::Release);
+            self.hosted.base_requested.store(false, Ordering::Release);
+        }
         if self.bypass {
-            // The graph delays a bypassed insert that has latency itself.
+            // The graph delays a bypassed insert that has latency itself. A bypassed plug-in
+            // gets nothing: what was on its way back stays remembered as moved.
             self.parameters.clear();
             self.notes.clear();
+            self.returning.clear();
+            self.hosted.returns_pending.store(0, Ordering::Release);
             return;
         }
         if self.instrument.is_some() {
@@ -314,7 +367,20 @@ impl InsertProcessor for PluginInsert {
         let processed = outcome.flags & PROCESS_OK != 0;
         if !processed {
             self.fallback_blocks += 1;
+            // The block's events never reached the plug-in. A lane's next value corrects a
+            // lost change; a return to a base value has no next value, so it is sent again.
+            for (_, offset, _) in &mut self.returning {
+                *offset = 0;
+            }
+        } else {
+            // The plug-in has its base values again: automation holds them no longer.
+            for (address, _, moved_again) in self.returning.drain(..) {
+                if !moved_again {
+                    self.hosted.automated.remove(address);
+                }
+            }
         }
+        self.hosted.returns_pending.store(self.returning.len() as u32, Ordering::Release);
         // Notes of dropped blocks are gone: the plug-in may hold notes nobody will end. The
         // first block it answers again starts with note silence.
         if self.instrument.is_some() && (outcome.flags & PROCESS_RESYNCED != 0 || (processed && self.dropped)) {
@@ -338,6 +404,10 @@ impl InsertProcessor for PluginInsert {
             self.parameters.push(Event::param(offset, address, value));
         }
         self.hosted.automated.insert(address);
+        // A return queued earlier in this block does not end what this change begins.
+        if let Some(entry) = self.returning.iter_mut().find(|(known, _, _)| *known == address) {
+            entry.2 = true;
+        }
     }
 
     fn base_parameter(&mut self, address: u64, normalized: f64) {
@@ -345,22 +415,20 @@ impl InsertProcessor for PluginInsert {
     }
 
     fn base_parameter_at(&mut self, address: u64, normalized: f64, offset: u32) {
+        // (`normalized` is the plan's copy of the base value; for the plug-in's own
+        // parameters the instance's table has the current one.)
         match (address, self.instrument.as_mut()) {
             (INSTRUMENT_VOLUME, Some(instrument)) => instrument.volume = (normalized as f32).clamp(0.0, 2.0),
             (INSTRUMENT_PAN, Some(instrument)) => instrument.pan = (normalized as f32).clamp(-1.0, 1.0),
             (INSTRUMENT_VOLUME | INSTRUMENT_PAN, None) => {}
             _ => {
                 // The plug-in holds its own values; only what automation moved goes back, to
-                // the base the instance knows now (the plan's copy may be older: the user can
-                // have turned the control since). A bypassed insert is not processed: what
-                // automation moved stays remembered until it is.
-                let table = self.hosted.table();
-                if !self.bypass && self.hosted.automated.remove(address) {
-                    if let Some(value) = table.plain(address, table.base(address).unwrap_or(normalized)) {
-                        if self.parameters.len() < self.parameters.capacity() {
-                            self.parameters.push(Event::param(offset, address, value));
-                        }
-                    }
+                // the base value the instance knows when the block is sent (the plan's copy
+                // may be older: the user can have turned the control since). A bypassed
+                // insert is not processed: what automation moved stays remembered until it is.
+                if !self.bypass && self.hosted.automated.contains(address) {
+                    self.queue_return(address, offset);
+                    self.hosted.returns_pending.store(self.returning.len() as u32, Ordering::Release);
                 }
             }
         }

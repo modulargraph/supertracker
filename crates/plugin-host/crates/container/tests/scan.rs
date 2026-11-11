@@ -154,7 +154,13 @@ fn scan_lists_plugins_caches_them_and_survives_broken_files() {
     // The plug-ins: both formats, each once although two bundles hold the VST3 ones.
     assert_eq!(
         names(&report.plugins),
-        [clap_plug_name("Gain"), vst3_plug::GAIN_NAME, clap_plug_name("Sine"), "ST Test Sine (CLAP notes)", vst3_plug::SINE_NAME]
+        [
+            clap_plug_name("Gain"),
+            vst3_plug::GAIN_NAME,
+            clap_plug_name("Sine"),
+            "ST Test Sine (CLAP notes)",
+            vst3_plug::SINE_NAME
+        ]
     );
     assert_eq!(report.plugins, scanner.plugins());
     let gain = &report.plugins[1];

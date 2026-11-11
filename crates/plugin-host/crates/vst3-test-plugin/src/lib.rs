@@ -1376,7 +1376,8 @@ impl IAudioProcessorTrait for SineSynth {
                 } else if kind == Event_::EventTypes_::kPolyPressureEvent as u32 {
                     // One object is processor and controller: the probe is shown at once.
                     let pressure = event.__field0.polyPressure;
-                    let packed = pressure.pitch.clamp(0, 127) as u32 * 128 + (pressure.pressure.clamp(0.0, 1.0) * 127.0).round() as u32;
+                    let packed = pressure.pitch.clamp(0, 127) as u32 * 128
+                        + (pressure.pressure.clamp(0.0, 1.0) * 127.0).round() as u32;
                     self.values.set(PARAM_POLY_PRESSURE, packed as f64 / 16383.0);
                     self.shown.set(PARAM_POLY_PRESSURE, packed as f64 / 16383.0);
                     continue;

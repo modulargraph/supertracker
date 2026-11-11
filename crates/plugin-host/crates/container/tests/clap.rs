@@ -246,7 +246,13 @@ fn controllers_and_pressure_reach_both_note_dialects() {
     let env = TestEnv::new(GroupingPolicy::Shared);
     let rate = 48_000.0;
     let probes = |instance: &Instance| -> [f64; 4] {
-        [plug::PARAM_PROBE_CONTROLLER, plug::PARAM_PROBE_PRESSURE, plug::PARAM_PROBE_POLY_PRESSURE, plug::PARAM_PROBE_BEND].map(|id| instance.parameter(id as u64).unwrap().unwrap())
+        [
+            plug::PARAM_PROBE_CONTROLLER,
+            plug::PARAM_PROBE_PRESSURE,
+            plug::PARAM_PROBE_POLY_PRESSURE,
+            plug::PARAM_PROBE_BEND,
+        ]
+        .map(|id| instance.parameter(id as u64).unwrap().unwrap())
     };
     let events = [
         Event::note_on(0, 0, 60, 100),
@@ -256,7 +262,9 @@ fn controllers_and_pressure_reach_both_note_dialects() {
         Event::midi(40, &[0xD0, 127]),
     ];
     // The sample after `k` frames, with channel pressure from frame 40 on.
-    let expected: Vec<f32> = (0..64).map(|k| plug::sine_sample(60, k, rate, if k < 40 { 0.5 } else { 0.5 * plug::pressure_gain(127) })).collect();
+    let expected: Vec<f32> = (0..64)
+        .map(|k| plug::sine_sample(60, k, rate, if k < 40 { 0.5 } else { 0.5 * plug::pressure_gain(127) }))
+        .collect();
 
     let midi = active(env.sup(), sine_config());
     assert_eq!(probes(&midi), [0.0, 0.0, 0.0, 8192.0]);
