@@ -25,8 +25,8 @@ fn test_timeline_audio_clips() {
         e.set_pattern(0, 1);
         assert!(e.set_audio_asset(0, &sample, 48000.0));
         e.add_audio_clip(0, 0, 0.5, 1.0, 0.0, 1.0, 0.0, 0.0, 0);
-        e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0, 0, 0.0, 0.0);
-        e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0, 0, 1.0, 1.0);
+        e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0.0, 0.0);
+        e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 1.0, 1.0);
         e.commit_update();
         assert!((e.duration(1) - 0.75).abs() < 1e-9);
         e.play(1);
@@ -280,8 +280,8 @@ fn test_independent_lfos_and_automation() {
     step.gate = 4.0;
     step.fx1 = fx(ST_FX_VOLUME, 0.8);
     e.set_step(0, 0, 0, step, &[]);
-    e.add_automation_point(0, 0, ST_TARGET_LFO2_DEPTH, 0, 0, 0, 0.0, 1.0);
-    e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0, 0, 0.0, 0.5);
+    e.add_automation_point(0, 0, ST_TARGET_LFO2_DEPTH, 0, 0.0, 1.0);
+    e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0.0, 0.5);
     e.commit_update();
     e.play(0);
     let mut silent = Audio::new(12000);
@@ -590,9 +590,9 @@ fn test_tempo_synced_lfo_automation() {
         e.set_step(0, 0, 0, step, &[]);
         let beats_target = if slot != 0 { ST_TARGET_LFO2_BEATS } else { ST_TARGET_LFO_BEATS };
         let rate_target = if slot != 0 { ST_TARGET_LFO2_RATE } else { ST_TARGET_LFO_RATE };
-        e.add_automation_point(0, 0, beats_target, 0, 0, 1, 0.0, 1.0);
-        e.add_automation_point(0, 0, beats_target, 0, 0, 1, 1.0, 0.5);
-        e.add_automation_point(0, 0, rate_target, 0, 0, 1, 0.0, 83.0);
+        e.add_automation_point(0, 0, beats_target, 1, 0.0, 1.0);
+        e.add_automation_point(0, 0, beats_target, 1, 1.0, 0.5);
+        e.add_automation_point(0, 0, rate_target, 1, 0.0, 83.0);
         e.commit_update();
         e.play(0);
         let mut a = Audio::new(9200);

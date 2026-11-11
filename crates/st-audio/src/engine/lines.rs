@@ -222,7 +222,6 @@ impl AudioEngine {
     /// Whether the transport plays, as the status reports it: a Play or Stop that still waits
     /// for the audio thread counts as done.
     pub fn transport_playing(&self) -> bool {
-        let engine = self.lock().core.status.status();
-        if engine.transport_pending != 0 { engine.requested_playing != 0 } else { engine.playing != 0 }
+        self.lock().core.status.status().transport_playing()
     }
 }

@@ -11,7 +11,6 @@ pub const ST_MAX_PATTERNS: i32 = 256;
 pub const ST_MAX_ROWS: i32 = 256;
 pub const ST_MAX_CHORD: usize = 8;
 pub const ST_MAX_HOST_DESTINATIONS: i32 = 2048;
-pub const ST_MAX_INSERTS: i32 = 32;
 
 pub const ST_INSTRUMENT_SAMPLE: i32 = 1;
 pub const ST_INSTRUMENT_AU: i32 = 2;
@@ -53,7 +52,7 @@ pub const ST_TARGET_RESONANCE: i32 = 3;
 pub const ST_TARGET_DELAY: i32 = 4;
 pub const ST_TARGET_REVERB: i32 = 5;
 pub const ST_TARGET_PITCH: i32 = 6;
-pub const ST_TARGET_PLUGIN: i32 = 7;
+// 7 is not a target.
 pub const ST_TARGET_ATTACK: i32 = 8;
 pub const ST_TARGET_DECAY: i32 = 9;
 pub const ST_TARGET_SUSTAIN: i32 = 10;

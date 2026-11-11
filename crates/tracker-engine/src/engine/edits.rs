@@ -393,17 +393,16 @@ impl Control {
         (v.count, v.chord) = sanitize_chord(chord);
     }
 
-    /// A plug-in parameter lock on a row that has a step: `column` 0 or 1, the plug-in slot or host
-    /// destination, the parameter address and its normalized value (0..=1). False when an argument
-    /// is out of range or the row has no step.
-    #[allow(clippy::too_many_arguments)]
+    /// A parameter lock on a row that has a step: for the row, the host destination's parameter
+    /// at `address` takes the normalized `value` (0..=1) instead of what its host lane says.
+    /// `column` is 0 or 1, the step effect column the lock stands in. False when an argument is
+    /// out of range or the row has no step.
     pub fn set_plugin_step_fx(
         &mut self,
         pattern: i32,
         track: i32,
         row: i32,
         column: i32,
-        slot: i32,
         host_destination: i32,
         address: u64,
         value: f64,
@@ -414,9 +413,7 @@ impl Control {
             || row < 0
             || column < 0
             || column > 1
-            || slot < -1
-            || slot >= ST_MAX_INSERTS
-            || host_destination < -1
+            || host_destination < 0
             || host_destination >= ST_MAX_HOST_DESTINATIONS
             || !value.is_finite()
             || value < 0.0
@@ -430,28 +427,8 @@ impl Control {
             return false;
         }
         target.mutable_step(track, row).plugin_fx[column as usize] =
-            PluginStepFX { present: true, slot, destination: host_destination, address, value };
+            PluginStepFX { present: true, destination: host_destination, address, value };
         true
-    }
-
-    /// Clears column 0 and every extra note column of the row.
-    pub fn clear_step(&mut self, pattern: i32, track: i32, row: i32) {
-        if pattern < 0 || track < 0 || track >= ST_TRACK_SANITY_LIMIT || row < 0 {
-            return;
-        }
-        let p = self.edit_patterns();
-        let Some(target) = p.patterns.get_mut(pattern as usize) else { return };
-        if row >= target.length {
-            return;
-        }
-        if target.has_column(track) {
-            *target.mutable_step(track, row) = Step::BLANK;
-        }
-        for column in 1..=EXTRA_COLUMNS {
-            if target.column_step(track, column, row).present {
-                *target.mutable_column_step(track, column, row) = Step::BLANK;
-            }
-        }
     }
 
     /// Writes a note column of a row. Column 0 is `set_step` without a chord; the extra columns
@@ -487,37 +464,17 @@ impl Control {
         v.p = s;
     }
 
-    /// Clears native and host lanes.
-    pub fn clear_automation(&mut self, pattern: i32) {
-        if pattern < 0 {
-            return;
-        }
-        let p = self.edit_patterns();
-        if let Some(target) = p.patterns.get_mut(pattern as usize) {
-            target.lanes = None;
-            target.host_lanes = None;
-        }
-    }
-
-    /// Adds a point to the native or plug-in lane `(track, target, slot, address)` of a pattern,
-    /// creating the lane on first use (at most 256 lanes per pattern and 4096 points per lane).
-    #[allow(clippy::too_many_arguments)]
-    pub fn add_automation_point(
-        &mut self,
-        pattern: i32,
-        track: i32,
-        target: i32,
-        slot: i32,
-        address: u64,
-        interpolation: i32,
-        row: f64,
-        value: f64,
-    ) {
+    /// Adds a point to the lane of a track's own parameter (`ST_TARGET_*`: the track's mixer
+    /// values, its filter and pitch offsets, its instrument's parameters), creating the lane on
+    /// first use (at most 256 lanes per pattern and 4096 points per lane). `interpolation` is 1
+    /// for a stepped lane, 0 for a linear one.
+    pub fn add_automation_point(&mut self, pattern: i32, track: i32, target: i32, interpolation: i32, row: f64, value: f64) {
         if pattern < 0
             || track < 0
             || track >= channel_count(ST_TRACK_SANITY_LIMIT)
             || target < 0
             || target > ST_TARGET_LAST_INSTRUMENT
+            || (target > ST_TARGET_PITCH && target < ST_TARGET_ATTACK)
             || !row.is_finite()
             || !value.is_finite()
         {
@@ -528,8 +485,8 @@ impl Control {
         add_lane_point(
             pattern,
             false,
-            |lane| lane.track == track && lane.target == target && lane.slot == slot && lane.address == address,
-            Lane { track, target, slot, interpolation, address, points: Vec::new() },
+            |lane| lane.track == track && lane.target == target,
+            Lane { track, target, interpolation, address: 0, points: Vec::new() },
             row,
             value,
         );
@@ -559,7 +516,6 @@ impl Control {
             Lane {
                 track: -1,
                 target: destination,
-                slot: 0,
                 interpolation: if interpolation == 1 { 1 } else { 0 },
                 address,
                 points: Vec::new(),
@@ -662,66 +618,6 @@ impl Control {
         zone.volume = clamp(finite(volume, 1.0), 0.0, 2.0);
         self.edit().instruments[index].zones.push(zone);
         self.publish_outside_update(sh)
-    }
-
-    /// Start, end and loop points of one zone as fractions of its sample (0..=1), and its pan.
-    /// False, changing nothing, when a value is out of range or the zone does not exist.
-    #[allow(clippy::too_many_arguments)]
-    pub fn set_sample_zone_region(
-        &mut self,
-        instrument: i32,
-        zone_index: i32,
-        start: f32,
-        end: f32,
-        loop_start: f32,
-        loop_end: f32,
-        pan: f32,
-    ) -> bool {
-        if !self.view().has_instrument(instrument)
-            || zone_index < 0
-            || !start.is_finite()
-            || !end.is_finite()
-            || !loop_start.is_finite()
-            || !loop_end.is_finite()
-            || !pan.is_finite()
-            || start < 0.0
-            || end > 1.0
-            || end - start < 0.000001
-            || loop_start < 0.0
-            || loop_end > 1.0
-            || loop_end <= loop_start
-            || pan < -1.0
-            || pan > 1.0
-        {
-            return false;
-        }
-        match self.edit().instruments[instrument as usize].zones.get_mut(zone_index as usize) {
-            Some(zone) => {
-                zone.start = start;
-                zone.end = end;
-                zone.loop_start = loop_start;
-                zone.loop_end = loop_end;
-                zone.pan = pan;
-                zone.has_region = true;
-                true
-            }
-            None => false,
-        }
-    }
-
-    /// Whether one zone loops: 1 loops it, 0 plays it once, -1 follows the instrument's play mode.
-    /// False for an unknown zone or another value.
-    pub fn set_sample_zone_loop_enabled(&mut self, instrument: i32, zone_index: i32, enabled: i32) -> bool {
-        if !self.view().has_instrument(instrument) || zone_index < 0 || enabled < -1 || enabled > 1 {
-            return false;
-        }
-        match self.edit().instruments[instrument as usize].zones.get_mut(zone_index as usize) {
-            Some(zone) => {
-                zone.loop_enabled = enabled;
-                true
-            }
-            None => false,
-        }
     }
 
     /// `None` clears the slot. Publishes at once outside an update.
@@ -838,11 +734,11 @@ impl Control {
 
     // ---- commands (the control thread is the command ring's single producer) ----
 
-    /// Queues Play: `song_mode` nonzero plays the song sequence, zero the active pattern. Like every
+    /// Queues Play: of the song sequence (`song_mode`) or of the active pattern. Like every
     /// command below it takes effect when the render half starts its next block; until then the
     /// status reports it as pending (`STStatus::transport_playing`).
-    pub fn play(&mut self, sh: &Shared, song_mode: i32) {
-        self.queue_transport(sh, Command::new(CMD_PLAY, song_mode, 0, 0, 0, 0.0), true);
+    pub fn play(&mut self, sh: &Shared, song_mode: bool) {
+        self.queue_transport(sh, Command::new(CMD_PLAY, song_mode as i32, 0, 0, 0, 0.0), true);
     }
 
     /// Queues Stop.
@@ -919,7 +815,10 @@ impl Control {
         self.queue(sh, &Command::new(CMD_NOTE_OFF, track, note, 0, 0, 0.0));
     }
 
-    /// True only when both command and ACK capacity are reserved.
+    /// Queues a note edge of a live input (`edge`: `ST_INPUT_NOTE_ON` or `ST_INPUT_NOTE_OFF`) to
+    /// be acknowledged with the position it lands on (`STInputAck`, by `request_id`, which must
+    /// grow from edge to edge); with `apply_note` the note is also played or released. True only
+    /// when both command and ACK capacity are reserved.
     #[allow(clippy::too_many_arguments)]
     pub fn input_note(
         &mut self,
@@ -930,7 +829,7 @@ impl Control {
         instrument: i32,
         note: i32,
         velocity: i32,
-        apply_note: i32,
+        apply_note: bool,
     ) -> bool {
         if request_id == 0
             || request_id <= self.last_input_request_id
@@ -943,7 +842,6 @@ impl Control {
             || velocity < 0
             || velocity > 127
             || (edge == ST_INPUT_NOTE_ON && velocity == 0)
-            || (apply_note != 0 && apply_note != 1)
         {
             return false;
         }
@@ -963,7 +861,7 @@ impl Control {
             d: velocity,
             request_id,
             input_edge: edge,
-            apply_input_note: apply_note,
+            apply_input_note: apply_note as i32,
             ..Command::default()
         };
         if !sh.commands.push(&command) {

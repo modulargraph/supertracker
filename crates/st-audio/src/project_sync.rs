@@ -562,14 +562,14 @@ impl ProjectSync {
                 let Some(target) = native_target(lane.target_name()) else { continue };
                 let stepped = (lane.interpolation() == Interpolation::Step) as i32;
                 for point in lane.points.as_deref().unwrap_or(&[]) {
-                    control.add_automation_point(number, clamp_i32(lane.track()), target, 0, 0, stepped, point.row(), point.value());
+                    control.add_automation_point(number, clamp_i32(lane.track()), target, stepped, point.row(), point.value());
                 }
             }
             for point in host_points.get(&number).into_iter().flatten() {
                 control.add_host_automation_point(number, point.destination as i32, point.address, point.stepped, point.row, point.value);
             }
             for lock in locks.get(&number).into_iter().flatten() {
-                control.set_plugin_step_fx(number, lock.track, lock.row, lock.column, lock.slot, lock.destination, lock.address, lock.value);
+                control.set_plugin_step_fx(number, lock.track, lock.row, lock.column, lock.destination, lock.address, lock.value);
             }
             sent.insert(number, ((*pattern).clone(), derived));
         }

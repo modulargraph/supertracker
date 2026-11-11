@@ -130,8 +130,8 @@ fn position_automation() {
     let mut e = Engine::new();
     setup(&mut e, wavetable(0.0), &table(4, 2048), 16);
     e.begin_update();
-    e.add_automation_point(0, 0, ST_TARGET_WAVETABLE_POSITION, 0, 0, 1, 0.0, 0.0);
-    e.add_automation_point(0, 0, ST_TARGET_WAVETABLE_POSITION, 0, 0, 1, 8.0, 1.0);
+    e.add_automation_point(0, 0, ST_TARGET_WAVETABLE_POSITION, 1, 0.0, 0.0);
+    e.add_automation_point(0, 0, ST_TARGET_WAVETABLE_POSITION, 1, 8.0, 1.0);
     let mut step = default_step();
     step.note = 69;
     step.velocity = 127;

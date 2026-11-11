@@ -82,9 +82,9 @@ fn test_exact_stepped_automation() {
         ST_TARGET_INSTRUMENT_PAN,
     ];
     for target in targets {
-        e.add_automation_point(0, 0, target, 0, 0, 1, 0.0, 0.0);
-        e.add_automation_point(0, 0, target, 0, 0, 1, 1.0, 1.0);
-        e.add_automation_point(0, 0, target, 0, 0, 1, 1.5, 0.5);
+        e.add_automation_point(0, 0, target, 1, 0.0, 0.0);
+        e.add_automation_point(0, 0, target, 1, 1.0, 1.0);
+        e.add_automation_point(0, 0, target, 1, 1.5, 0.5);
     }
     e.add_host_automation_point(0, 9, 333, 1, 0.0, 0.0);
     e.add_host_automation_point(0, 9, 333, 1, 0.1, 0.75);
@@ -119,7 +119,7 @@ fn test_exact_stepped_automation() {
     let mut locked = Engine::new();
     configure(&mut locked, TONE);
     locked.begin_update();
-    locked.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0, 1, 0.0, 0.8);
+    locked.add_automation_point(0, 0, ST_TARGET_VOLUME, 1, 0.0, 0.8);
     let mut effect = default_step();
     effect.note = -3;
     effect.fx1 = fx(ST_FX_VOLUME, 0.3);
@@ -143,8 +143,8 @@ fn test_timed_mix_defaults_and_automation_refresh() {
     let mut e = Engine::new();
     configure(&mut e, ST_INSTRUMENT_AU);
     e.begin_update();
-    e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0, 1, 0.0, 0.0);
-    e.add_automation_point(0, 0, ST_TARGET_PAN, 0, 0, 1, 0.0, -0.6);
+    e.add_automation_point(0, 0, ST_TARGET_VOLUME, 1, 0.0, 0.0);
+    e.add_automation_point(0, 0, ST_TARGET_PAN, 1, 0.0, -0.6);
     e.commit_update();
     e.play(0);
     let mut first = Audio::new(512);
@@ -159,7 +159,7 @@ fn test_timed_mix_defaults_and_automation_refresh() {
     e.begin_update();
     e.clear_project();
     e.set_track_count(2);
-    e.add_automation_point(0, 0, ST_TARGET_PAN, 0, 0, 1, 0.0, -0.6);
+    e.add_automation_point(0, 0, ST_TARGET_PAN, 1, 0.0, -0.6);
     let mut track = default_track();
     track.volume = 1.2;
     track.delay_send = 0.25;
@@ -209,7 +209,7 @@ fn test_timed_mix_defaults_and_automation_refresh() {
     song.set_pattern(1, 1);
     let sequence = [0, 1];
     song.set_sequence(&sequence, 0, 0);
-    song.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0, 1, 0.0, 0.0);
+    song.add_automation_point(0, 0, ST_TARGET_VOLUME, 1, 0.0, 0.0);
     song.commit_update();
     song.play(1);
     let sequence_events = render_events(&mut song, 13000);
@@ -228,8 +228,8 @@ fn test_timed_mix_defaults_and_automation_refresh() {
     effect.note = -3;
     effect.fx1 = fx(ST_FX_VOLUME, 0.3);
     locked.set_step(0, 0, 0, effect, &[]);
-    locked.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0, 1, 0.0, 0.8);
-    locked.add_automation_point(0, 0, ST_TARGET_PAN, 0, 0, 1, 0.0, -0.5);
+    locked.add_automation_point(0, 0, ST_TARGET_VOLUME, 1, 0.0, 0.8);
+    locked.add_automation_point(0, 0, ST_TARGET_PAN, 1, 0.0, -0.5);
     locked.commit_update();
     locked.play(0);
     let mut small = Audio::new(128);

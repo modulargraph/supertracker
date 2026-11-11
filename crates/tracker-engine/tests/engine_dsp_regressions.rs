@@ -110,10 +110,10 @@ fn region_automation_bounds() {
         e.set_timing(240.0, 16, 0.0);
         e.set_instrument(0, p);
         assert!(e.set_sample(0, &pcm, None, 48000.0));
-        e.add_automation_point(0, 0, ST_TARGET_START, 0, 0, 0, 0.0, 0.25);
-        e.add_automation_point(0, 0, ST_TARGET_START, 0, 0, 0, 2.0, 0.375);
-        e.add_automation_point(0, 0, ST_TARGET_END, 0, 0, 0, 0.0, 0.75);
-        e.add_automation_point(0, 0, ST_TARGET_END, 0, 0, 0, 2.0, 0.625);
+        e.add_automation_point(0, 0, ST_TARGET_START, 0, 0.0, 0.25);
+        e.add_automation_point(0, 0, ST_TARGET_START, 0, 2.0, 0.375);
+        e.add_automation_point(0, 0, ST_TARGET_END, 0, 0.0, 0.75);
+        e.add_automation_point(0, 0, ST_TARGET_END, 0, 2.0, 0.625);
         e.commit_update();
         e.play(0);
         e.note_on(0, 0, 60, 127);
@@ -142,8 +142,8 @@ fn region_automation_keeps_looping_voices() {
             e.set_instrument(0, p);
             assert!(e.set_sample(0, &pcm, None, 48000.0));
             // Stepped: the whole sample on row 0, a quarter trimmed from row 1 (frame 6000) on.
-            e.add_automation_point(0, 0, target, 0, 0, 1, 0.0, if target == ST_TARGET_START { 0.0 } else { 1.0 });
-            e.add_automation_point(0, 0, target, 0, 0, 1, 1.0, if target == ST_TARGET_START { 0.25 } else { 0.75 });
+            e.add_automation_point(0, 0, target, 1, 0.0, if target == ST_TARGET_START { 0.0 } else { 1.0 });
+            e.add_automation_point(0, 0, target, 1, 1.0, if target == ST_TARGET_START { 0.25 } else { 0.75 });
             e.commit_update();
             e.play(0);
             e.note_on(0, 0, 60, 127);
@@ -175,8 +175,8 @@ fn region_automation_start_past_end() {
     e.set_timing(120.0, 4, 0.0);
     e.set_instrument(0, p);
     assert!(e.set_sample(0, &pcm, None, 48000.0));
-    e.add_automation_point(0, 0, ST_TARGET_START, 0, 0, 1, 0.0, 0.25);
-    e.add_automation_point(0, 0, ST_TARGET_START, 0, 0, 1, 1.0, 0.7);
+    e.add_automation_point(0, 0, ST_TARGET_START, 1, 0.0, 0.25);
+    e.add_automation_point(0, 0, ST_TARGET_START, 1, 1.0, 0.7);
     e.commit_update();
     e.play(0);
     e.note_on(0, 0, 60, 127);

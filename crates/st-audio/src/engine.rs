@@ -406,7 +406,7 @@ impl AudioEngine {
         let (start, end) = options.pattern_loop.filter(|_| !options.song).unwrap_or((-1, -1));
         control.set_pattern_loop(shared, start, end);
         match options.count_in.clamp(0, 4) {
-            0 => control.play(shared, options.song as i32),
+            0 => control.play(shared, options.song),
             bars => control.play_count_in(shared, options.song, bars),
         }
     }
@@ -533,7 +533,7 @@ impl AudioEngine {
         let id = state.next_input;
         let (control, shared, _) = state.core.control.parts();
         let kind = if edge.on { ST_INPUT_NOTE_ON } else { ST_INPUT_NOTE_OFF };
-        if !control.input_note(shared, id, kind, edge.track, edge.instrument, edge.note, edge.velocity, edge.apply_note as i32) {
+        if !control.input_note(shared, id, kind, edge.track, edge.instrument, edge.note, edge.velocity, edge.apply_note) {
             fallback(&mut state, &edge);
             drop(state);
             return completion(refuse(&edge, &context, Some(id), "The audio engine could not accept this recording edge."));
@@ -676,8 +676,7 @@ impl AudioEngine {
         let mut engine = core.status.status();
         // A Play/Stop queued for the audio thread is reported as requested, not as the stale
         // rendered state.
-        let playing = if engine.transport_pending != 0 { engine.requested_playing != 0 } else { engine.playing != 0 };
-        let count_in = if engine.transport_pending != 0 { 0 } else { engine.count_in };
+        let (playing, count_in) = (engine.transport_playing(), engine.count_in_shown());
         if engine.transport_pending != 0 {
             engine.queued_pattern = -1;
             engine.queued_sequence = -1;

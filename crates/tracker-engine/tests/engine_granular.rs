@@ -274,8 +274,8 @@ fn granular_parameters() {
         step.gate = 4.0;
         step.fx1 = STStepFX { type_: ST_FX_POSITION, value: 0.25 };
         e.set_step(0, 0, 0, step, &[]);
-        e.add_automation_point(0, 0, ST_TARGET_GRAIN_SCAN, -1, 0, 0, 0.0, 2.0);
-        e.add_automation_point(0, 0, ST_TARGET_GRAIN_DENSITY, -1, 0, 0, 0.0, 5.0);
+        e.add_automation_point(0, 0, ST_TARGET_GRAIN_SCAN, 0, 0.0, 2.0);
+        e.add_automation_point(0, 0, ST_TARGET_GRAIN_DENSITY, 0, 0.0, 5.0);
         publish(&mut e);
         e.watch_voice_positions(0);
         e.play(0);

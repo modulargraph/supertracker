@@ -150,8 +150,8 @@ fn test_automation() {
     i.sustain = 1.0;
     i.volume = 0.5;
     e.set_instrument(0, i);
-    e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0, 0, 0.0, 0.0);
-    e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0, 0, 1.0, 1.0);
+    e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0.0, 0.0);
+    e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 1.0, 1.0);
     e.add_host_automation_point(0, 3, 1234, 0, 0.0, 0.2);
     e.add_host_automation_point(0, 3, 1234, 0, 1.0, 0.8);
     e.commit_update();
@@ -489,7 +489,7 @@ fn test_pitch_bend_metronome_and_locks() {
         step.gate = 4.0;
         step.fx1 = fx(ST_FX_VOLUME, 0.2);
         e.set_step(0, 0, 0, step, &[]);
-        e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0, 0, 0.0, 0.9);
+        e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0.0, 0.9);
         e.commit_update();
         e.play(0);
         // Track volume is the host's to apply, from the engine's events: the row lock on
@@ -566,7 +566,7 @@ fn test_sampler_and_midi_regressions() {
         let mut step = default_step();
         step.note = 61;
         e.set_step(0, 0, 0, step, &[]);
-        e.add_automation_point(0, 0, ST_TARGET_SLICE_COUNT, 0, 0, 0, 0.0, 2.0);
+        e.add_automation_point(0, 0, ST_TARGET_SLICE_COUNT, 0, 0.0, 2.0);
         e.commit_update();
         e.play(0);
         let mut a = Audio::new(512);
@@ -581,7 +581,7 @@ fn test_sampler_and_midi_regressions() {
         e.begin_update();
         let step = default_step();
         e.set_step(0, 0, 0, step, &[]);
-        e.add_automation_point(0, 0, ST_TARGET_START, 0, 0, 0, 0.0, 0.25);
+        e.add_automation_point(0, 0, ST_TARGET_START, 0, 0.0, 0.25);
         e.commit_update();
         e.play(0);
         let mut a = Audio::new(512);

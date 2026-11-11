@@ -84,16 +84,8 @@ pub struct Zone {
     pub velocity_low: i32,
     pub velocity_high: i32,
     pub root_note: i32,
-    /// -1 inherits the instrument, 0 one-shot, 1 forward loop.
-    pub loop_enabled: i32,
     pub tune: f32,
     pub volume: f32,
-    pub pan: f32,
-    pub start: f32,
-    pub end: f32,
-    pub loop_start: f32,
-    pub loop_end: f32,
-    pub has_region: bool,
 }
 
 impl Default for Zone {
@@ -105,15 +97,8 @@ impl Default for Zone {
             velocity_low: 0,
             velocity_high: 127,
             root_note: 60,
-            loop_enabled: -1,
             tune: 0.0,
             volume: 1.0,
-            pan: 0.0,
-            start: 0.0,
-            end: 1.0,
-            loop_start: 0.0,
-            loop_end: 1.0,
-            has_region: false,
         }
     }
 }
@@ -144,14 +129,14 @@ impl Instrument {
 #[derive(Clone, Copy, PartialEq)]
 pub struct PluginStepFX {
     pub present: bool,
-    pub slot: i32,
+    /// The host destination whose parameter the lock sets.
     pub destination: i32,
     pub address: u64,
     pub value: f64,
 }
 
 impl PluginStepFX {
-    pub const NONE: PluginStepFX = PluginStepFX { present: false, slot: -1, destination: -1, address: 0, value: 0.0 };
+    pub const NONE: PluginStepFX = PluginStepFX { present: false, destination: -1, address: 0, value: 0.0 };
 }
 
 impl Default for PluginStepFX {
@@ -194,10 +179,11 @@ pub struct Point {
 }
 
 #[derive(Clone)]
+/// An automation lane. A native lane drives `target` (`ST_TARGET_*`) of `track`; a host lane
+/// drives the parameter at `address` of the host destination `target` (its `track` is -1).
 pub struct Lane {
     pub track: i32,
     pub target: i32,
-    pub slot: i32,
     pub interpolation: i32,
     pub address: u64,
     pub points: Vec<Point>,

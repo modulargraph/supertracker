@@ -1,6 +1,6 @@
 //! The tracker sequencer (ported from the C++ engine's `TrackerEngine.cpp`): row triggering (`triggerRow`,
 //! `triggerStep`, `triggerColumns`), step effects and row locks (`applyFX`), delayed hits and
-//! ratchets (`schedule*`, `repeatRatchet`), plug-in parameter locks, and automation lanes
+//! ratchets (`schedule*`, `repeatRatchet`), parameter locks of the host, and automation lanes
 //! (`laneValue`, `emitLaneAutomation`, `automation`, `emitMixState`).
 
 use super::abi::*;
@@ -111,7 +111,6 @@ fn emit_lane_automation(
             type_: event_type,
             track: l.track,
             target: l.target,
-            slot: l.slot,
             address: l.address,
             value,
             host_map: if event_type == ST_EVENT_HOST_PARAMETER { host_map } else { 0 },
@@ -185,7 +184,6 @@ impl<'a> Rt<'a> {
     pub fn clear_plugin_locks(&mut self) {
         self.e.plugin_row_lock_count = 0;
         self.e.plugin_locks_pending = 0;
-        self.e.plugin_lane_locked = [false; 256];
         self.e.plugin_host_lane_locked = [false; 256];
     }
 
@@ -334,7 +332,7 @@ impl<'a> Rt<'a> {
 
     /// Resolved locks contain only numeric dispatch data. These bounded arrays are rebuilt at
     /// row boundaries; no project identity lookup or allocation occurs on the render thread.
-    /// Duplicate columns coalesce so FX2 wins before delivery.
+    /// Two locks of a track's row on the same parameter coalesce, so FX2 wins before delivery.
     fn add_plugin_lock(&mut self, track: i32, fx: &PluginStepFX) {
         if !fx.present {
             return;
@@ -342,7 +340,7 @@ impl<'a> Rt<'a> {
         let count = self.e.plugin_row_lock_count;
         let locks = &mut self.tb.plugin_row_locks;
         for lock in locks.iter_mut().take(count) {
-            if lock.track == track && lock.fx.slot == fx.slot && lock.fx.address == fx.address {
+            if lock.track == track && lock.fx.destination == fx.destination && lock.fx.address == fx.address {
                 lock.fx = *fx;
                 lock.delivery = LaneEventState::default();
                 return;
@@ -354,32 +352,21 @@ impl<'a> Rt<'a> {
         }
     }
 
-    fn plugin_locked(&self, lane: &Lane, host: bool) -> bool {
-        for lock in self.tb.plugin_row_locks.iter().take(self.e.plugin_row_lock_count) {
-            if lock.fx.address != lane.address {
-                continue;
-            }
-            let matches = if host {
-                lock.fx.destination >= 0 && lock.fx.destination == lane.target
-            } else {
-                lane.target == ST_TARGET_PLUGIN && lock.track == lane.track && lock.fx.slot == lane.slot
-            };
-            if matches {
-                return true;
-            }
-        }
-        false
+    /// Whether a lock of this row sets the parameter the host lane drives.
+    fn plugin_locked(&self, lane: &Lane) -> bool {
+        self.tb
+            .plugin_row_locks
+            .iter()
+            .take(self.e.plugin_row_lock_count)
+            .any(|lock| lock.fx.address == lane.address && lock.fx.destination == lane.target)
     }
 
     /// Resolve the at-most-256 lock keys against lane addresses once per row, rather than
     /// repeating the key search for every lane on every sample.
     fn index_plugin_locks(&mut self) {
         let Some(pattern) = self.p.pattern(self.e.pattern) else { return };
-        for (n, lane) in pattern.lane_list().iter().enumerate().take(256) {
-            self.e.plugin_lane_locked[n] = self.plugin_locked(lane, false);
-        }
         for (n, lane) in pattern.host_lane_list().iter().enumerate().take(256) {
-            self.e.plugin_host_lane_locked[n] = self.plugin_locked(lane, true);
+            self.e.plugin_host_lane_locked[n] = self.plugin_locked(lane);
         }
         self.e.plugin_locks_pending = self.e.plugin_row_lock_count as i32;
     }
@@ -396,15 +383,13 @@ impl<'a> Rt<'a> {
             if state.delivered || (state.known && frame < state.retry_frame) {
                 continue;
             }
-            let host = lock.fx.destination >= 0;
             let event = STEvent {
-                type_: if host { ST_EVENT_HOST_PARAMETER } else { ST_EVENT_PARAMETER },
-                track: if host { -1 } else { lock.track },
-                target: if host { lock.fx.destination } else { ST_TARGET_PLUGIN },
-                slot: lock.fx.slot,
+                type_: ST_EVENT_HOST_PARAMETER,
+                track: -1,
+                target: lock.fx.destination,
                 address: lock.fx.address,
                 value: lock.fx.value,
-                host_map: if host { host_map } else { 0 },
+                host_map,
                 ..STEvent::default()
             };
             state.known = true;
@@ -795,7 +780,7 @@ impl<'a> Rt<'a> {
             }
             let v = lane_value(l, pos) as f32;
             let Some(t) = self.tb.track_state.get_mut(l.track as usize) else { continue };
-            if (t.row_locks & (1u64 << (l.target as u32 & 63))) != 0 || e.plugin_lane_locked[index] {
+            if (t.row_locks & (1u64 << (l.target as u32 & 63))) != 0 {
                 state.known = false;
                 state.delivered = false;
                 continue;
@@ -808,7 +793,6 @@ impl<'a> Rt<'a> {
                 ST_TARGET_DELAY => t.delay = clamp(v, 0.0, 1.0),
                 ST_TARGET_REVERB => t.reverb = clamp(v, 0.0, 1.0),
                 ST_TARGET_PITCH => t.pitch = clamp(v, -48.0, 48.0),
-                ST_TARGET_PLUGIN => {}
                 target => {
                     if (ST_TARGET_ATTACK..=ST_TARGET_LAST_INSTRUMENT).contains(&target) {
                         let slot = (target - ST_TARGET_ATTACK) as usize;
@@ -817,8 +801,7 @@ impl<'a> Rt<'a> {
                     }
                 }
             }
-            let event_value = if l.target == ST_TARGET_PLUGIN { clamp(v as f64, 0.0, 1.0) } else { v as f64 };
-            emit_lane_automation(&e.out, self.sh, frame, p.host_map, l, state, event_value, ST_EVENT_PARAMETER);
+            emit_lane_automation(&e.out, self.sh, frame, p.host_map, l, state, v as f64, ST_EVENT_PARAMETER);
         }
         for (index, l) in host_lanes.iter().enumerate().take(256) {
             let state = &mut e.host_lane_event_state[index];

@@ -36,7 +36,7 @@ fn scene(test: i32, value: f32) -> Audio {
     step.gate = 2.0;
     if test < 2 {
         let target = if test == 0 { ST_TARGET_BIT_DEPTH } else { ST_TARGET_SLICE_COUNT };
-        e.add_automation_point(0, 0, target, 0, 0, 1, 0.0, value as f64);
+        e.add_automation_point(0, 0, target, 1, 0.0, value as f64);
     } else {
         let fx = if test == 2 || test == 3 {
             ST_FX_SLICE

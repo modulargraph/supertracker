@@ -390,20 +390,10 @@ half_methods! { ControlHalf, control_half;
         let (control, shared, sample_rate) = self.half.parts();
         control.set_step_column(pattern, track, row, column, step);
     }
-    fn clear_step(&mut self, pattern: i32, track: i32, row: i32) {
+    fn add_automation_point(&mut self, pattern: i32, track: i32, target: i32, interpolation: i32, row: f64, value: f64) {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
-        control.clear_step(pattern, track, row);
-    }
-    fn clear_automation(&mut self, pattern: i32) {
-        #[allow(unused_variables)]
-        let (control, shared, sample_rate) = self.half.parts();
-        control.clear_automation(pattern);
-    }
-    fn add_automation_point(&mut self, pattern: i32, track: i32, target: i32, slot: i32, address: u64, interpolation: i32, row: f64, value: f64) {
-        #[allow(unused_variables)]
-        let (control, shared, sample_rate) = self.half.parts();
-        control.add_automation_point(pattern, track, target, slot, address, interpolation, row, value);
+        control.add_automation_point(pattern, track, target, interpolation, row, value);
     }
     fn add_host_automation_point(&mut self, pattern: i32, destination: i32, address: u64, interpolation: i32, row: f64, value: f64) {
         #[allow(unused_variables)]
@@ -479,7 +469,7 @@ half_methods! { ControlHalf, control_half;
     fn play(&mut self, song_mode: i32) {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
-        control.play(shared, song_mode);
+        control.play(shared, song_mode != 0);
     }
     fn stop(&mut self) {
         #[allow(unused_variables)]

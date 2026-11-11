@@ -213,39 +213,19 @@ impl Engine {
         track: i32,
         row: i32,
         column: i32,
-        slot: i32,
         host_destination: i32,
         address: u64,
         value: f64,
     ) -> bool {
-        self.control().0.set_plugin_step_fx(pattern, track, row, column, slot, host_destination, address, value)
-    }
-
-    pub fn clear_step(&mut self, pattern: i32, track: i32, row: i32) {
-        self.control().0.clear_step(pattern, track, row);
+        self.control().0.set_plugin_step_fx(pattern, track, row, column, host_destination, address, value)
     }
 
     pub fn set_step_column(&mut self, pattern: i32, track: i32, row: i32, column: i32, step: STStep) {
         self.control().0.set_step_column(pattern, track, row, column, step);
     }
 
-    pub fn clear_automation(&mut self, pattern: i32) {
-        self.control().0.clear_automation(pattern);
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn add_automation_point(
-        &mut self,
-        pattern: i32,
-        track: i32,
-        target: i32,
-        slot: i32,
-        address: u64,
-        interpolation: i32,
-        row: f64,
-        value: f64,
-    ) {
-        self.control().0.add_automation_point(pattern, track, target, slot, address, interpolation, row, value);
+    pub fn add_automation_point(&mut self, pattern: i32, track: i32, target: i32, interpolation: i32, row: f64, value: f64) {
+        self.control().0.add_automation_point(pattern, track, target, interpolation, row, value);
     }
 
     pub fn add_host_automation_point(
@@ -346,7 +326,7 @@ impl Engine {
 
     pub fn play(&mut self, song_mode: i32) {
         let (c, sh, _) = self.control();
-        c.play(sh, song_mode);
+        c.play(sh, song_mode != 0);
     }
 
     pub fn stop(&mut self) {
@@ -402,7 +382,7 @@ impl Engine {
         instrument: i32,
         note: i32,
         velocity: i32,
-        apply_note: i32,
+        apply_note: bool,
     ) -> bool {
         let (c, sh, _) = self.control();
         c.input_note(sh, request_id, edge, track, instrument, note, velocity, apply_note)

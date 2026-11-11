@@ -212,7 +212,7 @@ impl<'a> Rt<'a> {
                 continue;
             }
             v.p.volume = i.volume * v.zone_volume;
-            v.p.pan = clamp(i.pan + v.zone_pan, -1.0, 1.0);
+            v.p.pan = i.pan;
             v.p.tune = i.tune + v.zone_tune;
             v.p.root_note = if v.zone_root >= 0 { v.zone_root } else { i.root_note };
             v.p.attack = i.attack;

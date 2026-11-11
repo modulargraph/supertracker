@@ -168,7 +168,7 @@ fn test_host_automation_map() {
     e.begin_update();
     e.set_host_automation_map(0x51);
     e.add_host_automation_point(0, 3, 7, 1, 0.0, 0.25);
-    e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0, 1, 0.0, 0.5);
+    e.add_automation_point(0, 0, ST_TARGET_VOLUME, 1, 0.0, 0.5);
     e.commit_update();
     e.play(0);
     let events = render_events(&mut e, 64);

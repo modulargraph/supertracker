@@ -42,10 +42,10 @@ struct TimedEvent {
 
 type Events = Vec<TimedEvent>;
 
+/// A parameter of the host as a lock addresses it, with the track whose step carries the lock.
 #[derive(Clone, Copy)]
 struct Destination {
     track: i32,
-    slot: i32,
     host: i32,
     address: u64,
 }
@@ -56,8 +56,8 @@ impl Destination {
     }
 }
 
-fn destination(track: i32, slot: i32, host: i32, address: u64) -> Destination {
-    Destination { track, slot, host, address }
+fn destination(track: i32, host: i32, address: u64) -> Destination {
+    Destination { track, host, address }
 }
 
 fn drain(engine: &mut Engine, base: u64) -> Events {
@@ -136,16 +136,7 @@ fn step(engine: &mut Engine, track: i32, row: i32) {
 
 #[track_caller]
 fn lock_column(engine: &mut Engine, destination: Destination, row: i32, value: f64, column: i32) {
-    assert!(engine.set_plugin_step_fx(
-        0,
-        destination.track,
-        row,
-        column,
-        destination.slot,
-        destination.host,
-        destination.address,
-        value
-    ));
+    assert!(engine.set_plugin_step_fx(0, destination.track, row, column, destination.host, destination.address, value));
 }
 
 #[track_caller]
@@ -166,7 +157,7 @@ fn lane(engine: &mut Engine, destination: Destination, row: f64, value: f64) {
 #[test]
 fn exact_rows_and_opaque_addresses() {
     let mut engine = fixture();
-    let destination = destination(0, -1, 511, u64::MAX);
+    let destination = destination(0, 511, u64::MAX);
     let (first, second) = (0.12345678901234567, 0.9876543210987654);
     step(&mut engine, 0, 1);
     lock(&mut engine, destination, 1, first);
@@ -185,9 +176,9 @@ fn exact_rows_and_opaque_addresses() {
 #[test]
 fn host_suppression_uses_destination_and_address() {
     let mut engine = fixture();
-    let locked = destination(0, 2, 127, u64::MAX);
-    let other_address = destination(0, 2, 127, u64::MAX - 1);
-    let other_owner = destination(0, 2, 128, u64::MAX);
+    let locked = destination(0, 127, u64::MAX);
+    let other_address = destination(0, 127, u64::MAX - 1);
+    let other_owner = destination(0, 128, u64::MAX);
     lane(&mut engine, locked, 0.0, 0.25);
     lane_with(&mut engine, other_address, 0.0, -12.25, 0);
     lane_with(&mut engine, other_address, 4.0, 7.75, 0);
@@ -215,7 +206,7 @@ fn host_suppression_uses_destination_and_address() {
 #[test]
 fn duplicate_columns_coalesce_to_fx2() {
     let mut engine = fixture();
-    let both = destination(0, 7, 5, u64::MAX);
+    let both = destination(0, 5, u64::MAX);
     step(&mut engine, 0, 0);
     lock_column(&mut engine, both, 0, 0.125, 0);
     lock_column(&mut engine, both, 0, 0.875, 1);
@@ -229,7 +220,7 @@ fn duplicate_columns_coalesce_to_fx2() {
     assert!(events.len() == 1);
     at(&events[0], 50, 0.875);
     let mut engine = fixture();
-    let (first, second) = (destination(0, 0, 10, 17), destination(0, 1, 11, 17));
+    let (first, second) = (destination(0, 10, 17), destination(0, 11, 17));
     step(&mut engine, 0, 0);
     lock_column(&mut engine, first, 0, 0.125, 0);
     lock_column(&mut engine, second, 0, 0.875, 1);
@@ -247,7 +238,7 @@ fn duplicate_columns_coalesce_to_fx2() {
 fn unchanged_step_and_linear_lanes_resume_at_next_row() {
     for interpolation in [0, 1] {
         let mut engine = fixture();
-        let destination = destination(0, -1, 511, u64::MAX);
+        let destination = destination(0, 511, u64::MAX);
         lane_with(&mut engine, destination, 0.0, 0.125, interpolation);
         lane_with(&mut engine, destination, 4.0, if interpolation != 0 { 0.125 } else { 0.625 }, interpolation);
         step(&mut engine, 0, 1);
@@ -281,7 +272,7 @@ fn unchanged_step_and_linear_lanes_resume_at_next_row() {
 #[test]
 fn standalone_locks_do_not_invent_resets() {
     let mut engine = fixture();
-    let destination = destination(0, -1, 511, u64::MAX);
+    let destination = destination(0, 511, u64::MAX);
     step(&mut engine, 0, 1);
     lock(&mut engine, destination, 1, 0.75);
     step(&mut engine, 0, 3);
@@ -300,7 +291,7 @@ fn standalone_locks_do_not_invent_resets() {
 #[test]
 fn off_and_cut_rows_still_apply_locks() {
     let mut engine = fixture();
-    let destination = destination(0, -1, 13, u64::MAX);
+    let destination = destination(0, 13, u64::MAX);
     step_note(&mut engine, 0, 0, 60);
     step_note(&mut engine, 0, 1, -1);
     lock(&mut engine, destination, 1, 0.25);
@@ -321,7 +312,7 @@ fn off_and_cut_rows_still_apply_locks() {
 #[test]
 fn stop_seek_and_project_replacement_clear_active_locks() {
     let mut engine = fixture();
-    let destination = destination(0, -1, 17, u64::MAX);
+    let destination = destination(0, 17, u64::MAX);
     lane(&mut engine, destination, 0.0, 0.25);
     step(&mut engine, 0, 0);
     lock(&mut engine, destination, 0, 0.875);
@@ -360,7 +351,7 @@ fn stop_seek_and_project_replacement_clear_active_locks() {
 #[test]
 fn mailbox_refresh_reemits_effective_lock_without_queueing() {
     let mut engine = fixture();
-    let destination = destination(0, -1, 511, u64::MAX);
+    let destination = destination(0, 511, u64::MAX);
     lane(&mut engine, destination, 0.0, 0.25);
     step(&mut engine, 0, 0);
     lock(&mut engine, destination, 0, 0.875);
@@ -386,7 +377,7 @@ fn mailbox_refresh_reemits_effective_lock_without_queueing() {
 #[test]
 fn a_refresh_replays_the_active_lock_once() {
     let mut engine = fixture();
-    let destination = destination(0, -1, 31, u64::MAX);
+    let destination = destination(0, 31, u64::MAX);
     step(&mut engine, 0, 1);
     lock(&mut engine, destination, 1, 0.75);
     step(&mut engine, 0, 3);
@@ -420,7 +411,7 @@ fn saturated_queue_retries_active_lock() {
         engine.add_host_automation_point(0, destination, 1, 0, 0.0, 0.0);
         engine.add_host_automation_point(0, destination, 1, 0, 128.0, 1.0);
     }
-    let destination = destination(0, -1, 511, u64::MAX);
+    let destination = destination(0, 511, u64::MAX);
     step(&mut engine, 0, 120);
     lock(&mut engine, destination, 120, 0.75);
     play(&mut engine);
@@ -439,30 +430,26 @@ fn saturated_queue_retries_active_lock() {
 #[test]
 fn setter_validation_and_step_replacement() {
     let mut engine = fixture();
-    let destination = destination(0, -1, 0, u64::MAX);
+    let destination = destination(0, 0, u64::MAX);
     step(&mut engine, 0, 0);
-    let mut set = |pattern: i32, track: i32, row: i32, column: i32, slot: i32, host: i32, value: f64| {
-        engine.set_plugin_step_fx(pattern, track, row, column, slot, host, u64::MAX, value)
+    let mut set = |pattern: i32, track: i32, row: i32, column: i32, host: i32, value: f64| {
+        engine.set_plugin_step_fx(pattern, track, row, column, host, u64::MAX, value)
     };
-    assert!(!set(-1, 0, 0, 0, -1, 0, 0.5));
-    assert!(!set(256, 0, 0, 0, -1, 0, 0.5));
-    assert!(!set(0, -1, 0, 0, -1, 0, 0.5));
-    assert!(!set(0, ST_TRACK_SANITY_LIMIT, 0, 0, -1, 0, 0.5));
-    assert!(!set(0, 0, -1, 0, -1, 0, 0.5));
-    assert!(!set(0, 0, 8, 0, -1, 0, 0.5));
-    assert!(!set(0, 0, 0, -1, -1, 0, 0.5));
-    assert!(!set(0, 0, 0, 2, -1, 0, 0.5));
-    assert!(!set(0, 0, 0, 0, -2, 0, 0.5));
-    assert!(!set(0, 0, 0, 0, ST_MAX_INSERTS, 0, 0.5));
-    assert!(!set(0, 0, 0, 0, -1, -2, 0.5));
-    assert!(!set(0, 0, 0, 0, -1, ST_MAX_HOST_DESTINATIONS, 0.5));
-    assert!(!set(0, 0, 0, 0, -1, 0, -0.001));
-    assert!(!set(0, 0, 0, 0, -1, 0, 1.001));
-    assert!(!set(0, 0, 0, 0, -1, 0, f64::NAN));
-    assert!(!set(0, 0, 0, 0, -1, 0, f64::INFINITY));
-    // Sixteen inserts per channel: slots 8...15 are valid insert locks.
-    assert!(set(0, 0, 0, 0, 8, 0, 0.5));
-    assert!(set(0, 0, 0, 0, ST_MAX_INSERTS - 1, 0, 0.5));
+    assert!(!set(-1, 0, 0, 0, 0, 0.5));
+    assert!(!set(256, 0, 0, 0, 0, 0.5));
+    assert!(!set(0, -1, 0, 0, 0, 0.5));
+    assert!(!set(0, ST_TRACK_SANITY_LIMIT, 0, 0, 0, 0.5));
+    assert!(!set(0, 0, -1, 0, 0, 0.5));
+    assert!(!set(0, 0, 8, 0, 0, 0.5));
+    assert!(!set(0, 0, 0, -1, 0, 0.5));
+    assert!(!set(0, 0, 0, 2, 0, 0.5));
+    assert!(!set(0, 0, 0, 0, -1, 0.5));
+    assert!(!set(0, 0, 0, 0, ST_MAX_HOST_DESTINATIONS, 0.5));
+    assert!(!set(0, 0, 0, 0, 0, -0.001));
+    assert!(!set(0, 0, 0, 0, 0, 1.001));
+    assert!(!set(0, 0, 0, 0, 0, f64::NAN));
+    assert!(!set(0, 0, 0, 0, 0, f64::INFINITY));
+    assert!(set(0, 0, 0, 0, ST_MAX_HOST_DESTINATIONS - 1, 0.5));
     lock(&mut engine, destination, 0, 0.75);
     step(&mut engine, 0, 0); // Replacing the STStep removes its separately stored locks.
     step(&mut engine, 0, 2);

@@ -42,7 +42,7 @@ fn set_note(control: &mut ControlHalf, row: i32, note: i32) {
 
 fn play(control: &mut ControlHalf) {
     let (edit, shared, _) = control.parts();
-    edit.play(shared, 0);
+    edit.play(shared, false);
 }
 
 /// Renders `frames` frames in blocks of `block` and gives the sum of the buses of each block
@@ -95,8 +95,8 @@ fn rejects_invalid_engines_and_foreign_shared_state() {
     let (edit, _, _) = control.parts();
     assert!(edit.set_track_count(4));
     assert_eq!(edit.commit(foreign), Err(control::FOREIGN_ENGINE.to_string()));
-    edit.play(foreign, 1);
-    assert!(!edit.input_note(foreign, 1, ST_INPUT_NOTE_ON, 0, 0, 60, 100, 1));
+    edit.play(foreign, true);
+    assert!(!edit.input_note(foreign, 1, ST_INPUT_NOTE_ON, 0, 0, 60, 100, true));
     assert!(!edit.set_instrument_parameter(foreign, 0, ST_TARGET_CUTOFF, 0.5));
     assert_eq!(other_status.status().transport_pending, 0, "the other engine received no command");
     assert_eq!(status.status().transport_pending, 0);

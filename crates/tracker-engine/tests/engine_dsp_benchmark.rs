@@ -132,10 +132,10 @@ fn scene(scenario: &Scenario) -> Outcome {
     e.set_sequence(&[0], true, 0);
     if scenario.edits {
         for track in 0..16 {
-            e.add_automation_point(0, track, ST_TARGET_START, 0, 0, 0, 0.0, 0.073);
-            e.add_automation_point(0, track, ST_TARGET_START, 0, 0, 0, 6.0, 0.11);
-            e.add_automation_point(0, track, ST_TARGET_END, 0, 0, 0, 0.0, 0.917);
-            e.add_automation_point(0, track, ST_TARGET_END, 0, 0, 0, 6.0, 0.87);
+            e.add_automation_point(0, track, ST_TARGET_START, 0, 0.0, 0.073);
+            e.add_automation_point(0, track, ST_TARGET_START, 0, 6.0, 0.11);
+            e.add_automation_point(0, track, ST_TARGET_END, 0, 0.0, 0.917);
+            e.add_automation_point(0, track, ST_TARGET_END, 0, 6.0, 0.87);
         }
     }
     e.commit_update();

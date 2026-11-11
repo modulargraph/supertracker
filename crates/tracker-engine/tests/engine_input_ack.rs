@@ -51,7 +51,7 @@ fn fixture(e: &mut Engine) {
 
 /// C++ `edge(e, id, type = ST_INPUT_NOTE_ON, apply = false)`.
 fn edge_with(e: &mut Engine, id: u64, kind: i32, apply: bool) -> bool {
-    e.input_note(id, kind, 0, 0, 60, if kind == ST_INPUT_NOTE_ON { 100 } else { 0 }, apply as i32)
+    e.input_note(id, kind, 0, 0, 60, if kind == ST_INPUT_NOTE_ON { 100 } else { 0 }, apply)
 }
 
 /// `edge(e, id)`: a note-on that is only acknowledged.
@@ -402,12 +402,11 @@ fn seek_and_panic_forget_a_pending_early_note_its_row_triggers() {
 fn strict_tokens_argument_bounds_and_reserved_ack_capacity_with_command_failure_rollback() {
     let mut e = Engine::new();
     assert!(!edge(&mut e, 0));
-    assert!(!e.input_note(1, 3, 0, 0, 60, 100, 1));
-    assert!(!e.input_note(1, 1, channel_count(ST_MIN_RETURN_BUS), 0, 60, 100, 1));
-    assert!(!e.input_note(1, 1, 0, 64, 60, 100, 1));
-    assert!(!e.input_note(1, 1, 0, 0, 128, 100, 1));
-    assert!(!e.input_note(1, 1, 0, 0, 60, 0, 1));
-    assert!(!e.input_note(1, 1, 0, 0, 60, 100, 2));
+    assert!(!e.input_note(1, 3, 0, 0, 60, 100, true));
+    assert!(!e.input_note(1, 1, channel_count(ST_MIN_RETURN_BUS), 0, 60, 100, true));
+    assert!(!e.input_note(1, 1, 0, 64, 60, 100, true));
+    assert!(!e.input_note(1, 1, 0, 0, 128, 100, true));
+    assert!(!e.input_note(1, 1, 0, 0, 60, 0, true));
     assert!(edge(&mut e, 1));
     assert!(!edge(&mut e, 1));
     render(&mut e, 1);
@@ -485,7 +484,7 @@ fn concurrent_single_producer_audio_consumer_20000_edge_delivery_without_lost_ac
             for id in 1..=20000u64 {
                 loop {
                     let (c, shared, _) = control.parts();
-                    if c.input_note(shared, id, ST_INPUT_NOTE_ON, 0, 0, 60, 100, 0) {
+                    if c.input_note(shared, id, ST_INPUT_NOTE_ON, 0, 0, 60, 100, false) {
                         break;
                     }
                     consume(&mut control, &mut expected);

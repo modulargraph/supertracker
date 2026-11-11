@@ -334,7 +334,7 @@ mod tests {
         control.commit().expect("the project is accepted");
         {
             let (edit, shared, _) = control.parts();
-            edit.play(shared, 0);
+            edit.play(shared, false);
         }
         // The render half works on another thread while this one keeps the control half.
         let rendered = std::thread::spawn(move || {

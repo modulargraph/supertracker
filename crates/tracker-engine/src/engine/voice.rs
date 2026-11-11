@@ -359,7 +359,7 @@ fn instrument_automation(v: &mut Voice, ts: &TrackState, geometry: bool) {
             ST_TARGET_GRAIN_POSITION => p.grain_position = clamp(x, 0.0, 1.0),
             ST_TARGET_SLICE_COUNT => p.slice_count = clamp(x, 1.0, 128.0) as i32,
             ST_TARGET_INSTRUMENT_VOLUME => p.volume = clamp(x, 0.0, 2.0) * v.zone_volume,
-            ST_TARGET_INSTRUMENT_PAN => p.pan = clamp(x + v.zone_pan, -1.0, 1.0),
+            ST_TARGET_INSTRUMENT_PAN => p.pan = clamp(x, -1.0, 1.0),
             ST_TARGET_TUNE => p.tune = clamp(x, -96.0, 96.0) + v.zone_tune,
             ST_TARGET_FILTER_ATTACK => p.filter_attack = clamp(x, 0.0, 60.0),
             ST_TARGET_FILTER_DECAY => p.filter_decay = clamp(x, 0.0, 60.0),
@@ -375,10 +375,6 @@ fn instrument_automation(v: &mut Voice, ts: &TrackState, geometry: bool) {
                 set_grain_target(p, target, x);
             }
         }
-    }
-    if v.zone_region {
-        v.p.start = clamp(v.p.start, v.zone_start, v.zone_end - 0.000001);
-        v.p.end = clamp(v.p.end, v.p.start + 0.000001, v.zone_end);
     }
     if !geometry || v.p.mode == ST_MODE_SLICE {
         return;
@@ -401,17 +397,11 @@ fn instrument_automation(v: &mut Voice, ts: &TrackState, geometry: bool) {
     if automated(ST_TARGET_LOOP_END) {
         v.loop_end = clamp(v.p.loop_end as f64 * frames, v.loop_begin + 1.0, v.end);
     }
-    if v.zone_region {
-        v.loop_begin = clamp(v.loop_begin, v.begin, v.end - 1.0);
-        v.loop_end = clamp(v.loop_end, v.loop_begin + 1.0, v.end);
-    }
     if old_begin != v.begin || old_end != v.end {
         // The loop follows the moved region as at note start; left outside it, the next wrap
         // would end the voice.
-        if !v.zone_region {
-            v.loop_begin = clamp(v.p.loop_start as f64 * frames, v.begin, v.end - 1.0);
-            v.loop_end = clamp(v.p.loop_end as f64 * frames, v.loop_begin + 1.0, v.end);
-        }
+        v.loop_begin = clamp(v.p.loop_start as f64 * frames, v.begin, v.end - 1.0);
+        v.loop_end = clamp(v.p.loop_end as f64 * frames, v.loop_begin + 1.0, v.end);
         v.pos = clamp(v.pos, v.begin, v.end - 1.0);
         update_sample_bounds(v, sample);
     }
@@ -526,13 +516,13 @@ fn granular_sample(v: &mut Voice, s: &Sample, sample_rate: f64, rate: f64, mod_p
 /// One live instrument parameter on one voice (see `set_instrument_parameter`). Region
 /// targets only shape notes that start later (`onset`).
 fn apply_live(v: &mut Voice, target: i32, x: f32, onset: bool) {
-    let (zone_volume, zone_pan, zone_tune) = (v.zone_volume, v.zone_pan, v.zone_tune);
+    let (zone_volume, zone_tune) = (v.zone_volume, v.zone_tune);
     let p = &mut v.p;
     match target {
         ST_TARGET_CUTOFF => p.cutoff = clamp(x, 20.0, 22000.0),
         ST_TARGET_RESONANCE => p.resonance = clamp(x, 0.0, 0.99),
         ST_TARGET_INSTRUMENT_VOLUME => p.volume = clamp(x, 0.0, 2.0) * zone_volume,
-        ST_TARGET_INSTRUMENT_PAN => p.pan = clamp(clamp(x, -1.0, 1.0) + zone_pan, -1.0, 1.0),
+        ST_TARGET_INSTRUMENT_PAN => p.pan = clamp(x, -1.0, 1.0),
         ST_TARGET_TUNE => p.tune = clamp(x, -96.0, 96.0) + zone_tune,
         ST_TARGET_ATTACK => p.attack = clamp(x, 0.0, 60.0),
         ST_TARGET_DECAY => p.decay = clamp(x, 0.0, 60.0),
@@ -1032,20 +1022,6 @@ impl<'a> Rt<'a> {
                     v.p.root_note = zone.root_note;
                     v.p.tune += zone.tune;
                     v.p.volume *= zone.volume;
-                    v.zone_pan = zone.pan;
-                    v.p.pan = clamp(v.p.pan + v.zone_pan, -1.0, 1.0);
-                    if zone.loop_enabled >= 0 {
-                        v.p.mode = if zone.loop_enabled != 0 { ST_MODE_FORWARD } else { ST_MODE_ONESHOT };
-                    }
-                    if zone.has_region {
-                        v.zone_region = true;
-                        v.zone_start = zone.start;
-                        v.zone_end = zone.end;
-                        v.p.start = zone.start;
-                        v.p.end = zone.end;
-                        v.p.loop_start = zone.loop_start;
-                        v.p.loop_end = zone.loop_end;
-                    }
                     break;
                 }
             }
