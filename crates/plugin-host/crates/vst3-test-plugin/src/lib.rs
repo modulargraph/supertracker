@@ -103,6 +103,12 @@ pub const PARAM_LEVEL: u32 = 1;
 pub const PARAM_THRU: u32 = 2;
 /// Mapped to MIDI pitch bend through `IMidiMapping`.
 pub const PARAM_BEND: u32 = 3;
+/// Mapped to channel pressure through `IMidiMapping`; scales the level ([`pressure_gain`]).
+pub const PARAM_PRESSURE: u32 = 4;
+/// Mapped to controller 74 (brightness) through `IMidiMapping`; no effect on the sound.
+pub const PARAM_BRIGHTNESS: u32 = 5;
+/// Read-only: the last poly pressure event, `(pitch * 128 + pressure 0..=127) / 16383`.
+pub const PARAM_POLY_PRESSURE: u32 = 6;
 
 /// Programs of the gain effect: name and the normalized gain each one sets.
 pub const PROGRAMS: [(&str, f64); 3] = [("Unity", 0.5), ("Half", 0.25), ("Double", 1.0)];
@@ -170,11 +176,19 @@ static GAIN_PARAMS: [ParamDef; 21] = [
     def(PARAM_EDITOR_WIDTH, "Editor Width", "", "", 0, 0.0, PROBE, UNIT_PROBE),
 ];
 
-static SINE_PARAMS: [ParamDef; 3] = [
+static SINE_PARAMS: [ParamDef; 6] = [
     def(PARAM_LEVEL, "Level", "Lvl", "%", 0, 0.5, CAN_AUTOMATE, UNIT_ROOT),
     def(PARAM_THRU, "Thru", "Thru", "", 1, 0.0, 0, UNIT_ROOT),
     def(PARAM_BEND, "Bend", "Bend", "", 0, 0.5, CAN_AUTOMATE, UNIT_ROOT),
+    def(PARAM_PRESSURE, "Pressure", "Prs", "", 0, 0.0, CAN_AUTOMATE, UNIT_ROOT),
+    def(PARAM_BRIGHTNESS, "Brightness", "Brt", "", 0, 0.0, CAN_AUTOMATE, UNIT_ROOT),
+    def(PARAM_POLY_PRESSURE, "Poly Pressure", "Poly", "", 0, 0.0, READ_ONLY, UNIT_ROOT),
 ];
+
+/// The factor the sine instrument's Pressure parameter (normalized) multiplies its level by.
+pub fn pressure_gain(normalized: f64) -> f64 {
+    1.0 + normalized
+}
 
 /// The factor the gain effect multiplies by for a normalized parameter value.
 pub fn gain_factor(normalized: f64) -> f32 {
@@ -1123,9 +1137,9 @@ pub const SINE_TAIL: u32 = kInfiniteTail;
 
 struct SineSynth {
     /// What the processor half uses.
-    values: Values<3>,
+    values: Values<6>,
     /// What the controller half shows (a host keeps the two in step).
-    shown: Values<3>,
+    shown: Values<6>,
     sample_rate: AtomicU64,
     active: AtomicBool,
     /// Sounding note, or -1.
@@ -1359,6 +1373,13 @@ impl IAudioProcessorTrait for SineSynth {
                     if note == event.__field0.noteOff.pitch as i32 {
                         note = -1;
                     }
+                } else if kind == Event_::EventTypes_::kPolyPressureEvent as u32 {
+                    // One object is processor and controller: the probe is shown at once.
+                    let pressure = event.__field0.polyPressure;
+                    let packed = pressure.pitch.clamp(0, 127) as u32 * 128 + (pressure.pressure.clamp(0.0, 1.0) * 127.0).round() as u32;
+                    self.values.set(PARAM_POLY_PRESSURE, packed as f64 / 16383.0);
+                    self.shown.set(PARAM_POLY_PRESSURE, packed as f64 / 16383.0);
+                    continue;
                 } else {
                     continue;
                 }
@@ -1372,7 +1393,11 @@ impl IAudioProcessorTrait for SineSynth {
                 break;
             }
             let sample = if note >= 0 {
-                let sample = sine_sample(note as u8, age, rate, self.values.get(PARAM_LEVEL));
+                let level = match self.values.get(PARAM_PRESSURE) {
+                    pressure if pressure > 0.0 => self.values.get(PARAM_LEVEL) * pressure_gain(pressure),
+                    _ => self.values.get(PARAM_LEVEL),
+                };
+                let sample = sine_sample(note as u8, age, rate, level);
                 age += 1;
                 sample
             } else {
@@ -1436,6 +1461,8 @@ impl IEditControllerTrait for SineSynth {
             PARAM_LEVEL => format!("{:.0} %", value * 100.0),
             PARAM_THRU => if value >= 0.5 { "On" } else { "Off" }.to_string(),
             PARAM_BEND => format!("{:+.2}", value * 2.0 - 1.0),
+            PARAM_PRESSURE | PARAM_BRIGHTNESS => format!("{:.0}", value * 127.0),
+            PARAM_POLY_PRESSURE => format!("{:.0}", value * 16383.0),
             _ => return kInvalidArgument,
         };
         copy_wstring(&text, &mut *string);
@@ -1497,6 +1524,10 @@ impl IMidiMappingTrait for SineSynth {
             *id = PARAM_LEVEL;
         } else if controller == ControllerNumbers_::kPitchBend as CtrlNumber {
             *id = PARAM_BEND;
+        } else if controller == ControllerNumbers_::kAfterTouch as CtrlNumber {
+            *id = PARAM_PRESSURE;
+        } else if controller == 74 {
+            *id = PARAM_BRIGHTNESS;
         } else {
             // Some plug-ins scribble over the out-parameter and report failure: a host
             // must go by the result, not by the value.

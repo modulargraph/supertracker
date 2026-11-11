@@ -399,6 +399,12 @@ mod tests {
             translate(&event, 0, 64, &MIDI),
             Some(Scheduled::Midi { time: 3, cable: 0, len: 1, bytes: [0xF8, 0, 0] })
         );
+        // Controllers and pressure go to the unit as the MIDI they are, at their frame.
+        for (bytes, len) in [(&[0xB2, 74, 99][..], 3), (&[0xA0, 60, 45][..], 3), (&[0xE5, 0, 96][..], 3), (&[0xD3, 127][..], 2), (&[0xD3, 127, 0][..], 2)] {
+            let mut expected = [0u8; 3];
+            expected[..len].copy_from_slice(&bytes[..len]);
+            assert_eq!(translate(&Event::midi(9, bytes), 100, 64, &MIDI), Some(Scheduled::Midi { time: 109, cable: 0, len: len as u8, bytes: expected }));
+        }
         // Truncated, data byte as status, sysex, empty.
         assert_eq!(translate(&Event::midi(0, &[0x90, 60]), 0, 64, &MIDI), None);
         assert_eq!(translate(&Event::midi(0, &[0x40, 1, 2]), 0, 64, &MIDI), None);

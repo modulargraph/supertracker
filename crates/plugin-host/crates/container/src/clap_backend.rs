@@ -5,15 +5,28 @@
 //! the bundle directory).
 //!
 //! What is implemented: plug-in life cycle with the CLAP threading rules, 32-bit audio on
-//! all ports (ports the host did not allot get scratch buffers), note and MIDI input,
-//! sample-accurate parameter events, transport, output events (MIDI, parameter changes
+//! all ports (ports the host did not allot get scratch buffers), note and MIDI input
+//! (see below), sample-accurate parameter events, transport, output events (MIDI, parameter changes
 //! and gestures made in the plug-in), `clap.params`, `clap.state`, `clap.latency`,
 //! `clap.tail`, `clap.audio-ports`, `clap.note-ports`, bypass through the parameter
 //! flagged `CLAP_PARAM_IS_BYPASS`, `request_callback` / `request_restart` /
 //! `params.request_flush`, `clap.thread-check`, `clap.log`, and **floating** editor
 //! windows through `clap.gui`. Not implemented: embedded editors (the container would
-//! have to create the parent window), 64-bit audio, sysex, MIDI 2, note expressions,
-//! polyphonic modulation, timers and fd support.
+//! have to create the parent window), 64-bit audio, sysex, MIDI 2, note expressions other
+//! than those below, polyphonic modulation, timers and fd support.
+//!
+//! # Notes, controllers and pressure
+//!
+//! A host event is MIDI bytes; what the plug-in gets depends on the dialects of its note
+//! port (`clap.note-ports`):
+//!
+//! | Message | Port takes the MIDI dialect | Port takes the CLAP dialect only |
+//! |---|---|---|
+//! | note on / off | CLAP note events when the port takes them too, else MIDI | CLAP note events |
+//! | control change, program change | MIDI | dropped (CLAP has no event for them) |
+//! | channel pressure | MIDI | note expression *pressure* for every key of the channel (`key` -1) |
+//! | poly pressure | MIDI | note expression *pressure* for that key |
+//! | pitch bend | MIDI | note expression *tuning* for every key of the channel, two semitones either way |
 //!
 //! Verified by running on Linux against `stpc-clap-test-plugin`. The macOS specifics
 //! (bundle layout, the `cocoa` window API name) are type-checked only.
@@ -433,9 +446,13 @@ impl ParamQueue {
 union EventSlot {
     header: clap_event_header,
     note: clap_event_note,
+    expression: clap_event_note_expression,
     midi: clap_event_midi,
     param: clap_event_param_value,
 }
+
+/// Semitones a full pitch bend moves a plug-in that gets it as a tuning expression.
+const BEND_RANGE: f64 = 2.0;
 
 fn param_event(time: u32, id: u64, value: f64) -> EventSlot {
     EventSlot {
@@ -1045,6 +1062,36 @@ impl ClapProcessor {
                     channel: (status & 0x0F) as i16,
                     key: bytes[1] as i16,
                     velocity: bytes[2] as f64 / 127.0,
+                },
+            });
+        } else if !self.midi_dialect && self.note_dialect {
+            // No MIDI on this port: pressure and pitch bend have note expressions.
+            let data1 = bytes.get(1).copied().unwrap_or(0) & 0x7F;
+            let data2 = bytes.get(2).copied().unwrap_or(0) & 0x7F;
+            let (expression_id, key, value) = match kind {
+                0xA0 => (CLAP_NOTE_EXPRESSION_PRESSURE, data1 as i16, data2 as f64 / 127.0),
+                0xD0 => (CLAP_NOTE_EXPRESSION_PRESSURE, -1, data1 as f64 / 127.0),
+                0xE0 => {
+                    let bend = (data1 as i32 | (data2 as i32) << 7) - 8192;
+                    (CLAP_NOTE_EXPRESSION_TUNING, -1, bend as f64 / 8192.0 * BEND_RANGE)
+                }
+                _ => return,
+            };
+            self.events.push(EventSlot {
+                expression: clap_event_note_expression {
+                    header: clap_event_header {
+                        size: std::mem::size_of::<clap_event_note_expression>() as u32,
+                        time: event.offset,
+                        space_id: CLAP_CORE_EVENT_SPACE_ID,
+                        type_: CLAP_EVENT_NOTE_EXPRESSION,
+                        flags,
+                    },
+                    expression_id,
+                    note_id: -1,
+                    port_index: event.port as i16,
+                    channel: (status & 0x0F) as i16,
+                    key,
+                    value,
                 },
             });
         } else if self.midi_dialect {

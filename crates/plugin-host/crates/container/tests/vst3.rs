@@ -347,7 +347,7 @@ fn sine_instrument_notes_are_sample_accurate() {
     assert_eq!(info.flags, INFO_INSTRUMENT | INFO_WANTS_MIDI | INFO_PRODUCES_MIDI);
     // The name comes from the Unicode class info.
     assert_eq!((info.name.as_str(), info.inputs.len(), info.outputs[0].channels), (plug::SINE_NAME, 0, 2));
-    assert_eq!((info.tail, info.latency, info.parameter_count), (u64::MAX, 0, 3));
+    assert_eq!((info.tail, info.latency, info.parameter_count), (u64::MAX, 0, 6));
     let level = plug::PARAM_LEVEL as u64;
     let rate = 48_000.0;
     let script: Vec<(usize, Vec<Event>)> = vec![
@@ -407,6 +407,21 @@ fn sine_instrument_notes_are_sample_accurate() {
     assert_eq!(instance.parse_parameter(level, "25 %").unwrap(), Some(0.25));
     // An unmapped controller is dropped, whatever the plug-in scribbled into the result.
     run(&instance, &[], 2, 64, &[Event::midi(0, &[0xB0, 1, 127])]);
+
+    // Channel pressure and another controller arrive as the parameters the plug-in maps
+    // them to, poly pressure as its own event; each at its sample offset.
+    let events = [Event::midi(3, &[0xB0, 74, 99]), Event::midi(7, &[0xA0, 60, 45]), Event::midi(40, &[0xD0, 127])];
+    let block = run(&instance, &[], 2, 64, &events);
+    let set = 64.0 / 127.0;
+    let expected: Vec<f32> =
+        (128..192).map(|k| plug::sine_sample(60, k, rate, if k < 168 { set } else { set * plug::pressure_gain(1.0) })).collect();
+    assert_bits_eq(&block.outputs[0], &expected, "channel pressure at its frame");
+    wait_until("pressure in the controller", || instance.parameter(plug::PARAM_PRESSURE as u64).unwrap() == Some(1.0));
+    wait_until("controller 74 in the controller", || instance.parameter(plug::PARAM_BRIGHTNESS as u64).unwrap() == Some(99.0 / 127.0));
+    wait_until("poly pressure in the plug-in", || {
+        instance.parameter(plug::PARAM_POLY_PRESSURE as u64).unwrap() == Some((60 * 128 + 45) as f64 / 16383.0)
+    });
+    run(&instance, &[], 2, 16, &[Event::midi(0, &[0xD0, 0])]);
 
     // "All notes off" releases the notes the plug-in holds, at its offset.
     let block = run(&instance, &[], 2, 64, &[Event::midi(20, &[0xB0, 123, 0])]);

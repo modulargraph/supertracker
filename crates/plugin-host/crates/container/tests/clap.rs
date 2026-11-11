@@ -239,6 +239,43 @@ fn sine_instrument_notes_are_sample_accurate() {
     env.finish();
 }
 
+/// Controllers, pressure and pitch bend reach a CLAP plug-in at their sample offsets: as
+/// MIDI when its note port takes MIDI, as note expressions when it takes CLAP events only.
+#[test]
+fn controllers_and_pressure_reach_both_note_dialects() {
+    let env = TestEnv::new(GroupingPolicy::Shared);
+    let rate = 48_000.0;
+    let probes = |instance: &Instance| -> [f64; 4] {
+        [plug::PARAM_PROBE_CONTROLLER, plug::PARAM_PROBE_PRESSURE, plug::PARAM_PROBE_POLY_PRESSURE, plug::PARAM_PROBE_BEND].map(|id| instance.parameter(id as u64).unwrap().unwrap())
+    };
+    let events = [
+        Event::note_on(0, 0, 60, 100),
+        Event::midi(3, &[0xB0, 74, 99]),
+        Event::midi(7, &[0xA0, 60, 45]),
+        Event::midi(11, &[0xE0, 0x00, 0x60]),
+        Event::midi(40, &[0xD0, 127]),
+    ];
+    // The sample after `k` frames, with channel pressure from frame 40 on.
+    let expected: Vec<f32> = (0..64).map(|k| plug::sine_sample(60, k, rate, if k < 40 { 0.5 } else { 0.5 * plug::pressure_gain(127) })).collect();
+
+    let midi = active(env.sup(), sine_config());
+    assert_eq!(probes(&midi), [0.0, 0.0, 0.0, 8192.0]);
+    let block = run(&midi, &[], 2, 64, &events);
+    assert_bits_eq(&block.outputs[0], &expected, "pressure at its frame (MIDI dialect)");
+    assert_eq!(probes(&midi), [(74 * 128 + 99) as f64, 127.0, (60 * 128 + 45) as f64, (0x60 << 7) as f64]);
+
+    let notes = active(env.sup(), clap(InstanceConfig::instrument("clap", ""), plug::NOTE_SINE_ID));
+    assert_eq!(notes.info().name, "ST Test Sine (CLAP notes)");
+    let block = run(&notes, &[], 2, 64, &events);
+    assert_bits_eq(&block.outputs[0], &expected, "pressure at its frame (note expression)");
+    // Pressure and bend arrived as note expressions; a control change has no CLAP event.
+    assert_eq!(probes(&notes), [0.0, 127.0, (60 * 128 + 45) as f64, (0x60 << 7) as f64]);
+    // A bend back to the centre is no tuning at all.
+    run(&notes, &[], 2, 16, &[Event::midi(0, &[0xE0, 0x00, 0x40]), Event::midi(1, &[0xD0, 0])]);
+    assert_eq!(probes(&notes)[3], 8192.0);
+    env.finish();
+}
+
 #[test]
 fn latency_changes_follow_the_clap_restart_protocol() {
     let env = TestEnv::new(GroupingPolicy::Shared);

@@ -10,7 +10,12 @@
 //!   (bookkeeping only: no window is created), latency extension.
 //! * [`SINE_ID`]: instrument with one note port (CLAP and MIDI dialects) and a stereo
 //!   output. Parameter: Level. MIDI CC 7 sets the level and reports it to the host as an
-//!   output parameter event.
+//!   output parameter event. Channel pressure scales the level ([`pressure_gain`]). Four
+//!   read-only probes show the last control change, channel pressure, poly pressure and
+//!   pitch bend it received.
+//! * [`NOTE_SINE_ID`]: the same instrument with a note port that takes the CLAP dialect
+//!   only: pressure and pitch bend reach it as note expressions (and fill the same probes),
+//!   control changes cannot reach it at all.
 
 #![allow(clippy::missing_safety_doc)]
 
@@ -35,6 +40,7 @@ use clap_sys::version::CLAP_VERSION;
 
 pub const GAIN_ID: &str = "org.supertracker.test.gain";
 pub const SINE_ID: &str = "org.supertracker.test.sine";
+pub const NOTE_SINE_ID: &str = "org.supertracker.test.sine.notes";
 
 pub const PARAM_GAIN: u32 = 1;
 pub const PARAM_BYPASS: u32 = 2;
@@ -47,6 +53,20 @@ pub const PARAM_EDITOR_TITLE_LEN: u32 = 11;
 /// Read-only: how often the host called `on_main_thread`.
 pub const PARAM_MAIN_CALLS: u32 = 12;
 pub const PARAM_LEVEL: u32 = 1;
+/// Read-only probes of the sine instruments: what arrived last.
+/// Control change: `controller * 128 + value`.
+pub const PARAM_PROBE_CONTROLLER: u32 = 20;
+/// Channel pressure, 0..=127.
+pub const PARAM_PROBE_PRESSURE: u32 = 21;
+/// Poly pressure: `key * 128 + pressure`.
+pub const PARAM_PROBE_POLY_PRESSURE: u32 = 22;
+/// Pitch bend, 0..=16383 (8192: centre).
+pub const PARAM_PROBE_BEND: u32 = 23;
+
+/// The factor channel pressure (0..=127) multiplies the sine instruments' level by.
+pub fn pressure_gain(pressure: u8) -> f64 {
+    1.0 + pressure as f64 / 127.0
+}
 
 /// The sample the sine instrument produces `k` frames after a note-on (same formula as
 /// the built-in test backend, so the tests can compare bit for bit).
@@ -94,6 +114,19 @@ static SINE_DESCRIPTOR: clap_plugin_descriptor = clap_plugin_descriptor {
     features: SINE_FEATURES.0.as_ptr(),
 };
 
+static NOTE_SINE_DESCRIPTOR: clap_plugin_descriptor = clap_plugin_descriptor {
+    clap_version: CLAP_VERSION,
+    id: c!("org.supertracker.test.sine.notes"),
+    name: c!("ST Test Sine (CLAP notes)"),
+    vendor: c!("SuperTracker Tests"),
+    url: c!(""),
+    manual_url: c!(""),
+    support_url: c!(""),
+    version: c!("1.2.3"),
+    description: c!("Sine instrument without MIDI input, for testing"),
+    features: SINE_FEATURES.0.as_ptr(),
+};
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
     Gain,
@@ -115,6 +148,10 @@ struct Instance {
     editor_state: AtomicU32,
     editor_title_len: AtomicU32,
     main_calls: AtomicU32,
+    /// The sine's note port takes MIDI besides CLAP note events.
+    midi_dialect: bool,
+    /// The probes of the sine: controller, channel pressure, poly pressure, pitch bend.
+    probes: [AtomicU32; 4],
     // audio thread only
     note: Option<u8>,
     note_age: u64,
@@ -126,6 +163,12 @@ impl Instance {
     }
     fn set_value(&self, value: f64) {
         self.value.store(value.to_bits(), Ordering::Relaxed);
+    }
+    fn probe(&self, id: clap_id) -> u32 {
+        self.probes[(id - PARAM_PROBE_CONTROLLER) as usize].load(Ordering::Relaxed)
+    }
+    fn set_probe(&self, id: clap_id, value: u32) {
+        self.probes[(id - PARAM_PROBE_CONTROLLER) as usize].store(value, Ordering::Relaxed);
     }
 }
 
@@ -228,7 +271,26 @@ unsafe fn handle_event(instance: &mut Instance, header: *const clap_event_header
                 instance.note = None;
             }
         }
-        CLAP_EVENT_MIDI if instance.kind == Kind::Sine => {
+        CLAP_EVENT_NOTE_EXPRESSION if instance.kind == Kind::Sine => {
+            let event = &*(header as *const clap_event_note_expression);
+            match event.expression_id {
+                CLAP_NOTE_EXPRESSION_PRESSURE => {
+                    let pressure = (event.value.clamp(0.0, 1.0) * 127.0).round() as u32;
+                    if event.key < 0 {
+                        instance.set_probe(PARAM_PROBE_PRESSURE, pressure);
+                    } else {
+                        instance.set_probe(PARAM_PROBE_POLY_PRESSURE, event.key as u32 * 128 + pressure);
+                    }
+                }
+                CLAP_NOTE_EXPRESSION_TUNING => {
+                    // The host bends by two semitones either way.
+                    let bend = (8192.0 + event.value / 2.0 * 8192.0).round().clamp(0.0, 16383.0);
+                    instance.set_probe(PARAM_PROBE_BEND, bend as u32);
+                }
+                _ => {}
+            }
+        }
+        CLAP_EVENT_MIDI if instance.kind == Kind::Sine && instance.midi_dialect => {
             let event = &*(header as *const clap_event_midi);
             match event.data[0] & 0xF0 {
                 0x90 if event.data[2] > 0 => {
@@ -240,11 +302,17 @@ unsafe fn handle_event(instance: &mut Instance, header: *const clap_event_header
                         instance.note = None;
                     }
                 }
-                0xB0 if event.data[1] == 7 => {
-                    let level = event.data[2] as f64 / 127.0;
-                    instance.set_value(level);
-                    return Some((PARAM_LEVEL, level));
+                0xB0 => {
+                    instance.set_probe(PARAM_PROBE_CONTROLLER, event.data[1] as u32 * 128 + event.data[2] as u32);
+                    if event.data[1] == 7 {
+                        let level = event.data[2] as f64 / 127.0;
+                        instance.set_value(level);
+                        return Some((PARAM_LEVEL, level));
+                    }
                 }
+                0xD0 => instance.set_probe(PARAM_PROBE_PRESSURE, event.data[1] as u32),
+                0xA0 => instance.set_probe(PARAM_PROBE_POLY_PRESSURE, event.data[1] as u32 * 128 + event.data[2] as u32),
+                0xE0 => instance.set_probe(PARAM_PROBE_BEND, event.data[1] as u32 | (event.data[2] as u32) << 7),
                 _ => {}
             }
         }
@@ -315,7 +383,11 @@ unsafe extern "C" fn plugin_process(plugin: *const clap_plugin, process: *const 
             Kind::Sine => {
                 let sample = match instance.note {
                     Some(note) => {
-                        let sample = sine_sample(note, instance.note_age, instance.sample_rate, instance.value());
+                        let level = match instance.probe(PARAM_PROBE_PRESSURE) {
+                            0 => instance.value(),
+                            pressure => instance.value() * pressure_gain(pressure as u8),
+                        };
+                        let sample = sine_sample(note, instance.note_age, instance.sample_rate, level);
                         instance.note_age += 1;
                         sample
                     }
@@ -408,15 +480,25 @@ const GAIN_PARAMS: [ParamSpec; 7] = [
     },
 ];
 
-const SINE_PARAMS: [ParamSpec; 1] = [ParamSpec {
-    id: PARAM_LEVEL,
-    name: "Level",
-    module: "",
-    min: 0.0,
-    max: 1.0,
-    default: 0.5,
-    flags: CLAP_PARAM_IS_AUTOMATABLE,
-}];
+const fn probe(id: clap_id, name: &'static str, max: f64, default: f64) -> ParamSpec {
+    ParamSpec { id, name, module: "Test/Probe", min: 0.0, max, default, flags: CLAP_PARAM_IS_READONLY | CLAP_PARAM_IS_STEPPED }
+}
+
+const SINE_PARAMS: [ParamSpec; 5] = [
+    ParamSpec {
+        id: PARAM_LEVEL,
+        name: "Level",
+        module: "",
+        min: 0.0,
+        max: 1.0,
+        default: 0.5,
+        flags: CLAP_PARAM_IS_AUTOMATABLE,
+    },
+    probe(PARAM_PROBE_CONTROLLER, "Last Controller", 16383.0, 0.0),
+    probe(PARAM_PROBE_PRESSURE, "Channel Pressure", 127.0, 0.0),
+    probe(PARAM_PROBE_POLY_PRESSURE, "Poly Pressure", 16383.0, 0.0),
+    probe(PARAM_PROBE_BEND, "Pitch Bend", 16383.0, 8192.0),
+];
 
 fn specs(kind: Kind) -> &'static [ParamSpec] {
     match kind {
@@ -461,6 +543,7 @@ unsafe extern "C" fn params_get_value(plugin: *const clap_plugin, id: clap_id, o
         (Kind::Gain, PARAM_EDITOR_STATE) => instance.editor_state.load(Ordering::Relaxed) as f64,
         (Kind::Gain, PARAM_EDITOR_TITLE_LEN) => instance.editor_title_len.load(Ordering::Relaxed) as f64,
         (Kind::Gain, PARAM_MAIN_CALLS) => instance.main_calls.load(Ordering::Relaxed) as f64,
+        (Kind::Sine, PARAM_PROBE_CONTROLLER..=PARAM_PROBE_BEND) => instance.probe(id) as f64,
         _ => return false,
     };
     *out = value;
@@ -624,7 +707,7 @@ unsafe extern "C" fn note_ports_count(_plugin: *const clap_plugin, is_input: boo
 }
 
 unsafe extern "C" fn note_ports_get(
-    _plugin: *const clap_plugin,
+    plugin: *const clap_plugin,
     index: u32,
     is_input: bool,
     info: *mut clap_note_port_info,
@@ -634,7 +717,8 @@ unsafe extern "C" fn note_ports_get(
     }
     let info = &mut *info;
     info.id = 300;
-    info.supported_dialects = CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI;
+    info.supported_dialects =
+        if this(plugin).midi_dialect { CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI } else { CLAP_NOTE_DIALECT_CLAP };
     info.preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
     copy_str(&mut info.name, "Notes");
     true
@@ -750,7 +834,7 @@ unsafe extern "C" fn plugin_get_extension(plugin: *const clap_plugin, id: *const
 // ---- factory and entry ------------------------------------------------------------------------
 
 unsafe extern "C" fn factory_count(_factory: *const clap_plugin_factory) -> u32 {
-    2
+    3
 }
 
 unsafe extern "C" fn factory_descriptor(
@@ -760,6 +844,7 @@ unsafe extern "C" fn factory_descriptor(
     match index {
         0 => &GAIN_DESCRIPTOR,
         1 => &SINE_DESCRIPTOR,
+        2 => &NOTE_SINE_DESCRIPTOR,
         _ => std::ptr::null(),
     }
 }
@@ -774,6 +859,8 @@ unsafe extern "C" fn factory_create(
         (Kind::Gain, &GAIN_DESCRIPTOR, 1.0f64)
     } else if id == SINE_ID.as_bytes() {
         (Kind::Sine, &SINE_DESCRIPTOR, 0.5f64)
+    } else if id == NOTE_SINE_ID.as_bytes() {
+        (Kind::Sine, &NOTE_SINE_DESCRIPTOR, 0.5f64)
     } else {
         return std::ptr::null();
     };
@@ -803,6 +890,8 @@ unsafe extern "C" fn factory_create(
         editor_state: AtomicU32::new(0),
         editor_title_len: AtomicU32::new(0),
         main_calls: AtomicU32::new(0),
+        midi_dialect: id != NOTE_SINE_ID.as_bytes(),
+        probes: [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(8192)],
         note: None,
         note_age: 0,
     }));

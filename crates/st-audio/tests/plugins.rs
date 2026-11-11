@@ -470,7 +470,7 @@ fn the_catalogue_lists_the_test_plug_ins_without_loading_them_into_this_process(
     assert!(catalog.plugins().is_empty(), "nothing is known before the first scan");
     let mut progress = Vec::new();
     let done = catalog.scan(false, false, &mut |state| progress.push(state.clone())).unwrap();
-    assert_eq!((done.scanning, done.total, done.scanned, done.failed, done.plugins), (false, 2, 2, 0, 4));
+    assert_eq!((done.scanning, done.total, done.scanned, done.failed, done.plugins), (false, 2, 2, 0, 5));
     assert!(progress.first().unwrap().scanning && progress.iter().any(|state| state.completed == 1 && state.total == 2));
     let plugins = catalog.plugins();
     let found = |format: &str, id: &str| plugins.iter().find(|plugin| plugin.format == format && plugin.id == id).unwrap_or_else(|| panic!("{format}:{id} is listed"));
@@ -483,8 +483,8 @@ fn the_catalogue_lists_the_test_plug_ins_without_loading_them_into_this_process(
     assert!(!maps.contains("ST Test") && !maps.contains("stpc_clap_test_plugin") && !maps.contains("stpc_vst3_test_plugin"));
     // A second scan answers from the cache; another process reads the cache file.
     let again = catalog.scan(false, false, &mut |_| {}).unwrap();
-    assert_eq!((again.scanned, again.cached, again.plugins), (0, 2, 4));
-    assert_eq!(Catalog::new(options).unwrap().plugins().len(), 4);
+    assert_eq!((again.scanned, again.cached, again.plugins), (0, 2, 5));
+    assert_eq!(Catalog::new(options).unwrap().plugins().len(), 5);
     assert!(catalog.blocked().is_empty());
     // A descriptor that names no file is found through the catalogue.
     let manager = fixture.manager();

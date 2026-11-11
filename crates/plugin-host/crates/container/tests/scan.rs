@@ -154,7 +154,7 @@ fn scan_lists_plugins_caches_them_and_survives_broken_files() {
     // The plug-ins: both formats, each once although two bundles hold the VST3 ones.
     assert_eq!(
         names(&report.plugins),
-        [clap_plug_name("Gain"), vst3_plug::GAIN_NAME, clap_plug_name("Sine"), vst3_plug::SINE_NAME]
+        [clap_plug_name("Gain"), vst3_plug::GAIN_NAME, clap_plug_name("Sine"), "ST Test Sine (CLAP notes)", vst3_plug::SINE_NAME]
     );
     assert_eq!(report.plugins, scanner.plugins());
     let gain = &report.plugins[1];
@@ -175,7 +175,7 @@ fn scan_lists_plugins_caches_them_and_survives_broken_files() {
             url: "https://example.invalid/supertracker".into(),
         }
     );
-    let sine = &report.plugins[3];
+    let sine = &report.plugins[4];
     assert_eq!(
         (sine.id.as_str(), sine.category.as_str(), sine.flags),
         (vst3_plug::SINE_CLASS_ID, "Instrument|Synth", SCAN_INSTRUMENT | SCAN_WANTS_MIDI | SCAN_AUDIO_OUTPUT)
@@ -188,14 +188,16 @@ fn scan_lists_plugins_caches_them_and_survives_broken_files() {
     assert_eq!(clap_gain.subcategories, ["audio-effect", "stereo"]);
     assert_eq!(clap_gain.flags, SCAN_EFFECT | SCAN_AUDIO_INPUT | SCAN_AUDIO_OUTPUT);
     assert_eq!(clap_gain.path, clap.to_string_lossy());
-    assert_eq!(report.plugins[2].flags, SCAN_INSTRUMENT | SCAN_WANTS_MIDI | SCAN_AUDIO_OUTPUT);
+    for clap_sine in &report.plugins[2..4] {
+        assert_eq!(clap_sine.flags, SCAN_INSTRUMENT | SCAN_WANTS_MIDI | SCAN_AUDIO_OUTPUT);
+    }
     // The controller class of the VST3 gain is in its factory but is no plug-in.
     assert!(!report.plugins.iter().any(|plugin| plugin.id == vst3_plug::GAIN_CONTROLLER_CLASS_ID));
 
     // The broken files: each one cost a scanning process, none of them the scan.
     assert_eq!(*seen.outcome(&good), FileOutcome::Scanned { plugins: 2 });
     assert_eq!(*seen.outcome(&second), FileOutcome::Scanned { plugins: 2 });
-    assert_eq!(*seen.outcome(&clap), FileOutcome::Scanned { plugins: 2 });
+    assert_eq!(*seen.outcome(&clap), FileOutcome::Scanned { plugins: 3 });
     let crashed = |path: &Path, needle: &str| match seen.outcome(path) {
         FileOutcome::Crashed { reason } => assert!(reason.contains(needle), "\"{reason}\" lacks \"{needle}\""),
         other => panic!("{path:?}: expected a crash, got {other:?}"),
@@ -232,7 +234,7 @@ fn scan_lists_plugins_caches_them_and_survives_broken_files() {
     assert_eq!(*seen.outcome(&good), FileOutcome::Cached { plugins: 2 });
     assert!(matches!(seen.outcome(&hang), FileOutcome::Skipped { status: ScanStatus::TimedOut, .. }));
     assert!(matches!(seen.outcome(&fake), FileOutcome::Skipped { status: ScanStatus::Failed, .. }));
-    assert_eq!(names(&report.plugins).len(), 4);
+    assert_eq!(names(&report.plugins).len(), 5);
     assert_eq!(report.failures.len(), 8);
 
     // The cache is a file: another scanner (the next run of the application) starts with it.
@@ -349,7 +351,7 @@ fn scan_results_are_what_an_instance_is_created_from() {
     fixture.clap_plugin("Test.clap");
     let scanner = fixture.scanner();
     let (report, seen) = scan(&scanner, ScanOptions::default());
-    assert_eq!(report.plugins.len(), 4);
+    assert_eq!(report.plugins.len(), 5);
     fixture.assert_clean(&seen.pids());
 
     let env = TestEnv::new(GroupingPolicy::PerPlugin);

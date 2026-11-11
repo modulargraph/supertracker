@@ -120,7 +120,7 @@ fn the_catalogue_lists_built_in_effects_and_scanned_plug_ins() {
     assert!(ready["plugins"].as_array().unwrap().iter().any(|plugin| plugin["format"] == "Builtin" && plugin["type"] == "effect" && plugin["id"].as_str().unwrap().starts_with("stfx:")));
 
     let done = fixture.request("plugins.scan", json!({ "wait": true, "retryFailed": true }));
-    assert_eq!((done["scanning"].clone(), done["result"]["total"].clone(), done["result"]["plugins"].clone(), done["blocklist"].clone()), (json!(false), json!(2), json!(4), json!([])));
+    assert_eq!((done["scanning"].clone(), done["result"]["total"].clone(), done["result"]["plugins"].clone(), done["blocklist"].clone()), (json!(false), json!(2), json!(5), json!([])));
     let list = fixture.request("plugins.list", json!({}));
     let entry = |id: &str| list.as_array().unwrap().iter().find(|plugin| plugin["id"] == id).unwrap_or_else(|| panic!("{id} is listed")).clone();
     let gain = entry(&format!("clap:{CLAP_GAIN}"));
@@ -131,7 +131,7 @@ fn the_catalogue_lists_built_in_effects_and_scanned_plug_ins() {
     // A file that is no plug-in fails its scan and is visible, with the reason; nothing else suffers.
     std::fs::write(fixture.installed.folder.join("Broken.clap"), b"not a library").unwrap();
     let done = fixture.request("plugins.scan", json!({ "wait": true }));
-    assert_eq!((done["result"]["plugins"].clone(), done["result"]["failed"].clone()), (json!(4), json!(1)));
+    assert_eq!((done["result"]["plugins"].clone(), done["result"]["failed"].clone()), (json!(5), json!(1)));
     let details = fixture.request("plugins.list", json!({ "details": true }));
     let blocked = &details["blocklist"][0];
     assert!(blocked["path"].as_str().unwrap().ends_with("Broken.clap") && blocked["status"] == "failed" && !blocked["reason"].as_str().unwrap().is_empty(), "{blocked}");
