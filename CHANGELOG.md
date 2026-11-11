@@ -42,8 +42,9 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
 - **VST2 hosting.** NKS presets made for a VST2 plug-in load into the vendor's VST2-compatible VST3 when installed.
 - The second ("legacy") mix model: every song uses the routed mixer (buses, sends, sidechains, Master inserts).
 - **Tempo and meter maps.** A project has one tempo and one meter; the engine's clock module is gone.
-- Engine features the host never used (frozen-song provider, unit range cache, timestamped bus history, transport
-  checkpoints, the engine's own meters).
+- Engine features the host never used: the engine's own mixer and sends (it renders one bus per track and the host
+  mixes), plug-in automation lanes, the frozen-song provider, unit range cache, timestamped bus history, transport
+  checkpoints and meters.
 - "Bounce track" (Render stem remains), the "Routing needs repair" state, base patch capture, the `audio.inputs`
   commands (a track's input is part of the project), former factory chord-set IDs.
 - The in-app self-test modes and the keyboard QA build.

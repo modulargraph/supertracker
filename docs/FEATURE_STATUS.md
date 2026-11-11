@@ -9,7 +9,7 @@ feature is twice: does the interface do it, and does the new host carry it.
 | Method | What it means | What it does not mean |
 |---|---|---|
 | **Interface tests** | `tests/*_tests.js` (156 files) load the interface's scripts into a simulated page and check keyboard handling, state changes, Undo and rendering. | No browser, no host, no audio. |
-| **Engine tests** | `cargo test -p tracker-engine` renders the engine offline and measures the audio (note timing, loop windows, echo times and so on). The engine was translated from the 0.1 C++ engine and gave bit-identical output to it on x86-64 before that engine was removed. | Offline only. Nobody has listened. On arm64 the output can differ from x86-64 in the last bits (fused multiply-add); the arm64 build has never run. |
+| **Engine tests** | `cargo test -p tracker-engine` renders the engine offline and measures the audio (note timing, loop windows, echo times and so on). The engine was translated from the 0.1 C++ engine and gave bit-identical output to it on x86-64 before that engine was removed. Since then its own mixer was removed too: the recorded audio hashes are of the per-track buses the host reads, recorded while the old mixed-output hashes still passed on the same engine. | Offline only. Nobody has listened. On arm64 the output can differ from x86-64 in the last bits (fused multiply-add); the arm64 build has never run. |
 | **Host tests** | `cargo test --workspace` and the plug-in container's tests: every bridge command against the real crates, offline renders through the mixer graph, plug-ins in container processes (CLAP and VST3 test plug-ins), files, library, MIDI with in-memory ports. | No audio device, no MIDI device, no third-party plug-in. |
 | **Browser test** | `tests/host_e2e/run.js`: the real page in Chromium against the real host over its local WebSocket. | Chromium on Linux, not the app's own web view on macOS; the null audio device. |
 
@@ -60,7 +60,7 @@ Each of these was tested on Linux with the silent test devices, in-memory MIDI p
 - Opening projects, kits, built-in effect states and plug-in states saved by 0.1. Nothing is migrated.
 - The second mixer ("legacy" mix) and the dialog that switched a song to standard routing. Every project uses the routed mixer.
 - Tempo and meter maps: the engine's clock module and the interface's reading of `project.timing`. A project has one tempo and one meter.
-- Engine features the host never called: the frozen-song provider, the unit range cache, the timestamped bus history, transport checkpoints and the engine's own meters.
+- Engine features the host never called: its own mixer (faders, mute/solo, delay and reverb sends; the host mixes), plug-in automation lanes and track/slot step locks, the frozen-song provider, the unit range cache, the timestamped bus history, transport checkpoints, its own meters, zone regions.
 - Base patch capture (the host keeps every plug-in parameter's base value itself), "Bounce track" (Render stem remains), the "Routing needs repair" state (a project the mixer cannot render is refused when published), and the mapping of former factory chord-set IDs.
 - The in-app self-test modes and the hidden script runner. The host tests and the browser test take their place.
 
