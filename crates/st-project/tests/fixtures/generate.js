@@ -26,7 +26,7 @@ write('demo.json', demo);
 
 // 2. What native kit.read returns for a kit file (tests/helpers/kit-group-fixture.js), normalized.
 const { groupProject } = require(path.join(root, 'tests/helpers/kit-group-fixture.js'));
-write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [{ pad: 0 }, { pad: 5, slot: 2, component: 'builtin:delay' }],
+write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [{ pad: 0 }, { pad: 5, slot: 2, component: 'stfx:delay' }],
   busInserts: 2, choke: { 0: 1, 1: 1 }, notes: ['Pad 3 had no sample.'] })));
 
 // 3. The project of tests/track_groups_model_tests.js, grouped through the interface's own group model.
@@ -38,7 +38,7 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
     patterns: [{ id: 0, length: 4, steps: tracks.map((_, i) => [{ note: 60 + i, instrument: i }, null, null, null]),
       automation: tracks.map((_, i) => ({ id: `a${i}`, track: i, target: 'volume', points: [] })) }],
     audioClips: [{ id: 'c', track: 4, path: '/Audio/c.wav', startBeat: 0, durationBeats: 4 }],
-    audioPlugins: [{ instanceID: 'p', owner: 'track:r5', kind: 'effect', slot: 0, component: 'builtin:eq' }],
+    audioPlugins: [{ instanceID: 'p', owner: 'track:r5', kind: 'effect', slot: 0, component: 'stfx:eq' }],
     routing: { buses: [], outputs: Object.fromEntries(tracks.map(t => [`track:${t.routingID}`, 'master'])), sends: [], sidechains: [] }
   };
   G.create(p, [1, 3, 4], { makeID: uid, name: 'Drums' });
@@ -68,9 +68,9 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
       state: 'AAECAwQ=', presets: [], parameters: [{ address: '18446744073709551615', name: 'Threshold', value: .5 }], hostStatus: { state: 'running' } },
     { owner: `track:${p.tracks[1].routingID}`, kind: 'instrument', slot: 0, instanceID: 'keys-1', component: 'clap:com.acme.keys', name: 'Keys',
       manufacturer: 'Acme', format: 'CLAP', bypass: false, latency: 0, tailTime: 2, state: 'c3RhdGU=', nks: { name: 'Glass', path: '/Library/NKS/Glass.nksf' }, missing: true },
-    { owner: 'bus:ret1', kind: 'effect', slot: 0, instanceID: 'plate-1', component: 'builtin:reverb', name: 'Reverb', format: 'Builtin', state: 'AAAA' },
-    { owner: 'master', kind: 'effect', slot: 15, instanceID: 'limit-1', component: 'builtin:limiter', name: 'Limiter', format: 'Builtin', state: 'AAAA', stateError: 'busy' },
-    { owner: 'instrument:2', kind: 'effect', slot: 1, instanceID: 'pad-chorus', component: 'builtin:chorus', name: 'Chorus', format: 'Builtin', state: 'AAAA' }
+    { owner: 'bus:ret1', kind: 'effect', slot: 0, instanceID: 'plate-1', component: 'stfx:reverb', name: 'Reverb', format: 'Builtin', state: 'AAAA' },
+    { owner: 'master', kind: 'effect', slot: 15, instanceID: 'limit-1', component: 'stfx:limiter', name: 'Limiter', format: 'Builtin', state: 'AAAA', stateError: 'busy' },
+    { owner: 'instrument:2', kind: 'effect', slot: 1, instanceID: 'pad-chorus', component: 'stfx:chorus', name: 'Chorus', format: 'Builtin', state: 'AAAA' }
   ];
   p.instruments[1].type = 'au'; p.instruments[1].plugin = clone(p.audioPlugins[1]);
   // plugin-pages.js

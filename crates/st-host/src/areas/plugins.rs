@@ -137,7 +137,7 @@ fn whole(value: &Value, key: &str) -> Option<i64> {
 }
 
 fn is_builtin(component: &str) -> bool {
-    component.starts_with("stfx:") || component.starts_with("builtin:")
+    st_project::model::plugin::builtin_effect_id(component).is_some()
 }
 
 /// A new `instanceID`.

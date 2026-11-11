@@ -514,7 +514,7 @@
    "owner": "track:r5",
    "kind": "effect",
    "slot": 0,
-   "component": "builtin:eq"
+   "component": "stfx:eq"
   }
  ],
  "routing": {

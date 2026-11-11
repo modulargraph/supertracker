@@ -37,7 +37,7 @@ pub struct InsertSpec {
     pub slot: usize,
     /// Part of the assigned instrument's chain (rendered before the track's own inserts).
     pub instrument_chain: bool,
-    /// `stfx:<id>` (or `builtin:<id>`) for a built-in effect, else the plug-in's identifier.
+    /// `stfx:<id>` for a built-in effect, else the plug-in's identifier.
     pub component: String,
     pub name: String,
     pub bypass: bool,
@@ -59,7 +59,7 @@ pub struct InstrumentMix {
 impl InsertSpec {
     /// The id of the built-in effect this insert names, if it names one.
     pub fn builtin_id(&self) -> Option<&str> {
-        self.component.strip_prefix("stfx:").or_else(|| self.component.strip_prefix("builtin:"))
+        st_project::model::plugin::builtin_effect_id(&self.component)
     }
 }
 

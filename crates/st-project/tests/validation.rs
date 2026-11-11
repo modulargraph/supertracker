@@ -42,7 +42,7 @@ fn accepted(change: impl FnOnce(&mut Value)) {
 }
 
 fn insert(owner: &str, slot: i64) -> Value {
-    json!({ "instanceID": format!("{}-{slot}", owner.replace(':', "-")), "owner": owner, "kind": "effect", "slot": slot, "component": "builtin:eq", "format": "Builtin", "state": "AA==" })
+    json!({ "instanceID": format!("{}-{slot}", owner.replace(':', "-")), "owner": owner, "kind": "effect", "slot": slot, "component": "stfx:eq", "format": "Builtin", "state": "AA==" })
 }
 
 #[test]
@@ -348,6 +348,16 @@ fn instrument_types() {
     }
     // Keys the format does not name are kept and ignored.
     accepted(|p| p["instruments"][0]["waveform"] = json!("sine"));
+}
+
+/// A built-in effect has one spelling, the one the plug-in catalogue lists.
+#[test]
+fn built_in_effect_components() {
+    use st_project::model::plugin::{builtin_effect_id, BUILTIN_EFFECT_PREFIX};
+    assert_eq!(BUILTIN_EFFECT_PREFIX, "stfx:");
+    assert_eq!((builtin_effect_id("stfx:eq"), builtin_effect_id("builtin:eq"), builtin_effect_id("com.vendor.eq")), (Some("eq"), None, None));
+    let project = Project::from_value(json!({ "audioPlugins": [{ "component": "stfx:reverb" }, { "component": "builtin:reverb" }, {}] })).unwrap();
+    assert_eq!(project.plugin_list().iter().map(|plugin| plugin.is_builtin()).collect::<Vec<_>>(), [true, false, false]);
 }
 
 #[test]

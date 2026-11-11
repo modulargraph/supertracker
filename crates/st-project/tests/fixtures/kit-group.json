@@ -231,25 +231,25 @@
    "owner": "track:srckit-pad0",
    "kind": "effect",
    "slot": 0,
-   "component": "builtin:compressor",
+   "component": "stfx:compressor",
    "instanceID": "src-plugin-0",
-   "name": "builtin:compressor",
+   "name": "stfx:compressor",
    "state": "AAAA"
   },
   {
    "owner": "track:srckit-pad5",
    "kind": "effect",
    "slot": 2,
-   "component": "builtin:delay",
+   "component": "stfx:delay",
    "instanceID": "src-plugin-1",
-   "name": "builtin:delay",
+   "name": "stfx:delay",
    "state": "AAAA"
   },
   {
    "owner": "bus:srcbus",
    "kind": "effect",
    "slot": 0,
-   "component": "builtin:reverb",
+   "component": "stfx:reverb",
    "instanceID": "src-bus-0",
    "name": "Reverb",
    "state": "AAAA"
@@ -258,7 +258,7 @@
    "owner": "bus:srcbus",
    "kind": "effect",
    "slot": 1,
-   "component": "builtin:reverb",
+   "component": "stfx:reverb",
    "instanceID": "src-bus-1",
    "name": "Reverb",
    "state": "AAAA"

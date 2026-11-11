@@ -227,7 +227,7 @@ impl AudioEngine {
         let project = project?;
         let (index, descriptor) = project.plugin_list().iter().enumerate().find(|(index, descriptor)| chosen(*index, descriptor))?;
         let mut item = value.get_mut("audioPlugins")?.get_mut(index)?.take();
-        if !descriptor.component.as_deref().is_some_and(|component| component.starts_with("stfx:") || component.starts_with("builtin:")) {
+        if !descriptor.is_builtin() {
             self.capture_plugin_state(descriptor, &mut item);
         }
         Some(item)

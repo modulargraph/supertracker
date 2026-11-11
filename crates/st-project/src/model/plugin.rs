@@ -6,6 +6,15 @@ use serde_json::Value;
 /// Insert slots per mixer channel (the interface's `INSERT_SLOTS`).
 pub const INSERT_SLOTS: i64 = 16;
 
+/// The prefix of a built-in effect's component: `stfx:<effect id>`, as the plug-in catalogue
+/// lists it. It is the only spelling.
+pub const BUILTIN_EFFECT_PREFIX: &str = "stfx:";
+
+/// The id of the built-in effect `component` names, if it names one.
+pub fn builtin_effect_id(component: &str) -> Option<&str> {
+    component.strip_prefix(BUILTIN_EFFECT_PREFIX)
+}
+
 string_enum! {
     /// Which slot kind a plug-in occupies on its channel.
     pub enum PluginKind {
@@ -78,7 +87,8 @@ model! {
         /// Stable identity of this instance: automation, step locks, sidechains and saved pages
         /// refer to it.
         "instanceID" => instance_id: String,
-        /// Component identity: `builtin:<effect>` or the format's identifier of the plug-in.
+        /// Component identity: `stfx:<effect>` for a built-in effect ([`BUILTIN_EFFECT_PREFIX`]),
+        /// or the format's identifier of the plug-in.
         "component" => component: String,
         /// Plug-in format as the host names it (for example `VST3`, `CLAP`, `AU`).
         "format" => format: String,
@@ -113,7 +123,7 @@ impl PluginDescriptor {
 
     /// Whether the component is a built-in effect.
     pub fn is_builtin(&self) -> bool {
-        self.component.as_deref().is_some_and(|component| component.starts_with("builtin:"))
+        self.component.as_deref().is_some_and(|component| builtin_effect_id(component).is_some())
     }
 }
 

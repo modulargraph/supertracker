@@ -2994,7 +2994,7 @@
    "kind": "effect",
    "slot": 0,
    "instanceID": "plate-1",
-   "component": "builtin:reverb",
+   "component": "stfx:reverb",
    "name": "Reverb",
    "format": "Builtin",
    "state": "AAAA"
@@ -3004,7 +3004,7 @@
    "kind": "effect",
    "slot": 15,
    "instanceID": "limit-1",
-   "component": "builtin:limiter",
+   "component": "stfx:limiter",
    "name": "Limiter",
    "format": "Builtin",
    "state": "AAAA",
@@ -3015,7 +3015,7 @@
    "kind": "effect",
    "slot": 1,
    "instanceID": "pad-chorus",
-   "component": "builtin:chorus",
+   "component": "stfx:chorus",
    "name": "Chorus",
    "format": "Builtin",
    "state": "AAAA"
