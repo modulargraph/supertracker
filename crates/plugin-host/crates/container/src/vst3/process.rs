@@ -189,7 +189,8 @@ impl Shared {
         }
     }
 
-    fn mapped_parameter(&self, channel: u8, controller: usize) -> u32 {
+    /// The parameter the plug-in maps a MIDI controller of `channel` to (`NO_PARAMETER`: none).
+    pub fn mapped_parameter(&self, channel: u8, controller: usize) -> u32 {
         self.midi_map[channel as usize * MIDI_CONTROLLERS + controller].load(Ordering::Relaxed)
     }
 

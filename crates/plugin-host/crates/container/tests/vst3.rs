@@ -344,7 +344,7 @@ fn sine_instrument_notes_are_sample_accurate() {
     let instance = active(env.sup(), sine_config(&bundle));
     let id = instance.id();
     let info = instance.info();
-    assert_eq!(info.flags, INFO_INSTRUMENT | INFO_WANTS_MIDI | INFO_PRODUCES_MIDI);
+    assert_eq!(info.flags, INFO_INSTRUMENT | INFO_WANTS_MIDI | INFO_PRODUCES_MIDI | INFO_SUSTAIN_PEDAL);
     // The name comes from the Unicode class info.
     assert_eq!((info.name.as_str(), info.inputs.len(), info.outputs[0].channels), (plug::SINE_NAME, 0, 2));
     assert_eq!((info.tail, info.latency, info.parameter_count), (u64::MAX, 0, 8));

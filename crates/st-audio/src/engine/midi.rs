@@ -2,7 +2,7 @@
 //! live MIDI note asks for (is note recording armed, where is the transport), where
 //! controllers, pressure and pitch bend played live go ([`AudioEngine::expression`]), and what
 //! the pedals need to know about the instrument a note is played on
-//! ([`AudioEngine::instrument_kind`], [`AudioEngine::plugin_pedal_generation`]). A child
+//! ([`AudioEngine::instrument_kind`], [`AudioEngine::plugin_pedal`]). A child
 //! module of [`crate::engine`], so that these additions stay out of that file. The seam itself
 //! is [`crate::midi`].
 
@@ -73,11 +73,15 @@ impl AudioEngine {
         self.lock().project.as_ref().and_then(|project| project.instrument_list().get(instrument).map(|item| item.kind()))
     }
 
-    /// For the plug-in instrument of `track`: a number that changes whenever the plug-in may
-    /// have lost what it was told about the pedals (`Hosted::pedal_generation`). 0 when the
-    /// track has no plug-in instrument that is loaded.
-    pub fn plugin_pedal_generation(&self, track: i32) -> u64 {
-        self.plugin_instrument(track).map_or(0, |hosted| hosted.pedal_generation())
+    /// Whether the plug-in instrument of `track` has a pedal of its own, and if so its pedal
+    /// generation: a number that changes whenever the plug-in may have lost what it was told
+    /// about the pedals (`Hosted::pedal_generation`). `None` when the track has no plug-in
+    /// instrument that is loaded, and for a plug-in the sustain pedal cannot reach
+    /// (`Hosted::sustain_pedal`: a CLAP note port without MIDI, a VST3 plug-in that maps no
+    /// parameter to controller 64): whoever plays such an instrument holds its notes while
+    /// the pedal is down, as for the engine's own instruments.
+    pub fn plugin_pedal(&self, track: i32) -> Option<u64> {
+        self.plugin_instrument(track).filter(|hosted| hosted.sustain_pedal).map(|hosted| hosted.pedal_generation())
     }
 
     /// The tracks (engine channels) that `project`, once published, takes away from the mixer

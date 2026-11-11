@@ -292,6 +292,9 @@ fn controllers_and_pressure_played_live_reach_a_plug_in_instrument_with_its_next
         assert!(engine.expression(0, [0xD0, 0, 0]) && engine.expression(0, [0xC0, 3, 0]));
         let (released, _) = engine.render_offline(500, 512);
         assert_bits(&released, |i| sine_sample(60, 2_000 + i as u64, 0.5), &format!("{format}: pressure released"));
+        // Only an instrument that the pedal can reach has one of its own: a note port that
+        // takes CLAP note events alone has no controllers.
+        assert_eq!(engine.plugin_pedal(0).is_some(), format != "clap-notes", "{format}");
         // Notes and channel-mode messages have their own calls; a track without a plug-in
         // instrument has no use for pressure.
         assert!(!engine.expression(0, [0x90, 60, 100]) && !engine.expression(0, [0xB0, 123, 0]) && !engine.expression(0, [0xF8, 0, 0]));
@@ -316,8 +319,8 @@ fn the_sustain_pedal_reaches_a_plug_in_instrument_before_the_notes_of_its_block(
         engine.publish(&parse(&project)).unwrap();
         let hosted = manager.hosted("synth").expect("the instrument has an instance");
         assert_eq!(engine.instrument_kind(1), Some(st_project::model::InstrumentKind::Plugin));
-        let generation = engine.plugin_pedal_generation(0);
-        assert!(generation != 0 && generation == hosted.pedal_generation() && engine.plugin_pedal_generation(1) == 0, "{format}: the instrument's pedal generation; a track without a plug-in has none");
+        let generation = engine.plugin_pedal(0).expect("the instrument has a pedal");
+        assert!(hosted.sustain_pedal && generation == hosted.pedal_generation() && engine.plugin_pedal(1).is_none(), "{format}: the instrument's pedal generation; a track without a plug-in has no pedal");
 
         // A key is held. The pedal goes down and the key comes up before the next block is
         // rendered: the plug-in hears them in that order, and sustains.
@@ -348,7 +351,7 @@ fn the_sustain_pedal_reaches_a_plug_in_instrument_before_the_notes_of_its_block(
         let (released, _) = engine.render_offline(500, 512);
         assert_eq!(peak(&released), 0.0, "{format}: the pedal let go");
         assert_eq!(note_state(), "silent");
-        assert_eq!(engine.plugin_pedal_generation(0), generation, "{format}: nothing made the plug-in forget its pedals");
+        assert_eq!(engine.plugin_pedal(0), Some(generation), "{format}: nothing made the plug-in forget its pedals");
 
         // A panic sends the pedals up before "all notes off": afterwards a key release ends
         // its note, and whoever held the pedal down for the plug-in is told to send it again.
@@ -359,7 +362,7 @@ fn the_sustain_pedal_reaches_a_plug_in_instrument_before_the_notes_of_its_block(
         assert!(peak(&engine.render_offline(1_024, 512).0) > 0.1, "{format}: sustained");
         engine.panic();
         wait_until("silence after the panic", || peak(&engine.render_offline(1_024, 512).0) == 0.0 && note_state() == "silent");
-        assert_ne!(engine.plugin_pedal_generation(0), generation, "{format}: the pedals were reset");
+        assert_ne!(engine.plugin_pedal(0), Some(generation), "{format}: the pedals were reset");
         // The plug-in comes back from its reset a moment later; then it plays, and lets go.
         wait_until("the instrument to play again", || {
             engine.note_on(0, 1, 64, 100);

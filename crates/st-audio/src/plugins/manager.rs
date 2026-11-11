@@ -55,7 +55,7 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::Duration;
 use stpc_client::{
     Error as ClientError, ExitReason, Fallback, GroupingPolicy, HostEvent, Instance, InstanceConfig, InstanceId, InstanceStatus, ParameterInfo, PluginKind as ClientKind, Supervisor,
-    SupervisorConfig, INFO_HAS_EDITOR, PARAM_AUTOMATABLE, PARAM_BOOLEAN, PARAM_HIDDEN, PARAM_READ_ONLY, PARAM_STEPPED,
+    SupervisorConfig, INFO_HAS_EDITOR, INFO_SUSTAIN_PEDAL, PARAM_AUTOMATABLE, PARAM_BOOLEAN, PARAM_HIDDEN, PARAM_READ_ONLY, PARAM_STEPPED,
 };
 use tracker_engine::engine::util::Ring;
 
@@ -307,6 +307,9 @@ pub struct Hosted {
     /// Whether the plug-in uses the sidechain bus it was given.
     pub sidechain: bool,
     pub has_editor: bool,
+    /// The sustain pedal (controller 64) can reach the plug-in. An instrument without this
+    /// has no pedal of its own: whoever plays it holds its notes while the pedal is down.
+    pub sustain_pedal: bool,
     table: AtomicPtr<ParamTable>,
     /// Channel messages from control threads for the audio thread (controllers, pressure, pitch
     /// bend): up to three MIDI bytes and their count, applied at the start of the next block.
@@ -1007,6 +1010,7 @@ impl PluginManager {
             instrument,
             sidechain: !instrument && info.inputs.get(1).is_some_and(|bus| bus.channels > 0),
             has_editor: info.flags & INFO_HAS_EDITOR != 0,
+            sustain_pedal: info.flags & INFO_SUSTAIN_PEDAL != 0,
             planned_latency: AtomicU32::new(instance.latency()),
             instance,
             table: AtomicPtr::new(Box::into_raw(Box::new(ParamTable::default()))),

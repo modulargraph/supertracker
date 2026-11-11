@@ -42,6 +42,8 @@
 //!   instrument sustains;
 //! - the engine's own instruments have no pedal: while a sustain pedal is down (64 or more)
 //!   the host holds back the note-offs of the keys its source releases, until it comes up.
+//!   The same goes for a plug-in instrument that controller 64 cannot reach (a CLAP note
+//!   port that takes no MIDI, a VST3 plug-in that maps no parameter to it).
 //!
 //! A pedal acts on what its own source and channel play. It follows them to another track:
 //! the instrument played first keeps sustaining, the next gets the pedal with its first note,
@@ -309,7 +311,11 @@ impl Audio {
     fn pedal_target(&self, track: i32, instrument: i32) -> (PedalTarget, u64) {
         let (track, instrument) = (track.max(0), instrument.max(0) as usize);
         match self.engine.instrument_kind(instrument) {
-            Some(InstrumentKind::Plugin) => (PedalTarget::Plugin { track: track as usize }, self.engine.plugin_pedal_generation(track)),
+            // A plug-in the pedal cannot reach has none of its own: the host holds its notes.
+            Some(InstrumentKind::Plugin) => match self.engine.plugin_pedal(track) {
+                Some(generation) => (PedalTarget::Plugin { track: track as usize }, generation),
+                None => (PedalTarget::Engine { track: track as usize }, 0),
+            },
             Some(InstrumentKind::Midi) => (PedalTarget::External { instrument }, self.external_midi.get().map_or(0, |devices| devices.generation(instrument))),
             _ => (PedalTarget::Engine { track: track as usize }, 0),
         }

@@ -8,9 +8,10 @@
 //! - An instrument with a pedal of its own (a plug-in instrument, an external MIDI instrument)
 //!   **gets the pedal**, with its value, so that half-pedalling, re-pedalling and pedal resonance
 //!   are the instrument's. Its note-offs are passed on as played; it sustains by itself.
-//! - The engine's own instruments have no pedal. For them the sustain pedal is the host's:
-//!   while it is down (64 or more), the note-off of a released key is held back until the pedal
-//!   comes up. Sostenuto and soft mean nothing to them.
+//! - The engine's own instruments have no pedal, and neither has a plug-in that controller 64
+//!   cannot reach. For them the sustain pedal is the host's: while it is down (64 or more), the
+//!   note-off of a released key is held back until the pedal comes up. Sostenuto and soft mean
+//!   nothing to them.
 //!
 //! # What a pedal acts on
 //!
@@ -50,8 +51,8 @@ pub const APP_SOURCE: i32 = -2;
 /// What a note is played on, as far as pedals are concerned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PedalTarget {
-    /// One of the engine's own instruments on a track (engine channel). It has no pedal: the
-    /// host holds back the releases of its notes.
+    /// An instrument without a pedal on a track (engine channel): one of the engine's own, or
+    /// a plug-in the pedal cannot reach. The host holds back the releases of its notes.
     Engine {
         /// Engine channel.
         track: usize,

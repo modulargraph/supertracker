@@ -657,6 +657,11 @@ impl Plugin for ClapPlugin {
             if self.note_dialects != 0 {
                 flags |= INFO_WANTS_MIDI;
             }
+            // Control changes exist as MIDI only: a note port that takes CLAP note events
+            // alone cannot be sent the pedal.
+            if self.note_dialects & CLAP_NOTE_DIALECT_MIDI != 0 {
+                flags |= INFO_SUSTAIN_PEDAL;
+            }
             if self.note_outputs {
                 flags |= INFO_PRODUCES_MIDI;
             }

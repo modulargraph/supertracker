@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
-use st_audio::plugins::testing::{artifacts, clap_sine, vst3_sine, CLAP_SINE, VST3_SINE};
+use st_audio::plugins::testing::{artifacts, clap_sine, vst3_sine, CLAP_NOTE_SINE, CLAP_SINE, VST3_SINE};
 use st_host::areas::audio::{AudioOptions, AudioOutput};
 use st_host::areas::midi::{MidiDevices, MidiOptions};
 use st_host::areas::plugins::PluginAreaOptions;
@@ -32,6 +32,8 @@ const EXTERNAL: i64 = 0;
 const SAMPLER: i64 = 1;
 const CLAP: i64 = 2;
 const VST3: i64 = 3;
+/// The CLAP sine whose note port takes CLAP note events only: no controller reaches it.
+const NOTES_ONLY: i64 = 4;
 
 /// The CLAP sine's probe of the last control change, for a sustain pedal at `value`.
 fn pedal_at(value: u8) -> f64 {
@@ -59,9 +61,10 @@ struct Fixture {
 }
 
 /// A host on the null audio device with plug-in hosting, two MIDI keyboards (`KEYS`, `PADS`)
-/// and a hardware synth (`SYNTH`) on in-memory ports, and a project of four tracks: an
+/// and a hardware synth (`SYNTH`) on in-memory ports, and a project of five tracks: an
 /// external MIDI instrument on the synth's channel 3, the built-in sampler (a sine that sounds
-/// for as long as its note is held), the CLAP sine and the VST3 sine.
+/// for as long as its note is held), the CLAP sine, the VST3 sine, and the CLAP sine that
+/// takes notes only.
 fn start(label: &str) -> Fixture {
     let folder = TempDir::new(label);
     let installed = artifacts().install(&folder.path().join("plugins"));
@@ -89,17 +92,21 @@ fn start(label: &str) -> Fixture {
     };
     let project = json!({
         "version": 1, "name": "Pedal", "bpm": 120, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
-        "tracks": [track(EXTERNAL, "hardware"), track(SAMPLER, "sampler"), track(CLAP, "clap"), track(VST3, "vst3")],
+        "tracks": [track(EXTERNAL, "hardware"), track(SAMPLER, "sampler"), track(CLAP, "clap"), track(VST3, "vst3"), track(NOTES_ONLY, "notes")],
         "instruments": [
             { "id": 0, "type": "midi", "name": "Hardware", "midiOutput": SYNTH, "midiChannel": 3 },
             { "id": 1, "type": "sample", "name": "Sine", "samplePath": "builtin:wavetables/Basic/Sine.wav", "mode": "wavetable", "volume": 1, "attack": 0, "decay": 0.01, "sustain": 1, "release": 0.05 },
             { "id": 2, "type": "au", "name": "CLAP sine", "volume": 1 },
-            { "id": 3, "type": "au", "name": "VST3 sine", "volume": 1 }
+            { "id": 3, "type": "au", "name": "VST3 sine", "volume": 1 },
+            { "id": 4, "type": "au", "name": "CLAP sine, notes only", "volume": 1 }
         ],
-        "patterns": [{ "id": 0, "length": 16, "steps": [vec![Value::Null; 16], vec![Value::Null; 16], vec![Value::Null; 16], vec![Value::Null; 16]], "automation": [] }],
+        "patterns": [{ "id": 0, "length": 16, "steps": vec![vec![Value::Null; 16]; 5], "automation": [] }],
         "sequence": [0], "loopSong": true,
         "routing": { "version": 1, "mixModel": "standard", "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
-        "audioPlugins": [plugin("clap", format!("clap:{CLAP_SINE}"), "CLAP", &installed.clap), plugin("vst3", format!("vst3:{VST3_SINE}"), "VST3", &installed.vst3)],
+        "audioPlugins": [
+            plugin("clap", format!("clap:{CLAP_SINE}"), "CLAP", &installed.clap), plugin("vst3", format!("vst3:{VST3_SINE}"), "VST3", &installed.vst3),
+            plugin("notes", format!("clap:{CLAP_NOTE_SINE}"), "CLAP", &installed.clap),
+        ],
     });
     let fixture = Fixture { host, services, ports, project, notes: Default::default(), _folder: folder };
     fixture.publish(&fixture.project);
@@ -379,6 +386,18 @@ fn an_instrument_with_a_pedal_gets_it_and_sustains_and_the_host_holds_for_the_sa
         fixture.sampler_sounds("the sampler's note again");
         fixture.note_off(player, SAMPLER, 57);
         fixture.sampler_fades("released");
+
+        // A plug-in the pedal cannot reach (its note port takes CLAP note events only, and
+        // CLAP has no event for a control change) has no pedal of its own either: the host
+        // holds its note-off, and the plug-in sees a key that stays down.
+        fixture.note_on(player, NOTES_ONLY, 60, 100);
+        fixture.shows("the key is down", NOTES_ONLY, &[(clap_sine::NOTE_STATE, clap_sine::KEY_DOWN)]);
+        fixture.pedal(player, NOTES_ONLY, 64, 127);
+        fixture.note_off(player, NOTES_ONLY, 60);
+        std::thread::sleep(Duration::from_millis(300));
+        fixture.shows("the note-off is held back by the host", NOTES_ONLY, &[(clap_sine::NOTE_STATE, clap_sine::KEY_DOWN), (clap_sine::LAST_CONTROLLER, 0.0)]);
+        fixture.pedal(player, NOTES_ONLY, 64, 0);
+        fixture.shows("and sent when the pedal comes up", NOTES_ONLY, &[(clap_sine::NOTE_STATE, clap_sine::SILENT)]);
         assert!(fixture.ports.sent_messages(SYNTH).is_empty(), "nothing of the sampler's pedal went to the synth: {:?}", fixture.ports.sent_messages(SYNTH));
         fixture.shows("or to a plug-in", CLAP, &[(clap_sine::LAST_CONTROLLER, 67.0 * 128.0)]);
     }

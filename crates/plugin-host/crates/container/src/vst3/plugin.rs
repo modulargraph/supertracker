@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 
 use stpc_runtime::{
     BusInfo, CreateRequest, EditorInfo, HostHandle, InstanceInfo, Notification, ParameterInfo, Plugin, PluginError,
-    PresetInfo, Processor, INFO_HAS_BYPASS, INFO_HAS_EDITOR, INFO_INSTRUMENT, INFO_PRODUCES_MIDI, INFO_WANTS_MIDI,
-    PARAM_AUTOMATABLE, PARAM_BOOLEAN, PARAM_BYPASS, PARAM_HIDDEN, PARAM_READ_ONLY, PARAM_STEPPED,
+    PresetInfo, Processor, INFO_HAS_BYPASS, INFO_HAS_EDITOR, INFO_INSTRUMENT, INFO_PRODUCES_MIDI, INFO_SUSTAIN_PEDAL,
+    INFO_WANTS_MIDI, PARAM_AUTOMATABLE, PARAM_BOOLEAN, PARAM_BYPASS, PARAM_HIDDEN, PARAM_READ_ONLY, PARAM_STEPPED,
 };
 use vst3::Steinberg::Vst::{
     self as vst, IAudioProcessor, IAudioProcessorTrait, IComponent, IComponentHandler, IComponentTrait,
@@ -683,6 +683,10 @@ impl Plugin for Vst3Plugin {
         }
         if self.event_outputs > 0 {
             flags |= INFO_PRODUCES_MIDI;
+        }
+        // The pedal reaches a VST3 plug-in as the parameter it maps controller 64 to.
+        if self.event_inputs > 0 && self.shared.mapped_parameter(0, 64) != NO_PARAMETER {
+            flags |= INFO_SUSTAIN_PEDAL;
         }
         if self.bypass_parameter.is_some() {
             flags |= INFO_HAS_BYPASS;

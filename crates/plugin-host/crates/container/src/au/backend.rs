@@ -15,7 +15,7 @@ use objc2_foundation::{NSDictionary, NSString};
 use stpc_runtime::{
     BusInfo, CreateRequest, EditorInfo, HostHandle, InstanceInfo, Notification, ParameterInfo, Plugin, PluginBackend,
     PluginError, PresetInfo, Processor, INFO_HAS_BYPASS, INFO_HAS_EDITOR, INFO_INSTRUMENT, INFO_PRODUCES_MIDI,
-    INFO_WANTS_MIDI,
+    INFO_SUSTAIN_PEDAL, INFO_WANTS_MIDI,
 };
 
 use super::editor::Editor;
@@ -475,7 +475,8 @@ impl Plugin for AuPlugin {
             flags |= INFO_INSTRUMENT;
         }
         if self.takes_midi {
-            flags |= INFO_WANTS_MIDI;
+            // An Audio Unit gets MIDI bytes, the pedal among them.
+            flags |= INFO_WANTS_MIDI | INFO_SUSTAIN_PEDAL;
         }
         if self.midi_out.is_some() {
             flags |= INFO_PRODUCES_MIDI;

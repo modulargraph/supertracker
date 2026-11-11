@@ -185,7 +185,7 @@ fn sine_instrument_notes_are_sample_accurate() {
     let env = TestEnv::new(GroupingPolicy::Shared);
     let instance = active(env.sup(), sine_config());
     let info = instance.info();
-    assert_eq!(info.flags, INFO_INSTRUMENT | INFO_WANTS_MIDI);
+    assert_eq!(info.flags, INFO_INSTRUMENT | INFO_WANTS_MIDI | INFO_SUSTAIN_PEDAL);
     assert_eq!((info.name.as_str(), info.inputs.len(), info.outputs[0].channels), ("ST Test Sine", 0, 2));
     let rate = 48_000.0;
     let script: Vec<(usize, Vec<Event>)> = vec![
@@ -325,6 +325,16 @@ fn the_sine_instruments_sustain_pedal_holds_a_released_note() {
     assert_eq!(state(&sine), plug::NOTE_SUSTAINED as f64);
     let block = run(&sine, &[], 2, 64, &[Event::midi(5, &[0xB0, 120, 0])]);
     assert!(block.outputs[0][5..].iter().all(|&sample| sample == 0.0));
+    // A note port that takes CLAP note events only cannot be sent the pedal, and says so: its
+    // host holds the notes itself.
+    let notes = active(env.sup(), clap(InstanceConfig::instrument("clap", ""), plug::NOTE_SINE_ID));
+    assert_eq!(notes.info().flags, INFO_INSTRUMENT | INFO_WANTS_MIDI);
+    let events = [Event::note_on(0, 0, 60, 100), Event::midi(8, &[0xB0, 64, 127]), Event::note_off(16, 0, 60)];
+    let block = run(&notes, &[], 2, 64, &events);
+    assert!(
+        block.outputs[0][15] != 0.0 && block.outputs[0][16..].iter().all(|&sample| sample == 0.0),
+        "no pedal reached it"
+    );
     sine.reset().unwrap();
     let block = run(&sine, &[], 2, 64, &[Event::note_on(0, 0, 65, 100), Event::note_off(30, 0, 65)]);
     assert!(

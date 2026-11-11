@@ -40,6 +40,10 @@ pub const INFO_WANTS_MIDI: u32 = 4;
 pub const INFO_PRODUCES_MIDI: u32 = 8;
 /// The plug-in implements bypass itself (keeps its latency while bypassed).
 pub const INFO_HAS_BYPASS: u32 = 16;
+/// The sustain pedal (MIDI controller 64) can reach the plug-in: as MIDI, or as a parameter
+/// the plug-in maps the controller to. A host holds the notes of an instrument without this
+/// itself while the pedal is down; one with it gets the pedal and sustains by itself.
+pub const INFO_SUSTAIN_PEDAL: u32 = 32;
 
 wire_struct! {
     pub struct BusInfo {
