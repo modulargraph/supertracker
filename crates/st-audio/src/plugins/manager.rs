@@ -970,9 +970,18 @@ impl PluginManager {
         }
         instance.activate().map_err(|error| fail(error, "starting"))?;
         let info = instance.info();
+        // The plug-in says what it is called and who made it; the descriptor and the
+        // catalogue only repeat that, when they know it.
+        let mut named = identity.clone();
+        if !info.name.is_empty() {
+            named.name = info.name.clone();
+        }
+        if !info.vendor.is_empty() {
+            named.manufacturer = info.vendor.clone();
+        }
         let hosted = Arc::new(Hosted {
             key: key.to_string(),
-            identity: identity.clone(),
+            identity: named,
             instrument,
             sidechain: !instrument && info.inputs.get(1).is_some_and(|bus| bus.channels > 0),
             has_editor: info.flags & INFO_HAS_EDITOR != 0,

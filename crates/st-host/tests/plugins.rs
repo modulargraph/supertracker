@@ -20,13 +20,21 @@ struct Fixture {
 }
 
 fn start_in(folder: TempDir) -> Fixture {
+    start_scanning(folder, true)
+}
+
+/// A host whose catalogue searches the folder of the test plug-ins, or (`listed` false) an
+/// empty one: the plug-ins are installed, and the catalogue has never listed them.
+fn start_scanning(folder: TempDir, listed: bool) -> Fixture {
     let installed = artifacts().install(&folder.path().join("plugins"));
+    let searched = if listed { installed.folder.clone() } else { folder.path().join("nothing here") };
+    std::fs::create_dir_all(&searched).expect("the searched folder");
     let mut services = None;
     let host = TestHost::start(|bridge| {
         let mut options = HostOptions::new(folder.path().join("support"), Arc::new(NoDialogs));
         options.autosave_every = None;
         options.audio = Some(AudioOptions { output: AudioOutput::Null });
-        options.plugins = Some(PluginAreaOptions { container: Some(artifacts().container.clone()), folders: vec![installed.folder.clone()], only_these_folders: true });
+        options.plugins = Some(PluginAreaOptions { container: Some(artifacts().container.clone()), folders: vec![searched.clone()], only_these_folders: true });
         services = Some(install(bridge, options).expect("install the host"));
     });
     host.request("ready", json!({})).expect("the handshake");
@@ -230,6 +238,24 @@ fn inserts_are_loaded_changed_moved_saved_and_restored_through_the_bridge() {
     let error = fixture.host.request("plugin.load", json!({ "owner": "master", "kind": "effect", "slot": 0, "component": "clap:org.example.missing" })).unwrap_err();
     assert!(error.contains("is not installed"), "{error}");
     assert_eq!(fixture.insert("master"), Value::Null);
+}
+
+// The catalogue's scan runs in the background from the start of the host: a load that comes
+// before it has listed the plug-in must not depend on it for the plug-in's name.
+#[test]
+fn a_plug_in_the_catalogue_has_not_listed_is_named_by_its_own_instance() {
+    let fixture = start_scanning(TempDir::new("plugins-unlisted"), false);
+    let mut project = project();
+    fixture.publish(&project);
+    assert!(fixture.request("plugins.scan", json!({ "wait": true }))["plugins"].as_array().unwrap().iter().all(|plugin| plugin["format"] == "Builtin"), "the catalogue lists no plug-in");
+    let loaded = fixture.request("plugin.load", with(json!({ "owner": "track:a", "kind": "effect", "slot": 0 }), fixture.clap(CLAP_GAIN)));
+    assert_eq!((loaded["name"].clone(), loaded["manufacturer"].clone(), loaded["component"].clone()), (json!("ST Test Gain"), json!("SuperTracker Tests"), json!(format!("clap:{CLAP_GAIN}"))));
+    assert_eq!(loaded["hostStatus"]["available"], true);
+    // The engine's project has the name too: it is what the interface stores and what a loss is reported with.
+    fixture.adopt(&mut project);
+    assert_eq!((project["audioPlugins"][0]["name"].clone(), project["audioPlugins"][0]["manufacturer"].clone()), (json!("ST Test Gain"), json!("SuperTracker Tests")));
+    assert_eq!(fixture.insert("track:a")["available"], true);
+    fixture.services.services.shutdown();
 }
 
 #[test]

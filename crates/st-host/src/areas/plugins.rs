@@ -449,7 +449,8 @@ impl Plugins {
         };
         descriptor.insert("component".into(), json!(format!("{format}:{id}")));
         descriptor.insert("format".into(), json!(format.to_ascii_uppercase()));
-        // The catalogue knows the plug-in's file, name and maker.
+        // The catalogue knows the plug-in's file, name and maker, once its scan has listed the
+        // plug-in. A descriptor it leaves unnamed is named by the loaded instance ([`Plugins::place`]).
         if let Some(found) = self.catalog.as_ref().and_then(|catalog| catalog.find(&format, &id)) {
             let stale = text(payload, "bundlePath").is_none_or(|path| !std::path::Path::new(path).exists());
             if stale && !found.path.is_empty() {
@@ -461,7 +462,6 @@ impl Plugins {
                 fail!("{} is {}, not {}.", found.name, if target.instrument { "an effect" } else { "an instrument" }, if target.instrument { "an instrument" } else { "an effect" });
             }
         }
-        descriptor.entry("name").or_insert(json!(id));
         Ok(Value::Object(descriptor))
     }
 
@@ -489,7 +489,32 @@ impl Plugins {
             let _ = self.engine.publish_with(project, false);
             return Err(Error::new(reason));
         }
+        let descriptor = self.named(target, descriptor)?;
         Ok(self.summary(target, descriptor, true))
+    }
+
+    /// `descriptor` with the name and maker its loaded instance reports, where it has none
+    /// (neither the request nor the catalogue knew them), stored in the engine's project too.
+    fn named(&self, target: &Target, mut descriptor: Value) -> Result<Value> {
+        let Ok(hosted) = self.hosted(target, &descriptor) else { return Ok(descriptor) };
+        let identity = &hosted[0].identity;
+        let missing: Vec<(&str, &String)> = [("name", &identity.name), ("manufacturer", &identity.manufacturer)].into_iter().filter(|(key, value)| text(&descriptor, key).is_none() && !value.is_empty()).collect();
+        if missing.is_empty() {
+            return Ok(descriptor);
+        }
+        for (key, value) in &missing {
+            descriptor[*key] = json!(value);
+        }
+        let current = self.project()?;
+        self.edit(&current, |value| {
+            for other in value["audioPlugins"].as_array_mut().into_iter().flatten().filter(|other| other["instanceID"] == descriptor["instanceID"]) {
+                for (key, value) in &missing {
+                    other[*key] = json!(value);
+                }
+            }
+            Ok(())
+        })?;
+        Ok(descriptor)
     }
 
     /// `plugin.load`.
