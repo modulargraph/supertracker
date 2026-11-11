@@ -140,7 +140,7 @@
         + ` Studio input monitoring</button><button id="instrument-record-input">Sample this synth… <kbd>⌘⇧R</kbd>`
         + `</button><button id="instrument-line-inputs">Line inputs…</button><button id="instrument-audio-settings">Audio `
         + `settings</button></div></div></div>` : inst.type === 'plugin' ? plugin ? `<div class="panel wide instrument-plugin-overview" aria-label="Plug-in instrument">`
-        + `<div class="plugin-overview-main"><div class="plugin-overview-name"><span>Plug-in instrument${plugin.format ? ' · ' + esc(plugin.format) : ''}</span>`
+        + `<div class="plugin-overview-main"><div class="plugin-overview-name"><span>Plug-in instrument · ${esc(plugin.format)}</span>`
         + `<h2>${esc(plugin.name || inst.name)}</h2></div><div class="plugin-overview-actions">`
         + `<button id="browse-plugins">Browse instruments</button><button id="plugin-editor">Open plug-in editor</button>`
         + `<button id="plugin-parameters">Parameters & presets</button></div>`

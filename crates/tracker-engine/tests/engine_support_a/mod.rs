@@ -344,6 +344,11 @@ half_methods! { ControlHalf, control_half;
         let (control, shared, sample_rate) = self.half.parts();
         control.set_track(index, track);
     }
+    fn set_track_voice(&mut self, track: i32, choke_group: i32, choke_scope: i32, voice_mode: i32) -> bool {
+        #[allow(unused_variables)]
+        let (control, shared, sample_rate) = self.half.parts();
+        control.set_track_voice(track, choke_group, choke_scope, voice_mode)
+    }
     fn set_instrument(&mut self, index: i32, instrument: STInstrument) {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();

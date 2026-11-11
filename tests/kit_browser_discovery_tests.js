@@ -48,7 +48,7 @@ const { fresh } = new Function('require', '__dirname', prefix + '\nreturn {fresh
   empty.browser.event('library.progress', { scanning: false, kitIndexUpgradePending: true, kitIndexUpgradeScanning: false, kitIndexUpgradeOfflineRoots: [] });
   assert.doesNotMatch(empty.markup, /Reconnect unavailable drives first/);
   assert.doesNotMatch(empty.markup, /Finding Maschine groups…/, 'pending failed/cancelled scans do not look active');
-  empty.browser.controller.toggleUserOnly(); await empty.run();
+  empty.browser.controller.toggleUser(); await empty.run();
   assert.match(empty.markup, /No saved kits yet/);
   assert.match(empty.markup, /id="kitb-new-empty"/);
   empty.browser.controller.choose('tags', 'Kits\u001fHip Hop'); await empty.run();

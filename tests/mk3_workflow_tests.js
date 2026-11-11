@@ -126,18 +126,17 @@ test('KEYBOARD while lit opens the key & scale page; KEYBOARD again closes it', 
 
 test('CHANNEL · Track sets voice mode and choke group of a sample track on encoders 7 and 8 (one Undo step each)', async () => {
   const h = session(), { MK3, ST, state } = h;
-  ST.mutate('type', p => { p.instruments[0].type = 'sample'; p.instruments[0].chokeGroup = 3; });
+  ST.mutate('type', p => { p.instruments[0].type = 'sample'; p.tracks[0].chokeGroup = 3; });
   h.press('channel'); h.press('display2');
   let page = MK3.page();
   assert.equal(page.knobs[6]?.label, 'Voice'); assert.equal(page.knobs[7]?.label, 'Choke');
-  assert.equal(page.knobs[7].value, 'Group 3', 'a legacy instrument choke group shows through');
+  assert.equal(page.knobs[7].value, 'Group 3');
   const undo = state.undo.length;
   h.input({ type: 'touch', target: 'encoder7', touched: true }); h.input({ type: 'encoder', index: 6, delta: .08 }); h.input({ type: 'touch', target: 'encoder7', touched: false });
   h.input({ type: 'touch', target: 'encoder8', touched: true }); h.input({ type: 'encoder', index: 7, delta: .08 }); h.input({ type: 'touch', target: 'encoder8', touched: false });
   h.advance(500); await tick();
   assert.equal(state.project.tracks[0].voiceMode, 'mono');
   assert.equal(state.project.tracks[0].chokeGroup, 4);
-  assert.equal(state.project.instruments[0].chokeGroup, undefined, 'the track value replaces the instrument-wide one');
   assert.equal(state.undo.length, undo + 2);
   assert.equal(state.project.tracks[1].voiceMode, undefined, 'other tracks keep theirs');
   // A synth track has neither.

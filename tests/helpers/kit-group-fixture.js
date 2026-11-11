@@ -11,7 +11,7 @@ function groupProject({ name = 'Fixture Kit', pads = [0, 1, 2], plugins = [], bu
   const instruments = pads.map((pad, i) => ({ id: i, name: `Pad ${pad + 1} ${name}`, type: 'sample', samplePath: `/Kits/${name}/pad${pad + 1}.wav`, rootNote: 60, volume: 1 }));
   const audioPlugins = [
     ...plugins.map(({ pad, kind = 'effect', slot = 0, component = 'stfx:compressor' }, n) => ({
-      owner: `track:${kitID}-pad${pad}`, kind, slot, component, instanceID: `src-plugin-${n}`, name: component, format: 'Builtin', state: 'AAAA' })),
+      owner: `track:${kitID}-pad${pad}`, kind, slot, component, instanceID: `src-plugin-${n}`, name: component, format: component.startsWith('stfx:') ? 'Builtin' : component.split(':')[0].toUpperCase(), state: 'AAAA' })),
     ...Array.from({ length: busInserts }, (_, slot) => ({ owner: `bus:${busID}`, kind: 'effect', slot, component: 'stfx:reverb', instanceID: `src-bus-${slot}`, name: 'Reverb', format: 'Builtin', state: 'AAAA' }))
   ];
   const outputs = { [`bus:${busID}`]: 'master', ...Object.fromEntries(tracks.map(t => [`track:${t.routingID}`, `bus:${busID}`])) };

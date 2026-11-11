@@ -83,7 +83,7 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
     zones: [{ samplePath: '/Samples/Kick soft.wav', keyLow: 0, keyHigh: 127, velocityLow: 0, velocityHigh: 63, rootNote: 36, tune: 0, volume: 1 },
       { samplePath: '/Samples/Kick hard.wav', path: '/Samples/Kick hard.wav', keyLow: 0, keyHigh: 127, velocityLow: 64, velocityHigh: 127, rootNote: 36, tune: -.5, volume: .9 }] });
   Object.assign(p.instruments[2], { mode: 'granular', samplePath: '/Samples/Pad.flac', grainSize: .12, grainDensity: 4, grainSpray: .2, grainScan: -1, lfoSync: true, lfoBeats: .5,
-    lfoTarget: 'position', lfoShape: 'random', lfo2Target: 'grainSize', voiceMode: 'legato', chokeGroup: 2 });
+    lfoTarget: 'position', lfoShape: 'random', lfo2Target: 'grainSize', voiceMode: 'legato' });
   // docs/MIDI_FILES.md: external MIDI instrument.
   Object.assign(p.instruments[7], { type: 'midi', midiOutput: 2, midiChannel: 5, midiProgram: 10, midiBankMSB: 1, midiBankLSB: 2, midiCCMap: { cutoff: 74 }, midiCCRanges: { cutoff: [20, 20000] } });
   // app-note-columns.js, step-fx.js: extra note columns and a plug-in parameter lock.

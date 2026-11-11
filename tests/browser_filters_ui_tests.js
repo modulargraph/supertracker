@@ -155,7 +155,7 @@ const facet = (h, field, value) => h.node(`${field}-${value}`, { browserFacet: f
   p.state.plugins = [
     { id: 'au:echo', name: 'Echo', manufacturer: 'Maker', type: 'effect', format: 'AU' },
     { id: 'vst3:echo', name: 'Echo', manufacturer: 'Maker', type: 'effect', format: 'VST3', bundlePath: '/Users/test/Library/Audio/Plug-Ins/VST3/Echo.vst3' },
-    { id: 'au:keys', name: 'Keys', manufacturer: 'Maker', type: 'instrument' }
+    { id: 'au:keys', name: 'Keys', manufacturer: 'Maker', type: 'instrument', format: 'AU' }
   ];
   const vst = p.node('format-vst', { browserPluginFormat: 'VST3' }, '[data-browser-plugin-format]');
   const all = p.node('format-all', { browserPluginFormat: 'all' }, '[data-browser-plugin-format]');
@@ -170,13 +170,13 @@ const facet = (h, field, value) => h.node(`${field}-${value}`, { browserFacet: f
   assert.equal(p.calls.find(call => call.command === 'plugin.load').payload.bundlePath, '/Users/test/Library/Audio/Plug-Ins/VST3/Echo.vst3');
   all.fire('click'); assert(p.browser.render().includes('1 effects'));
   p.browser.showPlugins('instrument'); html = p.browser.render();
-  assert(html.includes('browser-format-badge">AU'), 'legacy AU descriptors retain their format');
+  assert(html.includes('browser-format-badge">AU'), 'the instrument list shows each format');
 
   // A stale plug-in attachment restores the current project only after pending edits settle.
   for (const outcome of ['latest', 'replaced-again', 'failed']) {
     const b = harness(); let finishLoad, finishSync, enterSync;
     const syncing = new Promise(resolve => { enterSync = resolve; }), gate = new Promise(resolve => { finishSync = resolve; });
-    b.state.plugins = [{ id: 'au:fixture', name: 'Fixture keys', type: 'instrument' }];
+    b.state.plugins = [{ id: 'au:fixture', name: 'Fixture keys', type: 'instrument', format: 'AU' }];
     const button = b.node('browser-plugin-load');
     b.window.ST.beforeEngineSync = () => { enterSync(); return gate; };
     b.reply = command => command === 'plugin.load' ? new Promise(resolve => { finishLoad = resolve; }) : command === 'engine.project' && outcome === 'failed' ? Promise.reject(new Error('Stale plug-in restoration failed')) : {};

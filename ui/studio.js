@@ -512,7 +512,7 @@
         + `<input type="search" class="field" id="studio-plugin-search" placeholder="Search plug-in effects…" value="${esc(ui.pluginQuery)}"`
         + ` aria-label="Search plug-in effects"><button class="btn studio-small" data-studio-action="close-plugin-picker">Close</button>`
         + `</div><div class="studio-picker-results">${ui.pluginBusy ? '<p class="muted">Loading plug-ins…</p>' : available.length ? available.map(p => `<button class="studio-plugin-choice" data-add-plugin="${esc(p.id)}" data-plugin-bundle-path="${esc(p.bundlePath || '')}">`
-        + `<strong>${esc(p.name)}</strong><span>${esc((p.format || 'AU') + (p.manufacturer ? ' · ' + p.manufacturer : ''))}</span>`
+        + `<strong>${esc(p.name)}</strong><span>${esc(p.format + (p.manufacturer ? ' · ' + p.manufacturer : ''))}</span>`
         + `<span>＋</span></button>`).join('') : '<p class="muted">No matching plug-in effects. Installed system and third-party plug-ins appear here.</p>'}</div></div>`;
   }
 

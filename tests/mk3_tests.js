@@ -426,7 +426,7 @@ const contractNames = namesText.split(/\s+/).filter(Boolean).flatMap(name => {
     reset();
     const chosen = [], opts = Array.from({ length: 30 }, (_, i) => ({ value: 'exp' + i, label: 'Expansion ' + String(i).padStart(2, '0'), count: 10 + i }));
     let applied = null; const K = { fields: ['sources', 'expansions', 'tags'], list: () => ({ items: Array.from({ length: 50 }, (_, i) => ({ name: 'Kit ' + i, detail: 'Pack' })), selected: 0, total: 50, offset: 0 }), filterValue: f => f === 'expansions' && applied ? applied : 'All',
-      options: f => f === 'expansions' ? opts : [], current: f => f === 'expansions' ? applied : null, choose: (f, v) => { chosen.push([f, v]); if (f === 'expansions') applied = v; }, cycle() {}, move() {}, page() {}, load() {}, preview() {}, toggleUserOnly() {}, toggleFavorites() {}, toggleAutoPreview() {}, favorite() {}, clear() {} };
+      options: f => f === 'expansions' ? opts : [], current: f => f === 'expansions' ? applied : null, choose: (f, v) => { chosen.push([f, v]); if (f === 'expansions') applied = v; }, cycle() {}, move() {}, page() {}, load() {}, preview() {}, toggleUser() {}, toggleFavorites() {}, toggleAutoPreview() {}, favorite() {}, clear() {} };
     const savedK = h.win.STKitBrowser, savedB = h.win.STBrowser; let tab = 'kits';
     h.win.STKitBrowser = { controller: K }; h.win.STBrowser = { controller: { get tab() { return tab; }, setTab: t => { tab = t; }, fields: [], list: K.list }, render: () => '', bind() {}, search() {}, focusSearch() {} };
     press('browser'); assert.equal(MK3.page().data.focus, 'results');

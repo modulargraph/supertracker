@@ -31,24 +31,26 @@
     return Number(device?.inputChannels) === 1 && channels.length === 2 && channels[0] === 0 && channels[1] === 1 ? [0] : [...channels];
   }
   function inputSummary(instrument) {
-    const profile = instrument?.recordingInput;
-    return profile?.deviceUID
-        ? `${profile.deviceName || 'Saved audio interface'} · ${channelDescription(profile.channels)} · Root ${noteName(instrument.rootNote ?? 60)}`
-        : `Current Studio input · no saved interface · Root ${noteName(instrument?.rootNote ?? 60)}`;
+    const profile = instrument.recordingInput;
+    return profile
+        ? `${profile.deviceName} · ${channelDescription(profile.channels)} · Root ${noteName(instrument.rootNote)}`
+        : `Current Studio input · no saved interface · Root ${noteName(instrument.rootNote)}`;
   }
+  /* A saved input (a track's live input, or the input a hardware instrument was last sampled from:
+     instrument.recordingInput { deviceUID, deviceName, channels }) names its device by identity. */
   function resolveSavedInput(session) {
     const profile = savedInput(session);
     const devices = session.audio.inputs || [];
-    const selected = profile?.deviceUID
+    const selected = profile
         ? devices.find(device => device.uid === profile.deviceUID)
         : devices.find(device => Number(device.id) === Number(session.audio.inputDevice || session.audio.defaultInput));
     session.inputDevice = Number(selected?.id || 0);
-    session.inputChannels = profile?.deviceUID
+    session.inputChannels = profile
         ? Array.isArray(profile.channels) && [1, 2].includes(profile.channels.length) && profile.channels.every(Number.isInteger)
             ? [...profile.channels]
             : [-1, -1]
         : studioInputChannels(session.audio);
-    session.missingSavedInput = !!profile?.deviceUID && !selected;
+    session.missingSavedInput = !!profile && !selected;
   }
   function requireInput(session) {
     const device = inputDevice(session);
@@ -148,7 +150,7 @@
     get('record-input-summary').textContent = session.missingSavedInput
         ? `Saved input ${profile.deviceName || 'interface'} is unavailable. Select an input explicitly.`
         : session.hardwareSample
-        ? profile?.deviceUID
+        ? profile
             ? `Saved input for ${session.instrumentObject.name}. Changes and root note are remembered when recording starts.`
             : 'Using the current Studio input. Choose an interface and channels; they will be remembered for this synth when recording starts.'
         : 'Choose one input for mono, or two inputs for stereo.';

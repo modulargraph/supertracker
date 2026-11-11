@@ -198,8 +198,6 @@ pub struct STInstrument {
     pub grain_position: f32,
     /// 0 poly, 1 mono, 2 legato.
     pub voice_mode: i32,
-    /// 0 disables.
-    pub choke_group: i32,
     pub filter_attack: f32,
     pub filter_decay: f32,
     pub filter_sustain: f32,
@@ -253,7 +251,6 @@ impl STInstrument {
         grain_size: 0.0,
         grain_position: 0.0,
         voice_mode: 0,
-        choke_group: 0,
         filter_attack: 0.0,
         filter_decay: 0.0,
         filter_sustain: 0.0,

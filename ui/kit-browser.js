@@ -96,18 +96,17 @@
   const text = value => typeof value === 'string' && value.length <= 2048 ? value : null;
   function settings() {
     const value = filters();
-    return { query: local.query, user: local.user, userOnly: local.user, product: value.product, bank: value.bank, subBank: value.subBank, types: [...value.types], subtypes: [...value.subtypes],
+    return { query: local.query, user: local.user, product: value.product, bank: value.bank, subBank: value.subBank, types: [...value.types], subtypes: [...value.subtypes],
       characters: [...value.characters], favorites: local.favorites, autoPreview: local.autoPreview };
   }
-  // Also accepts the earlier { filters: { expansions, tags }, userOnly } shape.
   function restoreSettings(value) {
     if (!value || typeof value !== 'object') return;
     local.query = typeof value.query === 'string' ? value.query.slice(0, 1024) : '';
-    local.user = value.user === true || value.userOnly === true;
+    local.user = value.user === true;
     const next = blankFilters();
-    next.product = text(value.product) ?? strings(value.filters?.expansions)[0] ?? null;
+    next.product = text(value.product);
     next.bank = next.product !== null ? text(value.bank) : null; next.subBank = next.bank !== null ? text(value.subBank) : null;
-    next.types = new Set(strings(value.types)); next.subtypes = new Set(strings(value.subtypes)); next.characters = new Set(strings(value.characters ?? value.filters?.tags));
+    next.types = new Set(strings(value.types)); next.subtypes = new Set(strings(value.subtypes)); next.characters = new Set(strings(value.characters));
     local.filters[local.user ? 'user' : 'library'] = next;
     local.favorites = value.favorites === true;
     if (typeof value.autoPreview === 'boolean') local.autoPreview = value.autoPreview;
@@ -722,9 +721,9 @@
     options: field => fieldGroups[field] ? fieldOptions(field) : [], current: fieldCurrent, choose,
     cycle(field, delta) { const list = fieldOptions(field).map(option => option.value), step = Math.sign(delta); if (!step) return; const index = list.indexOf(fieldCurrent(field)), next = (fieldCurrent(field) === null ? -1 : index) + step; choose(field, next >= 0 && next < list.length ? list[next] : null); },
     toggle(field, value) { const group = fieldGroups[field] || field; if (group === 'product') { choose('expansions', filters().product === value ? null : value); return; } if (['types', 'subtypes', 'characters', 'banks', 'subBanks'].includes(group)) toggleChip(group, value); },
-    list() { return { tab: 'kits', items: resultsCurrent() ? local.items.map(item => ({ name: item.name, detail: [item.product, item.bank].filter(Boolean).join(' · '), favorite: !!item.favorite, offline: item.available === false, preview: !!previewPath(item) })) : [], selected: filters().selected, total: local.total, offset: 0, busy: local.busy || !resultsCurrent(), preview: previewActive(), autoPreview: local.autoPreview, query: local.query, filters: activeFilterCount(), favorites: local.favorites, userOnly: local.user }; },
+    list() { return { tab: 'kits', items: resultsCurrent() ? local.items.map(item => ({ name: item.name, detail: [item.product, item.bank].filter(Boolean).join(' · '), favorite: !!item.favorite, offline: item.available === false, preview: !!previewPath(item) })) : [], selected: filters().selected, total: local.total, offset: 0, busy: local.busy || !resultsCurrent(), preview: previewActive(), autoPreview: local.autoPreview, query: local.query, filters: activeFilterCount(), favorites: local.favorites, user: local.user }; },
     move, page: delta => move(Math.sign(delta) * 16), load, preview: () => preview(current(), true), favorite: () => favorite(),
-    toggleFavorites() { local.favorites = !local.favorites; changed(); }, toggleUserOnly() { setUser(!local.user); }, setUser,
+    toggleFavorites() { local.favorites = !local.favorites; changed(); }, toggleUser() { setUser(!local.user); }, setUser,
     toggleAutoPreview() { local.autoPreview = !local.autoPreview; if (!local.autoPreview) stopPreview(); paint(); window.STBrowser?.saveState?.(); },
     up, clear: () => clearFilters(), clearFilters: () => clearFilters()
   };

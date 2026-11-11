@@ -236,7 +236,7 @@ fn absent_fields_stay_absent_and_read_as_documented_defaults() {
     assert_eq!((instrument.lfo_rate(), instrument.lfo_sync(), instrument.lfo_beats(), instrument.lfo_depth(), instrument.lfo_target(), instrument.lfo_shape()), (0.0, false, 1.0, 0.0, LfoTarget::Cutoff, LfoShape::Sine));
     assert_eq!((instrument.filter_attack(), instrument.filter_decay(), instrument.filter_sustain(), instrument.filter_release(), instrument.filter_env_amount()), (0.005, 0.2, 0.0, 0.2, 0.0));
     assert_eq!((instrument.slice_count(), instrument.grain_size(), instrument.grain_position(), instrument.grain_density()), (16, 0.08, 0.5, 2));
-    assert_eq!((instrument.wavetable_position(), instrument.wavetable_frame_size(), instrument.voice_mode(), instrument.choke_group(), instrument.midi_channel()), (0.0, 0, VoiceMode::Poly, 0, 1));
+    assert_eq!((instrument.wavetable_position(), instrument.wavetable_frame_size(), instrument.voice_mode(), instrument.midi_channel()), (0.0, 0, VoiceMode::Poly, 1));
     let pattern = &project.pattern_list()[0];
     assert_eq!((pattern.length(), pattern.number(3)), (64, 3));
     let step = pattern.step(0, 0).unwrap();

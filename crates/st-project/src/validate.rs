@@ -157,6 +157,10 @@ pub fn validate(project: &Project) -> Result<()> {
             return fail(format!("Instrument {} has an unknown type.", index + 1));
         }
         validate_kept_plugin(project, tracks, index, instrument)?;
+        // The input a hardware instrument is sampled from (`recordingInput`, the recorder's) names its device.
+        if instrument.extra.get("recordingInput").is_some_and(|input| input.get("deviceUID").and_then(Value::as_str).unwrap_or("").is_empty()) {
+            return fail(format!("Instrument {}: the saved recording input must name its audio device.", index + 1));
+        }
         if instrument.extra.contains_key("zones") {
             return fail("Sample zones must be a list of zones.");
         }

@@ -338,7 +338,7 @@
           + `<span>Voice mode · this track</span><select id="sampler-voice-mode">${[['poly', 'Polyphonic'], ['mono', 'Monophonic'], ['legato', 'Legato']].map(([value, label]) => `<option value="${value}" ${(voiceTrack()?.voiceMode || inst.voiceMode || 'poly') === value ? 'selected' : ''}>${label}</option>`).join('')}</select>`
           + `</label><label class="field"><span>Choke group · this track</span><select id="sampler-choke">${Array.from({
         length: 17
-      }, (_, index) => `<option value="${index}" ${Number(voiceTrack()?.chokeGroup ?? inst.chokeGroup ?? 0) === index ? 'selected' : ''}>${index === 0 ? 'Off · independent' : `Group ${index}`}</option>`).join('')}</select>`
+      }, (_, index) => `<option value="${index}" ${Number(voiceTrack()?.chokeGroup ?? 0) === index ? 'selected' : ''}>${index === 0 ? 'Off · independent' : `Group ${index}`}</option>`).join('')}</select>`
           + `</label></div><p class="sampler-help">Voice mode and choke group belong to the track. Polyphonic overlaps notes and ratchet hits. Mono retriggers `
           + `the sample for each note or ratchet hit. Legato joins held notes without restarting the sample or envelope. Tracks in one choke group `
           + `cut each other off (within their track group: an open hat chokes a closed hat on another track).</p></div></section>`,
@@ -520,7 +520,6 @@
       const track = p.tracks[state().track], value = limit(event.target.value, 0, 16);
       if (!track) return;
       if (value) track.chokeGroup = value; else delete track.chokeGroup;
-      delete current().chokeGroup;
     }));
     on('sampler-detect-transients', 'click', detectTransients);
     on('sampler-cancel-analysis', 'click', () => { if (slicing.analysis) { slicing.analysis.cancelled = true; updateSliceStatus(); } });

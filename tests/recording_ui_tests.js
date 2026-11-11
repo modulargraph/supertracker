@@ -269,8 +269,8 @@ test('a missing saved hardware device blocks capture until the user explicitly c
   assert.equal(h.calls.find(call => call.command === 'audio.configure').payload.inputDevice, 33);
   assert.deepEqual(copy(h.state.project.instruments[0].recordingInput), { deviceUID: 'second-stable-uid', deviceName: 'Second input', channels: [0, 1] });
 });
-test('legacy hardware preferences use a clearly named current input and device changes reset an incompatible map', async () => {
-  const h = hardware(); h.state.project.instruments[0].recordingInput = { deviceName: 'Legacy name without UID', channels: [6, 7] };
+test('without a saved input the recorder names the current Studio input, and a device change resets an incompatible channel map', async () => {
+  const h = hardware();
   await h.open({ hardwareSample: true });
   assert.match(h.get('record-input-summary').textContent, /current (Studio|global) input/i); assert.equal(h.get('record-input-device').value, '22');
   assert.equal(h.get('record-input-left').value, '2'); assert.equal(h.get('record-input-right').value, '3');

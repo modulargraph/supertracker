@@ -195,7 +195,6 @@ fn engine_instrument(item: &st_project::model::Instrument) -> STInstrument {
     p.grain_reverse = item.grain_reverse() as f32;
     p.grain_stereo = item.grain_stereo() as f32;
     p.voice_mode = voice_mode(item.voice_mode());
-    p.choke_group = clamp_i32(item.choke_group());
     p.filter_attack = item.filter_attack() as f32;
     p.filter_decay = item.filter_decay() as f32;
     p.filter_sustain = item.filter_sustain() as f32;

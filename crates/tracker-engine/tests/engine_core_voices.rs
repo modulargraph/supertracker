@@ -357,9 +357,9 @@ fn test_mono_legato_choke_and_mute() {
     render_events(&mut e, 1);
     e.begin_update();
     p.voice_mode = 0;
-    p.choke_group = 2;
     e.set_instrument(0, p);
     e.set_instrument(1, p);
+    assert!(e.set_track_voice(0, 2, 0, -1) && e.set_track_voice(1, 2, 0, -1));
     e.commit_update();
     e.note_on(0, 0, 60, 100);
     e.note_on(1, 1, 65, 100);

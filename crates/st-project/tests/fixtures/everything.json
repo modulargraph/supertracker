@@ -344,8 +344,7 @@
    "midiInputChannel": 0,
    "midiChannel": 1,
    "monitor": false,
-   "voiceMode": "legato",
-   "chokeGroup": 2
+   "voiceMode": "legato"
   },
   {
    "id": 3,

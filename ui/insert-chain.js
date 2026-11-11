@@ -27,7 +27,7 @@
     let view = null; try { view = ctl?.view?.() || null; } catch { view = null; }
     return view && view.instanceID === plugin.instanceID ? { ctl, view } : { ctl, view: null };
   }
-  const category = plugin => FX()?.isBuiltin(plugin.component) ? FX().categoryOf(plugin.component) || 'Effect' : plugin.manufacturer || plugin.format || 'Plug-in';
+  const category = plugin => FX()?.isBuiltin(plugin.component) ? FX().categoryOf(plugin.component) || 'Effect' : plugin.manufacturer || plugin.format;
   const displayName = plugin => plugin?.nks?.name || plugin?.name || plugin?.component || 'Effect';
 
   // ---- Rendering ------------------------------------------------------------------------------------------------
@@ -66,7 +66,7 @@
       + ` aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight B D Delete"><span class="fx-tile-top"><span class="fx-tile-index">${index + 1}</span><span class="fx-tile-category">${esc(category(plugin))}</span>`
       + `<button type="button" class="fx-power" tabindex="-1" data-fx-power="${plugin.slot}" aria-pressed="${!plugin.bypass}" aria-label="${plugin.bypass ? 'Turn on' : 'Bypass'} ${esc(displayName(plugin))}" title="${plugin.bypass ? 'Bypassed · click to turn on' : 'On · click to bypass'} (B)">`
       + `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v6M4.6 4.2a5 5 0 1 0 6.8 0"/></svg></button></span><strong class="fx-tile-name">${esc(displayName(plugin))}</strong>`
-      + `<span class="fx-tile-state">${plugin.bypass ? 'Bypassed' : FX()?.isBuiltin(plugin.component) ? 'Built-in' : esc(plugin.format || 'Plug-in')}</span></div>`;
+      + `<span class="fx-tile-state">${plugin.bypass ? 'Bypassed' : FX()?.isBuiltin(plugin.component) ? 'Built-in' : esc(plugin.format)}</span></div>`;
   }
   function addPanel(owner, prefix) {
     const query = local.query.trim().toLowerCase(), match = name => !query || String(name).toLowerCase().includes(query);
@@ -75,7 +75,7 @@
     const column = (name, items) => `<div class="fx-add-column" role="group" aria-label="${esc(name)}"><h5>${esc(name)}</h5>${items.join('')}</div>`;
     const choice = (id, name, detail, bundle = '') => `<button type="button" class="fx-add-choice" data-fx-choose="${esc(id)}" data-fx-bundle="${esc(bundle)}"><span>${esc(name)}</span>${detail ? `<small>${esc(detail)}</small>` : ''}</button>`;
     const columns = groups.map(group => column(group.name, group.effects.map(effect => choice(effect.id, effect.name, ''))));
-    columns.push(column('Plug-ins', local.plugins ? others.length ? others.map(item => choice(item.id, item.name, item.manufacturer || item.format || '', item.bundlePath || '')) : ['<p class="muted fx-add-note">No matching plug-in effects.</p>']
+    columns.push(column('Plug-ins', local.plugins ? others.length ? others.map(item => choice(item.id, item.name, item.manufacturer || item.format, item.bundlePath || '')) : ['<p class="muted fx-add-note">No matching plug-in effects.</p>']
       : [`<p class="muted fx-add-note">${local.pluginsLoading ? 'Reading installed plug-ins…' : 'Installed plug-in effects'}</p>`]));
     return `<div class="fx-add-panel" id="${prefix}-add-panel" role="dialog" aria-label="Add an insert effect"><div class="fx-add-head"><input type="search" id="${prefix}-add-search" class="field" placeholder="Search effects…" value="${esc(local.query)}" aria-label="Search effects" autocomplete="off" spellcheck="false">`
       + `<span class="muted">↑ ↓ ← → choose · Return adds · Esc closes</span><button type="button" data-fx-action="close-add">Close</button></div><div class="fx-add-columns">${columns.join('')}</div></div>`;

@@ -391,6 +391,16 @@ fn instrument_types() {
     }
 }
 
+/// The input a hardware instrument is sampled from is saved with the device's identity; a name
+/// alone is not a saved input.
+#[test]
+fn the_recording_input_of_an_instrument() {
+    accepted(|p| p["instruments"][0]["recordingInput"] = json!({ "deviceUID": "usb-1", "deviceName": "Interface", "channels": [2, 3] }));
+    for input in [json!({ "deviceName": "Interface", "channels": [2, 3] }), json!({ "deviceUID": "", "deviceName": "Interface" }), json!({ "deviceUID": 4 }), json!("Interface"), Value::Null] {
+        assert_eq!(rejected(|p| p["instruments"][0]["recordingInput"] = input), "Instrument 1: the saved recording input must name its audio device.");
+    }
+}
+
 /// A built-in effect has one spelling, the one the plug-in catalogue lists.
 #[test]
 fn built_in_effect_components() {

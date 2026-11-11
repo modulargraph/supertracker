@@ -279,7 +279,7 @@
         filterId: filter.id
       }));
     }
-    if (tab === 'kits' && K) knobs.push(actionKnob('Content', list?.userOnly ? 'User' : 'All', () => K.toggleUserOnly(), { detent: .1 }));
+    if (tab === 'kits' && K) knobs.push(actionKnob('Content', list?.user ? 'User' : 'All', () => K.toggleUser(), { detent: .1 }));
     while (knobs.length < 7) knobs.push(null);
     knobs.length = 7;
     const results = list || { items: [], selected: 0, total: 0, offset: 0 };
@@ -294,8 +294,8 @@
       on: tab === 'kits',
       shift: button('User kits', () => {
         B?.setTab('kits');
-        K.toggleUserOnly();
-      }, { on: tab === 'kits' && !!list?.userOnly })
+        K.toggleUser();
+      }, { on: tab === 'kits' && !!list?.user })
     }));
     // The touched filter encoder previews its list on the left screen; otherwise the focused filter.
     const touchedIndex = [...M.touched].filter(name => /^encoder[1-8]$/.test(name)).map(name => Number(name.slice(7)) - 1).pop();

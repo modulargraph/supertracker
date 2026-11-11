@@ -265,12 +265,10 @@
       write: (q, v) => { if (q.tracks[track]) q.tracks[track].voiceMode = v; },
       options: [['poly', 'Poly'], ['mono', 'Mono'], ['legato', 'Legato']] }),
     enumKnob({ key: `mix:${track}:chokeGroup`, label: 'Choke', name: `${t.name} · choke group`,
-      read: q => Number(q.tracks[track]?.chokeGroup ?? instOf(q)?.chokeGroup ?? 0),
+      read: q => Number(q.tracks[track]?.chokeGroup ?? 0),
       write: (q, v) => {
         const target = q.tracks[track]; if (!target) return;
         if (v) target.chokeGroup = v; else delete target.chokeGroup;
-        // As the instrument page does: the track's value replaces the instrument-wide choke group.
-        if (instOf(q)) delete instOf(q).chokeGroup;
       },
       options: Array.from({ length: 17 }, (_, i) => [i, i ? `Group ${i}` : 'Off']) })];
   }

@@ -247,7 +247,6 @@ impl Control {
             p.wavetable_frame_size = 0;
         }
         p.voice_mode = clamp(p.voice_mode, 0, 2);
-        p.choke_group = clamp(p.choke_group, 0, 127);
         p.mode = clamp(p.mode, 0, 6);
         p.root_note = clamp(p.root_note, 0, 127);
         p.filter_type = clamp(p.filter_type, 0, 2);

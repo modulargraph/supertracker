@@ -242,8 +242,6 @@ model! {
         "zones" => zones: Vec<Zone>,
         /// Voice mode. A track's own `voiceMode` overrides it.
         "voiceMode" => voice_mode: VoiceMode = VoiceMode::Poly,
-        /// Choke group, 0 = none.
-        "chokeGroup" => choke_group: i64 = 0,
         /// The plug-in of a plug-in instrument that no track plays: its descriptor without owner
         /// and instance, kept so the instrument can be assigned to a track again with its settings.
         /// Absent otherwise: while a track plays the instrument, the plug-in is that track's

@@ -817,7 +817,7 @@
     (state.project?.audioPlugins || []).filter(value => value.owner === owner && value.kind === 'effect').forEach(value => { effects[value.slot] = value; });
     return effects;
   }
-  const pluginFormat = plugin => String(plugin.format || 'AU').toUpperCase();
+  const pluginFormat = plugin => plugin.format.toUpperCase();
   function filteredPlugins() {
     const query = local.pluginQuery.toLocaleLowerCase().trim();
     const matches = (app().state.plugins || []).filter(plugin => plugin.type === local.pluginKind
