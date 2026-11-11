@@ -61,6 +61,9 @@ the checklists in [PLUGIN_CONTAINER.md](PLUGIN_CONTAINER.md) and the list of une
   from a JSON array: each chooser takes the next element, a path or `null` for Cancel.
 - Interface tests play the host through `tests/helpers/host.js`; a new host command needs its answer there only
   when a test depends on it.
+- An interface test that needs a project builds it with `complete()` from `tests/helpers/project.js`, which runs
+  the page's own `normalize` over the parts the test names. The page relies on the shape `normalize` gives every
+  project, so a partial project written by hand fails where the page reads a part it lacks.
 
 ## Not covered by any test
 

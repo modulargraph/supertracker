@@ -64,7 +64,7 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
   p.routing.sends.push({ id: 'send1', source: `track:${p.tracks[0].routingID}`, tap: 'postFader', destination: 'bus:ret1', gain: .5, enabled: true });
   p.routing.sidechains.push({ id: 'sc1', source: `track:${p.tracks[3].routingID}`, tap: 'preFader',
     destination: 'comp-1', gain: 1, enabled: true });
-  // Plug-in descriptors as plugin.load returns them (AudioPluginRack.summary) plus built-in effects (insert-chain.js).
+  // Plug-in descriptors as plugin.load returns them, plus built-in effects (insert-chain.js).
   p.audioPlugins = [
     { owner: `track:${p.tracks[0].routingID}`, kind: 'effect', slot: 0, instanceID: 'comp-1', component: 'vst3:ABCDEF0123456789ABCDEF0123456789',
       name: 'Squash', manufacturer: 'Acme', format: 'VST3', bundlePath: '/Library/Audio/Plug-Ins/VST3/Squash.vst3', bypass: false, latency: 0.0013, tailTime: 0,
@@ -116,7 +116,7 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
   p.viewState = { gateColumn: true, automationPanel: 'song', songScroll: true, hideEmpty: true, hideEmptyScope: 'song', collapsedTracks: [p.tracks[0].routingID] };
   // app-performance.js: the keyboard performance settings.
   p.performance = { root: 5, scale: 'minor', scaleMode: 'degrees', chord: 'scaleTriad', chordSet: 'neosoul', applyToMIDI: false };
-  // MediaRelinker.fingerprint / apply
+  // st_project::relink: fingerprints and a relink operation
   p.mediaManifest = [{ path: '/Audio/Vocal 1.wav', size: 123456, modified: 1790000000.25, sha256: '9f'.repeat(32) }];
   p.mediaRelinkHistory = [{ date: '2026-10-02T08:00:00Z', changes: [{ id: '/audioClips/0/path', from: '/Old/Vocal 1.wav', to: '/Audio/Vocal 1.wav', differentContent: false }] }];
   p.metronome = true; p.timeSignature = { numerator: 7, denominator: 8 };

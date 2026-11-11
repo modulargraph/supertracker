@@ -1,6 +1,6 @@
 //! Maschine group import: the archive reader across versions, module parameters, sampler zones,
 //! hosted plug-in state, the control mappings and the conversion to a kit.
-//! Ported from `tests/MaschineGroup*Tests.swift`. Every fixture is an original, synthetic
+//! Every fixture is an original, synthetic
 //! archive built to the decoded member layout; no vendor file, sample or code is involved.
 
 mod common;

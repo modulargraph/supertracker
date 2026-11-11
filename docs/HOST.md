@@ -527,7 +527,16 @@ Behaviour worth knowing:
 - A project is complete when the host gets it: the format version, a routing table with its four
   collections, a routing identity on every track, an owner on every plug-in descriptor. The page's
   `normalize` (`ui/app-project-model.js`) is the one place that completes a project; after it, and in
-  the host, nothing fills in a missing part.
+  the host, nothing fills in a missing part. The comment above `normalize` lists what every project
+  in the page therefore has (every top-level collection, `viewState`, the keyboard performance
+  settings, a track's instrument, a lane's points) and what stays optional; the rest of the page
+  reads those parts without asking whether they are there.
+- An instrument's `type` is `sample`, `plugin` (a CLAP, VST3 or Audio Unit instrument) or `midi`.
+- The keyboard performance settings (`project.performance`: key, scale, scale mode, chord, chord
+  set, whether a MIDI keyboard uses them) are the page's: it expands keys itself and sends the
+  host the map (`midi.performance`). `st-project` stores them and checks their shape (an object,
+  a key from 0 to 11, `snap` or `degrees`, names for the scale, the chord and the chord set); which
+  names exist is in the page's tables, and a name the page does not know reads there as the default.
 - One format each, named by a number. A project says its format in `version`; `st-project` reads
   `FORMAT_VERSION` and refuses every other number with one message (project files, templates and
   the recovery copy alike). `st-library` does the same for the header of a kit package. Nothing

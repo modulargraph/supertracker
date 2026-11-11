@@ -111,7 +111,7 @@ mapping; copying their raw serialized floats into these controls is invalid.
 
 Each has eight normalized controls: Tune, Decay, Tone, Impact, Noise, Attack,
 Drive, Character. Decay has a model-specific logarithmic range; metadata and
-defaults are queryable through the C ABI. The engine supplies note/root pitch
+defaults come from `tracker_engine::effects::drums`. The engine supplies note/root pitch
 ratio and applies velocity, channel gain, envelopes and routing. A voice's own
 decay terminates it even if no note-off arrives. Noise is seeded deterministically.
 
