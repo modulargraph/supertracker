@@ -243,7 +243,7 @@
         && session.project.tracks.length >= (window.TRACK_SANITY_LIMIT ?? Infinity)) throw new Error(`Sampling into a new track needs a new track. This project already has ${session.project.tracks.length} tracks. Free a track before `
         + `recording or loading the saved take.`);
     if (session.destination === 'clip'
-        && (session.project.audioClips || []).length >= 256) throw new Error('This project already has 256 audio clips. Free a clip slot before recording.');
+        && session.project.audioClips.length >= 256) throw new Error('This project already has 256 audio clips. Free a clip slot before recording.');
     if (session.destination === 'current'
         && (session.project.instruments[session.instrument] !== session.instrumentObject || session.trackObject.instrument !== session.sourceAssignment)) throw new Error('The destination instrument changed. The recording has not been attached.');
   }
@@ -283,7 +283,7 @@
       app().mutate('Record audio clip', p => { p.audioClips ||= []; p.audioClips.push(clip); applied = true; },{recordingCommit:true});
       if (!applied
           || !sameProject(session)
-          || !session.project.audioClips?.includes(clip)) throw new Error('The recording edit was not applied. Your capture file is available below.');
+          || !session.project.audioClips.includes(clip)) throw new Error('The recording edit was not applied. Your capture file is available below.');
       app().state.clipSelected = clip.id; app().state.view = 'song';
     } else {
       if (await app().captureNativeEdits?.() === false) throw new Error('Could not preserve the current plug-in settings. Your capture file is available below.');
@@ -298,7 +298,7 @@
       if (createsInstrument(session)
           && session.project.instruments.length !== index) throw new Error('The instrument list changed while loading. Your capture file is available below.');
       const channel = `track:${session.trackObject?.routingID}`;
-      const hosted = (session.project.audioPlugins || []).find(plugin => plugin.owner === channel && plugin.kind === 'instrument');
+      const hosted = session.project.audioPlugins.find(plugin => plugin.owner === channel && plugin.kind === 'instrument');
       if (hosted && !createsTrack(session)) { await app().request('plugin.remove',
           { owner: channel, kind: 'instrument', slot: hosted.slot || 0 }); session.removedPlugin = true; requireDestination(session); }
       let attachedInstrument, attachedTrack;
@@ -337,13 +337,13 @@
             reverbSend: 0
           };
           window.STRoutingProject.appendTrack(p,track,app().uid);
-          for (const pattern of p.patterns || []) { pattern.steps ||= []; pattern.steps.push(Array.from({length:pattern.length},()=>null)); }
+          for (const pattern of p.patterns) pattern.steps.push(Array.from({length:pattern.length},()=>null));
           attachedTrack = track;
         } else {
           window.STRoutingProject.keepInstrumentPlugins(p, [session.trackObject]);
           const channel = `track:${session.trackObject.routingID}`, own = plugin => plugin.owner === channel && plugin.kind === 'instrument';
-          const removed = new Set((p.audioPlugins || []).filter(own).map(plugin => plugin.instanceID).filter(Boolean));
-          p.audioPlugins = (p.audioPlugins || []).filter(plugin => !own(plugin));
+          const removed = new Set(p.audioPlugins.filter(own).map(plugin => plugin.instanceID).filter(Boolean));
+          p.audioPlugins = p.audioPlugins.filter(plugin => !own(plugin));
           p.routing.sidechains = p.routing.sidechains.filter(route => !removed.has(route.destination));
           session.trackObject.instrument = index; attachedTrack = session.trackObject;
         }

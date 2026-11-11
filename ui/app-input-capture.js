@@ -42,7 +42,7 @@
         length: clamp(Math.trunc(number(pat.length, 64)), 1, 256)
       })),
       sequence: project.sequence.map(Math.trunc),
-      clips: (project.audioClips || []).map(clip => ({
+      clips: project.audioClips.map(clip => ({
         id: String(clip.id ?? ''),
         track: Math.trunc(number(clip.track, 0)),
         startBeat: number(clip.startBeat, 0),
@@ -177,7 +177,7 @@
       finished: false,
       patterns: new Map(project.patterns.map(p => [p.id, {
         pat: p,
-        rows: (p.steps[track] || []).map(step => ({ ref: step, value: JSON.stringify(step) }))
+        rows: p.steps[track].map(step => ({ ref: step, value: JSON.stringify(step) }))
       }]))
     };
     inputCaptures.add(capture);
@@ -376,7 +376,7 @@
       capture.instrumentObject = instrument;
       capture.patterns = new Map(saved.patterns.map(p => [p.id, {
         pat: p,
-        rows: (p.steps[capture.track] || []).map(step => ({ ref: step, value: JSON.stringify(step) }))
+        rows: p.steps[capture.track].map(step => ({ ref: step, value: JSON.stringify(step) }))
       }]));
       const lineage = capture.cursor?.lineage;
       if (lineage) {

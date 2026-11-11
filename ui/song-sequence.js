@@ -38,7 +38,7 @@
   }
   function mini(pattern) {
     if (!pattern) return '';
-    const steps = pattern.steps || [], tracks = Math.max(steps.length, 1);
+    const steps = pattern.steps, tracks = Math.max(steps.length, 1);
     return Array.from({ length: 24 }, (_, bin) => {
       let count = 0; const row = Math.floor(bin / 24 * pattern.length);
       for (let track = 0; track < steps.length; track++) if (steps[track]?.[row]) count++;

@@ -39,7 +39,7 @@
 
   /** Tracks of the selection with a note starting inside its rows. */
   function soundingTracks(pat, sel) {
-    return sel.tracks.filter(t => (pat.steps?.[t] || []).slice(sel.firstRow, sel.lastRow + 1).some(hasNote));
+    return sel.tracks.filter(t => pat.steps[t].slice(sel.firstRow, sel.lastRow + 1).some(hasNote));
   }
 
   /** "Kick+Snare 00–15": the tracks that play (a whole kit by its name), then the rows. */
@@ -47,7 +47,7 @@
     const rows = `${pad(sel.firstRow)}–${pad(sel.lastRow)}`;
     const groupIDs = new Set(sel.tracks.map(t => p.tracks[t]?.groupID || null));
     if (groupIDs.size === 1 && !groupIDs.has(null)) {
-      const id = [...groupIDs][0], group = (p.groups || []).find(g => g.id === id);
+      const id = [...groupIDs][0], group = p.groups.find(g => g.id === id);
       const members = p.tracks.filter(t => t.groupID === id).length;
       if (group?.name && members === sel.tracks.length && members > 1) return `${group.name} ${rows}`;
     }

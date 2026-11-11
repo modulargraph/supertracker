@@ -129,7 +129,7 @@
   }
   function ranking(entry, fx) {
     let rank = 0;
-    for (const pattern of entry.project.patterns) for (const step of pattern.steps[entry.trackIndex] || []) for (const key of ['fx1', 'fx2']) {
+    for (const pattern of entry.project.patterns) for (const step of pattern.steps[entry.trackIndex]) for (const key of ['fx1', 'fx2']) {
       const old = step?.[key];
       if (old && old.type === fx.type && (fx.type !== 'plugin' || old.instanceID === fx.instanceID && old.address === fx.address)) rank = 2;
     }

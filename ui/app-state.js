@@ -88,7 +88,7 @@
   }
 
   function beatsPerBar(p = state.project) {
-    return (p.timeSignature?.numerator || 4) * 4 / (p.timeSignature?.denominator || 4);
+    return p.timeSignature.numerator * 4 / p.timeSignature.denominator;
   }
 
   function currentInstrument() {

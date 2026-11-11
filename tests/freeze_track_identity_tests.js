@@ -2,6 +2,7 @@
 // A freeze (or unfreeze) that finishes after the track list changed must not land on the track that moved into its index.
 const assert = require('node:assert/strict');
 const web = require('./helpers/web');
+const { complete } = require('./helpers/project');
 
 function harness() {
   const nodes = new Map(), mutations = [], toasts = [];
@@ -10,8 +11,8 @@ function harness() {
     return nodes.get(id);
   };
   let release;
-  const project = { tracks: [{ routingID: 'a', name: 'Drums', instrument: 0 }, { routingID: 'b', name: 'Bass', instrument: 0 }],
-    patterns: [{ id: 0, length: 16, steps: [[], []] }], instruments: [{}], sequence: [0] };
+  const project = complete({ tracks: [{ routingID: 'a', name: 'Drums', instrument: 0 }, { routingID: 'b', name: 'Bass', instrument: 0 }],
+    patterns: [{ id: 0, length: 16, steps: [[], []] }], instruments: [{}], sequence: [0] });
   const state = { project, track: 0, playing: false, modal: null, native: false };
   const window = { ST: {
     state, escapeHTML: String, toast: message => toasts.push(message), perform() {}, waitForEngineUpdate: async () => {},

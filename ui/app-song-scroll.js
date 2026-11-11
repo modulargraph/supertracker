@@ -24,9 +24,9 @@
   /** The song as slots on one row axis: [{flat, pattern, start, length, occurrence, occurrences}]. */
   function slots(p = state.project) {
     const counts = new Map(), seen = new Map();
-    for (const id of p.sequence || []) counts.set(id, (counts.get(id) || 0) + 1);
+    for (const id of p.sequence) counts.set(id, (counts.get(id) || 0) + 1);
     let start = 0;
-    return (p.sequence || []).map((id, flat) => {
+    return p.sequence.map((id, flat) => {
       const item = p.patterns.find(x => x.id === id), length = item?.length || 0, occurrence = (seen.get(id) || 0) + 1;
       seen.set(id, occurrence);
       const slot = { flat, pattern: id, item, start, length, occurrence, occurrences: counts.get(id) };
@@ -37,7 +37,7 @@
 
   /** The live slot: the song position when it plays the active pattern, else the active pattern's first slot (-1: not in the song). */
   function liveSlot(p = state.project) {
-    const sequence = p.sequence || [];
+    const sequence = p.sequence;
     if (sequence[state.sequence] === p.activePattern) return state.sequence;
     return sequence.indexOf(p.activePattern);
   }

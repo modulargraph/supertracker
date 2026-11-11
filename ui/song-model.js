@@ -13,7 +13,7 @@
 
   function blocks(sequence) {
     const result = [];
-    (sequence || []).forEach((id, index) => {
+    sequence.forEach((id, index) => {
       const last = result[result.length - 1];
       if (last && last.pattern === id) last.count++;
       else result.push({ index: result.length, start: index, count: 1, pattern: id });
@@ -27,7 +27,7 @@
   }
   /* Valid section loop for a project, or null. */
   function loopRange(project) {
-    const loop = project?.songLoop, length = project?.sequence?.length || 0;
+    const loop = project.songLoop, length = project.sequence.length;
     if (!loop || !Number.isInteger(loop.start) || !Number.isInteger(loop.end)) return null;
     if (loop.start < 0 || loop.end < loop.start || loop.start >= length) return null;
     return { start: loop.start, end: Math.min(loop.end, length - 1) };
@@ -36,7 +36,7 @@
      removing and moving blocks keeps the section on the same music. */
   function entries(project) {
     const loop = loopRange(project);
-    return (project.sequence || []).map((id, index) => ({ id, loop: !!loop && index >= loop.start && index <= loop.end }));
+    return project.sequence.map((id, index) => ({ id, loop: !!loop && index >= loop.start && index <= loop.end }));
   }
   function commit(project, list) {
     if (!list.length) throw new Error('The song needs at least one pattern.');
@@ -57,7 +57,7 @@
     const list = blocks(project.sequence), a = clampInt(Math.min(from, to), 0, list.length - 1), b = clampInt(Math.max(from, to), 0, list.length - 1);
     return { list, a, b, start: list[a].start, end: list[b].start + list[b].count };
   }
-  function patternExists(project, id) { return (project.patterns || []).some(pattern => pattern.id === id); }
+  function patternExists(project, id) { return project.patterns.some(pattern => pattern.id === id); }
 
   function setRepeats(project, block, count) {
     const { start, end } = span(project, block), all = entries(project), entry = all[start];
@@ -113,37 +113,37 @@
   function removePattern(project, id) {
     const all = entries(project).filter(entry => entry.id !== id);
     if (!all.length) {
-      const fallback = (project.patterns || []).find(pattern => pattern.id !== id);
+      const fallback = project.patterns.find(pattern => pattern.id !== id);
       all.push({ id: fallback ? fallback.id : 0, loop: false });
     }
     return commit(project, all);
   }
   function nextPatternId(project, id, delta) {
-    const list = project.patterns || [], index = list.findIndex(pattern => pattern.id === id);
+    const list = project.patterns, index = list.findIndex(pattern => pattern.id === id);
     if (!list.length) return id;
     return list[((index < 0 ? 0 : index) + delta % list.length + list.length) % list.length].id;
   }
   /* 1-based pattern number in the project's pattern list (what the arranger shows). */
-  function patternNumber(project, id) { return (project.patterns || []).findIndex(pattern => pattern.id === id) + 1; }
-  function patternByNumber(project, number) { return (project.patterns || [])[number - 1] || null; }
+  function patternNumber(project, id) { return project.patterns.findIndex(pattern => pattern.id === id) + 1; }
+  function patternByNumber(project, number) { return project.patterns[number - 1] || null; }
   function freePatternId(project) {
-    for (let id = 0; id < 256; id++) if (!(project.patterns || []).some(pattern => pattern.id === id)) return id;
+    for (let id = 0; id < 256; id++) if (!project.patterns.some(pattern => pattern.id === id)) return id;
     return -1;
   }
   function blankPattern(project, length = 64) {
     const id = freePatternId(project);
     if (id < 0) throw new Error('This session supports up to 256 patterns.');
     return { id, name: 'Pattern '
-        + String(id + 1).padStart(2, '0'), length, steps: (project.tracks || []).map(() => Array(length).fill(null)), automation: [] };
+        + String(id + 1).padStart(2, '0'), length, steps: project.tracks.map(() => Array(length).fill(null)), automation: [] };
   }
   function clonePattern(project, id, uid = () => Math.random().toString(36).slice(2)) {
-    const source = (project.patterns || []).find(pattern => pattern.id === id);
+    const source = project.patterns.find(pattern => pattern.id === id);
     if (!source) throw new Error('That pattern does not exist.');
     const free = freePatternId(project);
     if (free < 0) throw new Error('This session supports up to 256 patterns.');
     const copy = clone(source);
     copy.id = free; copy.name = `${source.name || 'Pattern'} copy`;
-    for (const lane of copy.automation || []) lane.id = uid();
+    for (const lane of copy.automation) lane.id = uid();
     return copy;
   }
   function setLoop(project, from, to = from) {
@@ -159,7 +159,7 @@
     delete project.songLoop;
   }
   function cycleColor(project, id, delta = 1) {
-    const pattern = (project.patterns || []).find(item => item.id === id);
+    const pattern = project.patterns.find(item => item.id === id);
     if (!pattern) return null;
     const index = COLORS.indexOf(pattern.color);
     pattern.color = COLORS[((index < 0 ? (delta > 0 ? -1 : 0) : index) + delta + COLORS.length) % COLORS.length];
@@ -167,7 +167,7 @@
   }
   // Callers write the colour into style attributes: only a hex colour (what cycleColor stores) is taken from the file.
   function patternColor(project, id) {
-    const pattern = (project.patterns || []).find(item => item.id === id);
+    const pattern = project.patterns.find(item => item.id === id);
     if (/^#[0-9a-f]{3,8}$/i.test(pattern?.color || '')) return pattern.color;
     const number = patternNumber(project, id);
     return COLORS[(Math.max(1, number) - 1) % COLORS.length];
@@ -175,15 +175,15 @@
   /* Quarter-note beat at which a flat sequence index starts (patterns use linesPerBeat). */
   function startBeat(project, flat) {
     const lpb = project.linesPerBeat || 4;
-    return (project.sequence || []).slice(0, flat).reduce((sum, id) => sum
-        + ((project.patterns || []).find(pattern => pattern.id === id)?.length || 0) / lpb,
+    return project.sequence.slice(0, flat).reduce((sum, id) => sum
+        + (project.patterns.find(pattern => pattern.id === id)?.length || 0) / lpb,
         0);
   }
   /* Ordered list of {sequence, pattern, row} that playback visits (one song pass). */
   function playbackOrder(project) {
     const order = [];
-    (project.sequence || []).forEach((id, sequence) => {
-      const pattern = (project.patterns || []).find(item => item.id === id);
+    project.sequence.forEach((id, sequence) => {
+      const pattern = project.patterns.find(item => item.id === id);
       for (let row = 0; row < (pattern?.length || 0); row++) order.push({ sequence, pattern: id, row });
     });
     return order;

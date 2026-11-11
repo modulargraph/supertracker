@@ -8,7 +8,7 @@
 
   function trackSilenced(p, i) {
     const group = window.STGroups?.ofTrack(p, i),
-      bus = group && p.routing.buses?.find(item => item.id === group.busID);
+      bus = group && p.routing.buses.find(item => item.id === group.busID);
     if (bus?.mute || bus && !bus.solo && p.routing.buses.some(item => item.type === 'group' && item.solo)
         && !p.tracks[i]?.solo) return true;
     return !!p.tracks[i]?.mute || p.tracks.some(t => t.solo) && !p.tracks[i]?.solo;
@@ -163,7 +163,7 @@
   function groupHeader(group, span) {
     const p = state.project,
       members = window.STGroups.members(p, group),
-      bus = p.routing.buses?.find(item => item.id === group.busID) || {},
+      bus = p.routing.buses.find(item => item.id === group.busID) || {},
       owner = window.STGroups.busOwner(group),
       selected = members.includes(state.track),
       label = `${group.collapsed ? 'Expand' : 'Collapse'} ${esc(group.name)}`,

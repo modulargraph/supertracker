@@ -100,7 +100,7 @@
         return true;
       }
       if (syncFailures.length) throw syncFailures[0];
-      if (!state.project.audioPlugins?.length) return true;
+      if (!state.project.audioPlugins.length) return true;
       const owner = state.project,
         pluginsBefore = stableJSON(owner.audioPlugins),
         nativeEditGeneration = window.STPendingEdits.generation();

@@ -2,8 +2,9 @@
 // Track Freeze for hardware tracks: a live-input track freezes by recording, with the request the host expects.
 const assert = require('node:assert/strict');
 const web = require('./helpers/web');
+const { complete } = require('./helpers/project');
 const copy = value => JSON.parse(JSON.stringify(value));
-const project = { tracks: [{ routingID: 'one', name: 'Live', instrument: 0, audioInput: { enabled: true, deviceUID: 'saved-interface', channels: [2, 3], gain: 1 } }, { routingID: 'two', name: 'Synth', instrument: 0 }], patterns: [], instruments: [{}], sequence: [] };
+const project = complete({ tracks: [{ routingID: 'one', name: 'Live', instrument: 0, audioInput: { enabled: true, deviceUID: 'saved-interface', channels: [2, 3], gain: 1 } }, { routingID: 'two', name: 'Synth', instrument: 0 }], instruments: [{}] });
 const messages = [], modals = [];
 const window = { ST: { state: { project, track: 0 }, toast: message => messages.push(message), openModal: (...args) => modals.push(args) }, addEventListener() {} };
 web.run('freeze.js', { window, document: { addEventListener() {}, getElementById() { return null; } }, console });

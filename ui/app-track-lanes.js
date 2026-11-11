@@ -49,7 +49,7 @@
   const collapsedIDs = (p = state.project) => p?.viewState.collapsedTracks || [];
   const trackKey = track => typeof track?.routingID === 'string' && track.routingID ? track.routingID : null;
   const isCollapsed = (index, p = state.project) => {
-    const key = trackKey(p?.tracks?.[index]);
+    const key = trackKey(p?.tracks[index]);
     return !!key && collapsedIDs(p).includes(key);
   };
 
@@ -63,9 +63,9 @@
     const key = [p, app.inputEditGeneration, state.undo.length, state.redo.length, p.patterns.length, p.tracks.length];
     if (songCache && songCache.key.every((value, i) => value === key[i])) return songCache.used;
     const used = new Set();
-    for (const clip of p.audioClips || []) if (Number.isInteger(clip?.track)) used.add(clip.track);
+    for (const clip of p.audioClips) if (Number.isInteger(clip?.track)) used.add(clip.track);
     p.tracks.forEach((_, index) => {
-      if (!used.has(index) && p.patterns.some(pat => hasSteps(pat.steps?.[index]))) used.add(index);
+      if (!used.has(index) && p.patterns.some(pat => hasSteps(pat.steps[index]))) used.add(index);
     });
     songCache = { key, used };
     return used;
@@ -74,7 +74,7 @@
   function trackUsed(p, index, scope = hideScope(p)) {
     if (scope === 'song') return songUsed(p).has(index);
     const pat = p.patterns.find(x => x.id === p.activePattern) || p.patterns[0];
-    return hasSteps(pat?.steps?.[index]);
+    return hasSteps(pat?.steps[index]);
   }
 
   // Indices of the tracks hidden right now.
@@ -237,16 +237,16 @@
     const belongs = item => item && (item.owner ? owners.has(item.owner) : chosen.has(item.track));
     let notes = 0, steps = 0, lanes = 0;
     const patterns = new Set();
-    for (const pat of p.patterns || []) {
-      for (const index of indices) for (const step of pat.steps?.[index] || []) if (step) {
+    for (const pat of p.patterns) {
+      for (const index of indices) for (const step of pat.steps[index]) if (step) {
         steps++;
         notes += app.playedCells ? app.playedCells(step).length : step.note >= 0 ? 1 : 0;
         patterns.add(pat.id);
       }
-      lanes += (pat.automation || []).filter(belongs).length;
+      lanes += pat.automation.filter(belongs).length;
     }
-    const clips = [...(p.audioClips || []), ...(p.patternClips || [])].filter(item => chosen.has(item?.track)).length;
-    const plugins = (p.audioPlugins || []).filter(item => owners.has(item?.owner)).length;
+    const clips = p.audioClips.filter(clip => chosen.has(clip.track)).length;
+    const plugins = p.audioPlugins.filter(item => owners.has(item?.owner)).length;
     return { notes, steps, patterns: patterns.size, lanes, clips, plugins, total: steps + lanes + clips + plugins };
   }
 

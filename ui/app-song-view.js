@@ -51,8 +51,8 @@
         + `<span class="muted" style="font-size:11px">Before effect tails · ${p.bpm + ' BPM'}</span>`
         + `</div><label class="row"><input type="checkbox" id="loop-song" ${p.loopSong ? 'checked' : ''}>Loop song</label>`
         + `<div class="grid2"><label class="field"><span>Beats per bar</span><input id="signature-numerator"`
-        + ` type="number" min="1" max="16" step="1" value="${p.timeSignature?.numerator ?? 4}">`
-        + `</label><label class="field"><span>Beat unit</span><select id="signature-denominator">${[2, 4, 8, 16].map(x => `<option value="${x}" ${x === (p.timeSignature?.denominator ?? 4) ? 'selected' : ''}>1/${x}</option>`).join('')}</select>`
+        + ` type="number" min="1" max="16" step="1" value="${p.timeSignature.numerator}">`
+        + `</label><label class="field"><span>Beat unit</span><select id="signature-denominator">${[2, 4, 8, 16].map(x => `<option value="${x}" ${x === p.timeSignature.denominator ? 'selected' : ''}>1/${x}</option>`).join('')}</select>`
         + `</label></div><label class="row"><input id="song-metronome" type="checkbox" ${p.metronome ? 'checked' : ''}>Metronome</label>`
         + `<label class="field"><span>Click level</span><input id="metronome-volume" type="range" min="0"`
         + ` max="1" step=".01" value="${p.metronomeVolume ?? .4}"></label><label class="field">`
@@ -78,11 +78,11 @@
     $('#song-export').onclick = app.showExport;
     bindScalarField($('#signature-numerator'), 'time signature', (p, e) => p.timeSignature = {
       numerator: clamp(Math.round(Number(e.target.value)), 1, 16),
-      denominator: p.timeSignature?.denominator || 4
+      denominator: p.timeSignature.denominator
     });
     $('#signature-denominator').onchange = e => {
       mutate('time signature', p => p.timeSignature = {
-        numerator: p.timeSignature?.numerator || 4,
+        numerator: p.timeSignature.numerator,
         denominator: Number(e.target.value)
       });
     };

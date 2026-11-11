@@ -103,7 +103,7 @@
       }
       job.phase = 'applying';
       window.STRoutingProject.pruneOrphanPlugins(project);
-      const publishedSamplePaths = project.instruments?.map(inst => inst.samplePath) || [];
+      const publishedSamplePaths = project.instruments.map(inst => inst.samplePath);
       const result = await request('engine.project', {
         project,
         ...(job.replace ? { replace: true } : {})

@@ -21,7 +21,7 @@
   const esc = value => app().escapeHTML(String(value ?? ''));
   const clamp = (value, lo, hi) => Math.min(hi, Math.max(lo, Number.isFinite(Number(value)) ? Number(value) : lo));
   const uid = () => `clip-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const clips = () => project().audioClips || [];
+  const clips = () => project().audioClips;
   const timingSignature = value => JSON.stringify([value.bpm, value.timeSignature]);
   const maxBeat = () => window.STProjectTiming.MAX_BEAT;
   let receivedStatus = null;
@@ -42,7 +42,7 @@
   const clipPath = clip => clip.path || clip.samplePath || '';
   const selected = () => clips().find(clip => String(clip.id) === String(state().clipSelected));
   function sequenceBeat(index = state().sequence || 0) {
-    return (project().sequence || []).slice(0, index).reduce((sum, id) => sum
+    return project().sequence.slice(0, index).reduce((sum, id) => sum
         + (project().patterns.find(pattern => pattern.id === id)?.length || 0) / (project().linesPerBeat || 4),
         0);
   }
@@ -262,7 +262,7 @@
           || !trackObject
           || destinationProject.tracks[track] !== trackObject) throw new Error('The project or destination track changed.');
       if (window.STBusy.any(['session', 'export', 'routing'])) throw new Error('Finish the current project operation before importing audio.');
-      if ((destinationProject.audioClips || []).length >= 256) throw new Error('A project supports up to 256 audio clips.');
+      if (destinationProject.audioClips.length >= 256) throw new Error('A project supports up to 256 audio clips.');
       if (!Number.isInteger(track)
           || !Number.isFinite(startBeat)
           || startBeat < 0
@@ -294,7 +294,7 @@
       // protection. Only a clip retained in the authoritative project is added.
       if (!applied
           || project() !== destinationProject
-          || !destinationProject.audioClips?.includes(clip)) throw new Error('The audio import was not applied.');
+          || !destinationProject.audioClips.includes(clip)) throw new Error('The audio import was not applied.');
       state().clipSelected = clip.id; local.cursor = startBeat; app().toast(`Audio added to ${trackObject.name}`); return clip;
     } catch (error) { app().toast(`${error.message || String(error)} Your source is preserved at ${path}`, 'error'); return null; }
     finally { local.busy = false; refresh(); }
@@ -387,14 +387,14 @@
             reverbSend: 0
           };
           window.STRoutingProject.appendTrack(value, track, app().uid || uid);
-          value.patterns.forEach(pattern => { pattern.steps ||= []; pattern.steps.push(Array.from({ length: pattern.length }, () => null)); });
+          value.patterns.forEach(pattern => { pattern.steps.push(Array.from({ length: pattern.length }, () => null)); });
           const clip = { ...result.clip, id: uid(), track: newIndex, path: result.path, name: `${sourceTrack.name} stem` };
           value.audioClips ||= []; value.audioClips.push(clip); addedTrack = track; addedClip = clip;
         });
         if (!addedClip
             || project() !== destinationProject
             || !destinationProject.tracks.includes(addedTrack)
-            || !destinationProject.audioClips?.includes(addedClip)) throw new Error(`The rendered clip was not applied. Your audio is saved at ${result.path}`);
+            || !destinationProject.audioClips.includes(addedClip)) throw new Error(`The rendered clip was not applied. Your audio is saved at ${result.path}`);
         state().track = destinationProject.tracks.indexOf(addedTrack); state().clipSelected = addedClip.id;
         app().closeModal();
         app().toast('Muted stem added for audition. The source and its routing are unchanged.');

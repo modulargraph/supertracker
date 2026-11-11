@@ -161,7 +161,7 @@
       target.steps = target.steps.map(steps => factor > 1
           ? [...steps.slice(0, length), ...steps.slice(0, length).map(step => step ? copy(step) : null)]
           : steps.slice(0, next));
-      for (const lane of target.automation || []) {
+      for (const lane of target.automation) {
         lane.points = factor > 1 ? [...lane.points, ...lane.points.map(point => ({
           ...point,
           row: point.row + length

@@ -18,7 +18,7 @@
       fill = !layout && columns.length > 0 && columns.every(column => column.collapsed || column.slim),
       filler = tag => fill ? `<${tag} class="tracker-fill" aria-hidden="true"></${tag}>` : '';
     // One grid row of the active pattern; `attrs` and `live: false` serve the song scroll's context rows (app-song-scroll.js).
-    const row = (r, attrs = '', live = true) => `<tr data-row="${r}"${attrs} class="${r % (p.linesPerBeat * 4 / (p.timeSignature?.denominator || 4)) === 0 ? 'beat' : ''}`
+    const row = (r, attrs = '', live = true) => `<tr data-row="${r}"${attrs} class="${r % (p.linesPerBeat * 4 / p.timeSignature.denominator) === 0 ? 'beat' : ''}`
         + ` ${r % (p.linesPerBeat * beatsPerBar(p)) === 0 ? 'bar' : ''}${live && loopRange && r >= loopRange.start && r <= loopRange.end
             ? ' loop-row' + (r === loopRange.start ? ' loop-start' : '') + (r === loopRange.end ? ' loop-end' : '')
             : ''}">`

@@ -112,7 +112,7 @@
   /* Mixer: the selected track's live input, edited in place (Live input on/off, Monitor, left and right channel
      of the current Studio interface). Each change is one edit of the project, and one Undo step. */
   function mixerSection(index){
-    const state=app().state,track=state.project?.tracks?.[index];if(!track)return '';
+    const state=app().state,track=state.project?.tracks[index];if(!track)return '';
     const audio=state.audio||{},devices=inputDevices(audio),selected=selectedDevice(audio);
     const input=track.audioInput||{enabled:false,deviceUID:selected?.uid||'',channels:[0],gain:1},status=routeStatus(audio,index);
     const device=devices.find(d=>d.uid===input.deviceUID)||selected,count=Math.max(Number(device?.inputChannels)||0,...(input.channels||[]).map(c=>c+1),1);
@@ -133,7 +133,7 @@
   }
   function applyMixer(index,root){
     if(app().isChangingSession)return false;
-    const state=app().state,project=state.project,track=project?.tracks?.[index];if(!track)return false;
+    const state=app().state,project=state.project,track=project?.tracks[index];if(!track)return false;
     const selected=selectedDevice(state.audio||{});
     if(!selected){app().toast('Choose an audio interface with inputs in Settings first.','error');return false;}
     const field=name=>root.querySelector(`[data-line-input-field="${name}"]`);

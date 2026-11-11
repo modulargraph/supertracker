@@ -10,8 +10,8 @@
   const esc = value => app()?.escapeHTML ? app().escapeHTML(String(value)) : String(value).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
   let busy = false, statusByID = new Map(), statusTimer = null, lastStatusKey = '', observer = null;
 
-  const trackName = index => project()?.tracks?.[index]?.name || `Track ${index + 1}`;
-  const isFrozen = index => !!project()?.tracks?.[index]?.frozen;
+  const trackName = index => project()?.tracks[index]?.name || `Track ${index + 1}`;
+  const isFrozen = index => !!project()?.tracks[index]?.frozen;
   const ownerOf = track => track?.routingID ? 'track:' + track.routingID : null;
 
   /* Long native request: freezing renders the whole song offline, which can
@@ -29,10 +29,10 @@
     if (!track) return null;
     const owner = ownerOf(track), instruments = new Set([track.instrument || 0]);
     const sequenced = new Set(p.sequence || [0]);
-    const patterns = (p.patterns || []).map((pattern, position) => {
+    const patterns = p.patterns.map((pattern, position) => {
       const id = pattern.id ?? position;
       const rows = {};
-      (pattern.steps?.[index] || []).forEach((step, row) => {
+      pattern.steps[index].forEach((step, row) => {
         if (!step) return;
         const copy = { ...step };
         if (copy.instrument !== undefined && copy.instrument >= 0) instruments.add(copy.instrument);
@@ -40,31 +40,31 @@
         for (const key of ['fx1', 'fx2']) if (copy[key] && MIX.has(copy[key].type)) delete copy[key];
         if (Object.keys(copy).length) rows[row] = copy;
       });
-      const lanes = (pattern.automation || []).filter(lane => (lane.owner ? lane.owner === owner : (lane.track || 0) === index) &&
+      const lanes = pattern.automation.filter(lane => (lane.owner ? lane.owner === owner : (lane.track || 0) === index) &&
         !(MIX.has(lane.target || 'volume') || String(lane.target || '').startsWith('send:'))).map(({ id, name, ...rest }) => rest);
       if (!sequenced.has(id) && !Object.keys(rows).length && !lanes.length) return null;
       // Sequenced patterns are in the song print; patterns with content have their own print.
       return { id, length: pattern.length, rows, lanes };
     }).filter(Boolean);
     const strip = ({ name, color, id, volume, pan, mute, solo, delaySend, reverbSend, frozen, selected, collapsed, viewState, ...rest }) => rest;
-    const plugins = (p.audioPlugins || []).filter(plugin => plugin.owner === owner)
+    const plugins = p.audioPlugins.filter(plugin => plugin.owner === owner)
       .map(({ state: _s, parameters, latency, latencyFrames, tailTime, stateError, name, editorOpen, windowFrame, ...rest }) => rest);
     return JSON.stringify({
       track: strip(track), patterns, plugins,
-      instruments: [...instruments].sort((a, b) => a - b).map(i => p.instruments?.[i] ? (({
+      instruments: [...instruments].sort((a, b) => a - b).map(i => p.instruments[i] ? (({
         name,
         id,
         plugin,
         ...rest
       }) => rest)(p.instruments[i]) : null),
-      clips: (p.audioClips || []).filter(clip => (clip.track || 0) === index).map(({ id, name, ...rest }) => rest),
+      clips: p.audioClips.filter(clip => (clip.track || 0) === index).map(({ id, name, ...rest }) => rest),
       timing: { bpm: p.bpm, lpb: p.linesPerBeat, swing: p.swing, sequence: p.sequence || [0] }
     });
   }
 
   /** Returns null, or {message, track, name} when `after` changes printed content. */
   function checkMutation(before, after, label, options = {}) {
-    if (options.freezeCommit || !before?.tracks?.some(track => track.frozen)) return null;
+    if (options.freezeCommit || !before?.tracks.some(track => track.frozen)) return null;
     for (const [index, track] of before.tracks.entries()) {
       if (!track.frozen) continue;
       const name = track.name || `Track ${index + 1}`;
@@ -105,11 +105,11 @@
      with `patterns`, each pattern for its head and loop print; `monitor: false` keeps
      the mix silent meanwhile. Stop cancels. */
   function hardwareTrack(index) {
-    const p = project(), track = p?.tracks?.[index];
-    return track?.audioInput?.enabled === true || p?.instruments?.[track?.instrument || 0]?.type === 'midi';
+    const p = project(), track = p?.tracks[index];
+    return track?.audioInput?.enabled === true || p?.instruments[track?.instrument || 0]?.type === 'midi';
   }
   const songSeconds = p => (p.sequence || [0]).reduce((sum, id) => {
-    const pattern = (p.patterns || []).find((item, position) => (item.id ?? position) === id);
+    const pattern = p.patterns.find((item, position) => (item.id ?? position) === id);
     return sum + (pattern?.length || 64) / (p.linesPerBeat || 4) * 60 / (p.bpm || 120);
   }, 0);
   const minutes = seconds => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
@@ -118,12 +118,12 @@
   function freeze(index = state().track) {
     const a = app(), p = project();
     if (busy) { a.toast('A track freeze is already in progress.'); return; }
-    if (!p?.tracks?.[index]) return;
+    if (!p?.tracks[index]) return;
     if (isFrozen(index)) return unfreeze(index);
     const name = trackName(index), hardware = hardwareTrack(index);
     const songTime = songSeconds(p), patterns = patternCount(index), usedPatterns = parseInt(patterns, 10) || 0;
-    const patternTime = (p.patterns || []).reduce((sum, item) => sum + 3 * (item.length || 64) / (p.linesPerBeat || 4) * 60 / (p.bpm || 120), 0)
-        * (usedPatterns / Math.max(1, (p.patterns || []).length));
+    const patternTime = p.patterns.reduce((sum, item) => sum + 3 * (item.length || 64) / (p.linesPerBeat || 4) * 60 / (p.bpm || 120), 0)
+        * (usedPatterns / Math.max(1, p.patterns.length));
     a.openModal(`Freeze ${name}`, `<div class="stack st-freeze-dialog">
       <p class="st-freeze-copy">Prints this track’s song performance and each pattern it plays, with its inserts, so it keeps sounding in Song `
           + `and Pattern mode. Fader, pan, mute, solo and downstream sends stay live. Its plug-ins are released to save CPU. Unfreeze to edit its sound `
@@ -251,9 +251,9 @@
 
   /** Patterns with printable content for the track (dialog summary). */
   function patternCount(index) {
-    const p = project(), track = p?.tracks?.[index], owner = ownerOf(track);
-    const used = (p?.patterns || []).filter(pattern => (pattern.steps?.[index] || []).some(step => step && Object.keys(step).some(key =>
-      !((key === 'fx1' || key === 'fx2') && MIX.has(step[key]?.type)))) || (pattern.automation || []).some(lane =>
+    const p = project(), track = p?.tracks[index], owner = ownerOf(track);
+    const used = p.patterns.filter(pattern => pattern.steps[index].some(step => step && Object.keys(step).some(key =>
+      !((key === 'fx1' || key === 'fx2') && MIX.has(step[key]?.type)))) || pattern.automation.some(lane =>
       (lane.owner ? lane.owner === owner : (lane.track || 0) === index)
           && !(MIX.has(lane.target || 'volume') || String(lane.target || '').startsWith('send:')))).length;
     return `${used} pattern${used === 1 ? '' : 's'}`;
@@ -272,7 +272,7 @@
   // ---- Status and labels ----------------------------------------------------------------
 
   function label(index) {
-    const track = project()?.tracks?.[index];
+    const track = project()?.tracks[index];
     if (!track?.frozen) return '';
     const status = statusByID.get(track.frozen.id);
     if (status?.available === false) return 'Frozen · unavailable';
@@ -284,7 +284,7 @@
   function scheduleStatus(delay = 400) {
     clearTimeout(statusTimer);
     statusTimer = setTimeout(async () => {
-      if (!state()?.native || !project()?.tracks?.some(track => track.frozen)) { statusByID.clear(); decorate(); return; }
+      if (!state()?.native || !project()?.tracks.some(track => track.frozen)) { statusByID.clear(); decorate(); return; }
       try {
         const result = await app().request('freeze.status', {});
         statusByID = new Map((result?.tracks || []).filter(row => row.id).map(row => [row.id, row]));
@@ -349,7 +349,7 @@
 
   function contextItems({ target } = {}) {
     const index = trackFromTarget(target);
-    if (index < 0 || !project()?.tracks?.[index]) return null;
+    if (index < 0 || !project()?.tracks[index]) return null;
     return isFrozen(index)
       ? [{ title: 'Unfreeze track…', enabled: !busy, action: () => unfreeze(index) }]
       : [{ title: 'Freeze track…', enabled: !busy, action: () => freeze(index) }];

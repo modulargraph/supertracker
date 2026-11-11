@@ -5,7 +5,7 @@
   const app = () => window.ST, model = () => window.STClipTakesProject;
   const esc = value => app().escapeHTML(String(value ?? ''));
   const get = id => document.getElementById(id);
-  const selected = () => app().state.project.audioClips?.find(clip => String(clip.id) === String(app().state.clipSelected));
+  const selected = () => app().state.project.audioClips.find(clip => String(clip.id) === String(app().state.clipSelected));
   const timing = project => (start, length) => window.STProjectTiming.durationFromBeats(project, start, length);
   let pending = false, session = null, previewJob = null, previewGeneration = 0;
   const warn = error => app().toast(error.message || String(error), 'error');
@@ -13,13 +13,13 @@
   function assign(clip, proposal) { for (const key of Object.keys(clip)) if (!(key in proposal)) delete clip[key]; Object.assign(clip, proposal); }
   function commit(clip, proposal, label) {
     if (window.STBusy.any(['session', 'export', 'routing'])) throw new Error('Finish the current project operation before changing takes.');
-    if (!app().state.project.audioClips?.includes(clip)) throw new Error('The destination clip changed. Select it again.');
+    if (!app().state.project.audioClips.includes(clip)) throw new Error('The destination clip changed. Select it again.');
     const ownerProject = app().state.project;
     let applied = false;
     app().mutate(label, () => { assign(clip, proposal); applied = true; });
     if (!applied
         || app().state.project !== ownerProject
-        || !ownerProject.audioClips?.includes(clip)
+        || !ownerProject.audioClips.includes(clip)
         || JSON.stringify(clip) !== JSON.stringify(proposal)) throw new Error('The take edit was not applied. Your source file is preserved.');
   }
   function focusClip() { const clip = selected(); (clip && get(`clip-${clip.id}`) || get('clips-timeline'))?.focus({ preventScroll: true }); }
@@ -71,7 +71,7 @@
   function requireTarget(owner) {
     if (!owner
         || app().state.project !== owner.project
-        || !owner.project.audioClips?.includes(owner.clip)
+        || !owner.project.audioClips.includes(owner.clip)
         || JSON.stringify(owner.clip) !== owner.fingerprint) throw new Error('The project or destination clip changed. Your source file is preserved; select the clip and add the take again.');
   }
   async function addFile(path, owner = target(), name) {
@@ -111,7 +111,7 @@
     return session === owner
         && app().state.modal === 'clip-takes'
         && app().state.project === owner.project
-        && owner.project.audioClips?.includes(owner.clip);
+        && owner.project.audioClips.includes(owner.clip);
   }
   function show() {
     const clip = selected(); if (!clip) { app().toast('Select a Song audio clip first.', 'info'); return; }

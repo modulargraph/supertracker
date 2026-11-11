@@ -96,7 +96,7 @@
       window.STRoutingProject.keepInstrumentPlugins(p, [p.tracks[index]]);
       window.STRoutingProject.removeTrackReferences(p, p.tracks[index], p.audioPlugins.filter(ownsPlugin));
       p.tracks.splice(index, 1);
-      p.audioClips = (p.audioClips || []).filter(x => x.track !== index).map(x => ({
+      p.audioClips = p.audioClips.filter(x => x.track !== index).map(x => ({
         ...x,
         track: x.track > index ? x.track - 1 : x.track
       }));

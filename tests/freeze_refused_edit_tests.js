@@ -6,17 +6,18 @@
 // marked the session edited and reported true to the caller.
 const assert = require('node:assert/strict'), vm = require('node:vm');
 const web = require('./helpers/web');
+const { complete } = require('./helpers/project');
 const copy = value => JSON.parse(JSON.stringify(value));
 
 function harness() {
   const listeners = {}, toasts = [], calls = [];
   const listen = (type, fn) => { (listeners[type] ||= []).push(fn); };
-  const project = {
+  const project = complete({
     name: 'Song', bpm: 120, linesPerBeat: 4, sequence: [0],
     tracks: [{ name: 'Bass', routingID: 'bass', instrument: 0, volume: .8, frozen: { id: 'print-1' } }, { name: 'Keys', routingID: 'keys', instrument: 1, volume: .8 }],
     instruments: [{ name: 'Bass' }, { name: 'Keys' }],
     patterns: [{ id: 0, length: 4, steps: [[{ note: 38, instrument: 0 }, null, null, null], [null, null, null, null]], automation: [] }]
-  };
+  });
   const state = { project, undo: [], redo: [{ label: 'earlier edit', project: copy(project) }], dirty: false, track: 0, row: 0, instrument: 0, sequence: 0, selection: null, modal: null };
   const window = { addEventListener: listen };
   const document = { addEventListener: listen, getElementById: () => null, querySelectorAll: () => [] };
