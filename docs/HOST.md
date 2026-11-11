@@ -184,13 +184,13 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the hand
 | `st-host` | 16 | 16 | 0 | 0 |
 | `st-app` | 2 | 2 | 0 | 0 |
 | `st-project` | 10 | 10 | 0 | 0 |
-| `st-audio` | 51 | 47 | 2 | 2 |
+| `st-audio` | 49 | 48 | 1 | 0 |
 | `st-plugin-*` | 4 | 4 | 0 | 0 |
 | `st-library` | 21 | 21 | 0 | 0 |
 | `st-midi` | 4 | 4 | 0 | 0 |
 | `st-mk3` | 6 | 6 | 0 | 0 |
 | `st-agent` | 3 | 3 | 0 | 0 |
-| **all** | **117** | **112** | **3** | **2** |
+| **all** | **115** | **114** | **1** | **0** |
 
 ### `st-host`
 
