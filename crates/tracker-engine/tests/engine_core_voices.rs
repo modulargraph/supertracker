@@ -1,18 +1,15 @@
 //! Port of the former C++ test program `engine_tests.cpp`, part 1 of 5: tone and release, chords/ratchets/microtiming,
-//! song swing and seek, probability, automation, sample modes, send buses, sample replacement
+//! song swing and seek, probability, automation, sample modes, sample replacement
 //! under a concurrent render, zones and slices, mono/legato/choke/mute, effects-only cells, the
 //! long maximum-voice render, pitch bend/metronome/locks and the sampler/MIDI regressions.
 //!
-//! One `#[test]` per C++ suite (`testFooBar` is `test_foo_bar`), calling the engine's safe Rust
-//! API through `engine_support_a::Engine`. Every C++ `assert` is one `assert!` here, with the
-//! same inputs, expected values and tolerances; every test ends with the C++ program's final
-//! "zero render-thread allocations" check.
+//! One `#[test]` per suite, calling the engine through `engine_support_a::Engine`, which renders
+//! it block by block as a host does: the tests read its buses (a plain render gives their sum).
+//! Every test ends with the "zero render-thread allocations" check.
 // The index loops mirror the C++ loops they translate.
 #![allow(clippy::needless_range_loop, clippy::manual_range_contains)]
 
 mod engine_support_a;
-#[allow(unused_imports)]
-use engine_support_a::{both_views, mix_view, mix_view_only};
 
 use engine_support_a::core_helpers::*;
 use engine_support_a::tone::*;
@@ -23,7 +20,6 @@ use tracker_engine::engine::*;
 
 #[test]
 fn test_tone_and_release() {
-    both_views(|| {
     let mut e = Engine::new();
     configure(&mut e, TONE);
     e.note_on(0, 0, 69, 100);
@@ -42,12 +38,10 @@ fn test_tone_and_release() {
     render(&mut e, &mut tail);
     assert!(tail.energy_in(2048, 4096) == 0.0);
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_chord_ratchet_microtiming() {
-    both_views(|| {
     let mut e = Engine::new();
     configure(&mut e, ST_INSTRUMENT_MIDI);
     e.begin_update();
@@ -79,12 +73,10 @@ fn test_chord_ratchet_microtiming() {
     }
     assert!(ev[0].e.note == 60 && ev[1].e.note == 64 && ev[2].e.note == 67);
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_song_swing_and_seek() {
-    both_views(|| {
     let mut e = Engine::new();
     configure(&mut e, ST_INSTRUMENT_AU);
     e.begin_update();
@@ -116,12 +108,10 @@ fn test_song_swing_and_seek() {
     assert!(!ev.is_empty());
     assert!(ev[0].e.type_ == ST_EVENT_NOTE_ON && ev[0].e.note == 72 && ev[0].frame == 0);
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_probability() {
-    both_views(|| {
     let mut e = Engine::new();
     configure(&mut e, ST_INSTRUMENT_AU);
     e.begin_update();
@@ -143,12 +133,10 @@ fn test_probability() {
     }
     assert!(n == 1);
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_automation() {
-    both_views(|| {
     let mut e = Engine::new();
     configure(&mut e, ST_INSTRUMENT_SAMPLE);
     let sample = vec![0.2f32; 2048];
@@ -172,13 +160,9 @@ fn test_automation() {
     e.note_on(0, 0, 60, 127);
     let mut a = Audio::new(6000);
     render(&mut e, &mut a);
-    if mix_view() {
-        assert!(a.energy_in(4000, 5000) > a.energy_in(1000, 2000) * 6.0);
-    } else {
-        // Track volume is the host's to apply: the bus keeps the voice's level, and the lane
-        // reaches the host as events (below).
-        assert!(a.energy_in(1000, 2000) > 0.001 && a.energy_in(4000, 5000) == a.energy_in(1000, 2000));
-    }
+    // Track volume is the host's to apply: the bus keeps the voice's level, and the lane
+    // reaches the host as events (below).
+    assert!(a.energy_in(1000, 2000) > 0.001 && a.energy_in(4000, 5000) == a.energy_in(1000, 2000));
     let mut count = 0;
     let (mut first, mut last) = (-1.0f64, -1.0f64);
     let mut volume: Vec<f64> = Vec::new();
@@ -204,12 +188,10 @@ fn test_automation() {
         assert!((value - n as f64 * 32.0 / 6000.0).abs() < 1e-6);
     }
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_sample_modes() {
-    both_views(|| {
     for mode in 0..=ST_MODE_GRANULAR {
         let mut e = Engine::new();
         configure(&mut e, ST_INSTRUMENT_SAMPLE);
@@ -245,41 +227,10 @@ fn test_sample_modes() {
         assert!(b.energy_in(512, 1024) == 0.0);
     }
     assert_zero_render_allocations();
-    });
-}
-
-#[test]
-fn test_send_buses() {
-    mix_view_only(|| {
-    let mut e = Engine::new();
-    configure(&mut e, ST_INSTRUMENT_SAMPLE);
-    let mut sample = vec![0.0f32; 32];
-    sample[0] = 0.5;
-    e.set_sample(0, &sample, 48000.0);
-    e.begin_update();
-    let mut track = default_track();
-    track.delay_send = 1.0;
-    e.set_track(0, track);
-    e.set_effects(0.01, 0.0, 1.0, 0.7, 0.4, 0.0);
-    e.commit_update();
-    e.note_on(0, 0, 60, 127);
-    let (mut dry, mut wet) = (Audio::new(1024), Audio::new(1024));
-    bus_render(&mut e, 0, 0, &mut dry);
-    let before = e.status();
-    bus_render(&mut e, 16, 0, &mut wet);
-    let after = e.status();
-    assert!(before.seconds == after.seconds);
-    assert!(dry.energy_in(0, 32) > 0.00001);
-    assert!(dry.energy_in(64, 1024) == 0.0);
-    assert!(wet.energy_in(0, 470) == 0.0);
-    assert!(wet.energy_in(480, 512) > 0.00001);
-    assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_sample_replacement_and_concurrency() {
-    both_views(|| {
     let mut e = Engine::new();
     configure(&mut e, ST_INSTRUMENT_SAMPLE);
     let mut sample = vec![0.25f32; 4096];
@@ -322,12 +273,10 @@ fn test_sample_replacement_and_concurrency() {
     e.collect();
     assert!(b.energy() == 0.0);
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_zones_slices_and_clearing() {
-    both_views(|| {
     let mut e = Engine::new();
     configure(&mut e, ST_INSTRUMENT_SAMPLE);
     let (quiet, loud) = (vec![0.1f32; 4096], vec![0.5f32; 4096]);
@@ -362,7 +311,7 @@ fn test_zones_slices_and_clearing() {
     e.note_on(0, 0, 61, 127);
     let mut c = Audio::new(512);
     render(&mut e, &mut c);
-    assert!(c.energy() > if mix_view() { 0.02 } else { 0.06 });
+    assert!(c.energy() > 0.06);
     assert!(e.clear_sample(0));
     e.panic();
     e.note_on(0, 0, 60, 127);
@@ -370,12 +319,10 @@ fn test_zones_slices_and_clearing() {
     render(&mut e, &mut d);
     assert!(d.energy() == 0.0);
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_mono_legato_choke_and_mute() {
-    both_views(|| {
     let mut e = Engine::new();
     configure(&mut e, ST_INSTRUMENT_MIDI);
     e.begin_update();
@@ -428,12 +375,10 @@ fn test_mono_legato_choke_and_mute() {
     e.note_on(0, 0, 60, 100);
     assert!(note_events(render_events(&mut e, 128)).is_empty());
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_effects_only_cell() {
-    both_views(|| {
     let mut e = Engine::new();
     configure(&mut e, ST_INSTRUMENT_AU);
     e.begin_update();
@@ -457,12 +402,10 @@ fn test_effects_only_cell() {
     }
     assert!(on == 1 && off == 0 && fx_count == 1);
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_long_render_maximum_voices() {
-    both_views(|| {
     for voice_count in [16, 32, 64, 256] {
         let mut e = Engine::new();
         configure(&mut e, TONE);
@@ -485,30 +428,24 @@ fn test_long_render_maximum_voices() {
             render(&mut e, &mut a);
             assert!(a.energy() >= 0.0);
             for &x in &a.l {
-                if mix_view() {
-                    assert!(x >= -1.0 && x <= 1.0);
-                } else {
-                    // Buses are not clipped: their sum is bounded by the voices' levels (each
-                    // at most the instrument volume, 0.01).
-                    assert!(x.abs() <= voice_count as f32 * 0.01);
-                    peak = peak.max(x.abs());
-                }
+                // Buses are not clipped: their sum is bounded by the voices' levels (each
+                // at most the instrument volume, 0.01).
+                assert!(x.abs() <= voice_count as f32 * 0.01);
+                peak = peak.max(x.abs());
             }
         }
         let seconds = start.elapsed().as_secs_f64();
         println!("{voice_count:3} voices: 2 seconds stereo DSP, wall {seconds:.3}s ({:.2}x).", 2.0 / seconds);
-        assert!(mix_view() || peak > voice_count as f32 * 0.005);
+        assert!(peak > voice_count as f32 * 0.005);
         e.panic();
         render(&mut e, &mut a);
         assert!(a.energy() == 0.0);
     }
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_pitch_bend_metronome_and_locks() {
-    both_views(|| {
     {
         let mut e = Engine::new();
         configure(&mut e, TONE);
@@ -555,25 +492,17 @@ fn test_pitch_bend_metronome_and_locks() {
         e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0, 0, 0.0, 0.9);
         e.commit_update();
         e.play(0);
-        if mix_view() {
-            let mut a = Audio::new(12000);
-            render(&mut e, &mut a);
-            assert!(a.energy_in(9000, 10000) > a.energy_in(4000, 5000) * 15.0);
-        } else {
-            // Track volume is the host's to apply, from the engine's events: the row lock on
-            // row 0, the lane again from row 1.
-            let volume = parameter_changes(&render_events(&mut e, 12000), ST_TARGET_VOLUME);
-            assert!(volume.len() > 2 && volume[0].frame == 0 && volume[0].e.value == 0.2f32 as f64);
-            assert!(volume[1].frame == 6000 && volume[1..].iter().all(|v| v.e.value == 0.9f32 as f64));
-        }
+        // Track volume is the host's to apply, from the engine's events: the row lock on
+        // row 0, the lane again from row 1.
+        let volume = parameter_changes(&render_events(&mut e, 12000), ST_TARGET_VOLUME);
+        assert!(volume.len() > 2 && volume[0].frame == 0 && volume[0].e.value == 0.2f32 as f64);
+        assert!(volume[1].frame == 6000 && volume[1..].iter().all(|v| v.e.value == 0.9f32 as f64));
     }
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_sampler_and_midi_regressions() {
-    both_views(|| {
     {
         let mut e = Engine::new();
         configure(&mut e, ST_INSTRUMENT_SAMPLE);
@@ -642,7 +571,7 @@ fn test_sampler_and_midi_regressions() {
         e.play(0);
         let mut a = Audio::new(512);
         render(&mut e, &mut a);
-        assert!(a.energy_in(256, 512) > if mix_view() { 0.03 } else { 0.09 });
+        assert!(a.energy_in(256, 512) > 0.09);
     }
     {
         let mut e = Engine::new();
@@ -676,5 +605,4 @@ fn test_sampler_and_midi_regressions() {
         assert!(events.len() == 1 && events[0].e.type_ == ST_EVENT_NOTE_OFF && events[0].frame == 0);
     }
     assert_zero_render_allocations();
-    });
 }

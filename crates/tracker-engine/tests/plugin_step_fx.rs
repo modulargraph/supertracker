@@ -9,8 +9,6 @@
 #![allow(clippy::needless_range_loop)]
 
 mod engine_support_b;
-#[allow(unused_imports)]
-use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::alloc::{realtime, render_allocations};
 use engine_support_b::engine::Engine;
@@ -188,7 +186,6 @@ fn lane(engine: &mut Engine, destination: Destination, row: f64, value: f64) {
 /// "sample-exact rows, full-width addresses and double values"
 #[test]
 fn exact_rows_and_opaque_addresses() {
-    both_views(|| {
     for host in [-1, 511] {
         let mut engine = fixture();
         let destination = destination(0, -1, host, u64::MAX);
@@ -205,13 +202,11 @@ fn exact_rows_and_opaque_addresses() {
         assert!(engine.status().dropped_events == 0);
     }
     assert!(render_allocations() == 0);
-    });
 }
 
 /// "legacy suppression is local to track, slot and address"
 #[test]
 fn legacy_suppression_uses_track_slot_and_address() {
-    both_views(|| {
     let mut engine = fixture();
     let locked = destination(0, -1, -1, u64::MAX);
     let other_address = destination(0, -1, -1, u64::MAX - 1);
@@ -242,13 +237,11 @@ fn legacy_suppression_uses_track_slot_and_address() {
         at_within(&other[n], n as u64 * 32, 0.25 + (n * 32) as f64 * 0.5 / 400.0, 1e-7);
     }
     assert!(render_allocations() == 0);
-    });
 }
 
 /// "host suppression is local to destination and address"
 #[test]
 fn host_suppression_uses_destination_and_address() {
-    both_views(|| {
     let mut engine = fixture();
     let locked = destination(0, 2, 127, u64::MAX);
     let other_address = destination(0, 2, 127, u64::MAX - 1);
@@ -286,13 +279,11 @@ fn host_suppression_uses_destination_and_address() {
         at_within(&other[n], n as u64 * 32, -12.25 + (n * 32) as f64 * 20.0 / 400.0, 1e-12);
     }
     assert!(render_allocations() == 0);
-    });
 }
 
 /// "FX2 duplicate coalescing and distinct-column order"
 #[test]
 fn duplicate_columns_coalesce_to_fx2() {
-    both_views(|| {
     for host in [-1, 5] {
         let mut engine = fixture();
         let destination = destination(0, 7, host, u64::MAX);
@@ -321,13 +312,11 @@ fn duplicate_columns_coalesce_to_fx2() {
     at(&events[0], 0, 0.125);
     at(&events[1], 0, 0.875);
     assert!(render_allocations() == 0);
-    });
 }
 
 /// "unchanged stepped and linear lanes resume at next row"
 #[test]
 fn unchanged_step_and_linear_lanes_resume_at_next_row() {
-    both_views(|| {
     for host in [-1, 511] {
         for interpolation in [0, 1] {
             let mut engine = fixture();
@@ -360,13 +349,11 @@ fn unchanged_step_and_linear_lanes_resume_at_next_row() {
         }
     }
     assert!(render_allocations() == 0);
-    });
 }
 
 /// "standalone parameter values hold without synthetic resets"
 #[test]
 fn standalone_locks_do_not_invent_resets() {
-    both_views(|| {
     for host in [-1, 511] {
         let mut engine = fixture();
         let destination = destination(0, -1, host, u64::MAX);
@@ -383,13 +370,11 @@ fn standalone_locks_do_not_invent_resets() {
         assert!(select(&render_from_zero(&mut engine, 1), destination).is_empty());
     }
     assert!(render_allocations() == 0);
-    });
 }
 
 /// "OFF and CUT rows apply parameter locks"
 #[test]
 fn off_and_cut_rows_still_apply_locks() {
-    both_views(|| {
     for host in [-1, 13] {
         let mut engine = fixture();
         let destination = destination(0, -1, host, u64::MAX);
@@ -408,13 +393,11 @@ fn off_and_cut_rows_still_apply_locks() {
         assert!(off.is_some() && off.unwrap().frame == 100);
     }
     assert!(render_allocations() == 0);
-    });
 }
 
 /// "stop, seek and project replacement clear stale locks"
 #[test]
 fn stop_seek_and_project_replacement_clear_active_locks() {
-    both_views(|| {
     for host in [-1, 17] {
         let mut engine = fixture();
         let destination = destination(0, -1, host, u64::MAX);
@@ -451,13 +434,11 @@ fn stop_seek_and_project_replacement_clear_active_locks() {
         assert!(select(&render_from_zero(&mut engine, 1), destination).is_empty());
     }
     assert!(render_allocations() == 0);
-    });
 }
 
 /// "coalesced refresh preserves the effective active lock"
 #[test]
 fn mailbox_refresh_reemits_effective_lock_without_queueing() {
-    both_views(|| {
     for host in [-1, 511] {
         let mut engine = fixture();
         let destination = destination(0, -1, host, u64::MAX);
@@ -481,13 +462,11 @@ fn mailbox_refresh_reemits_effective_lock_without_queueing() {
         assert!(engine.status().dropped_commands == 0 && engine.status().dropped_events == 0);
     }
     assert!(render_allocations() == 0);
-    });
 }
 
 /// A refresh replays the active lock once; reading further buses of a block replays nothing.
 #[test]
 fn a_refresh_replays_the_active_lock_once() {
-    both_views(|| {
     for host in [-1, 31] {
         let mut engine = fixture();
         let destination = destination(0, -1, host, u64::MAX);
@@ -514,13 +493,11 @@ fn a_refresh_replays_the_active_lock_once() {
         assert!(render_bus(&mut engine, return_bus(ST_MIN_RETURN_BUS), 226, 125).is_empty());
     }
     assert!(render_allocations() == 0);
-    });
 }
 
 /// "event pressure retries a still-active lock"
 #[test]
 fn saturated_queue_retries_active_lock() {
-    both_views(|| {
     let mut engine = fixture();
     engine.set_pattern(0, 128);
     for destination in 0..256 {
@@ -538,7 +515,6 @@ fn saturated_queue_retries_active_lock() {
     assert!(events.len() == 1 && events[0].frame >= 12001 && events[0].frame < 12065);
     assert!(events[0].event.value == 0.75);
     assert!(render_allocations() == 0);
-    });
 }
 
 /// "setter validation and step replacement"
@@ -546,7 +522,6 @@ fn saturated_queue_retries_active_lock() {
 /// Dropped from the C++ group: the call with a null engine handle (it cannot be expressed).
 #[test]
 fn setter_validation_and_step_replacement() {
-    both_views(|| {
     let mut engine = fixture();
     let destination = destination(0, -1, 0, u64::MAX);
     step(&mut engine, 0, 0);
@@ -587,5 +562,4 @@ fn setter_validation_and_step_replacement() {
     at(&events[0], 200, 0.0);
     at(&events[1], 300, 1.0);
     assert!(render_allocations() == 0);
-    });
 }

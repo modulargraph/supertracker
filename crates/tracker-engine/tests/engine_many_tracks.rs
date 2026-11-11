@@ -1,12 +1,10 @@
 //! Port of the former C++ test program `engine_many_tracks_tests.cpp`: tracks are sized from the project: 200-track
-//! mixing/solo/mute, return bus renumbering when the track count grows past the legacy base,
+//! buses, return bus renumbering when the track count grows past sixteen,
 //! copy-on-write commits, silent-bus history, and zero render allocations. The C++ `--bench`
 //! mode (render CPU and commit latency) is the ignored test `bench`.
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
-#[allow(unused_imports)]
-use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::alloc::{realtime, render_allocations, reset_render_allocations};
 use engine_support_b::engine::Engine;
@@ -103,8 +101,7 @@ fn all_tracks(e: &mut Engine, count: i32, pattern: i32, rows: i32) {
 }
 
 #[test]
-fn mixing_solo_mute() {
-    both_views(|| {
+fn every_track_has_its_own_bus() {
     reset_render_allocations();
     let count = 200;
     {
@@ -117,20 +114,10 @@ fn mixing_solo_mute() {
         }
         let reference = &buses[0];
         assert!(reference.energy(256, 2048) > 1e-4);
-        if mix_view() {
-            // Every track plays through its own bus with its own gain, sample for sample.
-            for t in 1..count {
-                let scale = volume_for(t, count) / volume_for(0, count);
-                for n in 256..2048 {
-                    assert!((buses[t as usize].l[n] - reference.l[n] * scale).abs() < 2e-5f32);
-                }
-            }
-        } else {
-            // Every track plays through its own bus, and the track's volume is not in it: the
-            // same voice on every track gives the same samples on every bus.
-            for t in 1..count {
-                assert!(buses[t as usize].l == reference.l && buses[t as usize].r == reference.r);
-            }
+        // Every track plays through its own bus, and the track's volume is not in it: the
+        // same voice on every track gives the same samples on every bus.
+        for t in 1..count {
+            assert!(buses[t as usize].l == reference.l && buses[t as usize].r == reference.r);
         }
         // The return bus follows the tracks; buses beyond it render silence, not garbage.
         assert!(bus(&mut e, return_bus(count), 0, 2048).energy(0, 0) == 0.0);
@@ -152,7 +139,7 @@ fn mixing_solo_mute() {
         for t in 0..count {
             // Mute is the host's to apply: it silences no bus.
             let energy = bus(&mut e, t, 0, 2048).energy(256, 2048);
-            assert!((energy == 0.0) == (mix_view() && t == 7));
+            assert!(energy > 0.0);
         }
     }
     {
@@ -171,32 +158,15 @@ fn mixing_solo_mute() {
         for t in 0..count {
             // So is solo.
             let energy = bus(&mut e, t, 0, 2048).energy(256, 2048);
-            assert!((energy > 0.0) == (!mix_view() || t == 150 || t == 199));
+            assert!(energy > 0.0);
         }
     }
-    if mix_view() {
-        // Raw host mixing with a computational bitset beyond 64 tracks.
-        let mut e = Engine::new();
-        all_tracks(&mut e, count, 0, 16);
-        let mut words = vec![!0u64; ((count + 63) / 64) as usize];
-        words[180 / 64] &= !(1u64 << (180 % 64));
-        e.begin_update();
-        e.set_host_mixing_tracks(true, &words, true);
-        commit(&mut e);
-        e.play(0);
-        for t in [0, 63, 64, 179, 180, 181, 199] {
-            let energy = bus(&mut e, t, 0, 2048).energy(256, 2048);
-            assert!((energy == 0.0) == (t == 180));
-        }
-    }
-    println!("200 tracks: per-track gain, mute, solo and computational bitset verified on every bus.");
+    println!("200 tracks: every bus holds its track's voice, whatever the track's volume, mute and solo.");
     assert!(render_allocations() == 0);
-    });
 }
 
 #[test]
 fn return_bus_follows_track_count() {
-    both_views(|| {
     reset_render_allocations();
     let mut e = Engine::new();
     e.begin_update();
@@ -215,12 +185,10 @@ fn return_bus_follows_track_count() {
     assert!(!e.set_track_count(0) && !e.set_track_count(ST_TRACK_SANITY_LIMIT + 1));
     println!("The return bus follows the track count (never below 16).");
     assert!(render_allocations() == 0);
-    });
 }
 
 #[test]
 fn grow_while_playing() {
-    both_views(|| {
     reset_render_allocations();
     let mut e = Engine::new();
     all_tracks(&mut e, 4, 0, 16);
@@ -264,12 +232,10 @@ fn grow_while_playing() {
     }
     println!("Track count changes while playing (4..200) render without allocation and keep voices.");
     assert!(render_allocations() == 0);
-    });
 }
 
 #[test]
 fn copy_on_write_commits() {
-    both_views(|| {
     reset_render_allocations();
     let mut e = Engine::new();
     let (count, patterns) = (64, 8);
@@ -320,7 +286,6 @@ fn copy_on_write_commits() {
     }
     println!("Copy-on-write: reused patterns keep their steps, edited ones are independent.");
     assert!(render_allocations() == 0);
-    });
 }
 
 /// C++ `--bench`: commit latency and render speed for 16, 64 and 200 tracks. Run with
@@ -328,13 +293,11 @@ fn copy_on_write_commits() {
 #[test]
 #[ignore = "benchmark (C++ --bench): prints commit latency and render speed"]
 fn bench() {
-    host_view_only(|| {
     println!(
         "tracks | full rebuild | reuse+1 pattern | 1-step edit | render all active (x realtime) | render 8 active (x realtime)"
     );
     for count in [16, 64, 200] {
-        // One engine: the renders are timed.
-        let mut e = Engine::alone();
+        let mut e = Engine::new();
         let (patterns, rows) = (32, 64);
         let build = |e: &mut Engine, changed: i32| {
             e.begin_update();
@@ -433,5 +396,4 @@ fn bench() {
             sparse
         );
     }
-    });
 }

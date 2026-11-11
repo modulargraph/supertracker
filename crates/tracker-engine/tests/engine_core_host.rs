@@ -1,41 +1,35 @@
-//! Port of the former C++ test program `engine_tests.cpp`, part 4 of 5: raw host mixing and its
-//! note mask, and host automation (destination map, timing, bounds and protected note-offs).
+//! Port of the former C++ test program `engine_tests.cpp`, part 4 of 5: what a host finds on the
+//! buses, the gating of external notes, and host automation (destination map, timing, bounds
+//! and protected note-offs).
 //!
-//! One `#[test]` per C++ suite (`testFooBar` is `test_foo_bar`), calling the engine's safe Rust
-//! API through `engine_support_a::Engine`. Every C++ `assert` is one `assert!` here, with the
-//! same inputs, expected values and tolerances; every test ends with the C++ program's final
-//! "zero render-thread allocations" check.
+//! One `#[test]` per suite, calling the engine through `engine_support_a::Engine`, which renders
+//! it block by block as a host does: the tests read its buses (a plain render gives their sum).
+//! Every test ends with the "zero render-thread allocations" check.
 // The index loops mirror the C++ loops they translate.
 #![allow(clippy::needless_range_loop)]
 
 mod engine_support_a;
-#[allow(unused_imports)]
-use engine_support_a::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_a::core_helpers::*;
 use engine_support_a::tone::*;
 use engine_support_a::{assert_zero_render_allocations, Engine};
 use tracker_engine::engine::*;
 
-/// C++ `configureHostMixVoice(e,raw)`: a filtered, driven saw voice on track 0. With `raw` the
-/// track is muted, at volume 0, panned and sent to both effects, track 1 is soloed and the
-/// master is 0: all of which raw host mixing must ignore.
-fn configure_host_mix_voice(e: &mut Engine, raw: bool) {
+/// A filtered, driven saw voice on track 0. With `mixed` the track is muted, at volume 0, panned
+/// and sent to both effects, and track 1 is soloed: mixer settings, which are the host's to
+/// apply and leave the bus as it is.
+fn configure_bus_voice(e: &mut Engine, mixed: bool) {
     configure(e, TONE);
     e.begin_update();
-    if mix_view() {
-        e.set_host_mixing(raw as i32, 0xffff);
-        e.set_timing(120.0, 4, 0.0, if raw { 0.0 } else { 1.0 });
-    }
     let mut track = default_track();
-    track.volume = if raw { 0.0 } else { 1.0 };
-    track.pan = if raw { 1.0 } else { 0.0 };
-    track.mute = raw as i32;
-    track.reverb_send = if raw { 1.0 } else { 0.0 };
+    track.volume = if mixed { 0.0 } else { 1.0 };
+    track.pan = if mixed { 1.0 } else { 0.0 };
+    track.mute = mixed as i32;
+    track.reverb_send = if mixed { 1.0 } else { 0.0 };
     track.delay_send = track.reverb_send;
     e.set_track(0, track);
     track = default_track();
-    track.solo = raw as i32;
+    track.solo = mixed as i32;
     e.set_track(1, track);
     let mut p = modulation_instrument();
     load_test_tone(e, 0, TEST_SAW);
@@ -52,56 +46,20 @@ fn configure_host_mix_voice(e: &mut Engine, raw: bool) {
 }
 
 #[test]
-fn test_raw_host_mixing() {
-    both_views(|| {
-    // Host strips receive full instrument DSP despite track fader/mute/solo/master.
+fn test_buses_are_raw() {
+    // A track's bus holds the full instrument DSP whatever the track's fader, pan, mute, solo
+    // and sends say, and nothing of it reaches the return bus.
     {
-        let (mut raw, mut reference) = (Engine::new(), Engine::new());
-        configure_host_mix_voice(&mut raw, true);
-        configure_host_mix_voice(&mut reference, false);
+        let (mut mixed, mut reference) = (Engine::new(), Engine::new());
+        configure_bus_voice(&mut mixed, true);
+        configure_bus_voice(&mut reference, false);
         let (mut actual, mut expected, mut returns) = (Audio::new(8192), Audio::new(8192), Audio::new(8192));
-        bus_render_many(&mut raw, &[0, 16], 0, &mut [&mut actual, &mut returns]);
+        bus_render_many(&mut mixed, &[0, 16], 0, &mut [&mut actual, &mut returns]);
         bus_render_many(&mut reference, &[0], 0, &mut [&mut expected]);
         assert!(actual.l == expected.l && actual.r == expected.r && actual.energy() > 0.001 && returns.energy() == 0.0);
     }
-    // Explicitly disabled host mixing ignores its mask and keeps legacy PCM exact.
-    if mix_view() {
-        let (mut a, mut b) = (Engine::new(), Engine::new());
-        configure(&mut a, TONE);
-        configure(&mut b, TONE);
-        b.begin_update();
-        b.set_host_mixing(0, 0);
-        b.commit_update();
-        a.note_on(0, 0, 69, 100);
-        b.note_on(0, 0, 69, 100);
-        let (mut first, mut second) = (Audio::new(4096), Audio::new(4096));
-        render(&mut a, &mut first);
-        render(&mut b, &mut second);
-        assert!(first.l == second.l && first.r == second.r);
-    }
-    // A raw computational exclusion does not freeze a native voice's envelopes/LFO.
-    if mix_view() {
-        let (mut raw, mut reference) = (Engine::new(), Engine::new());
-        configure_host_mix_voice(&mut raw, true);
-        configure_host_mix_voice(&mut reference, true);
-        let (mut a, mut b) = (Audio::new(512), Audio::new(512));
-        render(&mut raw, &mut a);
-        render(&mut reference, &mut b);
-        raw.begin_update();
-        raw.set_host_mixing(1, 0);
-        raw.commit_update();
-        render(&mut raw, &mut a);
-        render(&mut reference, &mut b);
-        assert!(a.energy() == 0.0);
-        raw.begin_update();
-        raw.set_host_mixing(1, 1);
-        raw.commit_update();
-        render(&mut raw, &mut a);
-        render(&mut reference, &mut b);
-        assert!(a.l == b.l && a.r == b.r);
-    }
     // The metronome is on the return bus only, at its own volume.
-    if !mix_view() {
+    {
         let mut e = Engine::new();
         configure(&mut e, TONE);
         e.begin_update();
@@ -123,53 +81,7 @@ fn test_raw_host_mixing() {
         bus_render_many(&mut plain, &[16, 0], 0, &mut [&mut silent, &mut expected]);
         assert!(silent.energy() == 0.0 && track.l == expected.l && track.r == expected.r && track.energy() > 0.001);
     }
-    // Unscaled metronome lives only on bus16, even when the raw master is zero.
-    if mix_view() {
-        let (mut raw, mut reference) = (Engine::new(), Engine::new());
-        for (e, is_raw) in [(&mut raw, true), (&mut reference, false)] {
-            configure(e, TONE);
-            e.begin_update();
-            e.set_timing(120.0, 4, 0.0, if is_raw { 0.0 } else { 1.0 });
-            e.set_host_mixing(is_raw as i32, 0);
-            e.set_metronome(1, 4, 4, 0.3);
-            e.commit_update();
-            e.play(0);
-        }
-        let (mut a, mut b) = (Audio::new(512), Audio::new(512));
-        bus_render(&mut raw, 16, 0, &mut a);
-        bus_render(&mut reference, 16, 0, &mut b);
-        assert!(a.l == b.l && a.r == b.r && a.energy() > 0.001);
-    }
-    // Switching away and back cannot resurrect an old legacy delay tail.
-    if mix_view() {
-        let mut e = Engine::new();
-        configure(&mut e, ST_INSTRUMENT_SAMPLE);
-        let sample = [0.5f32];
-        e.begin_update();
-        e.set_sample(0, &sample, 48000.0);
-        let mut track = default_track();
-        track.delay_send = 1.0;
-        e.set_track(0, track);
-        e.set_effects(0.01, 0.8, 1.0, 0.7, 0.4, 0.0);
-        e.commit_update();
-        e.note_on(0, 0, 60, 127);
-        let mut head = Audio::new(512);
-        render(&mut e, &mut head);
-        assert!(head.energy_in(480, 512) > 0.00001);
-        e.begin_update();
-        e.set_host_mixing(1, 0xffff);
-        e.commit_update();
-        let mut quiet = Audio::new(128);
-        render(&mut e, &mut quiet);
-        assert!(quiet.energy() == 0.0);
-        e.begin_update();
-        e.set_host_mixing(0, 0);
-        e.commit_update();
-        let mut tail = Audio::new(2048);
-        render(&mut e, &mut tail);
-        assert!(tail.energy() == 0.0);
-    }
-    // Timeline clips retain gain/source timing but bypass track mute/master scaling.
+    // A timeline clip is on its track's bus at its own gain, whatever the track's volume and mute.
     {
         let mut e = Engine::new();
         configure(&mut e, TONE);
@@ -181,10 +93,6 @@ fn test_raw_host_mixing() {
         track.volume = 0.0;
         track.mute = 1;
         e.set_track(0, track);
-        if mix_view() {
-            e.set_timing(120.0, 4, 0.0, 0.0);
-            e.set_host_mixing(1, 1);
-        }
         e.commit_update();
         e.play(1);
         let mut a = Audio::new(512);
@@ -192,30 +100,17 @@ fn test_raw_host_mixing() {
         for &value in &a.l {
             assert!(((value - 0.1f32).abs() as f64) < 1e-7);
         }
-        if mix_view() {
-            e.begin_update();
-            e.set_host_mixing(1, 0);
-            e.commit_update();
-            render(&mut e, &mut a);
-            assert!(a.energy() == 0.0);
-        }
     }
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
-fn test_host_mix_note_mask() {
-    both_views(|| {
+fn test_external_note_gating() {
     // A plug-in instrument sounds in the host's graph: mute and solo do not gate its notes.
     {
-        // One engine: the engine's own mix gates these notes, host mixing does not.
-        let mut e = Engine::alone();
+        let mut e = Engine::new();
         configure(&mut e, ST_INSTRUMENT_AU);
         e.begin_update();
-        if mix_view() {
-            e.set_host_mixing(1, 1);
-        }
         let mut track = default_track();
         track.mute = 1;
         e.set_track(0, track);
@@ -224,32 +119,14 @@ fn test_host_mix_note_mask() {
         e.set_track(1, track);
         e.commit_update();
         e.note_on(0, 0, 60, 100);
-        let mut notes = note_events(render_events(&mut e, 1));
+        let notes = note_events(render_events(&mut e, 1));
         assert!(notes.len() == 1 && notes[0].e.type_ == ST_EVENT_NOTE_ON);
-        if mix_view() {
-            e.begin_update();
-            e.set_host_mixing(1, 0);
-            e.commit_update();
-            notes = note_events(render_events(&mut e, 1));
-            assert!(notes.len() == 1 && notes[0].e.type_ == ST_EVENT_NOTE_OFF);
-            e.note_on(0, 0, 64, 100);
-            assert!(note_events(render_events(&mut e, 1)).is_empty());
-            e.begin_update();
-            e.set_host_mixing(1, 1);
-            e.commit_update();
-            e.note_on(0, 0, 64, 100);
-            notes = note_events(render_events(&mut e, 1));
-            assert!(notes.len() == 1 && notes[0].e.type_ == ST_EVENT_NOTE_ON);
-        }
     }
     // Hardware output is audible outside the host graph, so mute/solo still gates it.
     {
         let mut e = Engine::new();
         configure(&mut e, ST_INSTRUMENT_MIDI);
         e.begin_update();
-        if mix_view() {
-            e.set_host_mixing(1, 0xffff);
-        }
         let mut track = default_track();
         track.mute = 1;
         e.set_track(0, track);
@@ -267,19 +144,10 @@ fn test_host_mix_note_mask() {
         e.begin_update();
         track.solo = 0;
         e.set_track(1, track);
-        if mix_view() {
-            e.set_host_mixing(1, 0);
-        }
         e.commit_update();
         e.note_on(0, 0, 60, 100);
         let mut notes = note_events(render_events(&mut e, 1));
         assert!(notes.len() == 1 && notes[0].e.type_ == ST_EVENT_NOTE_ON);
-        if mix_view() {
-            e.begin_update();
-            e.set_host_mixing(1, 1);
-            e.commit_update();
-            assert!(note_events(render_events(&mut e, 1)).is_empty());
-        }
         e.begin_update();
         track.mute = 1;
         e.set_track(0, track);
@@ -288,7 +156,6 @@ fn test_host_mix_note_mask() {
         assert!(notes.len() == 1 && notes[0].e.type_ == ST_EVENT_NOTE_OFF);
     }
     assert_zero_render_allocations();
-    });
 }
 
 /// Host events carry the destination map of the project that emitted them, so a host whose
@@ -296,7 +163,6 @@ fn test_host_mix_note_mask() {
 /// re-sends every host lane (also an unchanged step lane).
 #[test]
 fn test_host_automation_map() {
-    both_views(|| {
     let mut e = Engine::new();
     configure(&mut e, TONE);
     e.begin_update();
@@ -327,20 +193,15 @@ fn test_host_automation_map() {
     host = host_events(render_events(&mut e, 64));
     assert!(host.len() == 1 && host[0].e.host_map == 0);
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_host_automation_timing() {
-    both_views(|| {
     const ADDRESS: u64 = 0xfedcba9876543210;
     {
         let mut e = Engine::new();
         configure(&mut e, TONE);
         e.begin_update();
-        if mix_view() {
-            e.set_host_mixing(1, 0);
-        }
         e.add_host_automation_point(0, 511, ADDRESS, 1, 1.0, 13.75);
         e.add_host_automation_point(0, 511, ADDRESS, 1, 0.0, -12.25);
         e.add_host_automation_point(0, 511, ADDRESS, 1, 1.0625, -3.125);
@@ -430,12 +291,10 @@ fn test_host_automation_timing() {
         }
     }
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_host_automation_bounds_and_note_offs() {
-    both_views(|| {
     {
         let mut e = Engine::new();
         configure(&mut e, TONE);
@@ -452,9 +311,6 @@ fn test_host_automation_bounds_and_note_offs() {
         let mut e = Engine::new();
         configure(&mut e, ST_INSTRUMENT_AU);
         e.begin_update();
-        if mix_view() {
-            e.set_host_mixing(1, 1);
-        }
         let mut step = default_step();
         step.gate = 10.0;
         e.set_step(0, 0, 0, step, &[]);
@@ -482,6 +338,5 @@ fn test_host_automation_bounds_and_note_offs() {
         assert!(on == 1 && off == 1 && controls > 0 && e.status().dropped_events > 0);
     }
     assert_zero_render_allocations();
-    });
 }
 

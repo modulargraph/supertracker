@@ -11,7 +11,6 @@
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
-use engine_support_b::{both_views, mix_view};
 
 use engine_support_b::alloc::{realtime, render_allocations, reset_render_allocations};
 use engine_support_b::engine::Engine;
@@ -32,34 +31,27 @@ struct Scenario {
     modulated: bool,
     /// Region automation lanes, and instrument edits committed while the scene renders.
     edits: bool,
-    /// The PCM hash of the engine's own stereo mix, recorded on x86-64 Linux.
-    pcm: u64,
-    /// The PCM hash of the buses under host mixing (per block: every track's bus in turn, then
-    /// the return bus), recorded on x86-64 Linux from the engine whose own mix gives `pcm`.
+    /// The PCM hash of the buses (per block: every track's bus in turn, then the return bus),
+    /// recorded on x86-64 Linux.
     buses: u64,
 }
 
-const fn scenario(name: &'static str, voices: i32, mode: i32, modulated: bool, edits: bool, pcm: u64, buses: u64) -> Scenario {
-    Scenario { name, voices, mode, modulated, edits, pcm, buses }
+const fn scenario(name: &'static str, voices: i32, mode: i32, modulated: bool, edits: bool, buses: u64) -> Scenario {
+    Scenario { name, voices, mode, modulated, edits, buses }
 }
 
-/// The region-automation scene plays at the project tempo. Its hash was recorded with the
-/// engine as it was before the tempo-map path was removed (same scene, no map), so it also
-/// shows that the removal left this path's output unchanged.
-const REGION_EDITS_HASH: u64 = 0x29d67d0fd99bb906;
-
 const SCENARIOS: [Scenario; 11] = [
-    scenario("saw-16", 16, -1, false, false, 0x7927989f7fec8293, 0x478a6782c56b66ef),
-    scenario("saw-64", 64, -1, false, false, 0xabfd0e767e7d8128, 0xb13fe802672a8dd9),
-    scenario("saw-256", 256, -1, false, false, 0x373dad267ef310f2, 0x16b0f828e3fc78a1),
-    scenario("loop-64", 64, ST_MODE_FORWARD, false, false, 0xe34c1b45ad81c309, 0x9b174747dda3dfc5),
-    scenario("loop-256", 256, ST_MODE_FORWARD, false, false, 0xb86002dce385d67a, 0x4548d96cf82b85b5),
-    scenario("saw-mod-64", 64, -1, true, false, 0x87eeecdf8a8b9d2a, 0xfbcf5d7a165b780d),
-    scenario("saw-mod-256", 256, -1, true, false, 0x4efe7a3d83a303d5, 0xc8835654ac7a5267),
-    scenario("granular-mod-64", 64, ST_MODE_GRANULAR, true, false, 0x22554a584ba7ed5f, 0xcb768348bbae8ac1),
-    scenario("wavetable-mod-64", 64, ST_MODE_WAVETABLE, true, false, 0x57af8fdf2672b5f7, 0x83752c424f18602e),
-    scenario("slice-mod-64", 64, ST_MODE_SLICE, true, false, 0x468f93cf60f61227, 0x2c5a75740e8091f3),
-    scenario("region-edits-64", 64, ST_MODE_FORWARD, false, true, REGION_EDITS_HASH, 0xc985dcb5779e1bd9),
+    scenario("saw-16", 16, -1, false, false, 0x478a6782c56b66ef),
+    scenario("saw-64", 64, -1, false, false, 0xb13fe802672a8dd9),
+    scenario("saw-256", 256, -1, false, false, 0x16b0f828e3fc78a1),
+    scenario("loop-64", 64, ST_MODE_FORWARD, false, false, 0x9b174747dda3dfc5),
+    scenario("loop-256", 256, ST_MODE_FORWARD, false, false, 0x4548d96cf82b85b5),
+    scenario("saw-mod-64", 64, -1, true, false, 0xfbcf5d7a165b780d),
+    scenario("saw-mod-256", 256, -1, true, false, 0xc8835654ac7a5267),
+    scenario("granular-mod-64", 64, ST_MODE_GRANULAR, true, false, 0xcb768348bbae8ac1),
+    scenario("wavetable-mod-64", 64, ST_MODE_WAVETABLE, true, false, 0x83752c424f18602e),
+    scenario("slice-mod-64", 64, ST_MODE_SLICE, true, false, 0x2c5a75740e8091f3),
+    scenario("region-edits-64", 64, ST_MODE_FORWARD, false, true, 0xc985dcb5779e1bd9),
 ];
 
 /// The hashes depend on the platform's `sin`/`cos` (the sample is generated here) and on the
@@ -77,9 +69,7 @@ struct Outcome {
 }
 
 fn scene(scenario: &Scenario) -> Outcome {
-    // One engine (at 48 kHz, `SAMPLE_RATE`): the scene is timed.
-    let mut e = Engine::alone();
-    assert!(e.sample_rate() == SAMPLE_RATE);
+    let mut e = Engine::with_rate(SAMPLE_RATE);
     e.begin_update();
     e.set_track_count(16);
     e.set_timing(127.0, 4, 0.17, 0.7);
@@ -138,9 +128,6 @@ fn scene(scenario: &Scenario) -> Outcome {
         t.reverb_send = 0.1;
         e.set_track(n, t);
     }
-    if mix_view() {
-        e.set_send_effects(0.375, 0.55, 0.035);
-    }
     e.set_pattern(0, 64);
     e.set_sequence(&[0], true, 0);
     if scenario.edits {
@@ -189,30 +176,17 @@ fn scene(scenario: &Scenario) -> Outcome {
         }
         let count = BLOCK.min(FRAMES - offset);
         let begin = Instant::now();
-        if mix_view() {
-            realtime(|| e.render(&mut left[..count], &mut right[..count]));
-            block_us.push(begin.elapsed().as_secs_f64() * 1e6);
+        realtime(|| e.render_block(offset as u64, count as u32));
+        block_us.push(begin.elapsed().as_secs_f64() * 1e6);
+        // What a host reads of the block: the bus of each of the 16 tracks, then the return bus.
+        for channel in (0..16).chain([-1]) {
+            realtime(|| e.render_channel(channel, offset as u64, &mut left[..count], &mut right[..count]));
             for n in 0..count {
                 for value in [left[n], right[n]] {
                     assert!(value.is_finite());
                     assert!(value.abs() <= 1.0);
                     energy += (value * value) as f64;
                     pcm = hash_f32(pcm, value);
-                }
-            }
-        } else {
-            realtime(|| e.render_block(offset as u64, count as u32));
-            block_us.push(begin.elapsed().as_secs_f64() * 1e6);
-            // What a host reads of the block: the bus of each of the 16 tracks, then the return bus.
-            for channel in (0..16).chain([-1]) {
-                realtime(|| e.render_channel(channel, offset as u64, &mut left[..count], &mut right[..count]));
-                for n in 0..count {
-                    for value in [left[n], right[n]] {
-                        assert!(value.is_finite());
-                        assert!(value.abs() <= 1.0);
-                        energy += (value * value) as f64;
-                        pcm = hash_f32(pcm, value);
-                    }
                 }
             }
         }
@@ -236,15 +210,12 @@ fn scene(scenario: &Scenario) -> Outcome {
 
 /// One scenario of the regression set: the program's assertions plus the recorded hashes.
 fn regression(name: &str) {
-    both_views(|| {
     let scenario = SCENARIOS.iter().find(|scenario| scenario.name == name).expect("scenario");
     let result = scene(scenario);
-    let recorded = if mix_view() { scenario.pcm } else { scenario.buses };
     println!("{{\"scenario\":\"{}\",\"pcm\":\"{:016x}\"}}", scenario.name, result.pcm);
     if HASHES_APPLY {
-        assert!(result.pcm == recorded, "{}: PCM {:016x}, recorded PCM {:016x}", scenario.name, result.pcm, recorded);
+        assert!(result.pcm == scenario.buses, "{}: PCM {:016x}, recorded PCM {:016x}", scenario.name, result.pcm, scenario.buses);
     }
-    });
 }
 
 /// The C++ program's `main`.
@@ -256,7 +227,6 @@ fn benchmark() {
         .and_then(|text| text.parse().ok())
         .map_or(1, |count: i32| count.max(1));
     let only = std::env::var("ENGINE_DSP_BENCHMARK_SCENARIO").ok();
-    both_views(|| {
     for repetition in 0..repetitions {
         for s in &SCENARIOS {
             if only.as_deref().is_some_and(|name| name != s.name) {
@@ -269,7 +239,6 @@ fn benchmark() {
             );
         }
     }
-    });
 }
 
 macro_rules! regressions {

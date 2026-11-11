@@ -3,16 +3,13 @@
 //! revision (with a concurrent status reader), the mod wheel, forgetting external voices with
 //! the sequenced flag, and note columns.
 //!
-//! One `#[test]` per C++ suite (`testFooBar` is `test_foo_bar`), calling the engine's safe Rust
-//! API through `engine_support_a::Engine`. Every C++ `assert` is one `assert!` here, with the
-//! same inputs, expected values and tolerances; every test ends with the C++ program's final
-//! "zero render-thread allocations" check.
+//! One `#[test]` per suite, calling the engine through `engine_support_a::Engine`, which renders
+//! it block by block as a host does: the tests read its buses (a plain render gives their sum).
+//! Every test ends with the "zero render-thread allocations" check.
 // The index loops mirror the C++ loops they translate.
 #![allow(clippy::needless_range_loop, clippy::manual_is_multiple_of, clippy::type_complexity)]
 
 mod engine_support_a;
-#[allow(unused_imports)]
-use engine_support_a::{both_views, mix_view, mix_view_only};
 
 use engine_support_a::core_helpers::*;
 use engine_support_a::tone::*;
@@ -23,7 +20,6 @@ use tracker_engine::engine::*;
 // Pattern loop range: rows 0..15 each carry note 60+row; one row is 6000 frames at 120 BPM, 4 LPB.
 #[test]
 fn test_pattern_loop_range() {
-    both_views(|| {
     // No range: unchanged pattern playback and wrap.
     {
         let mut e = Engine::new();
@@ -116,13 +112,11 @@ fn test_pattern_loop_range() {
         assert_notes(&note_ons(&mut e, 24000), &[(0, 61), (4500, 62), (12000, 61), (16500, 62)]);
     }
     assert_zero_render_allocations();
-    });
 }
 
 // Queued jumps: pattern 0 = 16 rows (notes 60+row), pattern 1 = 4 rows (notes 80+row); 6000 frames per row.
 #[test]
 fn test_queued_jumps() {
-    both_views(|| {
     // Pattern mode: queued mid-pattern, honoured exactly at the pattern end; the new pattern then loops.
     {
         let mut e = Engine::new();
@@ -308,12 +302,10 @@ fn test_queued_jumps() {
         assert!(b.energy_in(11000, 12000) > 0.001);
     }
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_count_in() {
-    both_views(|| {
     // 120 BPM 4/4: four clicks 24000 frames apart while stopped, then Play exactly one bar later.
     {
         let mut e = Engine::new();
@@ -380,7 +372,6 @@ fn test_count_in() {
         assert!(b.energy_in(95500, 96000) > 0.001);
     }
     assert_zero_render_allocations();
-    });
 }
 
 /// Play/Stop are applied by the render thread. Between queueing and the next render (or
@@ -389,7 +380,6 @@ fn test_count_in() {
 /// app's next Play press into another Stop.
 #[test]
 fn test_transhost_doc_follows_queued_commands() {
-    both_views(|| {
     let playing = |e: &Engine| -> bool {
         let s = e.status();
         s.transport_playing()
@@ -463,14 +453,11 @@ fn test_transhost_doc_follows_queued_commands() {
         assert!(!playing(&e) && s.queued_pattern == -1 && s.transport_pending == 0);
     }
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_seek_status_revision() {
-    both_views(|| {
-    // One engine: a status reader races the render below.
-    let mut e = Engine::alone();
+    let mut e = Engine::new();
     configure(&mut e, TONE);
     let mut block = Audio::new(64);
     render(&mut e, &mut block);
@@ -522,12 +509,10 @@ fn test_seek_status_revision() {
         });
     }
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_mod_wheel() {
-    both_views(|| {
     let energy = |wheel: f32, panic: bool| -> f64 {
         let mut e = Engine::new();
         configure(&mut e, TONE);
@@ -556,13 +541,11 @@ fn test_mod_wheel() {
     let (open, closed, reset) = (energy(0.0, false), energy(1.0, false), energy(1.0, true));
     assert!(open > 0.001 && closed < open * 0.3 && (reset - open).abs() < open * 0.01);
     assert_zero_render_allocations();
-    });
 }
 
 /// Note events mark sequencer ownership in slot (1) versus live/preview (0).
 #[test]
 fn test_sequenced_flag() {
-    both_views(|| {
     {
         let mut e = Engine::new();
         configure(&mut e, ST_INSTRUMENT_AU);
@@ -592,7 +575,6 @@ fn test_sequenced_flag() {
         }
     }
     assert_zero_render_allocations();
-    });
 }
 
 // Note columns: each extra column of a track is its own lane on the track's channel
@@ -630,7 +612,6 @@ fn off_frame(offs: &[(u64, i32)], note: i32) -> u64 {
 
 #[test]
 fn test_note_columns() {
-    both_views(|| {
     // Two columns sustain together; a new note in column 1 releases only column 1; OFF in column 0 and CUT in column 1
     // end only their own column; a gated column-2 note stops after its gate while column 0's next note sounds on.
     {
@@ -782,5 +763,4 @@ fn test_note_columns() {
         assert!(on.len() == 1 && on[0].1 == 64);
     }
     assert_zero_render_allocations();
-    });
 }

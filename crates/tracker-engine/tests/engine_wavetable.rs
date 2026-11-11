@@ -3,8 +3,6 @@
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
-#[allow(unused_imports)]
-use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::engine::Engine;
 use std::f64::consts::PI;
@@ -38,9 +36,6 @@ fn setup(e: &mut Engine, p: STInstrument, pcm: &[f32], rows: i32) {
     e.begin_update();
     e.set_track_count(1);
     e.set_timing(120.0, 4, 0.0, 1.0);
-    if mix_view() {
-        e.set_host_mixing(true, 1);
-    }
     let mut track = default_track();
     track.volume = 1.0;
     track.delay_send = 0.0;
@@ -75,7 +70,6 @@ fn level(x: &[f32], from: usize, to: usize) -> f64 {
 /// The Position parameter selects frames; between frames it crossfades.
 #[test]
 fn position_selects_and_crossfades_frames() {
-    both_views(|| {
     for position in [0.0f32, 1.0f32 / 3.0, 0.5, 1.0] {
         let mut e = Engine::new();
         setup(&mut e, wavetable(position), &table(4, 2048), 4);
@@ -86,14 +80,12 @@ fn position_selects_and_crossfades_frames() {
         println!("position {position:.3} -> peak {got:.3} (expected {expected:.3})");
         assert!((got - expected).abs() < 0.01);
     }
-    });
 }
 
 /// The instrument's frame size overrides the default 2048; the sample's registered cycle is used
 /// when it is 0.
 #[test]
 fn explicit_and_registered_frame_sizes() {
-    both_views(|| {
     let pcm = table(8, 256);
     // Half volume keeps the loudest frame (1.6) clear of the output's limits.
     let mut explicit_size = Engine::new();
@@ -130,13 +122,11 @@ fn explicit_and_registered_frame_sizes() {
         }
     }
     assert!(crossings > 300); // eight cycles per 2048-sample read instead of one at 440 Hz
-    });
 }
 
 /// Automation lanes move the position for sounding voices.
 #[test]
 fn position_automation() {
-    both_views(|| {
     let mut e = Engine::new();
     setup(&mut e, wavetable(0.0), &table(4, 2048), 16);
     e.begin_update();
@@ -151,13 +141,11 @@ fn position_automation() {
     e.play(0);
     let out = render(&mut e, 60000);
     assert!(level(&out, 1000, 2000) < 0.3 && level(&out, 50000, 52000) > 0.75);
-    });
 }
 
 /// Step FX "position" sets the track's position for its voices (value 0..1).
 #[test]
 fn step_fx_position() {
-    both_views(|| {
     let mut e = Engine::new();
     setup(&mut e, wavetable(0.0), &table(4, 2048), 4);
     e.begin_update();
@@ -175,14 +163,12 @@ fn step_fx_position() {
     let out = render(&mut e, 24000);
     // Rows are 6000 frames at 120 BPM / 4 LPB.
     assert!((peak(&out, 1000, 6000) - 0.2).abs() < 0.02 && (peak(&out, 13000, 18000) - 0.8).abs() < 0.02);
-    });
 }
 
 /// Position jumps slew over 5 ms instead of clicking: no sample-to-sample step beyond the
 /// waveform's own slope.
 #[test]
 fn position_changes_are_smoothed() {
-    both_views(|| {
     let mut e = Engine::new();
     setup(&mut e, wavetable(0.0), &table(2, 2048), 4);
     e.note_on(0, 0, 33, 127); // 55 Hz: the waveform itself moves slowly
@@ -198,13 +184,11 @@ fn position_changes_are_smoothed() {
     let slope = 0.4 * 2.0 * PI * 55.0 / 48000.0; // steepest step of the louder frame
     assert!(largest < slope * 1.5 + 0.2 / 240.0);
     assert!((peak(&out, 2400, 4800) - 0.4).abs() < 0.01);
-    });
 }
 
 /// Invalid values are clamped or ignored.
 #[test]
 fn position_clamps_to_1_and_an_invalid_frame_size_reads_as_automatic() {
-    both_views(|| {
     let mut e = Engine::new();
     let mut p = wavetable(7.0);
     p.wavetable_frame_size = 3;
@@ -212,5 +196,4 @@ fn position_clamps_to_1_and_an_invalid_frame_size_reads_as_automatic() {
     e.note_on(0, 0, 69, 127);
     let out = render(&mut e, 9600);
     assert!((peak(&out, 4800, 9600) - 0.8).abs() < 0.01);
-    });
 }

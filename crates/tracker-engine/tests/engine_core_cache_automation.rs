@@ -3,16 +3,13 @@
 //! (also as a concurrent mailbox), live notes across automatic playback changes, the explicit
 //! slice effect and step preview ownership.
 //!
-//! One `#[test]` per C++ suite (`testFooBar` is `test_foo_bar`), calling the engine's safe Rust
-//! API through `engine_support_a::Engine`. Every C++ `assert` is one `assert!` here, with the
-//! same inputs, expected values and tolerances; every test ends with the C++ program's final
-//! "zero render-thread allocations" check.
+//! One `#[test]` per suite, calling the engine through `engine_support_a::Engine`, which renders
+//! it block by block as a host does: the tests read its buses (a plain render gives their sum).
+//! Every test ends with the "zero render-thread allocations" check.
 // The index loops mirror the C++ loops they translate.
 #![allow(clippy::needless_range_loop)]
 
 mod engine_support_a;
-#[allow(unused_imports)]
-use engine_support_a::{both_views, mix_view, mix_view_only};
 
 use engine_support_a::core_helpers::*;
 use engine_support_a::tone::*;
@@ -23,7 +20,6 @@ use tracker_engine::engine::*;
 
 #[test]
 fn test_large_pull_protects_note_offs() {
-    both_views(|| {
     let mut e = Engine::new();
     configure(&mut e, ST_INSTRUMENT_AU);
     e.begin_update();
@@ -70,12 +66,10 @@ fn test_large_pull_protects_note_offs() {
     assert!(manual_on > 0 && manual_on < 600 && manual_on == manual_off);
     assert!(e.status().dropped_events > 0);
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_exact_stepped_automation() {
-    both_views(|| {
     let mut e = Engine::new();
     configure(&mut e, TONE);
     e.begin_update();
@@ -143,12 +137,10 @@ fn test_exact_stepped_automation() {
             && (volume[2].e.value - 0.8).abs() < 1e-6
     );
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_timed_mix_defaults_and_automation_refresh() {
-    both_views(|| {
     let mut e = Engine::new();
     configure(&mut e, ST_INSTRUMENT_AU);
     e.begin_update();
@@ -257,12 +249,10 @@ fn test_timed_mix_defaults_and_automation_refresh() {
     assert!(locked_volume.len() == 1 && locked_volume[0].frame == 0 && (locked_volume[0].e.value - 0.3).abs() < 1e-6);
     assert!(held_pan.len() == 1 && held_pan[0].frame == 0 && held_pan[0].e.value == -0.5);
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_concurrent_automation_refresh_mailbox() {
-    both_views(|| {
     {
         let mut e = Engine::new();
         configure(&mut e, ST_INSTRUMENT_MIDI);
@@ -286,8 +276,7 @@ fn test_concurrent_automation_refresh_mailbox() {
         assert!(status.dropped_commands == 0 && status.dropped_events == 0);
     }
     {
-        // One engine: the three threads below race each other.
-        let mut e = Engine::alone();
+        let mut e = Engine::new();
         configure(&mut e, ST_INSTRUMENT_MIDI);
         let mut initial = Audio::new(64);
         render(&mut e, &mut initial);
@@ -349,12 +338,10 @@ fn test_concurrent_automation_refresh_mailbox() {
         assert!(status.dropped_commands == 0 && status.dropped_events == 0);
     }
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_live_notes_survive_automatic_playback_changes() {
-    both_views(|| {
     for looping in [0, 1] {
         let mut e = Engine::new();
         configure(&mut e, TONE);
@@ -462,7 +449,6 @@ fn test_live_notes_survive_automatic_playback_changes() {
         assert!(events.len() == 1 && events[0].e.type_ == ST_EVENT_NOTE_OFF && events[0].e.note == 72);
     }
     assert_zero_render_allocations();
-    });
 }
 
 /// C++ `sliceFXAudio(note,selector,manual,chord,chordCount)` (defaults: automatic slices, no
@@ -512,7 +498,6 @@ fn slice_fx_audio(note: i32, selector: i32, manual: bool, chord: &[i32]) -> Audi
 
 #[test]
 fn test_explicit_slice_fx() {
-    both_views(|| {
     let (mapped, explicit_slice, raised) =
         (slice_fx_audio(61, 0, false, &[]), slice_fx_audio(60, 2, false, &[]), slice_fx_audio(72, 2, false, &[]));
     assert!(mapped.l == explicit_slice.l && mapped.r == explicit_slice.r);
@@ -528,12 +513,10 @@ fn test_explicit_slice_fx() {
     let empty = slice_fx_audio(-3, 2, false, &[]);
     assert!(empty.energy() == 0.0);
     assert_zero_render_allocations();
-    });
 }
 
 #[test]
 fn test_step_preview_ownership() {
-    both_views(|| {
     {
         let (mut e, mut reference) = (Engine::new(), Engine::new());
         configure(&mut e, TONE);
@@ -651,8 +634,7 @@ fn test_step_preview_ownership() {
         e.preview_step(0, step, &[], 0.03);
         let mut audio = Audio::new(4000);
         render(&mut e, &mut audio);
-        assert!(audio.energy_in(100, 500) > if mix_view() { 0.01 } else { 0.03 } && audio.energy_in(3000, 4000) == 0.0);
+        assert!(audio.energy_in(100, 500) > 0.03 && audio.energy_in(3000, 4000) == 0.0);
     }
     assert_zero_render_allocations();
-    });
 }

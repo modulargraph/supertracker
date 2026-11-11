@@ -6,8 +6,6 @@
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
-#[allow(unused_imports)]
-use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::alloc::{realtime, render_allocations};
 use engine_support_b::engine::Engine;
@@ -19,9 +17,6 @@ fn fixture(loop_song: bool, swing: f32) -> Engine {
     e.begin_update();
     e.set_track_count(1);
     e.set_timing(120.0, 4, swing, 1.0);
-    if mix_view() {
-        e.set_host_mixing_tracks(true, &[], true);
-    }
     e.set_pattern(0, 4);
     e.set_sequence(&[0], loop_song, 0);
     e.commit_update();
@@ -47,7 +42,6 @@ fn some(frames: &[i64]) -> Vec<Option<i64>> {
 
 #[test]
 fn a_stopped_transport_has_no_song_frame() {
-    both_views(|| {
     let mut e = fixture(false, 0.0);
     assert_eq!(e.block_song_frame(), None, "before the first block");
     let mut time = 1000;
@@ -57,14 +51,12 @@ fn a_stopped_transport_has_no_song_frame() {
     e.stop();
     assert_eq!(blocks(&mut e, &mut time, 4096, 2), [None, None]);
     assert_eq!(render_allocations(), 0);
-    });
 }
 
 /// Pattern mode counts on through the pattern's wraps (the frames since Play); the host's own
 /// timestamps (here starting at 1000) do not enter.
 #[test]
 fn pattern_mode_counts_from_play_through_seek_and_tempo_change() {
-    both_views(|| {
     let mut e = fixture(false, 0.0);
     let mut time = 1000;
     e.play(0);
@@ -78,12 +70,10 @@ fn pattern_mode_counts_from_play_through_seek_and_tempo_change() {
     e.commit_update();
     assert_eq!(blocks(&mut e, &mut time, 4096, 2), some(&[40384, 44480]));
     assert_eq!(render_allocations(), 0);
-    });
 }
 
 #[test]
 fn a_looping_song_restarts_at_frame_zero() {
-    both_views(|| {
     let mut e = fixture(true, 0.0);
     let mut time = 0;
     e.play(1);
@@ -95,12 +85,10 @@ fn a_looping_song_restarts_at_frame_zero() {
     e.play(1);
     assert_eq!(blocks(&mut e, &mut time, 4000, 8), some(&[0, 4000, 8000, 12000, 16000, 20000, 0, 4000]));
     assert_eq!(render_allocations(), 0);
-    });
 }
 
 #[test]
 fn a_song_that_ended_has_no_song_frame() {
-    both_views(|| {
     let mut e = fixture(false, 0.0);
     let mut time = 0;
     e.play(1);
@@ -108,13 +96,11 @@ fn a_song_that_ended_has_no_song_frame() {
     assert_eq!(frames[..6], some(&[0, 4096, 8192, 12288, 16384, 20480]));
     assert_eq!(frames[6..], [None, None]);
     assert_eq!(render_allocations(), 0);
-    });
 }
 
 /// One bar of count-in at 120 BPM in 4/4 lasts 96000 frames; Play starts on the frame after it.
 #[test]
 fn a_count_in_has_no_song_frame_until_play_starts() {
-    both_views(|| {
     let mut e = fixture(false, 0.0);
     let mut time = 0;
     e.play_count_in(false, 1);
@@ -129,18 +115,15 @@ fn a_count_in_has_no_song_frame_until_play_starts() {
     assert!(frames[..24].iter().all(Option::is_none));
     assert_eq!(frames[24..], some(&[2304, 6400]));
     assert_eq!(render_allocations(), 0);
-    });
 }
 
 /// With swing a row can start between two frames: the song frame is the whole frame below.
 #[test]
 fn a_fractional_start_is_truncated() {
-    both_views(|| {
     let mut e = fixture(false, 0.3);
     let mut time = 0;
     e.seek(0, 1, 0);
     e.play(0);
     assert_eq!(blocks(&mut e, &mut time, 4096, 2), some(&[7799, 11895]));
     assert_eq!(render_allocations(), 0);
-    });
 }
