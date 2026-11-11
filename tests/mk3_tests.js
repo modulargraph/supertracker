@@ -301,9 +301,11 @@ const contractNames = namesText.split(/\s+/).filter(Boolean).flatMap(name => {
   // ---- 10. Native live expression, queued pattern/scene changes, count-in --------------------------------
   state.project = ST.demoProject(); ST.normalize(state.project); state.track = 2; state.instrument = state.project.tracks[2].instrument; state.row = 0; ST.refresh(); reset(); state.track = 2;
   const expressions = () => sent('midi.expression').map(call => call.payload);
+  // Live expression names the track's mixer channel.
+  const owner = `track:${state.project.tracks[2].routingID}`;
   // PITCH: live pitch bend for the selected track, rate-limited with a trailing value, springing back on release.
   calls.length = 0; press('pitch'); touch('strip', true); input({ type: 'strip', value: 1 });
-  same(expressions(), [{ track: 2, kind: 'pitchBend', value: 1 }], 'strip sends a full bend at once');
+  same(expressions(), [{ owner, kind: 'pitchBend', value: 1 }], 'strip sends a full bend at once');
   for (let i = 0; i < 10; i++) input({ type: 'strip', value: .9 - i * .01 });
   assert.equal(expressions().length, 1, 'moves within the rate limit wait'); advance(20); await tick();
   assert.equal(expressions().length, 2, 'one trailing message per interval'); assert.ok(Math.abs(expressions()[1].value - .62) < .001, 'the trailing message carries the latest value');
@@ -311,20 +313,20 @@ const contractNames = namesText.split(/\s+/).filter(Boolean).flatMap(name => {
   assert.ok(!sent('engine.project').length || true); assert.equal(MK3.state.strip.value, .5);
   // MOD: CC1 for the selected track's instrument (native engine maps it to the built-in filter).
   calls.length = 0; press('mod'); touch('strip', true); input({ type: 'strip', value: .5 });
-  same(expressions(), [{ track: 2, kind: 'cc', value: 64 / 127, controller: 1 }], 'mod strip sends CC1');
-  touch('strip', false); same(expressions().at(-1), { track: 2, kind: 'cc', value: 0, controller: 1 }, 'mod springs back to 0'); press('mod');
+  same(expressions(), [{ owner, kind: 'cc', value: 64 / 127, controller: 1 }], 'mod strip sends CC1');
+  touch('strip', false); same(expressions().at(-1), { owner, kind: 'cc', value: 0, controller: 1 }, 'mod springs back to 0'); press('mod');
   // Pad pressure: channel aftertouch (default), poly aftertouch with the pad's note when chosen; reset on release.
   press('keyboard'); calls.length = 0; pad(1, 100, true); input({ type: 'pad', pad: 1, phase: 'pressure', pressure: .5 });
-  same(expressions(), [{ track: 2, kind: 'aftertouch', value: 64 / 127 }], 'pad pressure → channel aftertouch');
-  advance(20); padUp(1); same(expressions().at(-1), { track: 2, kind: 'aftertouch', value: 0 }, 'pad release resets aftertouch');
+  same(expressions(), [{ owner, kind: 'aftertouch', value: 64 / 127 }], 'pad pressure → channel aftertouch');
+  advance(20); padUp(1); same(expressions().at(-1), { owner, kind: 'aftertouch', value: 0 }, 'pad release resets aftertouch');
   MK3.prefs.aftertouch = 'poly'; calls.length = 0; pad(3, 100, true); input({ type: 'pad', pad: 3, phase: 'pressure', pressure: 1 });
   const note = sent('note.on')[0]?.payload.note; assert.ok(Number.isInteger(note));
-  same(expressions(), [{ track: 2, kind: 'polyAftertouch', value: 1, note }], 'poly aftertouch carries the note'); padUp(3);
-  same(expressions().at(-1), { track: 2, kind: 'polyAftertouch', value: 0, note }); MK3.prefs.aftertouch = 'off'; calls.length = 0;
+  same(expressions(), [{ owner, kind: 'polyAftertouch', value: 1, note }], 'poly aftertouch carries the note'); padUp(3);
+  same(expressions().at(-1), { owner, kind: 'polyAftertouch', value: 0, note }); MK3.prefs.aftertouch = 'off'; calls.length = 0;
   pad(4, 100, true); input({ type: 'pad', pad: 4, phase: 'pressure', pressure: 1 }); padUp(4); assert.equal(expressions().length, 0, 'pressure off'); MK3.prefs.aftertouch = 'channel';
   // Pedal: sustain down/up; up reaches the track that received down after a track change.
   calls.length = 0; input({ type: 'pedal', down: true }); state.track = 3; input({ type: 'pedal', down: false });
-  same(expressions(), [{ track: 2, kind: 'sustain', value: 1 }, { track: 2, kind: 'sustain', value: 0 }], 'pedal → sustain'); state.track = 2;
+  same(expressions(), [{ owner, kind: 'sustain', value: 1 }, { owner, kind: 'sustain', value: 0 }], 'pedal → sustain'); state.track = 2;
   // Queued pattern change while Pattern playback runs: blinks, then follows the engine at the pattern end.
   reset(); state.playing = true; state.playbackMode = 'pattern'; const patA = state.project.patterns[0].id, patB = state.project.patterns[1].id; state.project.activePattern = patA;
   state.status = { playing: true, songMode: false, pattern: patA, row: 3, sequence: 0, queuedPattern: -1, queuedSequence: -1 };

@@ -180,7 +180,7 @@ struct InstrumentParameterPayload {
 #[serde(default)]
 struct ExpressionPayload {
     kind: String,
-    track: Option<f64>,
+    owner: Option<String>,
     controller: Option<f64>,
     note: Option<f64>,
     value: Option<f64>,
@@ -384,9 +384,9 @@ impl Audio {
     }
 
     /// `midi.expression`: pitch bend, a controller, channel pressure (`aftertouch`) or poly
-    /// pressure (`polyAftertouch`, with its `note`) played live for the instrument of `track`
-    /// (the track of the last note without one). `value` is -1..1 for pitch bend and 0..1
-    /// otherwise.
+    /// pressure (`polyAftertouch`, with its `note`) played live for the instrument of the track
+    /// whose channel is `owner` (`track:<routingID>`; the track of the last note without
+    /// one). `value` is -1..1 for pitch bend and 0..1 otherwise.
     ///
     /// The message goes where a key played on a MIDI keyboard would send it:
     ///
@@ -400,8 +400,19 @@ impl Audio {
     /// interface plays, whatever the instrument, and is not passed on.
     fn expression(&self, payload: ExpressionPayload) -> Result<Value> {
         let Some(value) = payload.value.filter(|value| value.is_finite()) else { fail!("Expression value must be a finite number.") };
-        let (track, last_instrument) = self.engine.note_destination(whole(payload.track), None);
-        let instrument = self.engine.with_project(|project| project.and_then(|project| project.track_list().get(track as usize).map(|track| track.instrument() as i32))).unwrap_or(last_instrument);
+        let named = match payload.owner.as_deref() {
+            Some(owner) => {
+                let index = self.engine.with_project(|project| project.and_then(|project| project.track_list().iter().position(|track| track.owner().as_deref() == Some(owner))));
+                let Some(index) = index else { fail!("{owner} is not the channel of a track of this project.") };
+                Some(index as i64)
+            }
+            None => None,
+        };
+        let (track, last_instrument) = self.engine.note_destination(named, None);
+        let (owner, instrument) = self
+            .engine
+            .with_project(|project| project.and_then(|project| project.track_list().get(track as usize).map(|track| (track.owner(), track.instrument() as i32))))
+            .unwrap_or((None, last_instrument));
         let seven = (value.clamp(0.0, 1.0) * 127.0).round() as u8;
         let controller = whole(payload.controller).unwrap_or(1).clamp(0, 127) as u8;
         let message = match (payload.kind.as_str(), controller) {
@@ -418,7 +429,7 @@ impl Audio {
                 for (track, note) in released {
                     self.engine.note_off(track, note);
                 }
-                return Ok(json!({ "sent": true, "track": track, "instrument": instrument }));
+                return Ok(json!({ "sent": true, "owner": owner, "instrument": instrument }));
             }
             ("cc", 120..) => fail!("Use engine.panic for channel-mode messages."),
             ("cc", controller) => [0xB0, controller, seven],
@@ -431,7 +442,7 @@ impl Audio {
         };
         let external = self.external_midi.get().and_then(|send| send(instrument.max(0) as usize, message));
         let sent = external.unwrap_or_else(|| self.engine.expression(track, message));
-        Ok(json!({ "sent": sent, "track": track, "instrument": instrument }))
+        Ok(json!({ "sent": sent, "owner": owner, "instrument": instrument }))
     }
 
     fn snapshot(&self, _: NoPayload) -> Result<Value> {

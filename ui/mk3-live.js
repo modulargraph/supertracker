@@ -9,6 +9,8 @@
   // per EXPR_MS with a trailing send, so the last value always arrives; flush sends at once (spring-back, pedal).
   const EXPR_MS = 15;
   const exprStreams = new Map();
+  // `track` is a track index; the host is told the track's channel (its owner), which stays the track's
+  // while a message waits for its turn.
   function expression(kind, value, { track = st().track, controller, note, flush = false } = {}) {
     const q = kind === 'pitchBend' ? Math.round(clamp(Number(value) || 0, -1, 1) * 8191) / 8191 : Math.round(clamp01(value) * 127) / 127;
     const key = [kind, track, controller ?? '', note ?? ''].join(':');
@@ -16,7 +18,7 @@
     if (!stream) { stream = { sent: null, at: -Infinity, pending: null, timer: null }; exprStreams.set(key, stream); }
     if (!stream.pending && stream.sent === q) return false;
     const message = {
-      ...(typeof track === 'string' ? { owner: track } : { track }),
+      owner: `track:${P().tracks[track]?.routingID}`,
       kind,
       value: q,
       ...(controller != null ? { controller } : {}),
@@ -40,12 +42,12 @@
     const mode = prefs.aftertouch || 'channel';
     if (mode === 'off' || info.note == null) return;
     if (mode === 'poly') { expression('polyAftertouch', release ? 0 : info.pressure,
-        { track: info.owner || info.track, note: info.note, flush: release }); return; }
+        { track: info.track, note: info.note, flush: release }); return; }
     const value = Math.max(0,
         ...[...M.pads.values()].filter(other => other.note != null
-            && (other.owner || other.track) === (info.owner || info.track)
+            && other.track === info.track
             && (!release || other !== info)).map(other => other.pressure || 0));
-    expression('aftertouch', value, { track: info.owner || info.track, flush: release && value === 0 });
+    expression('aftertouch', value, { track: info.track, flush: release && value === 0 });
   }
   function pedal(down) {
     if (down === M.pedal) return;

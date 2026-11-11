@@ -109,15 +109,20 @@ fn live_notes_previews_and_record_arm_reach_the_engine() {
     let fixture = start(TempDir::new("audio-notes"));
     let host = &fixture.host;
     host.request("engine.project", json!({ "project": demo() })).unwrap();
+    // Live expression names the channel of the track it is for.
+    let owner = format!("track:{}", demo()["tracks"][1]["routingID"].as_str().unwrap());
     assert_eq!(host.request("note.on", json!({ "note": 60, "velocity": 110, "track": 1, "instrument": 1 })), Ok(json!({ "ok": true })));
     status_where(host, "the held note is heard", |status| status["peakL"].as_f64().unwrap() > 0.001);
     // The sustain pedal holds the release until it comes up.
-    assert_eq!(host.request("midi.expression", json!({ "kind": "sustain", "track": 1, "value": 1 })).unwrap()["sent"], true);
+    assert_eq!(host.request("midi.expression", json!({ "kind": "sustain", "owner": owner, "value": 1 })).unwrap()["sent"], true);
     assert_eq!(host.request("note.off", json!({ "note": 60, "track": 1 })), Ok(json!({ "ok": true, "sustained": true })));
-    assert_eq!(host.request("midi.expression", json!({ "kind": "cc", "controller": 64, "track": 1, "value": 0 })).unwrap()["sent"], true);
+    assert_eq!(host.request("midi.expression", json!({ "kind": "cc", "controller": 64, "owner": owner, "value": 0 })).unwrap()["sent"], true);
     assert_eq!(host.request("note.off", json!({ "note": 60, "track": 1 })), Ok(json!({ "ok": true })));
-    assert_eq!(host.request("midi.expression", json!({ "kind": "pitchBend", "track": 1, "value": 0.5 })).unwrap(), json!({ "sent": true, "track": 1, "instrument": 1 }));
-    assert_eq!(host.request("midi.expression", json!({ "kind": "cc", "controller": 74, "value": 0.5 })).unwrap()["sent"], false);
+    assert_eq!(host.request("midi.expression", json!({ "kind": "pitchBend", "owner": owner, "value": 0.5 })).unwrap(), json!({ "sent": true, "owner": owner, "instrument": 1 }));
+    // Without an owner the message is for the track of the last note; a track number is not an address.
+    assert_eq!(host.request("midi.expression", json!({ "kind": "cc", "controller": 74, "value": 0.5 })).unwrap(), json!({ "sent": false, "owner": owner, "instrument": 1 }));
+    assert_eq!(host.request("midi.expression", json!({ "kind": "pitchBend", "track": 5, "value": 0.5 })).unwrap()["owner"], owner);
+    assert_eq!(host.request("midi.expression", json!({ "kind": "pitchBend", "owner": "track:gone", "value": 0.5 })).unwrap_err(), "track:gone is not the channel of a track of this project.");
     assert!(host.request("midi.expression", json!({ "kind": "wobble", "value": 0.5 })).unwrap_err().contains("wobble"));
 
     assert_eq!(host.request("step.preview", json!({ "step": { "note": 64, "instrument": 0, "velocity": 100 }, "track": 0, "duration": 0.2 })), Ok(json!({ "auditioning": true })));

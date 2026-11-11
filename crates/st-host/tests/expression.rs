@@ -144,14 +144,14 @@ fn expression_from_the_interface_reaches_every_kind_of_instrument() {
     // Controller 74 at 64, channel pressure 100, poly pressure 45 on key 60, a bend of +1/2.
     let messages = |track: i64| {
         [
-            json!({ "track": track, "kind": "cc", "controller": 74, "value": 64.0 / 127.0 }),
-            json!({ "track": track, "kind": "aftertouch", "value": 100.0 / 127.0 }),
-            json!({ "track": track, "kind": "polyAftertouch", "note": 60, "value": 45.0 / 127.0 }),
-            json!({ "track": track, "kind": "pitchBend", "value": 0.5 }),
+            json!({ "owner": owner(track), "kind": "cc", "controller": 74, "value": 64.0 / 127.0 }),
+            json!({ "owner": owner(track), "kind": "aftertouch", "value": 100.0 / 127.0 }),
+            json!({ "owner": owner(track), "kind": "polyAftertouch", "note": 60, "value": 45.0 / 127.0 }),
+            json!({ "owner": owner(track), "kind": "pitchBend", "value": 0.5 }),
         ]
     };
     let sent = |track: i64| -> Vec<Value> { messages(track).into_iter().map(|message| fixture.express(message)).collect() };
-    let all = |replies: &[Value], sent: bool, track: i64| replies.iter().all(|reply| *reply == json!({ "sent": sent, "track": track, "instrument": track }));
+    let all = |replies: &[Value], sent: bool, track: i64| replies.iter().all(|reply| *reply == json!({ "sent": sent, "owner": owner(track), "instrument": track }));
 
     // The external instrument: on its device, on its channel (3), at once.
     fixture.ports.clear_sent();
@@ -170,22 +170,23 @@ fn expression_from_the_interface_reaches_every_kind_of_instrument() {
     // The engine's own instrument: pitch bend and the modulation wheel; it ignores the rest.
     let replies = sent(SAMPLER);
     assert!(all(&replies[..3], false, SAMPLER) && all(&replies[3..], true, SAMPLER), "{replies:?}");
-    assert_eq!(fixture.express(json!({ "track": SAMPLER, "kind": "cc", "controller": 1, "value": 0.5 }))["sent"], true);
+    assert_eq!(fixture.express(json!({ "owner": owner(SAMPLER), "kind": "cc", "controller": 1, "value": 0.5 }))["sent"], true);
     // The pedal is the host's own, for every instrument: it holds the release of a note the
     // interface plays and is not passed on.
-    assert_eq!(fixture.express(json!({ "track": EXTERNAL, "kind": "sustain", "value": 1 }))["sent"], true);
+    assert_eq!(fixture.express(json!({ "owner": owner(EXTERNAL), "kind": "sustain", "value": 1 }))["sent"], true);
     fixture.host.request("note.on", json!({ "note": 72, "velocity": 90, "track": EXTERNAL, "instrument": 0 })).unwrap();
     assert_eq!(fixture.host.request("note.off", json!({ "note": 72, "track": EXTERNAL, "instrument": 0 })).unwrap()["sustained"], true);
     fixture.synth_gets("the held note", &[&[0x92, 72, 90]]);
-    assert_eq!(fixture.express(json!({ "track": EXTERNAL, "kind": "cc", "controller": 64, "value": 0 }))["sent"], true);
+    assert_eq!(fixture.express(json!({ "owner": owner(EXTERNAL), "kind": "cc", "controller": 64, "value": 0 }))["sent"], true);
     fixture.synth_gets("the release when the pedal comes up", &[&[0x82, 72, 0]]);
 
     // What is not expression is refused with a reason.
     for (payload, reason) in [
-        (json!({ "track": CLAP, "kind": "polyAftertouch", "value": 0.5 }), "needs a note"),
-        (json!({ "track": CLAP, "kind": "cc", "controller": 123, "value": 0 }), "engine.panic"),
-        (json!({ "track": CLAP, "kind": "program", "value": 0.5 }), "Unsupported expression kind"),
-        (json!({ "track": CLAP, "kind": "aftertouch" }), "finite number"),
+        (json!({ "owner": owner(CLAP), "kind": "polyAftertouch", "value": 0.5 }), "needs a note"),
+        (json!({ "owner": owner(CLAP), "kind": "cc", "controller": 123, "value": 0 }), "engine.panic"),
+        (json!({ "owner": owner(CLAP), "kind": "program", "value": 0.5 }), "Unsupported expression kind"),
+        (json!({ "owner": owner(CLAP), "kind": "aftertouch" }), "finite number"),
+        (json!({ "owner": "bus:drums", "kind": "aftertouch", "value": 0.5 }), "not the channel of a track"),
     ] {
         let error = fixture.host.request("midi.expression", payload.clone()).unwrap_err();
         assert!(error.contains(reason), "{payload}: {error}");
@@ -193,7 +194,7 @@ fn expression_from_the_interface_reaches_every_kind_of_instrument() {
     // With the synth unplugged its messages go nowhere, and the reply says so.
     fixture.ports.remove_output(SYNTH);
     fixture.services.services.midi.as_ref().unwrap().service().refresh_devices();
-    assert_eq!(fixture.express(json!({ "track": EXTERNAL, "kind": "aftertouch", "value": 1 })), json!({ "sent": false, "track": EXTERNAL, "instrument": EXTERNAL }));
+    assert_eq!(fixture.express(json!({ "owner": owner(EXTERNAL), "kind": "aftertouch", "value": 1 })), json!({ "sent": false, "owner": owner(EXTERNAL), "instrument": EXTERNAL }));
     fixture.services.services.shutdown();
 }
 
