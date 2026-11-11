@@ -7,8 +7,7 @@ description = "SuperTracker's audio engine: sequencer, sampler voices, clock and
 publish = false
 
 [features]
-default = ["clock", "unit-range", "effects", "engine"]
+default = ["clock", "effects", "engine"]
 clock = []
-unit-range = []
 effects = []
 engine = ["clock"]

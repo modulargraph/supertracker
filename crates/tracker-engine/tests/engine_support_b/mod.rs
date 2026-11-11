@@ -8,8 +8,8 @@
 //! * [`engine`]: an owned engine with one method per operation the C++ programs called, each
 //!   forwarding to the engine's handles.
 //! * [`tone`]: this batch's copy of the C++ tests' `engine_test_tone.hpp`.
-//! * [`fx`], [`unit_range`]: the built-in effect handle and the unit range cache in the shape
-//!   the test programs were written against (status codes, optional callbacks).
+//! * [`fx`]: the built-in effect handle in the shape the test programs were written against
+//!   (status codes, optional callbacks).
 #![allow(dead_code)]
 
 pub mod alloc;
@@ -19,8 +19,6 @@ pub mod engine;
 pub mod fx;
 #[cfg(feature = "engine")]
 pub mod tone;
-#[cfg(feature = "unit-range")]
-pub mod unit_range;
 
 /// FNV-1a offset basis used by the C++ benchmarks' PCM hashes.
 pub const FNV_OFFSET: u64 = 1469598103934665603;

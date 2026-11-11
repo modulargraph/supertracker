@@ -6,7 +6,6 @@
 //! | [`engine`] | the sequencer and its voices, rendered per track bus | [`engine::Engine`] |
 //! | [`clock`] | the sample-accurate tempo/meter clock | [`clock::ClockMap`], [`clock::ClockTimeline`] |
 //! | [`effects`] | the built-in effect catalogue, effect instances, drum models | [`effects::Effect`], [`effects::catalogue`] |
-//! | [`unit_range`] | a bounded render cache for one hosted unit (a plug-in) | [`unit_range::UnitRangeCache`] |
 //!
 //! Each module is behind a cargo feature of the same name (all on by default), so one part can
 //! be built and tested without the others; `engine` needs `clock`.
@@ -21,5 +20,3 @@ pub mod clock;
 pub mod effects;
 #[cfg(feature = "engine")]
 pub mod engine;
-#[cfg(feature = "unit-range")]
-pub mod unit_range;
