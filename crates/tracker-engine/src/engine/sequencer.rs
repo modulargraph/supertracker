@@ -50,6 +50,14 @@ struct Hits<'s> {
 
 const UNISON: [i32; ST_MAX_CHORD] = [0; ST_MAX_CHORD];
 
+/// The targets whose values the host applies: the mixer values of a track. Their changes
+/// (project defaults, lanes, step effects) are reported as `ST_EVENT_PARAMETER`; every other
+/// native target acts on the engine's own voices and is reported to nobody.
+#[inline]
+fn mixer_target(target: i32) -> bool {
+    matches!(target, ST_TARGET_VOLUME | ST_TARGET_PAN | ST_TARGET_DELAY | ST_TARGET_REVERB)
+}
+
 /// The lane's value at pattern position `pos` (rows).
 fn lane_value(l: &Lane, mut pos: f64) -> f64 {
     let points = &l.points;
@@ -142,33 +150,15 @@ impl<'a> Rt<'a> {
         channel >= 0 && channel < self.p.track_count
     }
 
-    /// Timed defaults for track volume/pan/sends and the assigned instrument's volume/pan on
-    /// every configured track; active lanes override them at the same sample in FIFO order.
+    /// Timed defaults for track volume, pan and sends on every configured track; active lanes
+    /// override them at the same sample in FIFO order.
     pub fn emit_mix_state(&mut self) {
         let p = self.p;
         for t in 0..p.track_count {
-            let (Some(s), Some(mix)) = (self.tb.track_state.get(t as usize), p.tracks.get(t as usize)) else { continue };
-            let Some(instrument) = p.instruments.get(mix.instrument as u32 as usize) else { continue };
-            let i = &instrument.p;
-            let instrument_volume = s.instrument[(ST_TARGET_INSTRUMENT_VOLUME - ST_TARGET_ATTACK) as usize];
-            let instrument_pan = s.instrument[(ST_TARGET_INSTRUMENT_PAN - ST_TARGET_ATTACK) as usize];
-            let targets = [
-                ST_TARGET_VOLUME,
-                ST_TARGET_PAN,
-                ST_TARGET_DELAY,
-                ST_TARGET_REVERB,
-                ST_TARGET_INSTRUMENT_VOLUME,
-                ST_TARGET_INSTRUMENT_PAN,
-            ];
-            let values = [
-                s.volume,
-                s.pan,
-                s.delay,
-                s.reverb,
-                if instrument_volume.is_finite() { instrument_volume } else { i.volume },
-                if instrument_pan.is_finite() { instrument_pan } else { i.pan },
-            ];
-            for n in 0..6 {
+            let Some(s) = self.tb.track_state.get(t as usize) else { continue };
+            let targets = [ST_TARGET_VOLUME, ST_TARGET_PAN, ST_TARGET_DELAY, ST_TARGET_REVERB];
+            let values = [s.volume, s.pan, s.delay, s.reverb];
+            for n in 0..4 {
                 let event = STEvent {
                     type_: ST_EVENT_PARAMETER,
                     track: t,
@@ -274,7 +264,7 @@ impl<'a> Rt<'a> {
     }
 
     /// A step effect that acts on the channel: sets the row's value, locks the matching
-    /// automation target for this row and reports it to the host.
+    /// automation target for this row and, for a mixer value, reports it to the host.
     fn apply_fx(&mut self, track: i32, fx: STStepFX) {
         let Some(t) = self.tb.track_state.get_mut(track as u32 as usize) else { return };
         let x = finite(fx.value, 0.0);
@@ -324,9 +314,11 @@ impl<'a> Rt<'a> {
         }
         if target >= 0 {
             t.row_locks |= 1u64 << target;
-            let event =
-                STEvent { type_: ST_EVENT_PARAMETER, track, target, value: x as f64, ..STEvent::default() };
-            emit_event(&self.e.out, self.sh, event);
+            if mixer_target(target) {
+                let event =
+                    STEvent { type_: ST_EVENT_PARAMETER, track, target, value: x as f64, ..STEvent::default() };
+                emit_event(&self.e.out, self.sh, event);
+            }
         }
     }
 
@@ -751,8 +743,8 @@ impl<'a> Rt<'a> {
         self.index_plugin_locks();
     }
 
-    /// Per-sample automation: deliver pending plug-in locks, evaluate native lanes into the
-    /// channel state (unless the row locks them) and emit native and host lane events.
+    /// Per-sample automation: deliver pending locks, evaluate native lanes into the channel
+    /// state (unless the row locks them) and emit the events of mixer and host lanes.
     pub fn automation(&mut self) {
         if !self.e.playing {
             return;
@@ -801,7 +793,9 @@ impl<'a> Rt<'a> {
                     }
                 }
             }
-            emit_lane_automation(&e.out, self.sh, frame, p.host_map, l, state, v as f64, ST_EVENT_PARAMETER);
+            if mixer_target(l.target) {
+                emit_lane_automation(&e.out, self.sh, frame, p.host_map, l, state, v as f64, ST_EVENT_PARAMETER);
+            }
         }
         for (index, l) in host_lanes.iter().enumerate().take(256) {
             let state = &mut e.host_lane_event_state[index];

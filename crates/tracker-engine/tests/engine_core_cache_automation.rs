@@ -73,14 +73,8 @@ fn test_exact_stepped_automation() {
     let mut e = Engine::new();
     configure(&mut e, TONE);
     e.begin_update();
-    let targets = [
-        ST_TARGET_VOLUME,
-        ST_TARGET_PAN,
-        ST_TARGET_DELAY,
-        ST_TARGET_REVERB,
-        ST_TARGET_INSTRUMENT_VOLUME,
-        ST_TARGET_INSTRUMENT_PAN,
-    ];
+    // The mixer values of a track: the targets whose changes the engine reports.
+    let targets = [ST_TARGET_VOLUME, ST_TARGET_PAN, ST_TARGET_DELAY, ST_TARGET_REVERB];
     for target in targets {
         e.add_automation_point(0, 0, target, 1, 0.0, 0.0);
         e.add_automation_point(0, 0, target, 1, 1.0, 1.0);
@@ -115,7 +109,7 @@ fn test_exact_stepped_automation() {
         assert!(values.len() == 1 && values[0].frame == 0 && values[0].e.value == 0.5);
         restored += 1;
     }
-    assert!(restored == 6);
+    assert!(restored == 4);
     let mut locked = Engine::new();
     configure(&mut locked, TONE);
     locked.begin_update();
@@ -180,10 +174,9 @@ fn test_timed_mix_defaults_and_automation_refresh() {
     while let Some(event) = e.pop_event() {
         updated.push(Timed { frame: 512 + event.frame_offset as u64, e: event });
     }
-    let targets =
-        [ST_TARGET_VOLUME, ST_TARGET_DELAY, ST_TARGET_REVERB, ST_TARGET_INSTRUMENT_VOLUME, ST_TARGET_INSTRUMENT_PAN];
-    let expected = [1.2f64, 0.25, 0.1, 0.6, 0.2];
-    for n in 0..5 {
+    let targets = [ST_TARGET_VOLUME, ST_TARGET_DELAY, ST_TARGET_REVERB];
+    let expected = [1.2f64, 0.25, 0.1];
+    for n in 0..3 {
         let changes = parameter_changes(&updated, targets[n]);
         assert!(changes.len() == 1 && changes[0].frame == 512 && (changes[0].e.value - expected[n]).abs() < 1e-6);
     }
@@ -270,7 +263,9 @@ fn test_concurrent_automation_refresh_mailbox() {
             off += (event.type_ == ST_EVENT_NOTE_OFF) as i32;
             parameters += (event.type_ == ST_EVENT_PARAMETER) as i32;
         }
-        assert!(on == 1000 && off == 1000 && parameters == 24);
+        // Four mixer values for each of the two tracks, sent once for the project and once for
+        // the refresh.
+        assert!(on == 1000 && off == 1000 && parameters == 16);
         let status = e.status();
         assert!(status.dropped_commands == 0 && status.dropped_events == 0);
     }
