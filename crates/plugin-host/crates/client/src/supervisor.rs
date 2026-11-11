@@ -21,7 +21,7 @@ use stpc_transport::wire::{Bytes, Wire};
 
 use crate::connection::Connection;
 use crate::instance::{
-    DryDelay, Fallback, Instance, InstanceConfig, InstanceShared, InstanceStatus, Link, PluginKind, RtState, GATE_IDLE,
+    DryDelay, Fallback, Instance, InstanceConfig, InstanceShared, InstanceStatus, Link, PluginKind, RtState, Waiting, GATE_IDLE,
 };
 use crate::spawn;
 use crate::{ContainerId, Error, InstanceId, Result};
@@ -673,6 +673,8 @@ impl SupInner {
             total_in: config.input_buses.iter().sum::<u32>() as usize,
             total_out: config.output_buses.iter().sum::<u32>() as usize,
             rt: std::cell::UnsafeCell::new(RtState::new()),
+            waiting: std::cell::UnsafeCell::new(Waiting::new(config.event_capacity as usize)),
+            held_blocks: AtomicU32::new(0),
             region_ref: Mutex::new(None),
             dirty: Mutex::new(HashMap::new()),
             control: Mutex::new(Control {

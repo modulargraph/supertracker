@@ -12,6 +12,8 @@
 //! | `crash`    | effect     | pass-through that aborts / segfaults / exits on request                    |
 //! | `hang`     | effect     | pass-through that stalls or hangs on request                               |
 //! | `slow`     | effect     | `gain` that takes `ms=` milliseconds to instantiate                        |
+//! | `events`   | instrument | keeps a log of the events it was given, readable as parameters; can stall  |
+//! |            |            | and can keep its container from processing for a while                     |
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -32,6 +34,7 @@ enum Kind {
     BigState,
     Crash,
     Hang,
+    Events,
 }
 
 /// Parameter ids of `gain` (and `slow`).
@@ -93,6 +96,31 @@ pub mod hang {
     pub const NOTE_FOREVER: u8 = 62;
 }
 
+/// `events`: the log and what makes the plug-in miss blocks.
+pub mod events {
+    /// Parameter event: sleep `value` milliseconds inside process, once (the block is late).
+    pub const PROCESS_SLEEP_MS: u64 = 2;
+    /// set_parameter: keep the real-time thread out of `process` for `value` milliseconds
+    /// (blocks requested meanwhile are answered "busy", unprocessed).
+    pub const EXCLUDE_MS: u64 = 5;
+    /// Read-only: how many events the plug-in has been given (the log holds the first 256).
+    pub const COUNT: u64 = 10;
+    /// Read-only: entry `n` of the log is parameter `LOG + n`.
+    pub const LOG: u64 = 1000;
+    pub const LOG_CAPACITY: usize = 256;
+
+    /// The log entry of a MIDI event (up to three bytes) at `offset`.
+    pub fn midi(offset: u32, bytes: &[u8]) -> f64 {
+        let payload = bytes.iter().take(3).enumerate().fold(0u64, |payload, (index, byte)| payload | u64::from(*byte) << (8 * index));
+        (1u64 << 50 | u64::from(offset.min(8191)) << 37 | payload) as f64
+    }
+
+    /// The log entry of a parameter event at `offset` (`id` below 32, a whole `value`).
+    pub fn param(offset: u32, id: u64, value: f64) -> f64 {
+        (2u64 << 50 | u64::from(offset.min(8191)) << 37 | (id & 31) << 32 | u64::from(value as u32)) as f64
+    }
+}
+
 /// The sample `sine` produces `k` frames after a note-on, shared with the tests so that
 /// they can compare bit for bit.
 pub fn sine_sample(note: u8, k: u64, sample_rate: f64, level: f64) -> f32 {
@@ -131,6 +159,9 @@ struct Shared {
     value: AtomicU64,
     bypass: AtomicBool,
     mode: AtomicU32,
+    /// `events`: the events received (`events::midi`, `events::param`) and their count.
+    log: Vec<AtomicU64>,
+    log_count: AtomicU32,
 }
 
 impl Shared {
@@ -180,6 +211,7 @@ impl PluginBackend for TestBackend {
             "bigstate" => (Kind::BigState, 0.0),
             "crash" => (Kind::Crash, 0.0),
             "hang" => (Kind::Hang, 0.0),
+            "events" => (Kind::Events, 0.0),
             other => return Err(PluginError::failed(format!("the test backend has no plug-in \"{other}\""))),
         };
         if has_flag(options, "crash_on_create") {
@@ -201,6 +233,8 @@ impl PluginBackend for TestBackend {
                 value: AtomicU64::new(initial.to_bits()),
                 bypass: AtomicBool::new(false),
                 mode: AtomicU32::new(0),
+                log: (0..if kind == Kind::Events { events::LOG_CAPACITY } else { 0 }).map(|_| AtomicU64::new(0)).collect(),
+                log_count: AtomicU32::new(0),
             }),
             host,
             name: request.plugin_id.to_string(),
@@ -236,6 +270,9 @@ impl Plugin for TestPlugin {
         let mut flags = 0;
         if kind == Kind::Sine {
             flags |= INFO_INSTRUMENT | INFO_WANTS_MIDI | INFO_PRODUCES_MIDI;
+        }
+        if kind == Kind::Events {
+            flags |= INFO_INSTRUMENT | INFO_WANTS_MIDI;
         }
         if kind == Kind::Gain {
             flags |= INFO_HAS_EDITOR | INFO_HAS_BYPASS;
@@ -338,6 +375,10 @@ impl Plugin for TestPlugin {
             }
             (Kind::Gain, gain::MODE) => Some(self.shared.mode.load(Ordering::Relaxed) as f64),
             (Kind::BigState, id) if (1..=bigstate::PARAMS).contains(&id) => Some(self.params[id as usize - 1]),
+            (Kind::Events, events::COUNT) => Some(self.shared.log_count.load(Ordering::Acquire) as f64),
+            (Kind::Events, id) if id >= events::LOG => {
+                self.shared.log.get((id - events::LOG) as usize).map(|entry| f64::from_bits(entry.load(Ordering::Acquire)))
+            }
             _ => None,
         }
     }
@@ -372,6 +413,9 @@ impl Plugin for TestPlugin {
                 std::thread::sleep(Duration::from_secs(3600));
             },
             (Kind::Hang, hang::MAIN_SLEEP_MS) => std::thread::sleep(Duration::from_millis(value as u64)),
+            (Kind::Events, events::EXCLUDE_MS) => {
+                self.host.with_processing_excluded(|| std::thread::sleep(Duration::from_millis(value as u64)));
+            }
             _ => return Err(PluginError::failed(format!("no parameter {id}"))),
         }
         Ok(())
@@ -681,6 +725,22 @@ impl Processor for TestProcessor {
                 }
             }
             Kind::BigState => Self::pass_through(data),
+            Kind::Events => {
+                for event in data.events {
+                    let entry = if event.kind == EVENT_PARAM { events::param(event.offset, event.id, event.value) } else { events::midi(event.offset, event.midi_bytes()) };
+                    let count = self.shared.log_count.load(Ordering::Relaxed);
+                    if let Some(slot) = self.shared.log.get(count as usize) {
+                        slot.store(entry.to_bits(), Ordering::Release);
+                        self.shared.log_count.store(count + 1, Ordering::Release);
+                    }
+                }
+                // The stall comes after the log: what a late block carried is on record.
+                for event in data.events {
+                    if event.kind == EVENT_PARAM && event.id == events::PROCESS_SLEEP_MS {
+                        std::thread::sleep(Duration::from_millis(event.value as u64));
+                    }
+                }
+            }
             Kind::Crash => {
                 for event in data.events {
                     if event.kind == EVENT_PARAM && event.id == crash::PROCESS {

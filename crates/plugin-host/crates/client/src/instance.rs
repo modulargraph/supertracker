@@ -42,6 +42,15 @@ pub const PROCESS_OUT_EVENTS_DROPPED: u32 = 512;
 pub const PROCESS_PLUGIN_ERROR: u32 = 1024;
 /// Bad arguments (more frames than `max_frames`, an output slice shorter than `frames`).
 pub const PROCESS_INVALID: u32 = 2048;
+/// Events that were waiting for the plug-in were given up because a bound was reached
+/// (see "Events" on [`Instance::process`]): the plug-in may hold notes whose note-off was
+/// among them, and has not seen the parameter changes. The caller puts that right with the next block
+/// (pedals up, all notes off, a note-off for every note it sent on).
+pub const PROCESS_EVENTS_LOST: u32 = 4096;
+
+/// How long events wait for a plug-in that does not take its blocks, in seconds of
+/// audio, before they are given up ([`PROCESS_EVENTS_LOST`]).
+pub const EVENT_PATIENCE_SECONDS: f64 = 2.0;
 
 /// `RawBlock::deadline_ns` value for "wait as long as it takes".
 pub const DEADLINE_NONE: u64 = u64::MAX;
@@ -317,6 +326,8 @@ impl DryDelay {
 /// State owned by whoever holds the gate (normally the audio thread).
 pub(crate) struct RtState {
     pub link: Option<Link>,
+    /// Counts the attachments installed: a block owed by an earlier one is never answered.
+    epoch: u32,
     seq: u32,
     /// Block number the container still owes after a deadline miss (0: none).
     pending: u32,
@@ -333,6 +344,7 @@ impl RtState {
     pub fn new() -> RtState {
         RtState {
             link: None,
+            epoch: 0,
             seq: 0,
             pending: 0,
             peer_gone: false,
@@ -351,11 +363,90 @@ impl RtState {
         self.event_capacity = layout.event_capacity;
         self.out_event_capacity = layout.out_event_capacity;
         self.link = Some(link);
+        self.epoch = self.epoch.wrapping_add(1);
         self.seq = 0;
         self.pending = 0;
         self.peer_gone = false;
         self.discontinuity = false;
         self.dry = dry;
+    }
+}
+
+/// The events that have not reached the plug-in yet, in the order they were passed to
+/// `process`. Owned by the caller of `process` (one audio thread at a time), with or
+/// without the gate. Never grows: its room is the instance's event capacity.
+pub(crate) struct Waiting {
+    events: Vec<Event>,
+    /// How many of the first events went out with the block the container still owes
+    /// (it was late). Whether they reached the plug-in is known when it has answered.
+    in_flight: usize,
+    /// The attachment `in_flight` belongs to ([`RtState::epoch`]).
+    epoch: u32,
+    /// Frames of the blocks that went by while events were waiting.
+    waited_frames: u64,
+    /// Events were given up since the last outcome.
+    lost: bool,
+}
+
+impl Waiting {
+    pub fn new(capacity: usize) -> Waiting {
+        Waiting { events: Vec::with_capacity(capacity), in_flight: 0, epoch: 0, waited_frames: 0, lost: false }
+    }
+
+    /// Gives up everything that waits; the next outcome says so.
+    fn give_up(&mut self) {
+        self.lost |= !self.events.is_empty();
+        self.discard();
+    }
+
+    /// Forgets everything that waits: the plug-in it was for is gone or bypassed, which
+    /// the outcome says by itself.
+    fn discard(&mut self) {
+        self.events.clear();
+        self.in_flight = 0;
+        self.waited_frames = 0;
+    }
+
+    /// Takes the events of a block behind those that wait. Returns how many were waiting
+    /// before, and `PROCESS_EVENTS_DROPPED` when the block alone has more events than fit.
+    ///
+    /// # Safety
+    /// `block.events` is valid for `block.num_events` events.
+    unsafe fn admit(&mut self, block: &RawBlock, patience_frames: u64) -> (usize, u32) {
+        if !self.events.is_empty() && self.waited_frames > patience_frames {
+            self.give_up();
+        }
+        let capacity = self.events.capacity();
+        let (mut count, mut flags) = (block.num_events as usize, 0);
+        if self.events.len() + count > capacity {
+            self.give_up();
+            if count > capacity {
+                count = capacity;
+                flags = PROCESS_EVENTS_DROPPED;
+            }
+        }
+        let waiting = self.events.len();
+        for index in 0..count {
+            self.events.push(*block.events.add(index));
+        }
+        (waiting, flags)
+    }
+
+    /// The plug-in processed the block that carried everything.
+    fn delivered(&mut self) {
+        self.events.clear();
+        self.in_flight = 0;
+        self.waited_frames = 0;
+    }
+
+    /// The late block was processed after all: what went out with it has arrived. Returns
+    /// how many events that were.
+    fn in_flight_delivered(&mut self) -> usize {
+        let count = self.in_flight.min(self.events.len());
+        self.events.copy_within(count.., 0);
+        self.events.truncate(self.events.len() - count);
+        self.in_flight = 0;
+        count
     }
 }
 
@@ -393,6 +484,11 @@ pub(crate) struct InstanceShared {
     pub total_in: usize,
     pub total_out: usize,
     pub rt: UnsafeCell<RtState>,
+    /// Events on their way to the plug-in. Accessed only by the caller of `process`.
+    pub waiting: UnsafeCell<Waiting>,
+    /// Blocks still to be answered "busy" without asking the container
+    /// ([`Instance::hold_blocks`]).
+    pub held_blocks: AtomicU32,
     /// The current region, for the housekeeping thread (notifications) and for releasing
     /// a waiting audio thread when the container dies. Held only briefly.
     pub region_ref: Mutex<Option<Arc<Region>>>,
@@ -401,7 +497,8 @@ pub(crate) struct InstanceShared {
     pub control: Mutex<Control>,
 }
 
-// SAFETY: `rt` is only accessed by the holder of `gate`; everything else is Sync.
+// SAFETY: `rt` is only accessed by the holder of `gate`, `waiting` only by the one thread
+// that calls `process` (the contract of `Instance::process`); everything else is Sync.
 unsafe impl Sync for InstanceShared {}
 unsafe impl Send for InstanceShared {}
 
@@ -504,12 +601,19 @@ impl InstanceShared {
         ProcessOutcome { flags: reason | PROCESS_FALLBACK, out_events: 0, output_silence: silence, plugin_ns: 0 }
     }
 
+    /// `waiting` holds the block's events behind the `carried` ones that waited before.
+    ///
     /// # Safety
     /// As for [`Instance::process_raw`]; the caller holds the gate (PROCESSING).
-    unsafe fn process_locked(&self, block: &RawBlock) -> ProcessOutcome {
+    unsafe fn process_locked(&self, block: &RawBlock, waiting: &mut Waiting, mut carried: usize) -> ProcessOutcome {
         let rt = &mut *self.rt.get();
         let frames = block.frames as usize;
         self.blocks.fetch_add(1, Ordering::Relaxed);
+        if waiting.epoch != rt.epoch {
+            // Another attachment: the block that was owed will never be answered.
+            waiting.epoch = rt.epoch;
+            waiting.in_flight = 0;
+        }
         if frames == 0 {
             return ProcessOutcome { flags: PROCESS_OK, ..ProcessOutcome::default() };
         }
@@ -520,19 +624,25 @@ impl InstanceShared {
             rt.dry.feed(block.inputs, block.num_inputs as usize, frames);
         }
         if self.status.load(Ordering::Acquire) > InstanceStatus::Late as u32 {
+            // The plug-in these events were for is gone; a restored one starts afresh.
+            waiting.discard();
             return self.fallback(rt, block, PROCESS_LOST);
         }
         let Some(link) = rt.link.as_ref() else {
+            waiting.discard();
             return self.fallback(rt, block, PROCESS_LOST);
         };
         if rt.peer_gone {
             // The supervisor is about to flag the instance; nothing will answer meanwhile.
+            waiting.discard();
             return self.fallback(rt, block, PROCESS_LOST);
         }
         if !self.active.load(Ordering::Relaxed) {
             return self.fallback(rt, block, PROCESS_INACTIVE);
         }
         if self.client_bypass.load(Ordering::Relaxed) {
+            // A bypassed plug-in is not played: nothing is kept for when the bypass ends.
+            waiting.discard();
             return self.fallback(rt, block, PROCESS_BYPASSED);
         }
         let region = &*link.region;
@@ -544,6 +654,13 @@ impl InstanceShared {
                 // Still busy with the block it missed: its buffers are not ours to touch.
                 return self.fallback(rt, block, PROCESS_LATE);
             }
+            // The late block is answered. If the plug-in processed it, its events have
+            // arrived (only its audio came too late); if the container answered without
+            // processing, they still wait.
+            if header.rsp.flags.load(Ordering::Relaxed) & RSP_PROCESSED != 0 {
+                carried -= waiting.in_flight_delivered().min(carried);
+            }
+            waiting.in_flight = 0;
             rt.pending = 0;
             rt.discontinuity = true;
             self.late_since_ns.store(0, Ordering::Release);
@@ -569,16 +686,15 @@ impl InstanceShared {
                 std::ptr::copy_nonoverlapping(src, dst, frames);
             }
         }
-        let mut num_events = block.num_events as usize;
-        if num_events > rt.event_capacity {
-            num_events = rt.event_capacity;
-            flags |= PROCESS_EVENTS_DROPPED;
-        }
+        // Everything that waits goes out: what earlier blocks could not deliver at the first
+        // frame, in its order, then this block's events at their offsets.
+        let num_events = waiting.events.len().min(rt.event_capacity);
+        carried = carried.min(num_events);
         let events = region.events();
         let last_frame = (frames - 1) as u32;
-        for index in 0..num_events {
-            let mut event = *block.events.add(index);
-            event.offset = event.offset.min(last_frame);
+        for (index, event) in waiting.events[..num_events].iter().enumerate() {
+            let mut event = *event;
+            event.offset = if index < carried { 0 } else { event.offset.min(last_frame) };
             events.add(index).write(event);
         }
         let mut req_flags = 0;
@@ -653,8 +769,13 @@ impl InstanceShared {
         self.wait_started_ns.store(0, Ordering::Relaxed);
 
         match result {
-            Wait::Lost => self.fallback(rt, block, PROCESS_LOST),
+            Wait::Lost => {
+                waiting.discard();
+                self.fallback(rt, block, PROCESS_LOST)
+            }
             Wait::Late => {
+                // The container has the events and may still process them.
+                waiting.in_flight = waiting.events.len();
                 rt.pending = seq;
                 self.late_seq.store(seq, Ordering::Relaxed);
                 self.late_since_ns.store(monotonic_ns().max(1), Ordering::Release);
@@ -677,8 +798,10 @@ impl InstanceShared {
                     } else {
                         PROCESS_PLUGIN_ERROR
                     };
+                    // Answered without processing: the events still wait.
                     return self.fallback(rt, block, flags | reason);
                 }
+                waiting.delivered();
                 for channel in 0..self.total_out.min(block.num_outputs as usize) {
                     let dst = *block.outputs.add(channel);
                     if !dst.is_null() {
@@ -771,6 +894,23 @@ impl Instance {
     /// Processes one block on the audio thread: real-time safe, synchronous, bounded by
     /// the deadline. Always fills the outputs: with the plug-in's audio
     /// ([`ProcessOutcome::processed`]) or with the fallback.
+    ///
+    /// # Events
+    ///
+    /// The events of a block reach the plug-in once, whatever becomes of the block's audio.
+    /// When the block is not processed (the container is busy with a control operation or
+    /// with a block it was late for, the instance is not activated), its events wait and go
+    /// out with the next block the plug-in takes: at that block's first frame, in the order
+    /// they were passed, before the block's own events. The events of a block the container
+    /// was late for have arrived when it finishes the block; they are not sent again.
+    ///
+    /// Waiting is bounded. Events wait for at most [`EVENT_PATIENCE_SECONDS`] of audio and
+    /// there is room for as many as the instance's event capacity; beyond either bound
+    /// everything that waits is given up together and the outcome says so with
+    /// [`PROCESS_EVENTS_LOST`]. Never only some of it: a note-off is not dropped while its
+    /// note-on is delivered. The caller then tells the plug-in what it needs to know afresh.
+    /// Nothing waits for a plug-in whose container is lost ([`PROCESS_LOST`]: a restored
+    /// plug-in starts afresh) or that the client bypasses ([`PROCESS_BYPASSED`]).
     pub fn process(&self, io: &mut ProcessBuffers<'_, '_>) -> ProcessOutcome {
         let frames = io.frames;
         let mut inputs = [std::ptr::null::<f32>(); MAX_CHANNELS];
@@ -824,12 +964,38 @@ impl Instance {
     /// `out_events` for `out_event_capacity`. `transport` must be null or valid.
     pub unsafe fn process_raw(&self, block: &RawBlock) -> ProcessOutcome {
         let shared = &*self.shared;
-        if shared.gate.compare_exchange(GATE_IDLE, GATE_PROCESSING, Ordering::AcqRel, Ordering::Relaxed).is_err() {
-            shared.blocks.fetch_add(1, Ordering::Relaxed);
-            return shared.fallback_plain(block, PROCESS_BUSY);
+        // SAFETY: `waiting` belongs to the caller of `process`, of which there is one at a time.
+        let waiting = &mut *shared.waiting.get();
+        let rate = f64::from_bits(shared.sample_rate_bits.load(Ordering::Relaxed)).max(1.0);
+        let (carried, admitted) = waiting.admit(block, (rate * EVENT_PATIENCE_SECONDS) as u64);
+        let held = shared.held_blocks.load(Ordering::Relaxed) > 0;
+        if held {
+            shared.held_blocks.fetch_sub(1, Ordering::Relaxed);
         }
-        let outcome = shared.process_locked(block);
-        shared.gate.store(GATE_IDLE, Ordering::Release);
+        let mut outcome = if held || shared.gate.compare_exchange(GATE_IDLE, GATE_PROCESSING, Ordering::AcqRel, Ordering::Relaxed).is_err() {
+            shared.blocks.fetch_add(1, Ordering::Relaxed);
+            shared.fallback_plain(block, PROCESS_BUSY)
+        } else {
+            let outcome = shared.process_locked(block, waiting, carried);
+            shared.gate.store(GATE_IDLE, Ordering::Release);
+            outcome
+        };
+        outcome.flags |= admitted;
+        if std::mem::take(&mut waiting.lost) {
+            outcome.flags |= PROCESS_EVENTS_LOST;
+        }
+        if waiting.events.is_empty() {
+            waiting.waited_frames = 0;
+        } else {
+            waiting.waited_frames += u64::from(block.frames);
+        }
         outcome
+    }
+
+    /// Test hook: the next `blocks` calls of `process` are answered as if a control
+    /// operation held the instance ([`PROCESS_BUSY`], the fallback), without asking the
+    /// container. For tests of what becomes of blocks the plug-in misses.
+    pub fn hold_blocks(&self, blocks: u32) {
+        self.shared.held_blocks.store(blocks, Ordering::Relaxed);
     }
 }

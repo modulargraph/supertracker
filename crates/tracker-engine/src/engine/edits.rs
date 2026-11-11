@@ -815,6 +815,25 @@ impl Control {
         self.queue(sh, &Command::new(CMD_NOTE_OFF, track, note, 0, 0, 0.0));
     }
 
+    /// Queues a channel message played live for an instrument the engine does not sound
+    /// itself: a controller (the pedals among them), pressure, pitch bend or a program
+    /// change, for the plug-in instrument of `track` (`instrument` -1) or the external MIDI
+    /// instrument `instrument` (`track` -1). The engine does nothing with it but hand it on
+    /// as an `ST_EVENT_MIDI` event, in its place among the live notes queued before and
+    /// after it: one stream, in the order of the calls. False when the queue is full.
+    pub fn midi(&mut self, sh: &Shared, track: i32, instrument: i32, status: u8, data1: u8, data2: u8) -> bool {
+        if !self.owns(sh) {
+            return false;
+        }
+        if sh.commands.available() == 0 {
+            sh.dropped_commands.fetch_add(1, Ordering::Relaxed);
+            return false;
+        }
+        let data = i32::from(data1 & 0x7F) | i32::from(data2 & 0x7F) << 8;
+        self.queue(sh, &Command::new(CMD_MIDI, track, instrument, i32::from(status & 0xF0), data, 0.0));
+        true
+    }
+
     /// Queues a note edge of a live input (`edge`: `ST_INPUT_NOTE_ON` or `ST_INPUT_NOTE_OFF`) to
     /// be acknowledged with the position it lands on (`STInputAck`, by `request_id`, which must
     /// grow from edge to edge); with `apply_note` the note is also played or released. True only

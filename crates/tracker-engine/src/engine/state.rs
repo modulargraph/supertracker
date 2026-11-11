@@ -98,6 +98,7 @@ pub const CMD_COUNT_IN: i32 = 13;
 pub const CMD_MOD_WHEEL: i32 = 14;
 pub const CMD_LIVE_PARAM: i32 = 15;
 pub const CMD_QUEUE_MODE: i32 = 16;
+pub const CMD_MIDI: i32 = 17;
 
 /// Granular mode: one slot per overlapping grain (window phase, random offset/pitch/direction/pan
 /// drawn when the grain starts, last read position for the playhead snapshot).

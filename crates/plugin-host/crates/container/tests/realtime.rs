@@ -150,15 +150,33 @@ fn process_never_allocates_in_any_path() {
     assert_eq!(blocks, 4500, "every block was processed by the plug-in");
     assert_eq!(calls, 0, "allocator calls on the audio thread in the normal path");
 
-    // 2. Fallback paths: inactive, client-side bypass with the dry delay line.
+    // 2. Fallback paths: inactive, client-side bypass with the dry delay line. The events
+    //    of the inactive instance wait until there is no more room for them and are given up
+    //    then; those for the bypassed one are not kept.
     assert_eq!(delay.set_bypass(true).unwrap(), false);
-    let (calls, _) = allocator_calls(|| {
-        for _ in 0..200 {
-            assert_eq!(rig.process(&inactive, 128, &[], None).flags, PROCESS_INACTIVE | PROCESS_FALLBACK);
-            assert_eq!(rig.process(&delay, 128, &[], None).flags, PROCESS_BYPASSED | PROCESS_FALLBACK);
+    let (calls, given_up) = allocator_calls(|| {
+        let mut given_up = 0;
+        for _ in 0..400 {
+            let flags = rig.process(&inactive, 128, &events, None).flags;
+            assert_eq!(flags & !PROCESS_EVENTS_LOST, PROCESS_INACTIVE | PROCESS_FALLBACK);
+            given_up += (flags & PROCESS_EVENTS_LOST != 0) as usize;
+            assert_eq!(rig.process(&delay, 128, &events, None).flags, PROCESS_BYPASSED | PROCESS_FALLBACK);
         }
+        given_up
     });
+    assert_eq!(given_up, 1, "four events a block fill the room for 1024 once in 400 blocks");
     assert_eq!(calls, 0, "allocator calls in the inactive / bypass paths");
+
+    // 2b. Blocks the client cannot send: their events wait, and go out with the next.
+    let (calls, flags) = allocator_calls(|| {
+        synth.hold_blocks(50);
+        for _ in 0..50 {
+            assert_eq!(rig.process(&synth, 64, &events, Some(&transport)).flags, PROCESS_BUSY | PROCESS_FALLBACK);
+        }
+        rig.process(&synth, 64, &events, Some(&transport)).flags
+    });
+    assert_eq!(flags & !PROCESS_OUT_EVENTS_DROPPED, PROCESS_OK, "the block that carries what waited");
+    assert_eq!(calls, 0, "allocator calls while events wait and when they are delivered");
 
     // 3. Deadline miss, late blocks, and the resynchronisation afterwards.
     let stall = [Event::param(0, tb::hang::PROCESS_SLEEP_MS, 150.0)];
@@ -168,7 +186,8 @@ fn process_never_allocates_in_any_path() {
         assert_eq!(first.flags, PROCESS_LATE | PROCESS_FALLBACK);
         let started = Instant::now();
         loop {
-            let outcome = rig.process(&hang, 64, &[], None);
+            // A note and its release wait for the container to finish the late block.
+            let outcome = rig.process(&hang, 64, &[events[1], events[3]], None);
             if outcome.flags & PROCESS_LATE != 0 {
                 late += 1;
                 std::thread::sleep(Duration::from_millis(1));

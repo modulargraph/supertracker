@@ -378,6 +378,10 @@ impl<'a> Rt<'a> {
                     self.e.reset_input_run();
                 }
                 CMD_INPUT_NOTE => self.input_note_command(&c),
+                CMD_MIDI => {
+                    let event = STEvent { type_: ST_EVENT_MIDI, track: c.a, instrument: c.b, target: c.c, note: c.d & 0x7F, velocity: c.d >> 8 & 0x7F, ..STEvent::default() };
+                    emit_event(&self.e.out, self.sh, event);
+                }
                 _ => {}
             }
         }

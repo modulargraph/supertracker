@@ -112,6 +112,7 @@ pub const ST_EVENT_NOTE_OFF: i32 = 2;
 pub const ST_EVENT_PARAMETER: i32 = 3;
 pub const ST_EVENT_ALL_NOTES_OFF: i32 = 4;
 pub const ST_EVENT_HOST_PARAMETER: i32 = 5;
+pub const ST_EVENT_MIDI: i32 = 6;
 
 pub const ST_GRANULAR_MAX_GRAINS: usize = 8;
 pub const ST_GRANULAR_DEFAULT_DENSITY: i32 = 2;
@@ -305,6 +306,10 @@ pub struct STStep {
 /// * `ST_EVENT_HOST_PARAMETER`: the value of a host lane or step lock; `target` is the host
 ///   destination, `address` its parameter, `track` -1, and `host_map` the destination map of the
 ///   project that emitted it (0 on every other event).
+/// * `ST_EVENT_MIDI`: a channel message played live for the plug-in instrument of `track`
+///   (`instrument` -1) or for the external instrument `instrument` (`track` -1): `target` is
+///   the status byte without a channel, `note` and `velocity` the two data bytes. It keeps
+///   its place among the live notes: both come out in the order they were queued.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct STEvent {
     pub type_: i32,

@@ -1006,10 +1006,6 @@ impl Processor for Vst3Processor {
         self.out_events.clear();
         // Untimed changes from the main thread first (offset 0), then the block's events.
         take_pending(&self.shared, &self.changes);
-        if data.discontinuity {
-            // Blocks were dropped, and note-offs may have been in them.
-            self.release_held(0, None);
-        }
         for index in 0..data.events.len() {
             let event = data.events[index];
             self.add_host_event(&event);
