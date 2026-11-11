@@ -395,6 +395,9 @@ fn a_44_1_khz_input_reaches_its_track_and_a_take_at_the_engines_rate_and_pitch()
     while analysis.seconds.len() < 60 {
         step(&mut analysis);
     }
+    // Stop arrives from another thread while the output keeps rendering: the take holds at least
+    // every frame rendered between Record and this point.
+    let asked = analysis.frame as i64;
     let stopper = std::thread::spawn({
         let engine = engine.clone();
         move || engine.live().stop_record().expect("a take was running")
@@ -420,7 +423,8 @@ fn a_44_1_khz_input_reaches_its_track_and_a_take_at_the_engines_rate_and_pitch()
     assert_eq!(end - start, take.file.frames as i64);
     assert_eq!(start, began + 1_026, "the take began with the first block after Record");
     let recorded = st_audio::samples::read_wav(&std::fs::read(&path).unwrap()).unwrap();
-    assert!(recorded.frames() as u64 == take.file.frames && recorded.frames() >= 15 * 48_000 - 1_026 && recorded.sample_rate == 48_000.0);
+    assert_eq!((recorded.frames() as u64, recorded.sample_rate), (take.file.frames, 48_000.0), "the file is what the take says");
+    assert!(asked - began > 14 * 48_000 && recorded.frames() as i64 >= asked - began - 1_026, "everything rendered between Record and Stop was recorded: {} of {} frames", recorded.frames(), asked - began);
     // The take's own feed began with the take, from the clock difference the track's feed
     // had measured by then. Frame n of the file is what the input captured at graph frame
     // start + n - 1 026: the delay left out is the delay there was.
