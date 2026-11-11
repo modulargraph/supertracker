@@ -1,7 +1,7 @@
 'use strict';
 // Block navigation (block-nav.js + pane-navigation.js): geometry, wrap, remembered blocks, Esc / Enter,
 // ⌥ + arrow conflict rules, dialogs, and the block layout of the Browser, Song, Recording, Automation and
-// Settings pages. Real WebKit geometry is checked with the dev harness (docs/KEYBOARD_NAVIGATION.md).
+// Settings pages. The geometry is given as rectangles; no test measures a real layout (docs/KEYBOARD_NAVIGATION.md).
 const assert = require('node:assert/strict');
 const { hostStub } = require('./helpers/host');
 const vm = require('node:vm');
@@ -223,7 +223,7 @@ test('each page remembers its block; restore() only on the page on screen and on
   assert.equal(h.nav.restore('song', 'browser-detail'), false, 'only the page on screen');
   const p = harness('pattern'); chrome(p, 'pattern'); p.el('div', { id: 'tracker', attrs: { tabindex: '0' }, rect: p.box(0, 120, 1500, 600) });
   assert(p.nav.restore('pattern', 'views'), 'pattern is audited: restore() works there too');
-  // ⌘1–⌘7 keep their documented entry control (NativeUIAcceptanceTests); restore() is the hook for a later opt-in.
+  // ⌘1–⌘7 keep their documented entry control; restore() is the hook for a later opt-in.
   assert(!/STBlockNav/.test(web.read('app-shell.js')), 'view switches keep their entry focus');
 });
 

@@ -27,7 +27,7 @@ function harness() {
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
-test('the Gate column is hidden by default; a gateless note reads "—", a legacy step without a gate key 0.8', () => {
+test('the Gate column is hidden by default; a gateless note reads "—", a step without a gate key 0.8', () => {
   const h = harness(), pat = h.ST.pattern();
   assert.equal(h.ST.gateColumnShown(), false);
   pat.steps[0][0] = { note: 60, instrument: 0, velocity: 100, gate: 0 };
@@ -88,7 +88,7 @@ test('OFF and CUT: palette commands with their shortcuts, keeping step effects a
 test('Remove gates clears gates in the selection as one Undo step', () => {
   const h = harness(), pat = h.ST.pattern();
   for (let t = 0; t < 2; t++) for (let r = 0; r < 4; r++) pat.steps[t][r] = { note: 60 + r, instrument: t, velocity: 100, gate: r + 1 };
-  pat.steps[0][1] = { note: 61, instrument: 0, velocity: 100 };   // legacy: no gate key is 0.8
+  pat.steps[0][1] = { note: 61, instrument: 0, velocity: 100 };   // no gate key is 0.8
   pat.steps[2][0] = { note: 50, instrument: 2, velocity: 100, gate: 3 };
   h.state.selection = { track: 0, row: 0 }; h.state.track = 1; h.state.row = 3;
   const undo = h.state.undo.length;

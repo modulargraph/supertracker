@@ -90,7 +90,7 @@ test('writeSteps is one labelled undo step, refreshes, syncs the engine, and rea
   const redone = await h.ok('redo'); assert.deepEqual(copy(redone.redid), ['AI: add bassline']); assert.deepEqual(copy(h.ST.pattern().steps[0][0]), { note: 48, instrument: 0, velocity: 110, gate: .8 });
 });
 
-test('gate is optional: new notes have none, 0/null removes one, a step saved without a gate key reads as the legacy 0.8', async () => {
+test('gate is optional: new notes have none, 0/null removes one, a step saved without a gate key reads as 0.8', async () => {
   const h = harness(), pattern = h.ST.pattern();
   await h.ok('writeSteps', { steps: [{ track: 0, row: 0, note: 'C-4', gate: 2 }, { track: 0, row: 1, note: 'D-4' }] });
   assert.equal(pattern.steps[0][0].gate, 2); assert.equal(pattern.steps[0][1].gate, 0);

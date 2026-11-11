@@ -1,6 +1,6 @@
 'use strict';
 // Real application + NKS + automation modules; bridge responses are controlled
-// here. NativeUINKSAutomationTests supplies the separate real WebKit/audio check.
+// here. No web view and no audio run in this file.
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
 const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');

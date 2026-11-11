@@ -2,7 +2,7 @@
 // Sampler Wavetable UI and the retired built-in synth: the actual app modules with a mocked bridge.
 // Covers new instruments (empty sampler, "+ Wavetable"), the Wavetable panel (Position, frame size,
 // table picker from sample.wavetables, frame preview), the POS step effect, the wavetablePosition
-// automation target, the LFO "Position" label, migrated projects and the MK3 Position knob.
+// automation target, the LFO "Position" label, the agent API and the MK3 Position knob.
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict'), path = require('node:path');
 const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');

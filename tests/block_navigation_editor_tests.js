@@ -1,7 +1,7 @@
 'use strict';
 // Block navigation, phase 2: the Instrument page (Sample, Slices, Zones, Modulation, Voice & Record, plug-in
 // consoles, instrument effects) and the Mixer (strips, divider, insert chain, knob page, routing, returns).
-// Layouts mirror the real WebKit geometry at 1500 × 940 (test-output/keyboard-nav/phase2/results.json).
+// The layouts are rectangles written out in this file, as the page lays itself out at 1500 × 940; no test measures a real layout.
 const assert = require('node:assert/strict');
 const { hostStub } = require('./helpers/host');
 const vm = require('node:vm');

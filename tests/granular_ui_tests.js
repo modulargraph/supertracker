@@ -83,7 +83,7 @@ test('Granular panel: only in Granular mode, leads the Sample page, automatable 
   assert(!h.app().includes('id="inst-group-granular"'));
 });
 
-test('granular automation targets, the LFO "Grain size" destination and defaults for older projects', () => {
+test('granular automation targets, the LFO "Grain size" destination and the granular defaults of an instrument', () => {
   const h = harness(), { ST, window } = h;
   const inst = ST.state.project.instruments[0];
   assert.equal(inst.grainDensity, 2); assert.equal(inst.grainScan, 0); assert.equal(inst.grainSpray, 0);

@@ -26,7 +26,7 @@
     { id: 'sequence', label: 'Pattern sequence', selector: '#sequence-list', keys: '↑ ↓: select · ← →: pattern · ⌥↑↓: move · Enter: edit' },
     { id: 'song-block', label: 'Selected song block', selector: '.song-seq > .panel-head,.song-seq-tools', prefer: ['#song-block-pattern'] },
     { id: 'song-settings', label: 'Song settings', selector: '.song-options', prefer: ['#loop-song'] },
-    // Clip buttons keep native arrow behaviour (arrows never move focus off them; NativeUIAcceptanceTests).
+    // Clip buttons keep native arrow behaviour (arrows never move focus off them).
     { id: 'clip-actions', label: 'Audio clip actions', selector: '.clips-panel > .panel-head', prefer: ['#clips-import'], arrows: false },
     { id: 'clip-tools', label: 'Audio edit cursor', selector: '.clips-toolbar', prefer: ['#clips-cursor'], arrows: false },
     { id: 'timeline', label: 'Audio timeline', selector: '#clips-timeline', keys: '↑ ↓: clip · ← →: move · S: split' },

@@ -41,14 +41,14 @@ const steps = track => ST.pattern().steps[track];
   console.log('PASS scale degrees, snap-to-key, scale chords and keyboard velocity reach recorded steps');
   await ST.setNoteRecording(false);
 
-  // Old projects without performance settings open in chromatic single-note mode.
+  // A project without performance settings opens in chromatic single-note mode.
   ST.acceptProject(ST.demoProject());
   assert.equal(state.scale, 'chromatic'); assert.equal(state.chord, 'single'); assert.equal(state.scaleMode, 'snap');
   const saved = ST.demoProject(); saved.performance = { root: 9, scale: 'dorian', scaleMode: 'degrees', chord: 'scaleSeventh' };
   ST.acceptProject(saved);
   assert.equal(state.root, 9); assert.equal(state.scale, 'dorian'); assert.equal(state.chord, 'scaleSeventh');
   ST.acceptProject(ST.demoProject());
-  console.log('PASS key/scale/chord persist with the song and default for older projects');
+  console.log('PASS key/scale/chord persist with the song and default for a project without them');
 
   // Note repeat retriggers held notes on its own clock and releases them on key up.
   ST.setPerformance({ scale: 'chromatic', chord: 'major' }, false);

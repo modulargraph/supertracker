@@ -35,7 +35,7 @@ function harness() {
   return { ...dom, ST, app, state, nav, press, active, calls, get stops() { return stops; } };
 }
 
-// The Pattern page as WebKit lays it out at 1500×940 (dev harness probe), with three tracks and one group.
+// The Pattern page as it lays itself out at 1500×940 (rectangles written out here), with three tracks and one group.
 function page(h) {
   const { el, box } = h, clicks = [];
   const button = (id, rect, parent, attrs = {}) => {

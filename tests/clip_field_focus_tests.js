@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 // Reuse the clip DOM fixture, replacing its no-op renderer with destructive
 // replacement. Production bind/change handlers run unmodified. Tab's focus
-// transfer is modeled explicitly; physical WebKit behavior is checked separately.
+// transfer is modeled explicitly; a web view's own Tab handling is not tested.
 const navigation=fs.readFileSync(path.join(__dirname,'clip_navigation_tests.js'),'utf8');
 const makeHarness=new Function('require','__dirname',navigation.slice(0,navigation.indexOf('const tests = [];'))+'\nreturn harness;')(require,__dirname);
 function harness(){

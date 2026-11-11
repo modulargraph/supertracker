@@ -235,7 +235,7 @@ test('native preview errors produce a user-visible error without corrupting proj
   assert.equal(h.state.project.instruments[0].lfoRate, undefined);
 });
 
-test('legacy instruments stay in Hz mode and inactive automation remains available with explicit units', () => {
+test('an instrument with LFO sync off stays in Hz mode and inactive automation remains available with explicit units', () => {
   const h = harness(); h.synth.lfoRate = 7.25;
   let html = h.module.render(h.synth), targets = h.module.targets(0);
   assert.match(html, /value="hz" selected/); assertControl(html,'mod-number-0-lfoRate',{value:7.25,'data-automate':'lfoRate'});
@@ -357,7 +357,7 @@ test('perceptual sliders give small rates, times and depths most of the travel w
   assert(F.fromPosition(.5, depth) < .15, 'Half the depth slider stays below 15%');
   assert(F.fromPosition(.5, attack) < 1, 'Half the attack slider stays below one second');
   for (const item of [rate, depth, attack]) { assert.equal(F.fromPosition(0, item), item.min); assert.equal(F.fromPosition(1, item), item.max); }
-  // Older projects: stored values survive render → slider position → value exactly, and opening edits nothing.
+  // Stored values survive render → slider position → value exactly, and opening edits nothing.
   Object.assign(h.synth, { lfoRate: 7.25, lfo2Rate: .05, lfoDepth: .0125, filterAttack: .005, filterRelease: 1.5 });
   const before = copy(h.synth), html = h.module.render(h.synth);
   for (const [key, value] of [['lfoRate', 7.25], ['lfo2Rate', .05], ['lfoDepth', .0125], ['filterAttack', .005], ['filterRelease', 1.5]]) {
@@ -406,7 +406,7 @@ test('arrow keys step relative to magnitude, ⌥ finer, ⇧ coarser, one Undo st
   for (const fields of [{ key: 'ArrowUp', metaKey: true }, { key: 'ArrowUp', ctrlKey: true }, { key: 'ArrowLeft' }]) assert(!press(depthNumber, fields).defaultPrevented);
 });
 
-test('exact values can be typed in natural units and older automation keeps engine units', async () => {
+test('exact values can be typed in natural units and automation keeps engine units', async () => {
   const h = harness(), [rate] = h.root.addParameter('lfoRate', 0), [depth] = h.root.addParameter('lfoDepth', 25), [release] = h.root.addParameter('filterRelease', .2);
   h.module.bind();
   rate.value = '0.05'; rate.dispatch('change'); assert.equal(h.synth.lfoRate, .05);

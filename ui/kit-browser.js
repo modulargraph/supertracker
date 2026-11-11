@@ -65,8 +65,7 @@
     local.total = Math.max(0, Number(result.total) || 0);
     for (const name of Object.keys(local.facets)) local.facets[name] = Array.isArray(result[name]) ? result[name] : [];
     local.counts = result.counts || local.counts;
-    local.status = { ...(result.status || {}), scanning: !!result.scanning, errors: result.errors || [], kitIndexUpgradePending: !!result.kitIndexUpgradePending,
-      kitIndexUpgradeScanning: !!result.kitIndexUpgradeScanning, kitIndexUpgradeOfflineRoots: Array.isArray(result.kitIndexUpgradeOfflineRoots) ? result.kitIndexUpgradeOfflineRoots : [] };
+    local.status = { ...(result.status || {}), scanning: !!result.scanning, errors: result.errors || [] };
     local.lastRevision = result.status?.revision ?? null;
     if (!append) {
       const index = keep && previous ? local.items.findIndex(item => item.path === previous) : -1;
@@ -221,8 +220,8 @@
   function activeFilterCount() { const value = filters(); return (value.product !== null) + (value.bank !== null) + (value.bank !== null && value.subBank !== null) + value.types.size + value.subtypes.size + value.characters.size + local.favorites + !!local.query.trim(); }
   const skeleton = () => Array.from({ length: 9 }, (_, index) => `<div class="nksb-row kitb-row nksb-skeleton" aria-hidden="true" style="--delay:${index * 60}ms"><span></span><span class="nksb-art"></span><div class="nksb-row-name"><strong></strong><small></small></div><span class="nksb-row-type"></span><span></span></div>`).join('');
   function renderEmpty() {
-    const roots = S().state.library?.roots || [], status = local.status, updating = status.scanning || status.kitIndexUpgradeScanning;
-    const offline = roots.some(root => root.available === false) || !!status.kitIndexUpgradeOfflineRoots?.length, knownRoots = roots.length > 0 || !!status.kitIndexUpgradePending;
+    const roots = S().state.library?.roots || [], status = local.status, updating = status.scanning;
+    const offline = roots.some(root => root.available === false), knownRoots = roots.length > 0;
     if (activeFilterCount()) return '<div class="browser-empty"><h3>No matching groups or kits</h3><p>Try a shorter search or remove a filter.</p><div class="kitb-empty-actions"><button class="btn" id="kitb-clear-empty">Clear search &amp; filters</button></div></div>';
     if (local.user) return '<div class="browser-empty"><h3>No saved kits yet</h3><p>Save a kit from the Kits view and it appears here, or add a folder that holds .stkit kits or your own Maschine groups.</p><div class="kitb-empty-actions"><button class="btn primary" id="kitb-new-empty">New empty kit…</button><button class="btn" id="kitb-add-empty">Add group / kit folder…</button></div></div>';
     const title = updating ? 'Finding Maschine groups…' : knownRoots ? 'No groups indexed yet' : 'Find your Maschine groups';
@@ -279,7 +278,7 @@
   function renderStatus() {
     const status = local.status || {};
     const line = status.reading ? `<span class="browser-pulse"></span> Reading groups${status.pending ? ` ${Number(status.read || 0).toLocaleString()} / ${Number(status.pending).toLocaleString()}` : '…'}`
-      : status.scanning || status.kitIndexUpgradeScanning ? '<span class="browser-pulse"></span> Scanning…' : `<span>${plural((local.counts.library || 0) + (local.counts.user || 0), 'kit')}</span>`;
+      : status.scanning ? '<span class="browser-pulse"></span> Scanning…' : `<span>${plural((local.counts.library || 0) + (local.counts.user || 0), 'kit')}</span>`;
     return `<div class="nksb-status kitb-status" role="status"><div class="browser-root-copy">${line}</div><span class="kitb-status-actions"><button class="browser-icon-btn" id="kitb-new" title="New empty kit…" aria-label="New empty kit">＋</button><button class="browser-icon-btn" id="kitb-add" title="Add group / kit folder…" aria-label="Add group or kit folder">⊕</button><button class="browser-icon-btn" id="kitb-scan" title="Rescan library" aria-label="Rescan library" ${status.scanning ? 'disabled' : ''}>↻</button></span></div>`;
   }
   function render() {
@@ -665,9 +664,6 @@
     if (type === 'library.results' || type === 'library.metadata') { if (value.volumes || !value.scanning) local.metadata.clear(); refreshSoon(value.scanning ? 600 : 100); }
     if (type === 'library.progress' || type === 'library.results') {
       if (value.scanning != null) local.status.scanning = !!value.scanning;
-      if (value.kitIndexUpgradePending != null) local.status.kitIndexUpgradePending = !!value.kitIndexUpgradePending;
-      if (value.kitIndexUpgradeScanning != null) local.status.kitIndexUpgradeScanning = !!value.kitIndexUpgradeScanning;
-      if (Array.isArray(value.kitIndexUpgradeOfflineRoots)) local.status.kitIndexUpgradeOfflineRoots = value.kitIndexUpgradeOfflineRoots;
       if (mounted()) paint();
     }
     if (type === 'sample.previewEnded' && local.previewPath && (!value.path || value.path === local.previewPath)) { local.previewPath = ''; updatePreviewMarks(); }

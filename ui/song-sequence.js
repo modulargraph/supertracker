@@ -298,7 +298,7 @@
     registerContextMenu();
   }
 
-  /* Replace the legacy sequence panel rendered by app.js (until app.js renders renderPanel() itself). */
+  /* The Song view (app-song-view.js) renders a plain sequence list; this puts the block arranger's panel in its place and binds it. */
   function mount() {
     if (!M()) return false;
     const list = document.getElementById('sequence-list');

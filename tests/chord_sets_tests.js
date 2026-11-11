@@ -148,7 +148,7 @@ function plainHarness() {
   ST.setPerformance({ root: 0 }, false); await flushMIDI(); assert.equal(midiCalls().length, 1, 'unchanged map is not resent');
   ST.setPerformance({ midiApply: false }, false); await flushMIDI(); assert.equal(midiCalls().length, 2); assert.equal(midiCalls()[1].payload.map, null, 'turning it off clears the native map');
   ST.setPerformance({ midiApply: true, chordSet: 'trap' }, false); await flushMIDI(); assert.equal(midiCalls().length, 3);
-  ST.acceptProject(ST.demoProject()); await flushMIDI(); assert.equal(midiCalls().length, 4); assert.equal(midiCalls()[3].payload.map, null, 'loading an older project resets the MIDI map');
+  ST.acceptProject(ST.demoProject()); await flushMIDI(); assert.equal(midiCalls().length, 4); assert.equal(midiCalls()[3].payload.map, null, 'loading a project without a chord set resets the MIDI map');
   ST.perform('midiPerformance'); assert.equal(state.midiApply, false); ST.perform('midiPerformance'); assert.equal(state.midiApply, true);
   console.log('PASS MIDI map sends are debounced, de-duplicated and follow project loads');
 

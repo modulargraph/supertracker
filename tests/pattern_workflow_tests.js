@@ -29,7 +29,7 @@ test('step editor note and velocity fields clamp to MIDI ranges', async () => {
   step = h.ST.pattern().steps[0][3]; assert.equal(step.velocity, 1); assert.equal(step.note, -3);
 });
 
-test('song "+ Add pattern" keeps the block arranger handler instead of the legacy splice', async () => {
+test('song "+ Add pattern" keeps the block arranger handler', async () => {
   const h = await makeHarness();
   h.window.STClips = { render: () => '', bind() { h.node('sequence-add').onclick = 'arranger'; }, key: () => false, event() {} };
   h.ST.setView('song');

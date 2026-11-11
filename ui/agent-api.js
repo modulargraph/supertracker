@@ -2473,7 +2473,7 @@
   }
   async function refreshConnection() {
     if (!st()?.native) return;
-    try { setConnection(await S().request('agent.status')); } catch { /* older host */ }
+    try { setConnection(await S().request('agent.status')); } catch { /* a failed request leaves the indicator as it is */ }
   }
   if (typeof window !== 'undefined') {
     window.STPendingEdits.register('agent', {

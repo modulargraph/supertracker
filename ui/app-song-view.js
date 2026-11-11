@@ -109,7 +109,7 @@
     for (const el of $$('[data-sequence-up]')) el.onclick = () => moveSequence(Number(el.dataset.sequenceUp), -1);
     for (const el of $$('[data-sequence-down]')) el.onclick = () => moveSequence(Number(el.dataset.sequenceDown), 1);
     for (const el of $$('[data-sequence-remove]')) el.onclick = () => removeSequence(Number(el.dataset.sequenceRemove));
-    // Last: the block arranger replaces the legacy list and owns "+ Add pattern" (inserted after the selected block, never inside a repeat run).
+    // Last: the block arranger (song-sequence.js) takes the place of the list above and owns "+ Add pattern" (inserted after the selected block, never inside a repeat run).
     window.STClips?.bind();
   }
 

@@ -104,9 +104,7 @@ test('PLUG-IN · Master uses the same buttons for master inserts', async () => {
   same(page.buttons.map(button => button?.label), ['Master', 'Track', 'Instr.', 'Bypass', 'Editor', 'Browse', '+ FX', 'Remove']);
 });
 
-// The capture tool (test-output/mk3-design/tools/capture-effects.js) reuses effectSession.
-if (require.main !== module) module.exports = { effectSession };
-else (async () => {
+(async () => {
   let failed = 0;
   for (const [name, fn] of cases) {
     try { await fn(); console.log(`ok - ${name}`); }

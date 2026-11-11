@@ -108,7 +108,7 @@ test('explicit value editing of an unavailable saved target retains identity and
   h.mountInspector(); const field = h.get('step-fx1-value'); field.value = '.6'; await field.fire('change'); assert.deepEqual(copy(p.patterns[0].steps[0][0].fx1), { ...original, value: .6 }); assert.equal(h.mutations.length, 2);
 });
 
-test('legacy saved instance strings remain supported with exact case-sensitive identity', async () => {
+test('instance identities are matched exactly, case-sensitively', async () => {
   for (const id of ['stable-effect', 'Stable-effect']) {
     const p = fixture(); p.audioPlugins = [plugin({ instanceID: id })]; const h = harness({ project: p }); await h.ui.show(); await h.choose('native frequency'); await h.apply('.6'); assert.equal(p.patterns[0].steps[0][0].fx1.instanceID, id); assert.equal(h.mutations.length, 1);
   }

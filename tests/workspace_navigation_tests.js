@@ -141,7 +141,7 @@ function harness(){
  h.state.project.patterns[0].steps[0][0]={note:60,instrument:0,velocity:88,fx1:plugin,fx2:second};const rendered=[],bound=new Map();let bindings=0;
  h.window.STStepFX={renderField(n,fx){rendered.push({n,fx:JSON.parse(JSON.stringify(fx))});return `<label data-module-fx="${n}"><input id="step-fx${n}-value" value="${fx.value}"></label>`;},bind(){bindings++;for(const n of [1,2]){const input=h.node(`step-fx${n}-value`);input.tagName='INPUT';input.type='number';const handler=()=>h.ST.mutate('fixture module FX value',p=>{const step=p.patterns[0].steps[0][0];step['fx'+n]={...step['fx'+n],value:Number(input.value)};});input.onchange=handler;bound.set(n,handler);}}};
  h.ST.refresh();assert.deepEqual(rendered.slice(-2),[{n:1,fx:plugin},{n:2,fx:second}]);assert(bindings>0);assert(h.node('app').innerHTML.includes('data-module-fx="1"'));assert(!h.node('app').innerHTML.includes('<select id="step-fx1">'));
- const value=h.node('step-fx1-value');assert.equal(value.onchange,bound.get(1),'Legacy inspector binding must not overwrite the mounted module');value.value='.72';value.onchange();
+ const value=h.node('step-fx1-value');assert.equal(value.onchange,bound.get(1),'the inspector must not bind over the mounted module');value.value='.72';value.onchange();
  assert.deepEqual(JSON.parse(JSON.stringify(h.state.project.patterns[0].steps[0][0].fx1)),{...plugin,value:.72});assert.deepEqual(JSON.parse(JSON.stringify(h.state.project.patterns[0].steps[0][0].fx2)),second);assert.equal(h.state.undo.length,1);
  console.log('PASS step inspector delegates rendering and binding without erasing a plug-in instance or full-width parameter address');
 }
