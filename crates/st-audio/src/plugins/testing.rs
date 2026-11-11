@@ -3,7 +3,9 @@
 //! [`artifacts`] finds `supertracker-plugin-container`, `libstpc_clap_test_plugin` and
 //! `libstpc_vst3_test_plugin` in the cargo target directory of the running test (the
 //! directory above the test executable's `deps`), and builds them there with
-//! `cargo build --manifest-path crates/plugin-host/Cargo.toml` when they are missing.
+//! `cargo build --manifest-path crates/plugin-host/Cargo.toml` (every time: cargo does nothing when
+//! they are current, and a test must never run against a container or plug-in built from older
+//! sources).
 //! [`Artifacts::install`] lays the plug-ins out in a folder the way installed plug-ins look.
 
 use std::path::{Path, PathBuf};
@@ -127,18 +129,16 @@ pub fn artifacts() -> &'static Artifacts {
             vst3_library: directory.join(library("stpc_vst3_test_plugin")),
         };
         let complete = |found: &Artifacts| found.container.is_file() && found.clap_library.is_file() && found.vst3_library.is_file();
-        if !complete(&found) {
-            let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugin-host/Cargo.toml");
-            let target = directory.parent().expect("a target folder");
-            let mut command = std::process::Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
-            command.arg("build").arg("--manifest-path").arg(&manifest).args(["-p", "stpc-container", "-p", "stpc-clap-test-plugin", "-p", "stpc-vst3-test-plugin"]);
-            command.env("CARGO_TARGET_DIR", target);
-            if directory.file_name().is_some_and(|name| name == "release") {
-                command.arg("--release");
-            }
-            let status = command.status().expect("cargo runs");
-            assert!(status.success() && complete(&found), "the plug-in container and its test plug-ins could not be built into {}: run `cargo build --manifest-path crates/plugin-host/Cargo.toml` with CARGO_TARGET_DIR set to {}", directory.display(), target.display());
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugin-host/Cargo.toml");
+        let target = directory.parent().expect("a target folder");
+        let mut command = std::process::Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+        command.arg("build").arg("--manifest-path").arg(&manifest).args(["-p", "stpc-container", "-p", "stpc-clap-test-plugin", "-p", "stpc-vst3-test-plugin"]);
+        command.env("CARGO_TARGET_DIR", target);
+        if directory.file_name().is_some_and(|name| name == "release") {
+            command.arg("--release");
         }
+        let built = command.status().is_ok_and(|status| status.success());
+        assert!(built && complete(&found), "the plug-in container and its test plug-ins could not be built into {}: run `cargo build --manifest-path crates/plugin-host/Cargo.toml` with CARGO_TARGET_DIR set to {}", directory.display(), target.display());
         found
     })
 }

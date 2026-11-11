@@ -31,8 +31,9 @@ ui() {
 }
 e2e() {
   cargo build -p st-app || return 1
-  # The host looks for the plug-in container next to its own executable.
-  CARGO_TARGET_DIR="$TARGET" cargo build --manifest-path crates/plugin-host/Cargo.toml -p stpc-container || return 1
+  # The host looks for the plug-in container next to its own executable; the test loads the CLAP test plug-in.
+  # Both are built here so the test never runs against older ones.
+  CARGO_TARGET_DIR="$TARGET" cargo build --manifest-path crates/plugin-host/Cargo.toml -p stpc-container -p stpc-clap-test-plugin || return 1
   SUPERTRACKER_BIN="$TARGET/debug/supertracker" node tests/host_e2e/run.js
 }
 case "$WHAT" in
