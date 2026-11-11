@@ -178,4 +178,40 @@ test('quick stopped note retains original target after immediate lane and row na
  const h=await harness();h.state.playing=false;h.state.row=2;h.down('z','KeyZ');h.up('z','KeyZ');h.state.track=1;h.state.instrument=1;h.state.row=5;h.reply(h.captures(false)[0],{playing:false});h.reply(h.captures()[0],{playing:false});await tick();assert.equal(h.step(2,7,0).note,60);assert.equal(h.step(5,7,1),null);assert.equal(h.state.track,1);assert.equal(h.state.row,5);assert.equal(h.state.instrument,1);
 });
 
+// The sustain pedal (the MK3's pedal jack, ST.sustainPedal): the host decides what sounds on; a recorded note is as
+// long as it sounded.
+test('a key released under the sustain pedal is recorded until the pedal comes up', async () => {
+  const h = await harness(); h.heldCommands.add('note.off'); h.ST.sustainPedal(true);
+  const offs = () => h.calls.filter(m => m.command === 'note.off');
+  h.down('z', 'KeyZ'); h.reply(h.captures()[0], { row: 2, recordingClock: clock(1) }); await tick(); h.up('z', 'KeyZ');
+  assert.equal(offs().length, 1); assert(!offs()[0].payload.captureInput, 'The key release is an ordinary note-off: the host holds it or passes it on'); assert.equal(offs()[0].payload.note, 60);
+  h.result(offs()[0], { ok: true, sustained: true }); await tick(); assert.equal(h.captures(false).length, 0, 'The capture stays open while the note sounds'); assert.equal(h.step(2).gate, 0);
+  h.ST.sustainPedal(false); const release = h.captures(false)[0]; assert(release); assert.equal(release.payload.applyNote, false, 'The edge marks the end of the note; the sound is the pedal\'s business');
+  h.reply(release, { recordingClock: clock(2.5) }); await tick(); assert.equal(h.step(2).gate, 6, 'The note is as long as it sounded'); assert.equal(h.state.undo.length, 1); assert(!h.window.STInputCapture.hasPendingEdits);
+  h.ST.sustainPedal(false); assert.equal(h.captures(false).length, 1, 'A repeated pedal-up closes nothing twice');
+});
+
+test('a note the host does not sustain, a retriggered note and Stop end a capture the pedal held open', async () => {
+  // The host forgot the pedal (a panic): its reply says so, and the note ends with its key.
+  const plain = await harness(); plain.heldCommands.add('note.off'); plain.ST.sustainPedal(true);
+  plain.down('z', 'KeyZ'); plain.reply(plain.captures()[0], { row: 2, recordingClock: clock(1) }); await tick(); plain.up('z', 'KeyZ');
+  plain.result(plain.calls.find(m => m.command === 'note.off'), { ok: true }); await tick();
+  assert.equal(plain.captures(false).length, 1); assert.equal(plain.captures(false)[0].payload.applyNote, false); plain.reply(plain.captures(false)[0], { recordingClock: clock(1.5) }); await tick(); assert.equal(plain.step(2).gate, 2);
+  // The same key struck again under the pedal: the first note ends where the second begins.
+  const again = await harness(); again.heldCommands.add('note.off'); again.ST.sustainPedal(true);
+  again.down('z', 'KeyZ'); again.reply(again.captures()[0], { row: 1, recordingClock: clock(1) }); await tick(); again.up('z', 'KeyZ');
+  again.result(again.calls.find(m => m.command === 'note.off'), { ok: true, sustained: true }); await tick(); again.down('z', 'KeyZ');
+  assert.deepEqual(again.calls.filter(m => m.payload.captureInput).map(m => m.command), ['note.on', 'note.off', 'note.on'], 'The first note is released before the second is struck');
+  assert.notEqual(again.captures()[0].payload.inputOwner, again.captures()[1].payload.inputOwner); assert.equal(again.captures(false)[0].payload.inputOwner, again.captures()[0].payload.inputOwner);
+  again.reply(again.captures(false)[0], { recordingClock: clock(2) }); again.reply(again.captures()[1], { row: 5, recordingClock: clock(2) }); await tick(); assert.equal(again.step(1).gate, 4); assert.equal(again.step(5).note, 60);
+  // Everything is released (Stop, a dialog, the window loses focus): so is what the pedal held.
+  const stop = await harness(); stop.heldCommands.add('note.off'); stop.ST.sustainPedal(true);
+  stop.down('z', 'KeyZ'); stop.reply(stop.captures()[0], { row: 3, recordingClock: clock(1) }); await tick(); stop.up('z', 'KeyZ');
+  stop.result(stop.calls.find(m => m.command === 'note.off'), { ok: true, sustained: true }); await tick(); stop.ST.stopHeld();
+  assert.equal(stop.captures(false).length, 1); stop.reply(stop.captures(false)[0], { recordingClock: clock(3) }); await tick(); assert.equal(stop.step(3).gate, 8);
+  // Without the pedal nothing changes: the release is captured with the key.
+  const none = await harness(); none.down('z', 'KeyZ'); none.reply(none.captures()[0], { row: 2, recordingClock: clock(1) }); await tick(); none.up('z', 'KeyZ');
+  assert.equal(none.captures(false).length, 1); assert.notEqual(none.captures(false)[0].payload.applyNote, false);
+});
+
 (async () => { let failures = 0; for (const { name, run } of tests) { try { await run(); console.log('PASS ' + name); } catch (error) { failures++; console.error('FAIL ' + name + '\n' + error.stack); } } console.log(`Input acknowledgement UI: ${tests.length - failures}/${tests.length} regression groups passed.`); if (failures) process.exitCode = 1; })();

@@ -10,6 +10,38 @@
   } = app;
   const held = new Map();
 
+  /* The interface's own sustain pedal (the MK3's pedal jack). The host does the sustaining: an instrument with a
+     pedal of its own gets the pedal, and for the engine's instruments the host holds the note-off. Here it only
+     matters for recording: a recorded note is as long as it sounded, so the capture of a key released under the
+     pedal stays open, and gets its release when the pedal comes up or the same note is struck again. */
+  let pedalDown = false;
+  const sustainedCaptures = new Map();
+
+  function endSustained(id) {
+    const capture = sustainedCaptures.get(id);
+    if (!capture) return;
+    sustainedCaptures.delete(id);
+    if (capture.finished) return;
+    capture.released = true;
+    // The sound is the pedal's business: this edge only marks where the note ends.
+    app.requestInputEdge(capture, false, false);
+  }
+
+  function sustainCapture(capture) {
+    const id = capture.track + ':' + capture.note;
+    endSustained(id);
+    sustainedCaptures.set(id, capture);
+    const ended = () => { if (sustainedCaptures.get(id) === capture) endSustained(id); };
+    // The host says whether the note sounds on. If it does not (a panic forgot the pedal), it ends here.
+    request('note.off', { track: capture.track, instrument: capture.instrument, note: capture.note })
+        .then(response => { if (response?.sustained !== true) ended(); }, ended);
+  }
+
+  function sustainPedal(down) {
+    pedalDown = !!down;
+    if (!pedalDown) for (const id of [...sustainedCaptures.keys()]) endSustained(id);
+  }
+
   // The row of the last note recorded into a note column: a note pressed while it is held joins that row.
   let columnRow = null;
 
@@ -89,6 +121,8 @@
     held.set(key, entry);
     chordChipHighlight(slot);
     for (const n of ns) {
+      // A note the pedal kept sounding is struck again: its recording ends here.
+      endSustained(track + ':' + n);
       if (capture && n === capture.note) {
         app.requestInputEdge(capture, true, !sounding.has(n));
       } else if (!sounding.has(n)) request('note.on', {
@@ -125,7 +159,9 @@
     for (const n of entry.notes) {
       const owners = [...held.values()].filter(active => active.notes.includes(n));
       const release = !owners.some(active => !active.repeat && active.track === entry.track);
-      if (entry.capture && n === entry.capture.note) {
+      if (entry.capture && n === entry.capture.note && pedalDown && release) {
+        sustainCapture(entry.capture);
+      } else if (entry.capture && n === entry.capture.note) {
         entry.capture.released = true;
         app.requestInputEdge(entry.capture, false, release);
       } else if (release) request('note.off', {
@@ -148,11 +184,12 @@
     window.STSampler?.stopAudition?.();
     stopStepPreview();
     for (const key of held.keys()) noteOff(key);
+    for (const id of [...sustainedCaptures.keys()]) endSustained(id);
   }
 
   function pianoHighlight(n, on) {
     for (const el of $$(`[data-piano="${n}"]`)) el.classList.toggle('held', on);
   }
 
-  Object.assign(app, { held, noteOn, noteOff, stopHeld, pianoHighlight });
+  Object.assign(app, { held, noteOn, noteOff, stopHeld, sustainPedal, pianoHighlight });
 })();

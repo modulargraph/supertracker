@@ -13,7 +13,7 @@
     copySelection, pasteSelection, clearSelection, fillSelection, auditionStep, transpose, chords, scales,
     scaleNames, chordSets, chordSetIdFor, activeChordSet, chordSetChordName, chordSetPitches, performanceSummary,
     readPerformance, setPerformance, cycleChordSet, midiPerformanceMap, cyclePerformance, noteOn, noteOff,
-    stopHeld, parameter, loadSample, loadSampleAsNew, editSample, openModal, closeModal, askText,
+    stopHeld, sustainPedal, parameter, loadSample, loadSampleAsNew, editSample, openModal, closeModal, askText,
     confirmChoice, textPrompt, captureNativeEdits, projectAction, showHelp, commands, openPalette, browseNKS,
     perform, showSettings, songBeat, showRecording, showPluginParameters, automate, contextMenu,
     midiFileAction, recordLiveStep, finishLiveRecord, clipboardEvent, automateValue, keyboard
@@ -140,6 +140,7 @@
     showPluginParameters,
     setView,
     stopHeld,
+    sustainPedal,
     setNoteRecording,
     parameter,
     pattern,

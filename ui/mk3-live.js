@@ -49,13 +49,18 @@
             && (!release || other !== info)).map(other => other.pressure || 0));
     expression('aftertouch', value, { track: info.track, flush: release && value === 0 });
   }
+  /* The pedal jack is the sustain pedal of everything the app plays (pads, keys). The host does the rest: a plug-in or
+     external instrument gets the pedal and sustains by itself, the engine's own instruments have their note-offs
+     held; a pedal that is down follows the notes to other tracks, and its release reaches every instrument it
+     reached. Pedal up is sent for the track that got pedal down, so the two belong to one stream. */
   function pedal(down) {
     if (down === M.pedal) return;
     M.pedal = down;
-    // Pedal up goes to every track that received pedal down, even after a track change.
     const target = st().track, tracks = down ? [target] : [...(M.pedalTracks || [target])];
     M.pedalTracks = down ? new Set(tracks) : null;
     for (const track of tracks) expression('sustain', down ? 1 : 0, { track, flush: true });
+    // Notes being recorded are as long as they sound: the app keeps their captures open under the pedal.
+    S().sustainPedal?.(down);
   }
 
   // ---- Queued pattern / scene changes (honoured by the engine at the end of the playing pattern) -----------
