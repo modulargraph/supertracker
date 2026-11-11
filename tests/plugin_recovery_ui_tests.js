@@ -162,7 +162,7 @@ test('a plug-in lost while the project is open brings the review up, unless anot
     const noop = () => {};
     const STApp = { $: () => null, state, toast: (message, kind) => toasts.push({ message, kind }), receiveSampleMetadata: noop, acceptProject: noop, refresh: noop, receiveNoteRecordingStatus: noop,
       updateTransport: noop, receiveCountInStatus: noop, updatePlayhead: noop, pianoHighlight: noop, projectAction: noop, perform: noop, latencyNote: () => '', receiveAcknowledgedMIDI: noop,
-      endRecordTake: noop, liveRecordGroups: noop, recordIncomingMIDI: noop };
+      endRecordTake: noop };
     const window = { STApp, STNativeEvents: { consume: () => false }, STPluginRecovery: { show: value => shown.push(value) } };
     const context = vm.createContext({ window, document: { querySelector: () => null }, setTimeout, clearTimeout });
     vm.runInContext(web.source('app-events.js'), context, { filename: 'app-events.js' });
