@@ -176,14 +176,6 @@ body.native .statusbar #cpu { flex:0 0 11ch; width:11ch; min-width:0; }
 .sequence-layout>.panel { border-right:1px solid #403a2b; }
 .sequence-layout>.stack { gap:0; border-left:1px solid #403a2b; }
 .sequence-list { display:flex; flex-direction:column; gap:0; padding:0; max-height:330px; overflow:auto; }
-.sequence-item { display:grid; grid-template-columns:26px 1fr 62px auto; align-items:center; gap:9px; padding:7px 13px; border:0; border-bottom:1px solid #343225; border-radius:0; background:#23231f; }
-.sequence-item.selected { background:#413221; box-shadow:inset 2px 0 var(--teal); }
-.sequence-item .num { color:var(--dim); font:11px var(--mono); }
-.sequence-item .bars { color:var(--muted); font:11px var(--mono); }
-.sequence-item select { border-color:transparent; padding:3px 4px; background:transparent; }
-.sequence-item button { padding:2px 6px; border-color:transparent; background:transparent; font-size:11px; }
-.sequence-mini { display:flex; align-items:flex-end; gap:2px; height:9px; margin:4px 0 0 4px; }
-.sequence-mini i { display:block; width:4px; background:#998561; opacity:.65; }
 .song-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 12px; padding:13px; }
 .song-options>* { min-width:0; }
 .song-options>div:first-child { grid-column:1/-1; display:grid; gap:4px; }
@@ -194,8 +186,6 @@ body.native .statusbar #cpu { flex:0 0 11ch; width:11ch; min-width:0; }
 .song-options>.field { font-size:11px; }
 .song-options>button { grid-column:1/-1; }
 .song-duration { display:block; margin:0; color:#dbbd89; font:19px var(--mono); }
-.sequence-layout .shortcut-item { margin:7px 0; }
-.sequence-layout .stack>.panel:last-child { display:none; }
 .piano { position:relative; display:flex; height:65px; margin-top:16px; border:1px solid #5f5239; border-radius:0; background:#14150f; overflow:hidden; }
 .piano-key { display:flex; flex:1; align-items:flex-end; justify-content:center; padding-bottom:7px; border:1px solid #655c49; border-radius:0; background:#b8b29c; color:#514a38; font:11px var(--mono); }
 .piano-key.black { position:absolute; z-index:2; width:5.1%; height:40px; flex:none; background:#262620; border:1px solid #12160f; color:#a29d86; }

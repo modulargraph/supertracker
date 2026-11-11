@@ -34,7 +34,7 @@ function harness(count = 4) {
   const laneButtons = [node('automation-lane-0', { selectLane: '0' }), node('automation-lane-1', { selectLane: '1' })]; groups.set('[data-select-lane]', laneButtons);
   const targets = [node('automation-target-volume', { chooseTarget: 'volume', targetName: 'Volume' }), node('automation-target-pan', { chooseTarget: 'pan', targetName: 'Pan' })]; groups.set('[data-choose-target]', targets);
   const ST = { state, escapeHTML: value => String(value), refresh() { renders++; }, toast() {}, mutate(label, callback) { changes.push({ label, before: copy(state.project) }); callback(state.project); }, request(command, payload) { requests.push({ command, payload }); return Promise.resolve([]); }, automate() { throw new Error('Navigation must not create an automation lane'); } };
-  const context = vm.createContext({ window: { ST }, document, requestAnimationFrame: fn => fn(), setTimeout: () => 1, clearTimeout() {} }); web.load(context, 'studio.js', { text: source });
+  const context = vm.createContext({ window: { ST }, document, requestAnimationFrame: fn => fn(), setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {} }); web.load(context, 'studio.js', { text: source }); web.load(context, 'insert-chain.js');
   const studio = context.window.STStudio; studio.bindMixer();
   function key(id, key, options = {}) {
     const target = typeof id === 'string' ? nodes.get(id) : id; assert(target, `Missing test node ${id}`);

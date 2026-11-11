@@ -39,6 +39,7 @@
       updateTransport();
       if (state.view === 'pattern') updatePlayhead(payload);
       window.STStudio?.event(type, payload);
+      if (state.view === 'song') window.STSong.event(type, payload);
       window.STClips?.event?.(type, payload);
     } else if (type === 'project.openRequested') {
       if (payload.path) {

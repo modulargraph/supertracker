@@ -54,8 +54,8 @@ function studioHarness(fail) {
   const state = { project, track: 0, instrument: 0, view: 'mixer', selectedLane: 0, plugins: [] };
   const ST = { state, escapeHTML: value => String(value), toast() {}, mutate(label, fn) { fn(state.project); }, refresh() { refreshes++; },
     request(command, payload = {}) { calls.push({ command, payload }); if (command === 'plugin.parameters') return payload.slot === 1 ? Promise.reject(fail) : Promise.resolve({ parameters: grain }); return Promise.resolve({}); } };
-  const context = vm.createContext({ window: { ST }, document, setTimeout() { return 0; }, clearTimeout() {}, requestAnimationFrame: fn => fn() });
-  web.load(context, 'studio.js');
+  const context = vm.createContext({ window: { ST }, document, setTimeout() { return 0; }, clearTimeout() {}, setInterval() { return 0; }, clearInterval() {}, requestAnimationFrame: fn => fn() });
+  web.load(context, 'studio.js'); web.load(context, 'insert-chain.js');
   return { studio: context.window.STStudio, calls, get refreshes() { return refreshes; } };
 }
 

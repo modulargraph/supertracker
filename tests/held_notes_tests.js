@@ -46,7 +46,7 @@ async function harness() {
   const context = vm.createContext({ window, document, console, Date: Clock, Map, Set, Math, JSON, Number, String, Object, Array, Promise, innerWidth: 1280, innerHeight: 800,
     setTimeout(fn) { timers.set(++timerID, fn); return timerID; }, clearTimeout(id) { timers.delete(id); }
   });
-  web.load(context, 'app.js', { path: process.env.SUPERTRACKER_HELD_NOTES_SOURCE }); await window.ST.boot();
+  web.load(context, 'app.js', { path: process.env.SUPERTRACKER_HELD_NOTES_SOURCE }); for (const file of ['song-model.js', 'song-sequence.js']) web.load(context, file); await window.ST.boot();
   const ST = window.ST, state = ST.state; state.keyboardPlay = true; calls.length = 0;
   function dispatch(type, key, code, extra = {}) {
     const event = { target: node('tracker'), key, code, preventDefault() { this.defaultPrevented = true; }, ...extra };

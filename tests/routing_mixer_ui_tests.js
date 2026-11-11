@@ -57,11 +57,13 @@ function harness(setup = () => {}) {
   function matches(item, selector) {
     if (selector === '.studio-plugin > summary') return item.tagName === 'SUMMARY' && matches(item.parentElement, '.studio-plugin');
     if (selector.startsWith('.')) return !!item?.classes?.has(selector.slice(1));
+    if (selector.startsWith('#')) return item?.id === selector.slice(1);
     const attribute = /^\[([^=\]]+)(?:="([^"]*)")?\]$/.exec(selector);
     return attribute ? !!item && Object.hasOwn(item.attributes, attribute[1]) && (attribute[2] === undefined || item.attributes[attribute[1]] === attribute[2]) : false;
   }
   function mountHTML(markup) {
     const oldFocus = document.activeElement?.id;
+    for (const item of elements) item.isConnected = false;
     nodes.clear(); elements = []; const stack = [];
     for (const token of markup.matchAll(/<\/?[\w:-]+\b[^>]*>/g)) {
       const raw = token[0], tagName = /^<\/?([\w:-]+)/.exec(raw)[1].toUpperCase();
@@ -72,10 +74,12 @@ function harness(setup = () => {}) {
         const name = match[1], value = decode(match[2] ?? match[3] ?? match[4] ?? ''); attributes[name] = value;
         if (name.startsWith('data-')) dataset[name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = value;
       }
-      const item = { id: attributes.id || '', tagName, attributes, dataset, parentElement: stack.at(-1) || null, classes: new Set((attributes.class || '').split(/\s+/)), handlers: {}, disabled: Object.hasOwn(attributes, 'disabled'), value: attributes.value || '', type: attributes.type || '', style: {}, textContent: '', scrolls: 0,
-        classList: { toggle() {} }, setAttribute(name, value) { this.attributes[name] = String(value); }, addEventListener(type, fn) { (this.handlers[type] ||= []).push(fn); },
+      const item = { id: attributes.id || '', tagName, attributes, dataset, parentElement: stack.at(-1) || null, classes: new Set((attributes.class || '').split(/\s+/)), handlers: {}, disabled: Object.hasOwn(attributes, 'disabled'), value: attributes.value || '', type: attributes.type || '', style: {}, textContent: '', scrolls: 0, isConnected: true,
+        classList: { toggle() {}, add() {}, remove() {} }, setAttribute(name, value) { this.attributes[name] = String(value); }, addEventListener(type, fn) { (this.handlers[type] ||= []).push(fn); },
         focus() { document.activeElement = this; }, scrollIntoView(options) { this.scrolls++; this.scrollOptions = options; }, setSelectionRange() {},
         closest(selector) { for (let item = this; item; item = item.parentElement) if (matches(item, selector)) return item; return null; },
+        contains(other) { for (let item = other; item; item = item.parentElement) if (item === this) return true; return false; },
+        querySelectorAll(selector) { return elements.filter(other => other !== this && this.contains(other) && matches(other, selector)); }, querySelector(selector) { return this.querySelectorAll(selector)[0] || null; },
         async fire(type, extra = {}) { const event = { target: this, preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }, ...extra }; for (const fn of this.handlers[type] || []) await fn(event); return event; }
       };
       elements.push(item); if (item.id) nodes.set(item.id, item);
@@ -103,8 +107,8 @@ function harness(setup = () => {}) {
     refresh() { refreshes++; html = state.view === 'mixer' ? studio.renderMixer() : studio.renderAutomation(); mountHTML(html); if (state.view === 'mixer') studio.bindMixer(); else studio.bindAutomation(); }
   };
   ST.syncEngineProject=async(makeProject,options={})=>{const project=makeProject();return project?ST.request('engine.project',{project,...(options.replace?{replace:true}:{})}):false;};
-  const context = vm.createContext({ window: { ST, STRouting: routing }, document, requestAnimationFrame: fn => fn(), setTimeout(fn) { const id = ++timerID; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); } });
-  web.load(context, 'studio.js', { text: source }); studio = context.window.STStudio; ST.refresh();
+  const context = vm.createContext({ window: { ST, STRouting: routing }, document, requestAnimationFrame: fn => fn(), setTimeout(fn) { const id = ++timerID; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); }, setInterval: () => 0, clearInterval() {} });
+  web.load(context, 'studio.js', { text: source }); web.load(context, 'insert-chain.js'); studio = context.window.STStudio; ST.refresh();
   async function settle() { for (let i = 0; i < 12; i++) await tick(); }
   function key(id, key, options = {}) {
     const target = typeof id === 'string' ? nodes.get(id) : id; assert(target, `Missing control ${id}`);

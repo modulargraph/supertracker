@@ -452,11 +452,7 @@
         + ` tabindex="0" aria-label="Mixer channels. Left and right select tracks, groups, returns and Master.">${mixerStrips(strips.length,
             strips.findIndex(c => c.owner === owner), i => renderRoutedStrip(strips[i]))}</div>
     <div class="studio-bottom studio-bottom-routed"><section class="panel studio-rack ${effects.length > 8 ? 'is-long' : ''}">`
-        + (window.STInsertChain ? rackWithChain(owner, effects) : `<div class="panel-head"><div><h3>${esc(channelTitle(owner))} / Inserts <span class="studio-slot-count">${effects.length}/${INSERT_SLOTS}</span>`
-        + `</h3><span class="studio-reorder-hint" role="status">${ui.pluginMoving ? 'Moving effect…' : '⌥ ↑ / ↓ reorder'}</span>`
-        + `</div><button class="btn" data-studio-action="add-plugin" ${effects.length >= INSERT_SLOTS || ui.pluginMoving ? 'disabled' : ''}>+ Add `
-        + `effect</button></div>${effects.length ? effects.map(renderPlugin).join('') : `<div class="studio-empty"><p>No insert effects</p><small class="muted">${INSERT_SLOTS} plug-in slots per channel</small>`
-        + '</div>'}${ui.pluginPicker ? renderPluginPicker() : ''}`) + `</section>`
+        + renderRack(owner, effects) + `</section>`
         + `<div class="studio-side"><section class="studio-routing-panel" aria-label="Selected channel routing">${window.STRouting?.render(owner) || ''}</section>
     <section class="panel studio-returns studio-fixed-returns"><div class="panel-head"><h3>Built-in returns</h3>`
         + `</div><div class="studio-return-pair"><div><h4>Delay</h4>${range({id:'delay-time',label:'Time',value:delay.time,min:.01,max:2,step:.005,format:v=>`${Math.round(v*1000)} ms`,group:'delay',property:'time'})}${range({id:'delay-feedback',label:'Feedback',value:delay.feedback,max:.95,group:'delay',property:'feedback'})}${range({id:'delay-mix',label:'Return',value:delay.mix,group:'delay',property:'mix'})}</div>`
@@ -464,9 +460,9 @@
         + `</div></section></div></div></div>`;
   }
 
-  /** The insert chain (insert-chain.js) for the selected channel, then the classic per-insert details
-      (sidechain inputs, factory presets, editor, every parameter) folded away underneath. */
-  function rackWithChain(owner, effects) {
+  /** The selected channel's rack: its insert chain (insert-chain.js), the plug-in search while it is open, and each
+      insert's details (sidechain inputs, factory presets, editor, every parameter) folded away underneath. */
+  function renderRack(owner, effects) {
     return window.STInsertChain.render(owner, { prefix: 'mixfx', search: true, title: channelTitle(owner) }) + (ui.pluginPicker ? renderPluginPicker() : '')
         + (effects.length ? `<details class="studio-rack-details" ${ui.rackDetails ? 'open' : ''}><summary><span>Plug-in details</span><span class="muted">sidechain inputs · presets · editor · every parameter</span>`
         + `<span class="studio-reorder-hint" role="status">${ui.pluginMoving ? 'Moving effect…' : '⌥ ↑ / ↓ reorder'}</span></summary>${effects.map(renderPlugin).join('')}</details>` : '');
@@ -862,7 +858,7 @@
       window.STRouting?.showAddSend?.(selectedOwner(), button.id);
     }));
     document.querySelector('.studio-rack-details')?.addEventListener('toggle', event => { ui.rackDetails = !!event.target?.open; });
-    window.STInsertChain?.bind(document, selectedOwner(), { prefix: 'mixfx', search: true, title: channelTitle(selectedOwner()) });
+    window.STInsertChain.bind(document, selectedOwner(), { prefix: 'mixfx', search: true, title: channelTitle(selectedOwner()) });
     document.querySelectorAll('.studio-plugin').forEach(details => details.addEventListener('toggle', () => {
       ui.openPlugins.set(pluginKey(details.dataset.pluginOwner, Number(details.dataset.pluginSlot)),
           details.open);

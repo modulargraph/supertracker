@@ -164,7 +164,7 @@ test('button activation, Tab and unrelated modified keys remain native', () => {
 });
 
 test('actual app dispatcher leaves clip toolbar arrows and duplicate shortcuts outside sequence editing', () => {
-  const h = harness(); web.load(h.context, 'app.js');
+  const h = harness(); for (const file of ['app.js', 'song-model.js', 'song-sequence.js']) web.load(h.context, file);
   const app = h.context.window.ST; app.state.project = copy(h.state.project); app.state.view = 'song'; app.state.modal = null; app.state.keyboardPlay = false; app.state.sequence = 0;
   const before = copy(app.state.project);
   for (const [key, extra] of [['ArrowUp', {}], ['ArrowDown', { altKey: true }], ['Delete', {}], ['d', { metaKey: true }]]) {

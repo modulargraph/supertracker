@@ -10,8 +10,8 @@ function harness(){
  h.document.body={id:'body'};h.document.addEventListener=(type,fn)=>{const fns=events.get(type)||[];fns.push(fn);events.set(type,fns);};
  function render(){
   const focus=h.document.activeElement?.id;for(const node of h.nodes.values())node.isConnected=false;h.nodes.clear();h.document.activeElement=h.document.body;renders++;
-  for(const id of ['sequence-list','song-block-pattern','song-block-repeats','song-insert'])h.nodes.set(id,{id,value:'2',dataset:id==='sequence-list'?{songArranger:'1'}:{},isConnected:true,focus(){if(this.isConnected)h.document.activeElement=this;},setAttribute(){},classList:{toggle(){}},closest(){return null;}});
-  h.song.mount();if(focus)h.nodes.get(focus)?.focus();
+  for(const id of ['sequence-list','song-block-pattern','song-block-repeats','song-insert'])h.nodes.set(id,{id,value:'2',dataset:{},isConnected:true,focus(){if(this.isConnected)h.document.activeElement=this;},setAttribute(){},classList:{toggle(){}},closest(){return null;}});
+  h.song.bind();if(focus)h.nodes.get(focus)?.focus();
  }
  h.ST.refresh=render;h.ST.mutate=(label,fn,options={})=>{h.state.undo.push({label});fn(h.state.project);if(options.render!==false)render();};render();
  function depart(id,next,value){const field=h.nodes.get(id),target=h.nodes.get(next);field.focus();field.value=String(value);field.oninput?.();h.document.activeElement=h.document.body;field.onchange({target:field});field.onblur?.();target.focus();return target;}

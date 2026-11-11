@@ -58,8 +58,6 @@
 .studio-return-pair h4{color:var(--text,#e8e3d8);font:11px var(--mono,Menlo,monospace)}
 .studio-empty{text-align:left;font-size:11px;line-height:1.6;padding:22px 0;color:var(--muted,#aaa69b)}
 .studio-empty p{margin:0 0 5px}
-.studio-empty small{font-size:11px;color:var(--dim,#969083)}
-.studio-slot-count{font-size:10px;font-weight:400;color:var(--dim,#969083);margin-left:6px;font-variant-numeric:tabular-nums}
 .studio-rack.is-long .studio-plugin>summary{padding:6px 0}
 .studio-plugin{margin:0;border:0;border-top:1px solid var(--line,#383831);background:transparent;border-radius:0;overflow:hidden}
 .studio-plugin:last-child{border-bottom:1px solid var(--line,#383831)}

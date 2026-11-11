@@ -55,7 +55,7 @@ arriving with ← →, ⌥ ↑ ↓ move between blocks again. They never own ⌥
 | Automation envelopes (pattern and song) | all | previous / next point, move point |
 | Pattern grid (`#tracker`, not its header row), and the Pattern page with nothing focused | all, **always** (also on arrival) | ⌥↑↓ transpose, ⌥←→ cursor |
 | Insert tiles (`[data-fx-tile]`, the tile strip only) | ← → | reorder effects |
-| Older mixer rack headers (`.studio-plugin > summary`) | ↑ ↓ | move insert |
+| Plug-in details headers in the mixer (`.studio-plugin > summary`) | ↑ ↓ | move insert |
 | Plug-in slot tabs (`[data-pp-tab]`) | ← → | switch plug-in (on the knobs ⌥ ← → move between blocks) |
 | Sliders, knobs, value fields (`.parameter`, `.mod-parameter`, NKS, plug-in pages, insert knobs, plug-in parameters) | ↑ ↓, while adjusting | fine adjustment |
 | Sample waveform | ← → | nudge marker one frame |

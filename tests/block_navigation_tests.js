@@ -20,7 +20,7 @@ function harness(view = 'browser') {
     setTimeout() {}, clearTimeout() {} });
   web.prepare(context);
   web.loadAppWith(context, { stop: () => { stops++; }, refresh: () => {}, closeModal: () => { closes++; } });
-  web.load(context, 'block-nav.js'); web.load(context, 'pane-navigation.js');
+  for (const file of ['song-model.js', 'song-sequence.js', 'block-nav.js', 'pane-navigation.js']) web.load(context, file);
   const ST = window.ST, state = ST.state, nav = window.STBlockNav;
   state.project = ST.demoProject(); state.view = view;
   const capture = dom.listeners.window.keydown || [];

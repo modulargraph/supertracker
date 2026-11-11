@@ -26,7 +26,8 @@ function harness(view='instrument'){
   }});root.remove=()=>{root.isConnected=false;root.parentElement.children=root.parentElement.children.filter(child=>child!==root);};return root;}
   fragment(h.create('div','overlay'));
   document.createElement=tag=>{const element=fragment(h.create(tag,'',null));Object.defineProperty(element,'className',{get:()=>[...element.classes].join(' '),set:value=>element.classes=new Set(value.split(' '))});return element;};
-  for(const file of ['routing-project.js','studio.js'])web.load(context, file);
+  context.setInterval=()=>0;context.clearInterval=()=>{};
+  for(const file of ['routing-project.js','studio.js','insert-chain.js'])web.load(context, file);
   window.STRoutingProject.ensureTrackIDs(state.project);state.project.patterns.forEach(p=>p.automation=[]);ST.refresh();h.calls.length=0;state.undo=[];
   return {...h,handlers,async boot(){handlers.set('ready',()=>({project:state.project}));await ST.boot();state.view=view;ST.refresh();h.calls.length=0;state.undo=[];},contextAction(control){const event={target:control,clientX:40,clientY:40,preventDefault(){}};for(const fn of listeners.get('contextmenu')||[])fn(event);h.get('context-automate').click();},async plugin(){
     const owner=`track:${state.project.tracks[0].routingID}`;

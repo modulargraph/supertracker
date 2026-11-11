@@ -56,7 +56,7 @@ PLUG-IN pages all use these pages; other plug-ins keep NKS or generated pages.
 The insert chain (`insert-chain.js`) edits the inserts of any owner (track, bus, kit Sound or group, master): modules
 as tiles in signal order (+ adds from a categorized list, drag or ⌥ ← → reorders, the power button or B bypasses,
 D duplicates, ⌫ removes), and the selected module's pages as eight knobs (drag, ⇧-drag fine, double-click or ⌫
-resets, ⇧ ← → pages, A automates). It is in the mixer (above the classic per-insert details) and the kit editor.
+resets, ⇧ ← → pages, A automates). It is in the mixer (above each insert's folded plug-in details) and the kit editor.
 All chain edits go through `window.STInserts` (add / remove / setBypass / move / duplicate by owner and slot, each
 one Undo step), which the MK3 Bypass and Remove buttons use too. `tests/effect_pages_tests.js` checks the pages
 against the real catalogue (`tests/fixtures/builtin-effects.json`, generated and kept up to date by

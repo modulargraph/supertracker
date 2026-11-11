@@ -1,7 +1,6 @@
 'use strict';
 // Pattern, song and step-recording workflows through the real app.js (held_notes_tests harness).
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
-const web = require('./helpers/web');
 const fixture = fs.readFileSync(path.join(__dirname, 'held_notes_tests.js'), 'utf8');
 const exportLine = 'return { ST, state, window, node, calls,';
 assert(fixture.includes(exportLine));
@@ -29,16 +28,23 @@ test('step editor note and velocity fields clamp to MIDI ranges', async () => {
   step = h.ST.pattern().steps[0][3]; assert.equal(step.velocity, 1); assert.equal(step.note, -3);
 });
 
-test('song "+ Add pattern" keeps the block arranger handler', async () => {
-  const h = await makeHarness();
-  h.window.STClips = { render: () => '', bind() { h.node('sequence-add').onclick = 'arranger'; }, key: () => false, event() {} };
+test('song "+ Add pattern" adds the active pattern as a block after the selected block, never inside a repeat run', async () => {
+  const h = await makeHarness(), s = h.state, p = s.project;
+  h.ST.perform('addPattern');
+  const [a, b, c] = p.patterns.map(pattern => pattern.id);
+  p.sequence = [a, a, b]; s.sequence = 0; p.activePattern = c; // the selection is the first slot of the block a ×2
   h.ST.setView('song');
-  assert.equal(h.node('sequence-add').onclick, 'arranger');
+  assert.match(h.node('app').innerHTML, /id="sequence-list"[^>]*role="listbox"/, 'the Song view shows the block arranger');
+  assert.equal((h.node('app').innerHTML.match(/id="sequence-list"/g) || []).length, 1, 'one sequence list is rendered');
+  const steps = s.undo.length;
+  h.node('sequence-add').onclick();
+  assert.deepEqual(copy(p.sequence), [a, a, c, b]); assert.equal(s.sequence, 2, 'the new block is selected');
+  assert.equal(s.undo.length, steps + 1, 'one Undo step');
+  h.ST.perform('undo'); assert.deepEqual(copy(s.project.sequence), [a, a, b]);
 });
 
 test('removing a pattern keeps the song section loop on its remaining music and restores Loop song when emptied', async () => {
   const h = await makeHarness(), s = h.state, p = s.project;
-  web.load(h.context, 'song-model.js');
   const add = () => { h.ST.perform('addPattern'); return p.patterns.at(-1).id; };
   const a = p.patterns[0].id, b = p.patterns[1].id, c = add();
   p.sequence = [a, b, b, c]; p.loopSong = false; h.window.STSongModel.setLoop(p, 1, 2); // loops b b c

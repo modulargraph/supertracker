@@ -18,7 +18,7 @@ function harness(){
  const window={addEventListener(){},STHostTransport:hostStub({post(message){calls.push(message);window.STHostTransport.deliver({id:message.id,ok:true,result:recording(message)??{}});}})};
  const recording=noteRecordingHost(window);
  context=vm.createContext({window,document,console,Date,Map,Set,Math,JSON,Number,String,Object,Array,Promise,innerWidth:1280,innerHeight:800,setTimeout(fn){timers.set(++nextTimer,fn);return nextTimer;},clearTimeout(id){timers.delete(id);}});
- web.load(context, 'app.js');
+ for(const file of ['app.js','song-model.js','song-sequence.js'])web.load(context, file);
  const ST=window.ST,state=ST.state;state.project=ST.demoProject();
  function group(selector,items){groups.set(selector,items);return items;}
  const nav=group('[data-view]',['pattern','instrument','browser','mixer','automation','song'].map(view=>node('view-'+view,{view})));
@@ -40,10 +40,11 @@ function harness(){
  console.log('PASS workspace entry and segmented/piano arrows focus without changing sound');
 }
 {
- const h=harness();h.key(h.nav[0],'6',{metaKey:true});assert.equal(h.state.view,'song');assert.equal(h.document.activeElement.id,'sequence-list');assert.match(h.node('app').innerHTML,/<div class="sequence-list"[^>]*role="listbox"[^>]*tabindex="0"[^>]*id="sequence-list"/);h.ST.refresh();assert.equal(h.document.activeElement.id,'sequence-list');h.key(h.patterns[0],'ArrowDown');assert.equal(h.state.project.activePattern,1);assert.equal(h.state.sequence,0);assert.equal(h.document.activeElement.id,'sidebar-pattern-1');
+ const h=harness();h.key(h.nav[0],'6',{metaKey:true});assert.equal(h.state.view,'song');assert.equal(h.document.activeElement.id,'sequence-list');assert.match(h.node('app').innerHTML,/<div class="sequence-list song-blocks" id="sequence-list"[^>]*role="listbox"[^>]*tabindex="0"/);h.ST.refresh();assert.equal(h.document.activeElement.id,'sequence-list');h.key(h.patterns[0],'ArrowDown');assert.equal(h.state.project.activePattern,1);assert.equal(h.state.sequence,0);assert.equal(h.document.activeElement.id,'sidebar-pattern-1');
  h.key(h.patterns[1],'ArrowRight');assert.equal(h.document.activeElement.id,'sequence-list');
  const before=JSON.stringify(h.state.project);h.key('song-export','ArrowDown');h.key('song-export','ArrowUp',{altKey:true});h.key('song-export','d',{metaKey:true});assert.equal(h.state.sequence,0);assert.equal(JSON.stringify(h.state.project),before);
- h.key('sequence-list','ArrowDown');assert.equal(h.state.sequence,1);
+ // The demo song is two blocks of two slots: ↓ selects the second block, which starts at slot 2.
+ assert.deepEqual([...h.state.project.sequence],[0,0,1,1]);h.key('sequence-list','ArrowDown');assert.equal(h.state.sequence,2);
  h.ST.setView('instrument');h.key(h.instruments[0],'ArrowDown');assert.equal(h.state.instrument,1);assert.equal(h.document.activeElement.id,'sidebar-instrument-1');
  console.log('PASS sidebar selection and sequence shortcuts stay within their own area');
 }

@@ -496,8 +496,6 @@
     if (focus) focusSelected();
   }
   function bind() {
-    // The song sequence panel above the timeline is owned by song-sequence.js.
-    window.STSong?.mount?.();
     if (!local.fieldGuardsInstalled && document.addEventListener) {
       local.fieldGuardsInstalled = true;
       document.addEventListener('pointerdown', event => {
@@ -576,7 +574,6 @@
     queueMicrotask(loadWaveforms);
   }
   function key(event) {
-    if (window.STSong?.key?.(event)) return true;
     if (event.defaultPrevented || !event.target?.closest?.('.clips-panel')) return false;
     if (/INPUT|TEXTAREA|SELECT/.test(event.target.tagName) || event.target.isContentEditable) return false;
     // Toolbar, track-label and inspector buttons keep their native interaction.
@@ -645,7 +642,6 @@
     return false;
   }
   function event(type, payload = {}) {
-    window.STSong?.event?.(type, payload);
     if (type === 'status') {
       receivedStatus={owner:project(),signature:timingSignature(project()),payload};
       const line = document.getElementById('clips-playhead');

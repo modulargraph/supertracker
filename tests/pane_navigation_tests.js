@@ -99,7 +99,7 @@ function harness(view = 'song') {
   } }) };
   const recording = noteRecordingHost(window);
   const context = vm.createContext({ window, document, console, Date, Map, Set, Math, JSON, Number, String, Object, Array, Promise, setTimeout() {}, clearTimeout() {} });
-  for (const filename of ['app.js', 'block-nav.js', 'pane-navigation.js']) web.load(context, filename);
+  for (const filename of ['app.js', 'song-model.js', 'song-sequence.js', 'block-nav.js', 'pane-navigation.js']) web.load(context, filename);
   const ST = window.ST, state = ST.state;
   state.project = ST.demoProject(); state.view = view; state.keyboardPlay = true; state.recording = true;
   function clear() {
@@ -186,10 +186,16 @@ test('Pattern, instrument, both browsers, mixer and automation resolve useful sc
       const channels = h.node('div', 'mixer-channels', undefined, { tabIndex: 0 });
       const other = h.node('div', 'other-channel', channels, { className: 'studio-channel' }); h.node('button', 'other-title', other, { className: 'studio-channel-title' });
       const selected = h.node('div', 'selected-channel', channels, { className: 'studio-channel is-selected' }); h.node('button', 'selected-title', selected, { className: 'studio-channel-title' });
-      const rack = h.node('div', 'rack', undefined, { className: 'studio-rack' }); const details = h.node('details', 'insert', rack); h.node('summary', 'plugin-header-0', details); h.node('button', 'add-plugin', rack, { attrs: { 'data-studio-action': 'add-plugin' } });
+      // The rack: the insert chain (head, tile strip, selected module's knobs), then the folded plug-in details.
+      const rack = h.node('div', 'rack', undefined, { className: 'studio-rack' }); const chain = h.node('section', 'chain', rack, { className: 'fx-chain' });
+      const head = h.node('div', 'chain-head', chain, { className: 'fx-chain-head' }); h.node('button', 'add-plugin', head, { attrs: { 'data-studio-action': 'add-plugin' } });
+      const tiles = h.node('div', 'tiles', chain, { className: 'fx-tiles' }); h.node('div', 'mixfx-tile-0', tiles, { className: 'fx-tile is-selected', tabIndex: 0, attrs: { 'data-fx-tile': '0' } }); h.node('button', 'mixfx-add', tiles, { className: 'fx-tile fx-add' });
+      const module = h.node('div', 'module', chain, { className: 'fx-module' }); h.node('button', 'mixfx-bypass', module); h.node('div', 'mixfx-knob-0', module, { tabIndex: 0, attrs: { 'data-fx-dial': '0' } });
+      const details = h.node('details', 'rack-details', rack, { className: 'studio-rack-details' }); h.node('summary', 'rack-details-summary', details);
+      const insert = h.node('details', 'insert', details, { className: 'studio-plugin' }); h.node('summary', 'plugin-header-0', insert);
       const routing = h.node('div', 'routing', undefined, { className: 'studio-routing-panel' }); h.node('select', 'routing-output', routing);
       const returns = h.node('div', 'returns', undefined, { className: 'studio-returns' }); h.node('input', 'reverb-size', returns, { type: 'range' }); h.node('input', 'delay-time', returns, { type: 'range' });
-      return ['selected-title', 'plugin-header-0', 'routing-output', 'delay-time'];
+      return ['selected-title', 'mixfx-tile-0', 'mixfx-knob-0', 'rack-details-summary', 'routing-output', 'delay-time'];
     }],
     ['automation', h => {
       const targets = h.node('div', 'targets', undefined, { className: 'studio-target-panel' }); h.node('select', 'automation-track', targets); h.node('input', 'automation-search', targets, { type: 'search' });
@@ -240,11 +246,15 @@ test('absent, disabled, hidden, inert and collapsed entries are skipped with usa
   h.key(); h.key(); h.key(); assert.equal(h.document.activeElement.id, 'sequence-list');
   h.clear(); assert.deepEqual(h.sections(), []); assert(!h.key().defaultPrevented);
   h.state.view = 'mixer';
+  // The insert chain's preferred targets (the selected tile, the add panel's search field) are disabled or not
+  // rendered: the block falls back to its first usable control.
   const rack = h.node('div', 'rack', undefined, { className: 'studio-rack' });
-  const collapsed = h.node('div', 'collapsed-content', rack, { rendered: false });
-  h.node('input', 'studio-plugin-search', collapsed, { type: 'search' });
-  h.node('summary', 'plugin-header-disabled', rack, { attrs: { 'aria-disabled': 'true' } });
-  h.node('button', 'add-plugin', rack, { attrs: { 'data-studio-action': 'add-plugin' } });
+  const head = h.node('div', 'chain-head', rack, { className: 'fx-chain-head' });
+  h.node('button', 'add-plugin', head, { attrs: { 'data-studio-action': 'add-plugin' } });
+  const tiles = h.node('div', 'tiles', rack, { className: 'fx-tiles' });
+  h.node('div', 'mixfx-tile-disabled', tiles, { className: 'fx-tile is-selected', tabIndex: 0, attrs: { 'data-fx-tile': '0', 'aria-disabled': 'true' } });
+  const collapsed = h.node('div', 'collapsed-panel', rack, { className: 'fx-add-panel', rendered: false });
+  const addHead = h.node('div', 'add-head', collapsed, { className: 'fx-add-head' }); h.node('input', 'mixfx-add-search', addHead, { type: 'search' });
   assert.deepEqual(h.sections(), [['inserts', 'add-plugin']]); h.key(); assert.equal(h.document.activeElement.id, 'add-plugin');
   h.clear(); h.state.view = 'automation';
   const tools = h.node('div', 'point-tools', undefined, { className: 'studio-point-toolbar' }); h.node('button', 'automation-add-point', tools);

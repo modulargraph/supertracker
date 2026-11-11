@@ -16,7 +16,7 @@ const base = new Function('require', '__dirname', prefix + '\nreturn {harness,de
 
 function harness() {
   const h = base.harness();
-  for (const file of ['routing-project.js', 'kit-groups.js', 'studio.js', 'routing.js']) web.load(h.context, file);
+  for (const file of ['routing-project.js', 'kit-groups.js', 'studio.js', 'routing.js', 'insert-chain.js']) web.load(h.context, file);
   h.G = h.window.STGroups;
   h.KG = h.window.STKitGroups;
   h.S.state.project.routing = { buses: [], outputs: {}, sends: [], sidechains: [] };

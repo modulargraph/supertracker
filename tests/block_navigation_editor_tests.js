@@ -19,7 +19,7 @@ function harness(view) {
     setTimeout() {}, clearTimeout() {} });
   web.prepare(context);
   web.loadAppWith(context, { stop: () => {}, refresh: () => {}, closeModal: () => {} });
-  web.load(context, 'block-nav.js'); web.load(context, 'pane-navigation.js');
+  for (const file of ['song-model.js', 'song-sequence.js', 'block-nav.js', 'pane-navigation.js']) web.load(context, file);
   const ST = window.ST, nav = window.STBlockNav;
   ST.state.project = ST.demoProject(); ST.state.view = view;
   const capture = dom.listeners.window.keydown || [];
@@ -279,6 +279,10 @@ function mixer(h, { inserts = ['Compressor', 'Maximizer'] } = {}) {
   if (inserts.length) {
     const details = el('details', { className: 'studio-rack-details', rect: box(18, 800, 826, 30) }, rack);
     el('summary', { id: 'rack-details-summary', rect: box(18, 800, 826, 30) }, details);
+    inserts.forEach((name, i) => {
+      const plugin = el('details', { className: 'studio-plugin', rect: box(30, 832 + i * 30, 800, 30) }, details);
+      el('summary', { id: `plugin-header-${i}`, rect: box(30, 832 + i * 30, 800, 30) }, plugin);
+    });
   }
   const side = el('div', { className: 'studio-side', rect: box(870, 420, 612, 496) }, bottom);
   const routing = el('section', { className: 'studio-routing-panel', rect: box(871, 420, 611, 252) }, side);
@@ -302,12 +306,9 @@ test('Mixer: strips, divider, insert chain, knob page, details, routing and retu
   assert(h.press('ArrowDown', { alt: true }).defaultPrevented, 'used or not, the divider has no ⌥ keys'); assert.equal(h.nav.current().id, 'inserts');
   // Mixer sliders keep their arrows (← → change channel in studio.js): no slider stepping here.
   h.nodes.get('mix-vol-0').focus(); assert.equal(h.press('ArrowRight').defaultPrevented, undefined);
-  // Without the insert chain (older rack): one Insert effects block.
-  const o = harness('mixer'); const rack = o.el('section', { className: 'studio-rack', rect: o.box(18, 420, 826, 496) });
-  const plugin = o.el('details', { className: 'studio-plugin', rect: o.box(30, 440, 600, 30) }, rack);
-  o.el('summary', { id: 'plugin-header-0', rect: o.box(30, 440, 600, 30) }, plugin);
-  deep(o.nav.blocks().map(b => [b.id, b.target.id]).slice(2), [['inserts', 'plugin-header-0']]);
-  assert.equal(o.nav.owns(o.nodes.get('plugin-header-0'), 'ArrowUp'), true, 'its headers keep ⌥ ↑ ↓ (move insert) once used');
+  // Plug-in details under the chain: an insert's header keeps ⌥ ↑ ↓ (move insert) once used, never ⌥ ← →.
+  assert.equal(h.nav.owns(h.nodes.get('plugin-header-0'), 'ArrowUp'), true, 'insert headers keep ⌥ ↑ ↓ (move insert) once used');
+  assert.equal(h.nav.owns(h.nodes.get('plugin-header-0'), 'ArrowLeft'), false, 'insert headers do not own ⌥ ← →');
   deep(h.calls, [], 'moving between blocks sends nothing');
 });
 

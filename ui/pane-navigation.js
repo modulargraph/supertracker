@@ -212,9 +212,7 @@
     { id: 'channels', label: 'Mixer channels', selector: '#mixer-channels', prefer: ['.studio-channel.is-selected .studio-channel-title', '.studio-channel-title[tabindex="0"]'],
       keys: '← →: channel (same control) · ↑ ↓: fader / knob · Tab: next control · Home / End: first / last' },
     { id: 'splitter', label: 'Channel / detail divider', selector: '#mixer-splitter', keys: '↑ ↓: resize (⇧ larger steps) · Home: default size' },
-    ...(document.querySelector?.('.studio-rack .fx-chain')
-      ? chain('.studio-rack', 'inserts', 'Insert effects')
-      : [{ id: 'inserts', label: 'Insert effects', selector: '.studio-rack', prefer: ['#studio-plugin-search', 'summary[id^="plugin-header-"]', '[data-studio-action="add-plugin"]'] }]),
+    ...chain('.studio-rack', 'inserts', 'Insert effects'),
     { id: 'plugin-picker', label: 'Search plug-ins', selector: '.studio-rack .studio-plugin-picker', prefer: ['#studio-plugin-search'], keys: 'type to search · ↓: results · Enter: add' },
     { id: 'insert-details', label: 'Plug-in details', selector: '.studio-rack .studio-rack-details', keys: '→ ←: open / close · ↑ ↓: next insert · ⌥↑↓: reorder (once used)' },
     { id: 'routing', label: 'Channel routing', selector: '.studio-routing-panel' },

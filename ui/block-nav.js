@@ -40,7 +40,7 @@
     // this entry remains for grids elsewhere. Track header buttons (thead) never own them.
     ['#tracker,.tracker', 'vertical', 'thead'], // transpose
     ['[data-fx-tile]', 'horizontal'], // reorder insert effects (the tile strip, not the knobs below it)
-    ['.studio-plugin > summary', 'vertical'], // move an insert (older mixer rack)
+    ['.studio-plugin > summary', 'vertical'], // move an insert (the mixer's plug-in details)
     ['[data-pp-tab]', 'horizontal'], // switch plug-in (the slot tabs only; ⌥ ← → on knobs move between blocks)
     // Fine adjustment (⌥ ↑ ↓) of sliders, knobs and value fields: owned only while you are adjusting the control,
     // i.e. the last key pressed in it was an adjustment or you clicked / dragged it. ⌥ ← → are never theirs.

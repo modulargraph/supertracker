@@ -34,7 +34,7 @@ function harness(slots) {
   let native = (command, payload) => command === 'plugin.move' ? response(state.project, trackOf(payload), payload.fromSlot, payload.toSlot) : command === 'plugin.parameters' ? { parameters: state.project.audioPlugins.find(p => p.owner === payload.owner && p.kind === payload.kind && p.slot === payload.slot)?.parameters || [] } : command === 'plugin.state' ? state.project.audioPlugins.find(p => p.owner === payload.owner && p.kind === payload.kind && p.slot === payload.slot) : {};
   const ST = { state, escapeHTML: value => String(value), toast(message, kind) { errors.push({ message, kind }); }, captureNativeEdits: async () => { calls.push({ command: 'capture' }); return true; }, syncEngine: async () => { calls.push({ command: 'sync' }); }, request(command, payload = {}) { calls.push({ command, payload: clone(payload) }); return Promise.resolve().then(() => native(command, payload)); }, mutate(label, fn) { mutations.push({ label, before: clone(state.project) }); fn(state.project); this.refresh(); }, refresh() { refreshes++; mount(); } };
   ST.syncEngineProject=async(makeProject,options={})=>{const project=makeProject();return project?ST.request('engine.project',{project,...(options.replace?{replace:true}:{})}):false;};
-  const context = vm.createContext({ window: { ST }, document, setTimeout(fn) { const id = ++timerID; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); }, requestAnimationFrame: fn => fn() }); web.load(context, 'studio.js', { text: source }); const studio = context.window.STStudio;
+  const context = vm.createContext({ window: { ST }, document, setTimeout(fn) { const id = ++timerID; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); }, setInterval: () => 0, clearInterval() {}, requestAnimationFrame: fn => fn() }); web.load(context, 'studio.js', { text: source }); web.load(context, 'insert-chain.js'); const studio = context.window.STStudio;
   function mount() {
     const focus = document.activeElement?.id; nodes.clear(); groups.clear();
     const details = [], summaries = [], moves = [], actions = [], addresses = [], presets = [];
@@ -72,8 +72,8 @@ function integratedHarness() {
       if(request.command==='plugin.parameters')return {parameters:[]};return {};
     }).then(result=>window.STHostTransport.deliver({id:request.id,ok:true,result}),error=>window.STHostTransport.deliver({id:request.id,ok:false,error:error.message}));
   }})};
-  const context=vm.createContext({window,document,console,setTimeout:(fn,delay=0)=>{const id=nextTimer++;timers.set(id,{fn,at:clock+delay});return id;},clearTimeout:id=>timers.delete(id),Date,Map,Set,Math,JSON,Number,String,Object,Array,Promise,innerWidth:1280,innerHeight:800});
-  web.load(context, 'app.js');web.load(context, 'studio.js', { text: source });
+  const context=vm.createContext({window,document,console,setTimeout:(fn,delay=0)=>{const id=nextTimer++;timers.set(id,{fn,at:clock+delay});return id;},clearTimeout:id=>timers.delete(id),setInterval:()=>0,clearInterval(){},Date,Map,Set,Math,JSON,Number,String,Object,Array,Promise,innerWidth:1280,innerHeight:800});
+  web.load(context, 'app.js');web.load(context, 'studio.js', { text: source });web.load(context, 'insert-chain.js');
   const ST=window.ST;ST.state.project=ST.normalize(fixture());ST.state.view='mixer';ST.state.engineReady=true;nativeProject=clone(ST.state.project);
   function advance(ms){clock+=ms;for(const[id,timer]of [...timers])if(timer.at<=clock){timers.delete(id);timer.fn();}}
   function move(){moveGate=deferred();const header=element('plugin-header-3');header.tagName='SUMMARY';header.parentElement={dataset:{pluginSlot:'3'}};header.focus();window.STStudio.key({target:header,key:'ArrowUp',altKey:true,preventDefault(){}});return moveGate;}

@@ -72,7 +72,7 @@
   }
   function render(inst, index) {
     const p = S().state.project;
-    if (!inst || inst.type === 'midi' || !window.STInsertChain || !window.STInserts) return '';
+    if (!inst || inst.type === 'midi' || !window.STInserts) return '';
     const playing = tracksPlaying(p, index), names = playing.slice(0, 3).map(i => p.tracks[i]?.name || `Track ${i + 1}`);
     const where = playing.length
         ? `Runs on ${playing.length === 1 ? 'track' : `${playing.length} tracks`} ${esc(names.join(', '))}${playing.length > 3 ? '…' : ''}, before the track's own inserts.`
@@ -86,7 +86,7 @@
   }
   function bind(index) {
     const root = document.getElementById('instrument-effects');
-    if (!root || !window.STInsertChain) return;
+    if (!root) return;
     window.STInsertChain.bind(root, owner(index), { prefix: PREFIX, title: S().state.project?.instruments[index]?.name || 'Instrument',
       source: [{ id: `${PREFIX}-source` }], hint: 'Saved with the instrument' });
     // Ask the host for the parameter lists once, so the knob pages and automation targets are ready.

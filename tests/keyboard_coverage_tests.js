@@ -79,7 +79,7 @@ function handled(id) {
   // ⌃⌘F belongs to native full screen, not the web find shortcut.
   assert(compact.includes("key==='f'&&!(e.metaKey&&e.ctrlKey)"));
   for (const [id, [view, selector]] of Object.entries(app.CONTROL_COMMANDS)) {
-    const source = web.read({ mixer: 'studio.js', automation: 'studio.js', song: 'clip-arranger.js' }[view]);
+    const source = { mixer: ['studio.js', 'insert-chain.js'], automation: ['studio.js'], song: ['clip-arranger.js'] }[view].map(web.read).join('\n');
     const needle = selector.startsWith('#') ? `id="${selector.slice(1)}"` : selector.slice(1, -1);
     assert(source.includes(needle), `${id} control ${selector} exists in the ${view} view`);
   }

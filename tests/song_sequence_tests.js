@@ -64,7 +64,7 @@ test('new and cloned patterns get free ids, names and fresh automation ids', () 
 function harness(sequence = [0, 0, 1], options = {}) {
   const nodes = new Map(), labels = [], toasts = [];
   const document = { activeElement: null, getElementById: id => nodes.get(id) || null, querySelectorAll: () => [], querySelector: () => null };
-  const list = { id: 'sequence-list', dataset: { songArranger: '1' }, tagName: 'DIV', closest(selector) { return selector.includes('#sequence-list') ? this : null; }, focus() { document.activeElement = this; }, setAttribute() {} };
+  const list = { id: 'sequence-list', dataset: {}, tagName: 'DIV', closest(selector) { return selector.includes('#sequence-list') ? this : null; }, focus() { document.activeElement = this; }, setAttribute() {} };
   nodes.set('sequence-list', list);
   const state = { view: 'song', sequence: 0, row: 0, modal: null, keyboardPlay: !!options.piano, playing: false, playbackMode: 'pattern', status: {}, undo: [], project: base(sequence) };
   const ST = { state, escapeHTML: String, toast: (message) => toasts.push(message), uid: () => 'u', updateTransport() {}, setView: view => { state.view = view; }, beatsPerBar: () => 4,

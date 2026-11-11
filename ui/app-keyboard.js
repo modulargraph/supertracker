@@ -4,10 +4,10 @@
 
   const app = window.STApp;
   const {
-    $, $$, clamp, views, state, pattern, mutate, setView, refresh, toggleNoteRecordingFromUI,
+    $, $$, clamp, views, state, pattern, setView, refresh, toggleNoteRecordingFromUI,
     togglePlay, stop, copySelection, pasteSelection, clearSelection, shiftPatternRows,
     fillSelection, auditionStep, transpose, moveGrid, keyNotes, keyboardNote, cycleChordSet, noteOn,
-    PARAM_ARROWS, endParamBurst, moveSequence, removeSequence, closeModal, showHelp, openPalette, perform,
+    PARAM_ARROWS, endParamBurst, closeModal, showHelp, openPalette, perform,
     showExport, automate, queueStoppedGridKey, automateValue
   } = app;
 
@@ -355,7 +355,8 @@
     if (state.view === 'browser' && window.STBrowser?.key(e)) return;
     if (state.view === 'instrument' && window.STSampler?.key?.(e)) return;
     if ((state.view === 'mixer' || state.view === 'automation') && window.STStudio?.key(e)) return;
-    if (state.view === 'song' && window.STClips?.key?.(e)) return;
+    // Song: the sequence panel (song-sequence.js), then the audio timeline (clip-arranger.js).
+    if (state.view === 'song' && (window.STSong.key(e) || window.STClips?.key?.(e))) return;
     if (input) return;
     if (e.altKey && !e.metaKey && !e.ctrlKey && e.code === 'KeyG') {
       e.preventDefault();
@@ -506,38 +507,6 @@
         e.preventDefault();
         app.insertNoteOff(e.shiftKey);
         return;
-      }
-    }
-    if (state.view === 'song' && !input && e.target.closest?.('#sequence-list') && !e.target.closest('button,select')) {
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        const delta = e.key === 'ArrowDown' ? 1 : -1;
-        if (e.altKey) {
-          moveSequence(state.sequence, delta);
-        } else {
-          state.sequence = clamp(state.sequence + delta, 0, state.project.sequence.length - 1);
-          refresh();
-          $('#sequence-list').focus({ preventScroll: true });
-        }
-        return;
-      }
-      if (e.key === 'Enter' && !e.target.closest('button,select')) {
-        e.preventDefault();
-        state.project.activePattern = state.project.sequence[state.sequence];
-        setView('pattern');
-        return;
-      }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && !e.target.closest('button')) {
-        e.preventDefault();
-        removeSequence(state.sequence);
-        return;
-      }
-      if (cmd && key === 'd') {
-        e.preventDefault();
-        mutate('duplicate sequence position', p => {
-          p.sequence.splice(state.sequence + 1, 0, p.sequence[state.sequence]);
-          state.sequence++;
-        });
       }
     }
     // Arrows nobody used on a button-like control: the nearest control in that direction within its block.

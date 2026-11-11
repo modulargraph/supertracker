@@ -46,7 +46,8 @@
     }).join('');
   }
 
-  function renderPanel() {
+  /** The Song view's sequence panel (app-song-view.js places it and calls bind once it is in the page). */
+  function render() {
     const p = project(), list = blockList(), current = selectedBlock(), [a, b] = range(), loop = M().loopRange(p);
     const loopLabel = loop ? `${String(M().blockAt(p.sequence, loop.start) + 1).padStart(2, '0')}–${String(M().blockAt(p.sequence, loop.end) + 1).padStart(2, '0')}` : '';
     const block = list[current];
@@ -62,7 +63,7 @@
         <button id="song-loop" class="${loop ? 'active' : ''}" aria-pressed="${!!loop}" title="Loop the selected blocks in Song playback · L">⟲ Loop</button>
         <button id="song-play-from" title="Play the song from this block · P or ⇧Return">▶ From here</button>
       </div>
-      <div class="sequence-list song-blocks" id="sequence-list" data-song-arranger="1" data-scroll="song-sequence" role="listbox" aria-multiselectable="true" tabindex="0"
+      <div class="sequence-list song-blocks" id="sequence-list" data-scroll="song-sequence" role="listbox" aria-multiselectable="true" tabindex="0"
         aria-label="Song sequence. Up and down select blocks, shift extends. Left and right or typed digits change the pattern. Minus and plus change repeats. Option up and down move. I inserts, N adds a new pattern, Command D duplicates, Delete removes, L loops, P plays from here, Return edits."
         aria-activedescendant="song-block-${current}">
         ${list.map((item, index) => {
@@ -104,6 +105,8 @@
     repeats(delta, absolute = null, options) { const block = selectedBlock(), count = blockList()[block].count; const next = absolute ?? count + delta; if (next === count) return false; if (next < 1 || next > M().MAX_REPEATS) { app().toast(next < 1 ? 'Use Delete to remove a block.' : `Up to ${M().MAX_REPEATS} repeats per block.`); return false; } return edit('change sequence repeats', p => { const at = M().setRepeats(p, block, next); if (p === project()) { local.anchor = null; state().sequence = M().blocks(p.sequence)[at].start; } }, options); },
     insertNext() { const block = selectedBlock(), list = blockList(), id = list[block].pattern, after = list[block + 1]?.pattern, p0 = project(); let next = M().nextPatternId(p0, id, 1); for (let step = 2; (next === id || next === after) && step <= p0.patterns.length; step++) next = M().nextPatternId(p0, id, step); if (next === id || next === after) return actions.insertNew(); return edit('insert sequence block', p => { const at = M().insert(p, block, next); if (p === project()) { local.anchor = null; state().sequence = M().blocks(p.sequence)[at].start; } }); },
     insertPattern(id) { const block = selectedBlock(); return edit('insert sequence block', p => { const at = M().insert(p, block, id); if (p === project()) { local.anchor = null; state().sequence = M().blocks(p.sequence)[at].start; } }); },
+    /* The view title's "+ Add pattern": the active pattern after the selected block, never inside a repeat run. */
+    insertActive() { const active = project().activePattern; return actions.insertPattern(project().patterns.some(item => item.id === active) ? active : blockList()[selectedBlock()].pattern); },
     insertNew() {
       const block = selectedBlock(), id = blockList()[block].pattern, length = patternOf(id)?.length || 64;
       return edit('insert new pattern', p => { const pattern = M().blankPattern(p, length); p.patterns.push(pattern); const at = M().insert(p, block, pattern.id); if (p === project()) { p.activePattern = pattern.id; local.anchor = null; state().sequence = M().blocks(p.sequence)[at].start; } });
@@ -273,7 +276,8 @@
     }
     return {change(field, action) { if (scope !== fieldScope || project() !== scope.project || state().modal) return; scope.drafts.delete(field); if (action() !== false) paint(); }};
   }
-  function bindPanel() {
+  /** Binds the panel that render() produced. */
+  function bind() {
     const fields = bindFields(), fieldOptions = {focus:false,render:false};
     const on = (id, type, fn) => { const node = document.getElementById(id); if (node) node[type] = fn; };
     document.querySelectorAll('[data-song-block]').forEach(node => {
@@ -291,25 +295,8 @@
     on('song-block-repeats', 'onchange', event => { const value = Math.trunc(Number(event.target.value)); if (Number.isFinite(value) && value >= 1 && value <= M().MAX_REPEATS) fields.change(event.target, () => actions.repeats(0, value, fieldOptions)); else { app().toast(`Enter a repeat count from 1 to ${M().MAX_REPEATS}.`, 'error'); event.target.value = String(blockList()[selectedBlock()].count); } });
     const repeats = document.getElementById('song-block-repeats');
     if (repeats) repeats.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); repeats.dispatchEvent(new Event('change')); } };
-    // The view title's "+ Add pattern" inserts the active pattern after the selected block, never inside a repeat run.
-    const add = document.getElementById('sequence-add');
-    if (add) add.onclick = () => actions.insertPattern(project().patterns.some(item => item.id === project().activePattern) ? project().activePattern : blockList()[selectedBlock()].pattern);
     paintPlayhead();
     registerContextMenu();
-  }
-
-  /* The Song view (app-song-view.js) renders a plain sequence list; this puts the block arranger's panel in its place and binds it. */
-  function mount() {
-    if (!M()) return false;
-    const list = document.getElementById('sequence-list');
-    if (!list) return false;
-    if (!list.dataset?.songArranger) {
-      const panel = list.closest?.('.panel');
-      if (!panel || !('outerHTML' in panel)) return false;
-      panel.outerHTML = renderPanel();
-    }
-    bindPanel();
-    return true;
   }
 
   function contextItems({ target } = {}) {
@@ -359,5 +346,5 @@
     if (type === 'status') paintPlayhead(payload);
   }
 
-  window.STSong = { renderPanel, mount, key, event, contextItems, command, actions, selectBlock, get follow() { return local.follow; } };
+  window.STSong = { render, bind, key, event, contextItems, command, actions, selectBlock, get follow() { return local.follow; } };
 })();
