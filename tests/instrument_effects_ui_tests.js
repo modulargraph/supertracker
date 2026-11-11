@@ -137,12 +137,18 @@ test('copies of an instrument take its chain with fresh instance IDs; removing a
   const q = clone(p); q.instruments.push({ ...clone(q.instruments[0]), id: 3 });
   const copies = h.window.STInstrumentEffects.copy(q, 0, 3);
   assert.equal(copies.length, 1); assert.equal(copies[0].owner, 'instrument:3'); assert.notEqual(copies[0].instanceID, original.instanceID);
-  // Removing instrument 0: its chain and lanes go, instrument 1's chain and lanes become instrument 0's.
-  h.ST.mutate('lanes', x => { x.patterns[0].automation.push({ id: 'a', owner: 'instrument:0', target: 'plugin:effect:0:1', points: [] }, { id: 'b', owner: 'instrument:1', target: 'plugin:effect:0:1', points: [] }); });
+  // Removing instrument 0: its chain, the pages of its effects and its lanes go; instrument 1's chain, pages and lanes
+  // become instrument 0's.
+  const gone = h.window.STInstrumentEffects.chain(h.ST.state.project, 0)[0].instanceID, kept = h.window.STInstrumentEffects.chain(h.ST.state.project, 1)[0].instanceID;
+  h.ST.mutate('lanes', x => {
+    x.patterns[0].automation.push({ id: 'a', owner: 'instrument:0', target: 'plugin:effect:0:1', points: [] }, { id: 'b', owner: 'instrument:1', target: 'plugin:effect:0:1', points: [] });
+    x.pluginPages[gone] = { pages: [{ name: 'A', addresses: ['1'] }] }; x.pluginPages[kept] = { pages: [{ name: 'B', addresses: ['2'] }] };
+  });
   h.ST.state.instrument = 0; await h.ST.perform('removeInstrument'); await h.settle();
   const after = h.ST.state.project;
   same(after.audioPlugins.map(x => [x.owner, x.component]), [['instrument:0', 'stfx:chorus']]);
   same(after.patterns[0].automation.map(lane => [lane.id, lane.owner]), [['b', 'instrument:0']]);
+  same(Object.keys(after.pluginPages), [kept]);
 });
 
 test('a kit inserted from a kit file brings each pad instrument chain to its new instrument index', () => {
