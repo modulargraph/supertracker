@@ -27,7 +27,7 @@
     const owners = new Set(tracks.map(track => trackOwner(project, track)));
     const removed = project.audioPlugins.filter(x => x.kind === 'instrument' && owners.has(x.owner));
     const ids = new Set(removed.map(x => x.instanceID).filter(Boolean));
-    project.audioPlugins = project.audioPlugins.filter(x => !removed.includes(x));
+    window.STRoutingProject.setPlugins(project, project.audioPlugins.filter(x => !removed.includes(x)));
     project.routing.sidechains = project.routing.sidechains.filter(x => !ids.has(x.destination));
   }
 

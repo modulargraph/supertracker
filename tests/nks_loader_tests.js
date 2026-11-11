@@ -8,7 +8,7 @@ const descriptor = { component: 'vst3:54455354000000000000000000000000', owner: 
   state: 'restorable-state', name: 'Test synth', format: 'VST3', nks: { name: 'Mapped patch', pages: [] } };
 function environment() {
   const project = { tracks: [{ instrument: 0, routingID: 't0' }], instruments: [{ id: 0, name: 'Previous', type: 'synth' }],
-    patterns: [{ steps: [[{ note: 60, velocity: 97 }]] }], audioPlugins: [] };
+    patterns: [{ steps: [[{ note: 60, velocity: 97 }]] }], audioPlugins: [], pluginPages: {} };
   const calls = [], undo = [], notices = [];
   const state = { native: true, project, track: 0, instrument: 0 };
   const app = { state, captureNativeEdits: async () => true, syncEngine: async () => {},
@@ -17,7 +17,7 @@ function environment() {
     mutate: (label, fn) => { undo.push(copy(state.project)); fn(state.project); },
     request: async (command, payload) => { calls.push({ command, payload }); return copy(descriptor); } };
   app.syncEngineProject=async(makeProject,options={})=>{const project=makeProject();return project?app.request('engine.project',{project,...(options.replace?{replace:true}:{})}):false;};
-  const sandbox = { window: { ST: app } }; web.runText('nks-loader.js', source, sandbox);
+  const sandbox = vm.createContext({ window: { ST: app } }); web.load(sandbox, 'routing-project.js'); web.runText('nks-loader.js', source, sandbox);
   return { app, state, project, calls, undo, notices, loader: sandbox.window.STNKS };
 }
 async function main() {

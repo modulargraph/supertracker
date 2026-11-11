@@ -104,7 +104,7 @@
           if (l.track > index) l.track--;
         });
       }
-      p.audioPlugins = p.audioPlugins.filter(x => !ownsPlugin(x));
+      window.STRoutingProject.setPlugins(p, p.audioPlugins.filter(x => !ownsPlugin(x)));
       // Removing a group's last track removes the group and its bus.
       if (group && !window.STGroups.members(p, group).length) window.STGroups.dissolve(p, group.id);
       state.track = Math.min(index, p.tracks.length - 1);
@@ -117,7 +117,7 @@
     const index = state.instrument;
     mutate('remove instrument', p => {
       const affected = new Set(p.tracks.filter(t => t.instrument === index).map(t => window.STRoutingProject.trackOwner(t)));
-      p.audioPlugins = p.audioPlugins.filter(x => !(x.kind === 'instrument' && affected.has(x.owner)));
+      window.STRoutingProject.setPlugins(p, p.audioPlugins.filter(x => !(x.kind === 'instrument' && affected.has(x.owner))));
       // The removed instrument's insert chain goes with it; later instruments' chains follow their new index.
       window.STInstrumentEffects?.reindexAfterRemoval(p, index);
       p.instruments.splice(index, 1);

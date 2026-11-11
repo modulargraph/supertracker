@@ -113,7 +113,7 @@
   function removeTrackPlugins(q, track) {
     const ownerID = trackOwner(track), chainID = `instrument:${track.instrument}`;
     const removed = new Set(q.audioPlugins.filter(p => p.owner === ownerID || p.owner === chainID).map(p => p.instanceID));
-    q.audioPlugins = q.audioPlugins.filter(p => p.owner !== ownerID && p.owner !== chainID);
+    window.STRoutingProject.setPlugins(q, q.audioPlugins.filter(p => p.owner !== ownerID && p.owner !== chainID));
     q.routing.sidechains = q.routing.sidechains.filter(route => !removed.has(route.destination));
   }
 
@@ -167,7 +167,7 @@
     }
     // The bus: the new kit's inserts and mix.
     const owner = busOwner(group), removed = new Set(q.audioPlugins.filter(p => p.owner === owner).map(p => p.instanceID));
-    q.audioPlugins = q.audioPlugins.filter(p => p.owner !== owner);
+    window.STRoutingProject.setPlugins(q, q.audioPlugins.filter(p => p.owner !== owner));
     q.routing.sidechains = q.routing.sidechains.filter(route => !removed.has(route.destination));
     for (const plugin of source.audioPlugins) if (plugin.owner === busOwner(incoming)) q.audioPlugins.push({ ...clone(plugin), owner, instanceID: fresh('plugin:' + plugin.instanceID) });
     const bus = G().ensureBus(q, group), sourceBus = source.routing.buses.find(item => item.id === incoming.busID);
@@ -306,7 +306,7 @@
         window.STRoutingProject.keepInstrumentPlugins(q, [track]);
         window.STRoutingProject.removeTrackReferences(q, track, q.audioPlugins.filter(x => x.owner === owner));
         q.tracks.splice(index, 1);
-        q.audioPlugins = q.audioPlugins.filter(x => x.owner !== owner);
+        window.STRoutingProject.setPlugins(q, q.audioPlugins.filter(x => x.owner !== owner));
         q.audioClips = q.audioClips.filter(x => x.track !== index).map(x => ({ ...x, track: x.track > index ? x.track - 1 : x.track }));
         for (const pattern of q.patterns) {
           pattern.steps.splice(index, 1);

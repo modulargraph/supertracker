@@ -460,7 +460,7 @@
       removeSendLanes(draft, removedSends);
       r.sends = r.sends.filter(send => !removedSends.has(send.id));
       r.sidechains = r.sidechains.filter(route => route.source !== owner && !removed.has(route.destination));
-      draft.audioPlugins=draft.audioPlugins.filter(plugin=>pluginOwner(plugin)!==owner);
+      window.STRoutingProject.setPlugins(draft,draft.audioPlugins.filter(plugin=>pluginOwner(plugin)!==owner));
       for(const pattern of draft.patterns)pattern.automation=pattern.automation.filter(lane=>lane.owner!==owner);
     },{owner}).then(()=>{if(project()===p)selectChannel(destination||'master',true);}));});
   }

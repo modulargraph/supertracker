@@ -252,6 +252,7 @@
     const ownsLane = lane => lane.owner ? owners.has(lane.owner) : chosen.has(lane.track);
     const plugins = p.audioPlugins.filter(ownsPlugin), instances = new Set(plugins.map(plugin => plugin.instanceID).filter(Boolean));
     p.audioPlugins = p.audioPlugins.filter(plugin => !ownsPlugin(plugin));
+    for (const id of instances) delete p.pluginPages[id];
     const r = p.routing;
     for (const owner of owners) delete r.outputs[owner];
     for (const source of Object.keys(r.outputs)) if (owners.has(r.outputs[source])) r.outputs[source] = null;
@@ -283,6 +284,7 @@
     r.sends = r.sends.filter(send => send.source !== owner && send.destination !== owner);
     r.sidechains = r.sidechains.filter(route => route.source !== owner && !removed.has(route.destination));
     p.audioPlugins = p.audioPlugins.filter(plugin => plugin.owner !== owner);
+    for (const id of removed) delete p.pluginPages[id];
     for (const pattern of p.patterns) pattern.automation = pattern.automation.filter(lane => lane.owner !== owner && !removedSends.has(lane.target));
   }
 

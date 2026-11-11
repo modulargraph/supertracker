@@ -39,16 +39,16 @@
     routing.sidechains = routing.sidechains.filter(route => route.source !== owner && !instances.has(route.destination));
   }
 
-  /* The parameter pages the user arranged for a plug-in (project.pluginPages, by instanceID) belong to that
-     instance and go with it. Every edit ends with this (mutate in app-history.js), so whichever edit removes or
-     replaces a plug-in, with its track, bus or instrument or alone, leaves no pages behind: the host refuses a
-     project that keeps pages for a plug-in it does not have. Not a repair: a project that enters the page is
-     not touched. */
-  function dropPagesOfRemovedPlugins(project) {
-    const pages = Object.keys(project.pluginPages);
-    if (!pages.length) return;
-    const instances = new Set(project.audioPlugins.map(plugin => plugin.instanceID));
-    for (const id of pages) if (!instances.has(id)) delete project.pluginPages[id];
+  /* How an edit takes plug-ins out of a project or puts others in their place: `next` becomes
+     project.audioPlugins, and what only a plug-in owns goes with every instance that is not in `next`, which is
+     the parameter pages the user arranged for it (project.pluginPages, by instanceID). The host refuses a
+     project that keeps pages for a plug-in it does not have. Sidechains into a removed plug-in and the lanes
+     of its parameters are the caller's: what becomes of them depends on the edit. Returns `next`. */
+  function setPlugins(project, next) {
+    const kept = new Set(next.map(plugin => plugin.instanceID));
+    for (const id of Object.keys(project.pluginPages)) if (!kept.has(id)) delete project.pluginPages[id];
+    project.audioPlugins = next;
+    return next;
   }
 
   /* The plug-in of a plug-in instrument (type 'plugin'). It is in one place: the `audioPlugins` entry of kind
@@ -76,7 +76,7 @@
     }
   }
 
-  const api = { ensureTrackIDs, trackOwner, appendTrack, removeTrackReferences, dropPagesOfRemovedPlugins, instrumentPlugin, keepInstrumentPlugins };
+  const api = { ensureTrackIDs, trackOwner, appendTrack, removeTrackReferences, setPlugins, instrumentPlugin, keepInstrumentPlugins };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.STRoutingProject = api;
 })();

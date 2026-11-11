@@ -35,7 +35,6 @@
     let frozenBlock;
     try {
       fn(state.project);
-      window.STRoutingProject.dropPagesOfRemovedPlugins(state.project);
       frozenBlock = window.STFreeze?.checkMutation(freezeBaseline, state.project, label, options);
     } catch (error) {
       rollback();

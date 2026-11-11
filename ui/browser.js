@@ -1151,7 +1151,7 @@
         app().mutate(`Load ${plugin.name}`, () => {
           // The track's previous plug-in instrument stays available when the track moves on to a new one.
           if (target.kind === 'instrument' && createInstrument) window.STRoutingProject.keepInstrumentPlugins(state.project, [destinationTrack]);
-          state.project.audioPlugins = snapshot;
+          window.STRoutingProject.setPlugins(state.project, snapshot);
           const track = destinationTrack;
           if (target.kind === 'instrument') {
             const destination = createInstrument ? state.project.instruments.length : instrumentIndex;

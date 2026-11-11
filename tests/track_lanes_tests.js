@@ -96,10 +96,7 @@ test('removeTracks deletes tracks with their steps, automation, clips, plug-ins,
   same(p.patterns[0].automation.map(l => l.track), [0, 1, 2, 3]);
   same(p.audioClips.map(c => c.id), ['c1']);
   same(p.audioPlugins.map(x => [x.instanceID, x.owner]), [['p5', `track:${p.tracks[3].routingID}`]]);
-  // The pages of the removed plug-in go at the end of the edit (mutate), whichever edit it is.
-  same(Object.keys(p.pluginPages), ['p2', 'p5']);
-  R.dropPagesOfRemovedPlugins(p);
-  same(Object.keys(p.pluginPages), ['p5']);
+  same(Object.keys(p.pluginPages), ['p5'], 'the pages of a removed plug-in go with it');
   same(p.routing.sends.map(s => s.id), ['s2']);
   same(p.routing.sidechains, [], 'sidechains from a removed track or into its plug-ins go');
   assert.equal(p.routing.outputs['track:r2'], undefined);
@@ -124,15 +121,19 @@ test('a project that enters the page is not repaired, and a plug-in\'s parameter
   await app.syncEngineProject(() => JSON.parse(JSON.stringify(p())), { replace: true });
   const sent = h.calls.filter(c => c.command === 'engine.project').at(-1);
   same(sent.payload.project.audioPlugins.map(x => x.instanceID), ['keep', 'gone']);
-  // An edit that removes or replaces a plug-in takes its pages along; Undo brings both back.
+  // An edit that removes or replaces a plug-in takes its pages along (setPlugins); Undo brings both back.
   p().audioPlugins = [keep, other];
   p().pluginPages = { keep: { pages: [{ name: 'A', addresses: ['1'] }] }, other: { pages: [{ name: 'B', addresses: ['2'] }] } };
-  h.ST.mutate('remove insert', q => { q.audioPlugins = q.audioPlugins.filter(x => x.instanceID !== 'other'); });
+  h.ST.mutate('remove insert', q => { R.setPlugins(q, q.audioPlugins.filter(x => x.instanceID !== 'other')); });
   same(Object.keys(p().pluginPages), ['keep']);
-  h.ST.mutate('replace insert', q => { q.audioPlugins = [{ ...keep, instanceID: 'next' }]; });
+  h.ST.mutate('replace insert', q => { R.setPlugins(q, [{ ...keep, instanceID: 'next' }]); });
   same(Object.keys(p().pluginPages), []);
   h.ST.perform('undo'); h.ST.perform('undo');
   same([p().audioPlugins.map(x => x.instanceID), Object.keys(p().pluginPages)], [['keep', 'other'], ['keep', 'other']]);
+  // Removing the track of a plug-in (the Remove track command) leaves no pages of it either.
+  h.state.track = 1;
+  h.ST.perform('removeTrack');
+  same([p().audioPlugins.map(x => x.instanceID), Object.keys(p().pluginPages)], [[], []]);
 });
 test('Hide empty tracks hides tracks without steps (this pattern or the whole song); a view setting, not an Undo step', () => {
   const { h, app, p, visible } = lanes();

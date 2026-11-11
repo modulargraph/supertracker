@@ -43,7 +43,7 @@
         delete candidate.instruments[destination].plugin;
         candidate.tracks[targetTrack].instrument = destination;
         if (create) candidate.tracks[targetTrack].name = name;
-        candidate.audioPlugins = candidate.audioPlugins.filter(value => !(value.owner === owner && value.kind === 'instrument'));
+        window.STRoutingProject.setPlugins(candidate, candidate.audioPlugins.filter(value => !(value.owner === owner && value.kind === 'instrument')));
         candidate.audioPlugins.push(copy(result));
       });
       if (state.project === project && state.track === sourceTrack && state.instrument === sourceIndex) {
@@ -119,7 +119,7 @@
         selected.type = 'plugin'; selected.name = result.nks.name || result.name; delete selected.plugin;
         track.instrument = destination;
         if (stillSelected) state.instrument = destination;
-        project.audioPlugins = project.audioPlugins.filter(plugin => !ownInstrument(plugin));
+        window.STRoutingProject.setPlugins(project, project.audioPlugins.filter(plugin => !ownInstrument(plugin)));
         project.audioPlugins.push(copy(result));
       });
       if (applied === false) throw new Error('The session could not take the preset right now. Nothing was changed.');
@@ -166,7 +166,7 @@
       const name = result.nks.name || result.name;
       const applied = app.mutate('load NKS effect', project => {
         const descriptor = { ...copy(result), owner: channel, kind: 'effect', slot };
-        project.audioPlugins = project.audioPlugins.filter(plugin => !sameSlot(plugin));
+        window.STRoutingProject.setPlugins(project, project.audioPlugins.filter(plugin => !sameSlot(plugin)));
         project.audioPlugins.push(descriptor);
       });
       if (applied === false) throw new Error('The session could not take the effect right now. Nothing was changed.');

@@ -276,8 +276,8 @@
      normalize() adds the parts a project may leave out. It does not repair what is there: a plug-in, an
      automation lane or parameter pages that belong to nothing, and groups that are not as above, are
      refused by the host when the project is published or opened, and every edit of the page keeps them
-     consistent (the edit that removes a track, bus or instrument removes its plug-ins and lanes;
-     STRoutingProject.setPlugins drops the pages of plug-ins that are gone).
+     consistent (the edit that removes a track, bus or instrument removes its plug-ins and lanes, and an
+     edit that removes or replaces a plug-in takes its pages along: STRoutingProject.setPlugins).
 
      Optional by design, so whoever reads them asks: songLoop (there only while a loop section is set); a
      track's groupID, pad, padNote, chokeGroup, voiceMode, noteColumns, audioInput and frozen, and its name,

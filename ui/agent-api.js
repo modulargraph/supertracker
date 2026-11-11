@@ -1363,7 +1363,7 @@
     const out = commit(`load ${plugin.name} on ${trackObject.name}`, project => {
       // The track's previous plug-in instrument stays available when the track moves on to a new one.
       if (kind === 'instrument' && instrument === 'new') window.STRoutingProject.keepInstrumentPlugins(project, [project.tracks[track]]);
-      project.audioPlugins = clone(snapshot);
+      window.STRoutingProject.setPlugins(project, clone(snapshot));
       // Never record a load the project does not hold.
       if (!attached([pluginOn(project, track, kind, slot)].filter(Boolean))) fail(`${plugin.name} was not attached to track ${track}.`);
       if (kind === 'instrument') {
@@ -2005,7 +2005,7 @@
       const removedSends = new Set(r.sends.filter(send => send.source === owner || send.destination === owner).map(send => `send:${send.id}`));
       r.sends = r.sends.filter(send => !removedSends.has(`send:${send.id}`));
       r.sidechains = r.sidechains.filter(route => route.source !== owner && !removed.has(route.destination));
-      draft.audioPlugins = draft.audioPlugins.filter(plugin => plugin.owner !== owner);
+      window.STRoutingProject.setPlugins(draft, draft.audioPlugins.filter(plugin => plugin.owner !== owner));
       for (const pattern of draft.patterns) pattern.automation = pattern.automation.filter(lane => lane.owner !== owner && !removedSends.has(lane.target));
     }, ch.owner);
     return { ...result, removed: ch.owner, name: ch.name };

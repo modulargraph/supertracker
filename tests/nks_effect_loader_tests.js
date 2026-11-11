@@ -9,14 +9,15 @@ const copy = value => JSON.parse(JSON.stringify(value));
 const descriptor = { component: 'vst3:46580000000000000000000000000000', owner: 'track:bass', kind: 'effect', slot: 1, instanceID: 'fx-a', state: 'fx-state', name: 'Delay', format: 'VST3', nks: { name: 'Tape Echo', pages: [] } };
 function environment() {
   const project = { tracks: [{ instrument: 0, name: 'Bass', routingID: 'bass' }], instruments: [{ id: 0, name: 'Synth', type: 'plugin', plugin: { component: 'vst3:53594E54480000000000000000000000' } }],
-    audioPlugins: [{ owner: 'track:bass', kind: 'instrument', slot: 0, component: 'vst3:53594E54480000000000000000000000', format: 'VST3' }, { owner: 'track:bass', kind: 'effect', slot: 0, component: 'au:comp', format: 'AU' }] };
+    audioPlugins: [{ owner: 'track:bass', kind: 'instrument', slot: 0, component: 'vst3:53594E54480000000000000000000000', format: 'VST3' }, { owner: 'track:bass', kind: 'effect', slot: 0, component: 'au:comp', format: 'AU' }],
+    pluginPages: {} };
   const calls = [], undo = [], notices = [];
   const state = { native: true, project, track: 0, instrument: 0, view: 'browser' };
   const app = { state, captureNativeEdits: async () => true, toast: text => notices.push(text), stopHeld() {}, setView: view => { state.view = view; },
     normalize: value => value, mutate: (label, fn) => { undo.push(label); fn(state.project); },
     request: async (command, payload) => { calls.push({ command, payload: copy(payload) }); return command === 'plugin.loadNKS' ? copy(descriptor) : {}; } };
   app.syncEngineProject = async make => { const value = make(); return value ? app.request('engine.project', { project: value }) : false; };
-  const sandbox = { window: { ST: app } }; web.runText('nks-loader.js', source, sandbox);
+  const sandbox = vm.createContext({ window: { ST: app } }); web.load(sandbox, 'routing-project.js'); web.runText('nks-loader.js', source, sandbox);
   return { app, state, project, calls, undo, notices, loader: sandbox.window.STNKS };
 }
 (async () => {
