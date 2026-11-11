@@ -21,7 +21,15 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
 - **Audio engine in Rust**, translated from the 0.1 engine and bit-identical to it on x86-64 at the time of the
   switch.
 
-- **Exports to 16- and 24-bit WAV are dithered (TPDF) by default.**
+- **Exports to 16- and 24-bit WAV are dithered (TPDF) by default**; the export dialog has a Dither choice.
+- **Live line inputs into tracks**, with latency compensation, stored with the track in the project.
+- **Freeze by recording** for tracks whose sound comes from outside the computer.
+- **Kits are saved with an audio preview.**
+- **Controllers, pressure and pitch bend** reach the plug-in or external instrument a track plays.
+- **Plug-in parameters return to the value you set** after a locked row and at Play or Seek, for every plug-in
+  format (this replaces base patch capture).
+- **AI clients can take screenshots of the window** (`screenshot` tool, `supertracker --ctl app.screenshot`).
+- **Shortcuts are shown as Ctrl / Alt / Shift away from a Mac.**
 
 ### Removed, without migration
 
@@ -30,13 +38,18 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
   and `au:type:subtype:manufacturer`.
 - **VST2 hosting.** NKS presets made for a VST2 plug-in load into the vendor's VST2-compatible VST3 when installed.
 - The second ("legacy") mix model: every song uses the routed mixer (buses, sends, sidechains, Master inserts).
+- **Tempo and meter maps.** A project has one tempo and one meter; the engine's clock module is gone.
+- Engine features the host never used (frozen-song provider, unit range cache, timestamped bus history, transport
+  checkpoints, the engine's own meters).
+- "Bounce track" (Render stem remains), the "Routing needs repair" state, base patch capture, the `audio.inputs`
+  commands (a track's input is part of the project), former factory chord-set IDs.
 - The in-app self-test modes and the keyboard QA build.
 
-### Not implemented yet in the new host
+### Known gaps
 
-Live line inputs into track strips, freeze by recording, kit preview rendering,
-controllers beyond pitch bend, mod wheel and sustain to plug-in instruments, base patch capture, screenshots for AI
-clients. [docs/FEATURE_STATUS.md](docs/FEATURE_STATUS.md) and [docs/HOST.md](docs/HOST.md) have the details.
+The sustain pedal is not passed on to plug-in and external instruments; a line input from a second audio device is
+not resampled to the output's clock; nothing has been run on a Mac, with a real audio or MIDI device, or with a
+third-party plug-in. [docs/FEATURE_STATUS.md](docs/FEATURE_STATUS.md) and [docs/HOST.md](docs/HOST.md) have the details.
 
 ### Build
 

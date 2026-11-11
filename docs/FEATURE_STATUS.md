@@ -29,24 +29,39 @@ feature is twice: does the interface do it, and does the new host carry it.
 
 ## What the host does not do yet
 
-[HOST.md](HOST.md) has the full command table (111 of 119 commands implemented, 4 more in part). Missing:
+Every command the interface sends is implemented ([HOST.md](HOST.md) has the table). What is still missing:
 
 | Feature | State |
 |---|---|
-| Live line inputs routed into track strips (`audio.inputs`, `audio.inputs.configure`) | Not implemented. Recording an input to a file works. |
-| Freeze by recording (for tracks whose sound comes from outside the computer) | Not implemented; offline freeze works. |
-| Audio preview file for a saved kit (`audio.kitPreview`) | Not implemented; kits save without a preview. |
-| Controllers other than pitch bend, mod wheel and sustain, and aftertouch, to plug-in and external instruments (`midi.expression`) | Not implemented. |
-| Base patch capture for plug-in parameter locks (`plugin.captureBasePatch`) | Not implemented. |
-| Screenshots for AI clients (`app.screenshot`) | Not implemented. |
+| The sustain pedal for plug-in and external instruments | The host holds the notes itself and does not pass the pedal on, so pedal resonance and half-pedalling in piano plug-ins do not work. |
+| Control changes to CLAP plug-ins that accept only CLAP note events | Dropped: CLAP has no event for them. Pressure and pitch bend arrive as note expressions. |
+| Line inputs from a second audio device | The input is not resampled to the output's clock: two separate devices gap or skip every few minutes. One interface for input and output has one clock and is not affected. |
 | Windows | `--serve` should work; there is no window and no control socket. |
+
+## Added after the first Rust host
+
+Each of these was tested on Linux with the silent test devices, in-memory MIDI ports and the test plug-ins only.
+
+| Feature | How it was verified |
+|---|---|
+| Live line inputs into track strips (`tracks[i].audioInput`; state reported in `audio.devices`) | Mixer-graph and bridge tests with the test tone: through the track's inserts, fader and meters, with delay compensation; a check in the browser test. No real input device has been opened. |
+| Freeze by recording, for tracks whose sound comes from outside the computer (song and pattern prints) | A recorded print equals the offline print of the same track frame for frame in the tests. Real hardware returns and their latency are unverified. |
+| Kit previews: a kit is saved with `Preview.wav` (its group bus in the selected pattern, up to 10 s or 8 bars) | Bridge test on generated kits, including a built-in effect and a plug-in in a container. Nobody has listened to one. |
+| Controllers, channel and poly pressure and pitch bend to the instrument a track plays (external device, plug-in, engine), from MIDI input and the interface | In-memory MIDI ports; CLAP and VST3 test plug-ins, frame-exact. Audio Units: type-checked only. |
+| Plug-in parameters return to the value you set after a locked row, and at Play and Seek, for every plug-in format | Tests with CLAP and VST3 test plug-ins. A project saved while the song plays stores what lanes and locks hold at that moment. |
+| Screenshots of the window for AI clients (`screenshot` tool, `--ctl app.screenshot`) | Linux: the real window under a virtual display. macOS: type-checked only. `--serve` has no window and says so. |
+| Export dither (TPDF by default for 16- and 24-bit, or none), chosen in the export dialog | `st-samples` tests; interface tests of the dialog. |
+| Shortcut labels as Ctrl / Alt / Shift away from a Mac | Checked in Chromium on Linux. |
 
 ## Removed in 0.2
 
 - VST2 hosting. NKS presets and Maschine groups that name a VST2 plug-in are still read: a preset loads into the
   vendor's VST2-compatible VST3 when that is installed; a group keeps the plug-in's state and says so.
 - Opening projects, kits, built-in effect states and plug-in states saved by 0.1. Nothing is migrated.
-- The second mixer ("legacy" mix) and the dialog that switched a song to standard routing. Every project uses the routed mixer; `mixModel: "legacy"` is refused.
+- The second mixer ("legacy" mix) and the dialog that switched a song to standard routing. Every project uses the routed mixer.
+- Tempo and meter maps: the engine's clock module and the interface's reading of `project.timing`. A project has one tempo and one meter.
+- Engine features the host never called: the frozen-song provider, the unit range cache, the timestamped bus history, transport checkpoints and the engine's own meters.
+- Base patch capture (the host keeps every plug-in parameter's base value itself), "Bounce track" (Render stem remains), the "Routing needs repair" state (a project the mixer cannot render is refused when published), and the mapping of former factory chord-set IDs.
 - The in-app self-test modes and the hidden script runner. The host tests and the browser test take their place.
 
 ## Features of the interface
@@ -78,10 +93,10 @@ how far the Rust host has been checked.
 ## Outstanding product requirements
 
 - Punch-in/out, loop recording with take splitting, automatic take alignment.
-- Tempo and meter maps in the interface (the engine's clock has them; projects carry one tempo and meter).
+- Tempo and meter maps (a project has one tempo and one meter; nothing in the engine or the interface supports more).
 - Multi-output instruments.
 - Warp markers, realtime stretch, round robin, zone crossfades, a modulation matrix.
-- MPE, full controller recording, external clock sync.
+- MPE, recording of controllers and pressure, passing the sustain pedal on to instruments, external clock sync.
 - Maschine import of group mix levels, auxiliary routing, modulation, patterns and macro pages.
 
 Capacities: any number of tracks and buses (1024 sanity bound each), 64 instruments, 256 patterns of up to 256
