@@ -280,7 +280,7 @@
         muted: false
       };
       let applied = false;
-      app().mutate('Record audio clip', p => { p.audioClips ||= []; p.audioClips.push(clip); applied = true; },{recordingCommit:true});
+      app().mutate('Record audio clip', p => { p.audioClips.push(clip); applied = true; },{recordingCommit:true});
       if (!applied
           || !sameProject(session)
           || !session.project.audioClips.includes(clip)) throw new Error('The recording edit was not applied. Your capture file is available below.');

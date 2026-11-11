@@ -289,7 +289,7 @@
         muted: false
       };
       let applied = false;
-      app().mutate('import audio clip', value => { value.audioClips ||= []; value.audioClips.push(clip); applied = true; });
+      app().mutate('import audio clip', value => { value.audioClips.push(clip); applied = true; });
       // A mutation callback may run and then be rolled back by frozen-source
       // protection. Only a clip retained in the authoritative project is added.
       if (!applied
@@ -389,7 +389,7 @@
           window.STRoutingProject.appendTrack(value, track, app().uid || uid);
           value.patterns.forEach(pattern => { pattern.steps.push(Array.from({ length: pattern.length }, () => null)); });
           const clip = { ...result.clip, id: uid(), track: newIndex, path: result.path, name: `${sourceTrack.name} stem` };
-          value.audioClips ||= []; value.audioClips.push(clip); addedTrack = track; addedClip = clip;
+          value.audioClips.push(clip); addedTrack = track; addedClip = clip;
         });
         if (!addedClip
             || project() !== destinationProject

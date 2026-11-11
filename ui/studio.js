@@ -568,7 +568,6 @@
     const snapshot = await S().request('plugin.state', { ...ownerPayload(context.owner), kind: result.kind, slot: result.slot });
     if (ui.pluginMoving || !context.valid()) throw new Error('Plug-in edit was canceled because its channel changed.');
     mutate(label, p => {
-      p.audioPlugins ||= [];
       const i = p.audioPlugins.findIndex(item => ownerForPlugin(item) === context.owner && item.kind === result.kind && item.slot === result.slot);
       // The parameter list is a UI cache (ui.parameters); captured host descriptors carry none, so keeping one
       // here would make the next capture look like an edit of this insert.
