@@ -12,6 +12,8 @@ use std::sync::OnceLock;
 /// Ids of the test plug-ins (see `crates/plugin-host/crates/*-test-plugin`).
 pub const CLAP_GAIN: &str = "org.supertracker.test.gain";
 pub const CLAP_SINE: &str = "org.supertracker.test.sine";
+/// The sine instrument whose note port takes CLAP note events only (no MIDI).
+pub const CLAP_NOTE_SINE: &str = "org.supertracker.test.sine.notes";
 pub const VST3_GAIN: &str = "535456334761696E50726F6300000001";
 pub const VST3_SINE: &str = "5354563353696E6553796E7400000003";
 
@@ -24,6 +26,33 @@ pub mod clap_gain {
     pub const CRASH: u64 = 3;
     /// The latency the plug-in reports, in frames (it does not delay).
     pub const LATENCY: u64 = 4;
+}
+
+/// Parameter ids of the CLAP sine instruments. The probes are read-only and show what arrived
+/// last; channel pressure also scales the level by `1 + pressure / 127`.
+pub mod clap_sine {
+    /// 0..1.
+    pub const LEVEL: u64 = 1;
+    /// Control change: `controller * 128 + value`.
+    pub const LAST_CONTROLLER: u64 = 20;
+    /// Channel pressure, 0..127.
+    pub const PRESSURE: u64 = 21;
+    /// Poly pressure: `key * 128 + pressure`.
+    pub const POLY_PRESSURE: u64 = 22;
+    /// Pitch bend, 0..16383.
+    pub const BEND: u64 = 23;
+}
+
+/// Parameter ids of the VST3 sine instrument (normalized 0..1). Controllers reach it as the
+/// parameters it maps them to: 7 is the level, 74 the brightness, channel pressure the
+/// pressure (which scales the level by `1 + pressure`), pitch bend the bend.
+pub mod vst3_sine {
+    pub const LEVEL: u64 = 1;
+    pub const BEND: u64 = 3;
+    pub const PRESSURE: u64 = 4;
+    pub const BRIGHTNESS: u64 = 5;
+    /// Read-only: the last poly pressure event, `(pitch * 128 + pressure 0..127) / 16383`.
+    pub const POLY_PRESSURE: u64 = 6;
 }
 
 /// Parameter ids of the VST3 gain effect (normalized 0..1).

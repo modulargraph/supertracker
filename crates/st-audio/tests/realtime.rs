@@ -206,6 +206,11 @@ fn rendering_never_allocates_or_frees_even_across_project_and_plan_changes() {
     render_counted(&engine, 20, 512, &mut left, &mut right);
     engine.stop();
     render_counted(&engine, 20, 512, &mut left, &mut right);
+    // A new start: the inserts go back to their base values, the compressor's step lock
+    // returns to its base at the end of its row; a pitch bend and the wheel for the engine's voices.
+    engine.play(&PlayOptions { song: true, from_start: true, ..Default::default() });
+    assert!(engine.expression(1, [0xE0, 0, 0x50]) && engine.expression(1, [0xB0, 1, 90]));
+    loudest = loudest.max(render_counted(&engine, 60, 512, &mut left, &mut right));
 
     assert!(loudest > 0.02, "the song was really rendered (peak {loudest})");
     assert_eq!(COUNTED.load(Ordering::Relaxed), 0, "allocations or frees on the render path");

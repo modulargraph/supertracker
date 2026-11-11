@@ -53,11 +53,11 @@ pub trait InputTarget: Send + Sync {
     fn note_off(&self, note: &RoutedNote, sound: bool) -> NoteHandling;
     /// Stop a note the pedal was holding.
     fn release(&self, track: usize, note: u8);
-    /// A controller, program change, aftertouch or pitch-bend message for the plug-in of a track
-    /// (`message.status` is the kind, without a channel).
+    /// A controller, program change, channel or poly pressure or pitch-bend message for the
+    /// instrument of a track that is not an external MIDI instrument: the engine's own voices
+    /// take what they use (pitch bend, the modulation wheel), a plug-in instrument gets the
+    /// message. `message.status` is the kind, without a channel.
     fn message(&self, track: usize, message: Message);
-    /// Bend the engine's own voices on a track, in semitones.
-    fn pitch_bend(&self, track: usize, semitones: f32);
     /// Silence the engine (all notes off arrived). External instruments are silenced by the
     /// service.
     fn panic(&self);
@@ -583,11 +583,6 @@ impl Inner {
                         if let Some(target) = &target {
                             target.message(track, message);
                         }
-                    }
-                }
-                InputAction::PitchBend { track, semitones } => {
-                    if let Some(target) = &target {
-                        target.pitch_bend(track, semitones);
                     }
                 }
                 InputAction::Control { message, source } => {

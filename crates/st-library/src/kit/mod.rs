@@ -10,6 +10,15 @@
 //!   Preview.wav     optional audio preview (the header's previewFile)
 //! ```
 //!
+//! The preview is what the Kits browser plays when the kit is auditioned. This crate does not
+//! render audio: whoever saves a kit gives [`save`] a [`PreviewRenderer`]
+//! ([`SaveOptions::preview`]), which is asked for the file once the package is otherwise
+//! complete (the host renders the kit's group bus there: 16-bit stereo WAV at 48 kHz, at most
+//! ten seconds or eight bars and a second of tail; `st_audio::kit_preview`). Any audio file
+//! with one of the known extensions is accepted as a preview; a kit without one is a valid
+//! kit. A package from elsewhere can carry a ready-made file instead (`previewPath` in the
+//! header given to [`save`]).
+//!
 //! Sample paths inside `project.json` are relative to the package when the samples were
 //! collected, absolute otherwise; [`read`] returns them absolute. Saving stages the new package
 //! next to the destination and publishes it by renaming, so a failed or cancelled save leaves
@@ -537,6 +546,28 @@ pub fn read(path: &str) -> Result<KitContents> {
     Ok(KitContents { sounds: group::sound_summaries(&project), path, metadata: details, project, warnings })
 }
 
+/// Renders the audio preview of the kit being saved into the file it is given: `Preview.wav`
+/// in the package that is being put together. `Ok` may carry a note for the user about the
+/// preview; `Err` is the reason there is none, and the kit is then saved without a preview and
+/// with that reason among its warnings.
+#[derive(Clone)]
+pub struct PreviewRenderer(std::sync::Arc<PreviewRender>);
+
+type PreviewRender = dyn Fn(&Path) -> std::result::Result<Option<String>, String> + Send + Sync;
+
+impl PreviewRenderer {
+    /// A renderer that calls `render` with the file to write.
+    pub fn new(render: impl Fn(&Path) -> std::result::Result<Option<String>, String> + Send + Sync + 'static) -> PreviewRenderer {
+        PreviewRenderer(std::sync::Arc::new(render))
+    }
+}
+
+impl std::fmt::Debug for PreviewRenderer {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("PreviewRenderer")
+    }
+}
+
 /// How [`save`] writes a kit.
 #[derive(Debug, Clone, Default)]
 pub struct SaveOptions {
@@ -549,6 +580,10 @@ pub struct SaveOptions {
     pub overwrite: bool,
     /// Cancels the save; the destination is left as it was.
     pub cancel: Option<Cancel>,
+    /// Renders the kit's audio preview, unless the header names a ready-made one
+    /// (`previewPath`). Called once, after the samples are collected and before the package
+    /// is published; it is not called when the save fails or is refused before that.
+    pub preview: Option<PreviewRenderer>,
 }
 
 /// What [`save`] wrote.
@@ -694,6 +729,7 @@ pub fn save(project: &Value, header: &Map<String, Value>, destination: &str, opt
     validate_header(&header)?;
 
     let mut remaining = MAXIMUM_MEDIA_BYTES;
+    let mut warnings: Vec<String> = Vec::new();
     let mut copied: BTreeMap<PathBuf, String> = BTreeMap::new();
     let canonical_destination = fs::canonicalize(destination).ok();
     let stored = map_media(project, &mut |media| {
@@ -737,6 +773,30 @@ pub fn save(project: &Value, header: &Map<String, Value>, destination: &str, opt
         }
         remaining -= size;
         header.insert("previewFile".to_string(), json!(target.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default()));
+    } else if let Some(renderer) = &options.preview {
+        check_cancel(&options.cancel)?;
+        let target = stage.0.join("Preview.wav");
+        let rendered = (renderer.0)(&target).and_then(|note| {
+            let size = fs::metadata(&target).map(|metadata| metadata.len()).unwrap_or(0);
+            if !readable_audio(&target) {
+                Err("the preview render wrote no audio file.".to_string())
+            } else if size > remaining {
+                Err("the kit's media exceeds the 4 GiB collection budget.".to_string())
+            } else {
+                Ok((note, size))
+            }
+        });
+        match rendered {
+            Ok((note, size)) => {
+                remaining -= size;
+                header.insert("previewFile".to_string(), json!("Preview.wav"));
+                warnings.extend(note);
+            }
+            Err(reason) => {
+                let _ = fs::remove_file(&target);
+                warnings.push(format!("The kit was saved without an audio preview: {reason}"));
+            }
+        }
     }
     let payload = serde_json::to_vec(&stored).map_err(|_| failure("Kit project state must contain JSON values."))?;
     if payload.len() as u64 > MAXIMUM_PROJECT_BYTES {
@@ -781,6 +841,6 @@ pub fn save(project: &Value, header: &Map<String, Value>, destination: &str, opt
         metadata: Value::Object(published),
         copied_samples: copied.len(),
         media_bytes: MAXIMUM_MEDIA_BYTES - remaining,
-        warnings: Vec::new(),
+        warnings,
     })
 }

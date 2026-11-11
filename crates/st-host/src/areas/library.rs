@@ -9,7 +9,7 @@
 //! | `library.status`, `.scan`, `.cancel`, `.favorite`, `.state.set`, `.nks.status`, `.nks.rescan` | quick | they change or read memory and hand file work to the library's own threads |
 //! | `library.roots`, `.search`, `.removeRoot`, `.diagnostics`, `.metadata.edit`, `.state.get`, `.nks`, `.nks.browse`, `.nks.artwork`, `.kits.browse`, `.kit`, `kit.read` | blocking | they search the index or touch the disk (a folder on a sleeping drive can take seconds) |
 //! | `kit.detail` | blocking | [`LibraryArea::kit_detail`]: adds the installed plug-ins |
-//! | `kit.save` | blocking | [`LibraryArea::kit_save`]: adds the session's file and the audio preview |
+//! | `kit.save` | blocking | [`LibraryArea::kit_save`]: adds the session's file and renders the audio preview |
 //! | `library.chooseRoot` | blocking | registered by the session (`st_host::session`): the folder chooser, then `library.scan` |
 //!
 //! Events (from the library's worker threads): `library.progress`, `library.results`,
@@ -31,18 +31,24 @@
 //! | Need | Call | Until it is registered |
 //! |---|---|---|
 //! | which plug-ins are installed, for `kit.detail`'s `missingPlugins` | `plugins.list` (`st-plugin-*`): the `id` of every entry is a component | plug-in availability is not judged (no warning, `missingPlugins: []`) |
-//! | the audio preview a kit is saved with | `audio.kitPreview {groupID, path}` (`st-audio`, export) renders it into a temporary folder; `kit.save` copies it into the package | kits are saved without a preview; a preview the page passes as `previewPath` is still used |
 //! | the file to audition for a kit in the browser | [`kit_preview_path`], for the preview player of `sample.preview` | |
 //! | `plugin.loadNKS` | [`LibraryArea::library`] and `Library::nks_preset(path)` give the plug-in identity, state and pages of a preset | |
+//!
+//! The audio preview a kit is saved with is not a command: `kit.save` renders it itself, with
+//! the audio engine [`install`] was given (`st_audio::kit_preview`: the kit's group bus in the
+//! selected pattern, on a private engine), straight into the package the library is writing.
+//! A host without an audio engine saves kits without previews.
 
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 use std::sync::Arc;
 
 use serde_json::{json, Value};
-use st_library::api::{Empty, KitDetail, KitDetailRequest, KitSaveRequest, KitSaveResponse};
+use st_audio::export::RenderContext;
+use st_library::api::{Empty, KitDetail, KitDetailRequest, KitSaveRequest};
+use st_library::kit::PreviewRenderer;
 use st_library::{Library, LibraryConfig};
 
+use crate::areas::audio::Audio;
 use crate::bridge::{CallError, Calls, EventSink};
 use crate::commands::Commands;
 use crate::session::Session;
@@ -90,6 +96,8 @@ pub struct LibraryArea {
     library: Arc<Library>,
     calls: Calls,
     session: Arc<Session>,
+    /// Renders kit previews; `None` in a host without an audio engine.
+    audio: Option<Arc<Audio>>,
 }
 
 impl LibraryArea {
@@ -129,10 +137,13 @@ impl LibraryArea {
     ///
     /// The project is the one in the payload (the page publishes with plug-in state captured
     /// and sends that project along); without one, the engine's snapshot or the session's
-    /// project. `projectPath` (for relative sample paths) is the session's file. Unless the
-    /// payload carries a `previewPath` or says `generatePreview: false`, the audio preview is
-    /// rendered by `audio.kitPreview` once that command exists; a preview that cannot be
-    /// rendered is a warning, not a failure.
+    /// project. `projectPath` (for relative sample paths) is the session's file.
+    ///
+    /// The kit's audio preview is rendered while the package is written: the group's bus in
+    /// the selected pattern, on a private engine (`st_audio::kit_preview`; the live engine
+    /// keeps playing), from that same project. Nothing is rendered when the answer is
+    /// `exists` or `needsName`. A preview that cannot be rendered (no pad plays a note in the
+    /// pattern, only external MIDI instruments do) is a warning of the saved kit, not a failure.
     fn kit_save(&self, mut payload: Value) -> Result<Value> {
         if !payload.is_object() {
             return Err(Error::new("Select a kit to save."));
@@ -149,37 +160,18 @@ impl LibraryArea {
                 payload["projectPath"] = json!(path);
             }
         }
-        let mut warnings: Vec<String> = Vec::new();
-        let mut preview_folder = None;
         let group = payload.get("groupID").and_then(Value::as_str).unwrap_or_default().to_string();
-        let wants_preview = payload.get("previewPath").and_then(Value::as_str).is_none_or(str::is_empty) && payload.get("generatePreview") != Some(&json!(false));
-        if wants_preview && !group.is_empty() && self.calls.implements("audio.kitPreview") {
-            let folder = preview_scratch();
-            let file = folder.join("Preview.wav");
-            let rendered = std::fs::create_dir_all(&folder).map_err(|error| error.to_string()).and_then(|()| self.calls.call("audio.kitPreview", json!({ "groupID": group, "path": file })).map_err(|error| error.to_string()));
-            match rendered {
-                Ok(result) => {
-                    payload["previewPath"] = json!(file);
-                    warnings.extend(result.get("warning").and_then(Value::as_str).map(str::to_string));
-                }
-                Err(error) => warnings.push(format!("Kit saved without an audio preview: {error}")),
-            }
-            preview_folder = Some(folder);
-        }
-        let request: std::result::Result<KitSaveRequest, _> = serde_json::from_value(payload);
-        let saved = request.map_err(|error| Error::new(format!("`kit.save` was sent with an unusable payload: {error}."))).and_then(|request| Ok(self.library.kit_save(request)?));
-        if let Some(folder) = preview_folder {
-            let _ = std::fs::remove_dir_all(folder);
-        }
-        let saved = saved?;
-        let was_saved = matches!(saved, KitSaveResponse::Saved(_));
-        let mut result = serde_json::to_value(saved).map_err(|error| Error::new(error.to_string()))?;
-        if was_saved && !warnings.is_empty() {
-            let mut all: Vec<Value> = result.get("warnings").and_then(Value::as_array).cloned().unwrap_or_default();
-            all.extend(warnings.into_iter().map(Value::String));
-            result["warnings"] = Value::Array(all);
-        }
-        Ok(result)
+        let preview = self.audio.clone().filter(|_| !group.is_empty()).map(|audio| {
+            let project = payload["project"].clone();
+            PreviewRenderer::new(move |file| {
+                let cancel = st_samples::CancelToken::new();
+                let context = RenderContext { live: audio.engine(), samples: audio.samples(), cancel: &cancel, progress: &|_, _| {} };
+                st_audio::kit_preview::render(&context, &project, &group, file).map(|preview| preview.warning)
+            })
+        });
+        let request: KitSaveRequest = serde_json::from_value(payload).map_err(|error| Error::new(format!("`kit.save` was sent with an unusable payload: {error}.")))?;
+        let saved = self.library.kit_save_with_preview(request, preview)?;
+        serde_json::to_value(saved).map_err(|error| Error::new(error.to_string()))
     }
 
     /// Stops a running scan and writes what the index holds (the host is quitting). The library
@@ -194,15 +186,9 @@ impl LibraryArea {
     }
 }
 
-/// A new folder name for one kit preview render.
-fn preview_scratch() -> PathBuf {
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|time| time.as_nanos()).unwrap_or(0);
-    std::env::temp_dir().join(format!("SuperTracker-KitPreview-{}-{}-{nanos}", std::process::id(), NEXT.fetch_add(1, Ordering::SeqCst)))
-}
-
 /// Opens the library, forwards its events and registers the `library.*` and `kit.*` commands.
-pub fn install(commands: &mut Commands, session: &Arc<Session>, calls: Calls, events: EventSink, options: &LibraryOptions) -> Result<Arc<LibraryArea>> {
+/// `audio` renders the previews kits are saved with.
+pub fn install(commands: &mut Commands, session: &Arc<Session>, calls: Calls, events: EventSink, audio: Option<&Arc<Audio>>, options: &LibraryOptions) -> Result<Arc<LibraryArea>> {
     // The kit folder is a library root from the first launch on (kits are saved into it later).
     if let Some(kits) = &options.config.user_kits_dir {
         let _ = std::fs::create_dir_all(kits);
@@ -230,7 +216,7 @@ pub fn install(commands: &mut Commands, session: &Arc<Session>, calls: Calls, ev
         .register_blocking("library.kits.browse", Library::kits_browse)
         .register_blocking("library.kit", Library::kit_metadata)
         .register_blocking("kit.read", Library::kit_read);
-    let area = Arc::new(LibraryArea { library, calls, session: session.clone() });
+    let area = Arc::new(LibraryArea { library, calls, session: session.clone(), audio: audio.cloned() });
     commands.with(&area).register_blocking("kit.detail", LibraryArea::kit_detail).register_blocking("kit.save", LibraryArea::kit_save);
     Ok(area)
 }

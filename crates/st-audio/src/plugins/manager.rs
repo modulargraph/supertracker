@@ -49,7 +49,7 @@ use crate::graph::spec::{GraphSpec, InsertSpec};
 use st_project::model::{PluginDescriptor, PluginKind, Project};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::Duration;
@@ -134,26 +134,63 @@ pub struct ParamRange {
     pub stepped: bool,
 }
 
-/// The parameter ranges of an instance, sorted by id.
+/// The parameters of an instance for the audio thread: their ranges, sorted by id, and their
+/// base values.
+///
+/// The base value of a parameter is the value the user left it at: loaded with the state, set
+/// from the interface, changed in the plug-in's editor. Lanes and step locks move a parameter
+/// away from it for a while; the processor brings it back ([`super::insert::PluginInsert`]).
+/// Control threads write base values in place (atomics), the audio thread reads them.
 #[derive(Debug, Default)]
 pub struct ParamTable {
-    pub ranges: Vec<ParamRange>,
+    ranges: Vec<ParamRange>,
+    /// Per range: the base value, normalized, as the bits of an `f64` (NaN: not known).
+    base: Vec<AtomicU64>,
 }
 
 impl ParamTable {
+    /// A table for these ranges; no base value is known yet.
+    pub fn new(mut ranges: Vec<ParamRange>) -> ParamTable {
+        ranges.sort_by_key(|range| range.id);
+        ranges.dedup_by_key(|range| range.id);
+        let base = ranges.iter().map(|_| AtomicU64::new(f64::NAN.to_bits())).collect();
+        ParamTable { ranges, base }
+    }
+
+    #[inline]
+    fn index(&self, id: u64) -> Option<usize> {
+        self.ranges.binary_search_by_key(&id, |range| range.id).ok()
+    }
+
     /// The parameter's own value for a normalized one; `None` for an unknown parameter.
     #[inline]
     pub fn plain(&self, id: u64, normalized: f64) -> Option<f64> {
-        let index = self.ranges.binary_search_by_key(&id, |range| range.id).ok()?;
-        let range = &self.ranges[index];
+        let range = &self.ranges[self.index(id)?];
         let value = range.min + normalized.clamp(0.0, 1.0) * (range.max - range.min);
         Some(if range.stepped { value.round() } else { value })
     }
 
     pub fn normalized(&self, id: u64, plain: f64) -> Option<f64> {
-        let index = self.ranges.binary_search_by_key(&id, |range| range.id).ok()?;
-        let range = &self.ranges[index];
+        let range = &self.ranges[self.index(id)?];
         Some(if range.max > range.min { ((plain - range.min) / (range.max - range.min)).clamp(0.0, 1.0) } else { 0.0 })
+    }
+
+    /// The base value of a parameter (normalized), if one is known.
+    #[inline]
+    pub fn base(&self, id: u64) -> Option<f64> {
+        let value = f64::from_bits(self.base[self.index(id)?].load(Ordering::Relaxed));
+        (!value.is_nan()).then_some(value)
+    }
+
+    fn set_base(&self, id: u64, normalized: f64) {
+        if let Some(index) = self.index(id) {
+            self.base[index].store(normalized.to_bits(), Ordering::Relaxed);
+        }
+    }
+
+    /// Every known base value: `(id, normalized)`.
+    pub fn base_values(&self) -> Vec<(u64, f64)> {
+        self.ranges.iter().filter_map(|range| self.base(range.id).map(|base| (range.id, base))).collect()
     }
 }
 
@@ -170,6 +207,55 @@ pub struct Placement {
     pub instance_id: String,
 }
 
+/// The parameters automation (lanes, step locks) has moved away from their base value and not
+/// yet returned. Written by the audio thread only; control threads read it to tell a value the
+/// user set from one a lane holds for the moment. A reader that races a change sees the set
+/// before or after it, which is all it needs.
+pub(crate) struct AutomatedSet {
+    count: AtomicU32,
+    addresses: Box<[AtomicU64]>,
+}
+
+impl AutomatedSet {
+    /// Parameters remembered per instance; a parameter automated beyond that is not returned
+    /// to its base value by the host.
+    const CAPACITY: usize = 512;
+
+    fn new() -> AutomatedSet {
+        AutomatedSet { count: AtomicU32::new(0), addresses: (0..Self::CAPACITY).map(|_| AtomicU64::new(0)).collect() }
+    }
+
+    #[inline]
+    fn position(&self, address: u64) -> Option<usize> {
+        let count = (self.count.load(Ordering::Acquire) as usize).min(self.addresses.len());
+        self.addresses[..count].iter().position(|known| known.load(Ordering::Relaxed) == address)
+    }
+
+    pub(crate) fn contains(&self, address: u64) -> bool {
+        self.position(address).is_some()
+    }
+
+    /// Audio thread: automation moved `address`.
+    #[inline]
+    pub(crate) fn insert(&self, address: u64) {
+        let count = self.count.load(Ordering::Relaxed) as usize;
+        if count < self.addresses.len() && self.position(address).is_none() {
+            self.addresses[count].store(address, Ordering::Relaxed);
+            self.count.store(count as u32 + 1, Ordering::Release);
+        }
+    }
+
+    /// Audio thread: `address` goes back to its base value. False when automation never moved it.
+    #[inline]
+    pub(crate) fn remove(&self, address: u64) -> bool {
+        let Some(index) = self.position(address) else { return false };
+        let last = self.count.load(Ordering::Relaxed) as usize - 1;
+        self.addresses[index].store(self.addresses[last].load(Ordering::Relaxed), Ordering::Relaxed);
+        self.count.store(last as u32, Ordering::Release);
+        true
+    }
+}
+
 #[derive(Default)]
 struct HostedControl {
     /// The state last loaded into or read from the instance, as the project stores it.
@@ -177,8 +263,6 @@ struct HostedControl {
     /// The bytes of the last capture with their text: equal bytes give the identical text.
     captured: Option<(Vec<u8>, String)>,
     parameters: Option<Arc<Vec<ParameterInfo>>>,
-    /// Normalized values as last read or set (the base automation returns to).
-    values: Vec<(u64, f64)>,
     lost: Option<String>,
     /// Values set with [`Hosted::set_parameter`] the plug-in may not have applied yet (some
     /// formats deliver a set with the next block): `(id, value, blocks processed at the set)`.
@@ -203,9 +287,12 @@ pub struct Hosted {
     pub sidechain: bool,
     pub has_editor: bool,
     table: AtomicPtr<ParamTable>,
-    /// Controllers from the control thread for the audio thread (pitch bend, mod wheel): MIDI
-    /// bytes, applied at the start of the next block.
+    /// Channel messages from control threads for the audio thread (controllers, pressure, pitch
+    /// bend): up to three MIDI bytes and their count, applied at the start of the next block.
     midi: Ring<[u8; 4]>,
+    /// Serializes the senders of `midi`: the ring takes one producer at a time.
+    midi_senders: Mutex<()>,
+    pub(crate) automated: AutomatedSet,
     /// The latency the mixer was last told about.
     pub(crate) planned_latency: AtomicU32,
     pub(crate) offline: bool,
@@ -226,15 +313,40 @@ impl Hosted {
         unsafe { &*self.table.load(Ordering::Acquire) }
     }
 
-    /// Audio thread: the next controller queued by [`Hosted::send_midi`].
+    /// Audio thread: the next message queued by [`Hosted::send_midi`]: the bytes and how many
+    /// of them count.
     #[inline]
     pub(crate) fn pop_midi(&self) -> Option<[u8; 4]> {
         self.midi.pop()
     }
 
-    /// Queues a controller for the instrument (control thread; one caller at a time).
+    /// Queues a channel message for the plug-in: a control change, channel or poly pressure,
+    /// pitch bend or a program change (the two-byte messages ignore `bytes[2]`). It reaches
+    /// the plug-in at the first frame of the next block. False for any other message and when
+    /// the queue is full (the plug-in is not processing). Any control thread.
     pub fn send_midi(&self, bytes: [u8; 3]) -> bool {
-        self.midi.push(&[bytes[0], bytes[1], bytes[2], 0])
+        let length = match bytes[0] & 0xF0 {
+            0xA0 | 0xB0 | 0xE0 => 3,
+            0xC0 | 0xD0 => 2,
+            _ => return false,
+        };
+        let _one_sender = self.midi_senders.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.midi.push(&[bytes[0], bytes[1] & 0x7F, if length == 3 { bytes[2] & 0x7F } else { 0 }, length])
+    }
+
+    /// The values just read from the plug-in as base values. With `keep_held`, what
+    /// automation holds at the moment keeps the base it had (the value read is the lane's or
+    /// the lock's, not the user's); without, every value counts (a state was just loaded).
+    fn adopt_values(&self, read: &[(u64, f64)], keep_held: bool) {
+        let table = self.table();
+        for (id, plain) in read {
+            if keep_held && self.automated.contains(*id) && table.base(*id).is_some() {
+                continue;
+            }
+            if let Some(normalized) = table.normalized(*id, *plain) {
+                table.set_base(*id, normalized);
+            }
+        }
     }
 
     pub fn placement(&self) -> Placement {
@@ -249,23 +361,28 @@ impl Hosted {
         matches!(self.instance.status(), InstanceStatus::Lost | InstanceStatus::Closed).then(|| format!("{} stopped working: its plug-in process ended.", self.identity.display_name()))
     }
 
+    /// A new table for a parameter list read again. The base values known so far stay.
     fn install_table(&self, parameters: &[ParameterInfo]) {
-        let mut ranges: Vec<ParamRange> = parameters.iter().map(|info| ParamRange { id: info.id, min: info.min, max: info.max, stepped: info.flags & (PARAM_STEPPED | PARAM_BOOLEAN) != 0 }).collect();
-        ranges.sort_by_key(|range| range.id);
-        ranges.dedup_by_key(|range| range.id);
-        let old = self.table.swap(Box::into_raw(Box::new(ParamTable { ranges })), Ordering::AcqRel);
+        let ranges: Vec<ParamRange> = parameters.iter().map(|info| ParamRange { id: info.id, min: info.min, max: info.max, stepped: info.flags & (PARAM_STEPPED | PARAM_BOOLEAN) != 0 }).collect();
+        let next = ParamTable::new(ranges);
+        for (id, base) in self.table().base_values() {
+            next.set_base(id, base);
+        }
+        let old = self.table.swap(Box::into_raw(Box::new(next)), Ordering::AcqRel);
         self.control().old_tables.push(old);
     }
 
     /// Reads the parameter list and the current values from the plug-in again.
     pub fn refresh_parameters(&self) -> Result<Arc<Vec<ParameterInfo>>, String> {
+        self.read_parameters(true)
+    }
+
+    fn read_parameters(&self, keep_held: bool) -> Result<Arc<Vec<ParameterInfo>>, String> {
         let parameters = Arc::new(self.instance.parameters().map_err(|error| self.explain(error))?);
         self.install_table(&parameters);
-        let values = self.instance.parameter_values().map_err(|error| self.explain(error))?;
-        let table = self.table();
-        let mut control = self.control();
-        control.values = values.iter().filter_map(|value| table.normalized(value.id, value.value).map(|normalized| (value.id, normalized))).collect();
-        control.parameters = Some(parameters.clone());
+        let values: Vec<(u64, f64)> = self.instance.parameter_values().map_err(|error| self.explain(error))?.into_iter().map(|value| (value.id, value.value)).collect();
+        self.adopt_values(&values, keep_held);
+        self.control().parameters = Some(parameters.clone());
         Ok(parameters)
     }
 
@@ -282,10 +399,9 @@ impl Hosted {
     pub fn values(&self) -> Result<Vec<(u64, f64)>, String> {
         if self.lost().is_some() {
             let table = self.table();
-            return Ok(self.control().values.iter().filter_map(|(id, normalized)| table.plain(*id, *normalized).map(|plain| (*id, plain))).collect());
+            return Ok(table.base_values().into_iter().filter_map(|(id, normalized)| table.plain(id, normalized).map(|plain| (id, plain))).collect());
         }
         let mut values = self.instance.parameter_values().map_err(|error| self.explain(error))?;
-        let table = self.table();
         let mut control = self.control();
         // A value set a moment ago may not have reached the plug-in yet: it reads as set.
         let blocks = self.instance.stats().blocks;
@@ -295,8 +411,10 @@ impl Hosted {
                 value.value = *plain;
             }
         }
-        control.values = values.iter().filter_map(|value| table.normalized(value.id, value.value).map(|normalized| (value.id, normalized))).collect();
-        Ok(values.into_iter().map(|value| (value.id, value.value)).collect())
+        let values: Vec<(u64, f64)> = values.into_iter().map(|value| (value.id, value.value)).collect();
+        drop(control);
+        self.adopt_values(&values, true);
+        Ok(values)
     }
 
     /// Waits (briefly) until the values set last have reached the plug-in with a block, so
@@ -315,17 +433,13 @@ impl Hosted {
         }
     }
 
-    /// The normalized values last read or set: what automation returns to.
+    /// The base values (normalized): what automation and step locks return to.
     pub fn base_values(&self) -> Vec<(u64, f64)> {
-        self.control().values.clone()
+        self.table().base_values()
     }
 
     fn remember_value(&self, id: u64, normalized: f64) {
-        let mut control = self.control();
-        match control.values.iter_mut().find(|(known, _)| *known == id) {
-            Some(entry) => entry.1 = normalized,
-            None => control.values.push((id, normalized)),
-        }
+        self.table().set_base(id, normalized);
     }
 
     /// Sets a parameter (in its own range) now. Returns the value sent (stepped parameters
@@ -407,7 +521,7 @@ impl Hosted {
             control.known_state = None;
         }
         let _ = self.instance.refresh_info();
-        let _ = self.refresh_parameters();
+        let _ = self.read_parameters(false);
         Ok(())
     }
 
@@ -425,7 +539,7 @@ impl Hosted {
             control.known_state = None;
         }
         let _ = self.instance.refresh_info();
-        let _ = self.refresh_parameters();
+        let _ = self.read_parameters(false);
         Ok(())
     }
 
@@ -804,6 +918,8 @@ impl PluginManager {
             instance,
             table: AtomicPtr::new(Box::into_raw(Box::new(ParamTable::default()))),
             midi: Ring::new(256),
+            midi_senders: Mutex::new(()),
+            automated: AutomatedSet::new(),
             offline: self.options.offline,
             min_deadline_ns: self.options.min_deadline.as_nanos() as u64,
             control: Mutex::new(HostedControl::default()),

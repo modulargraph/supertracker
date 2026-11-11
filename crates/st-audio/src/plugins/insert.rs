@@ -10,7 +10,9 @@
 //!   a control operation holds it) the client returns the dry signal delayed by the plug-in's
 //!   latency, so the mixer's delay compensation stays right: a lost insert passes through.
 //! * **Instrument.** The first processor of a track strip. The engine's note events of the
-//!   track arrive through [`InsertProcessor::midi`] with their frame offsets; the plug-in's
+//!   track arrive through [`InsertProcessor::midi`] with their frame offsets; controllers,
+//!   pressure and pitch bend played live ([`Hosted::send_midi`]) arrive at the first frame of
+//!   the next block, after the notes of that frame; the plug-in's
 //!   stereo output, times the instrument's volume and balanced by its pan, is **added** to
 //!   the strip's signal (the engine's own channel: clips and sample voices of the track), as
 //!   the previous host mixed both sources of a channel. The strip's signal is delayed by the
@@ -24,6 +26,12 @@
 //! client reports as the first one following dropped blocks, and when bypass ends, it sends
 //! "all notes off" and "all sound off" before anything else, and a note-off for every note it
 //! believes held, at frame 0 of the next block.
+//!
+//! Base values: a parameter a lane or a step lock moved is remembered ([`Hosted`]'s automated
+//! set) and goes back to the value the user left it at when the graph says so
+//! ([`InsertProcessor::base_parameter`]: a new plan, a changed project, every start, stop
+//! and seek of the transport, and the end of a step lock's row where no lane takes over).
+//! Parameters automation never touched are left alone: the plug-in holds its own values.
 //!
 //! Nothing here allocates, locks or blocks beyond the client's bounded wait.
 
@@ -41,9 +49,6 @@ use stpc_client::{
 /// volume (0..2) and pan (-1..1), not normalized.
 pub const INSTRUMENT_VOLUME: u64 = u64::MAX - 1;
 pub const INSTRUMENT_PAN: u64 = u64::MAX - 2;
-
-/// Parameters whose automation the processor remembers, to return them to their base value.
-const AUTOMATED_CAPACITY: usize = 512;
 
 struct InstrumentState {
     volume: f32,
@@ -68,7 +73,6 @@ pub struct PluginInsert {
     notes: Vec<Event>,
     merged: Vec<Event>,
     out_events: Vec<Event>,
-    automated: Vec<u64>,
     scratch_left: Vec<f32>,
     scratch_right: Vec<f32>,
     silence_notes: bool,
@@ -94,7 +98,6 @@ impl PluginInsert {
             notes: Vec::new(),
             merged: Vec::new(),
             out_events: Vec::new(),
-            automated: Vec::new(),
             scratch_left: Vec::new(),
             scratch_right: Vec::new(),
             silence_notes: false,
@@ -189,7 +192,6 @@ impl InsertProcessor for PluginInsert {
         self.notes = Vec::with_capacity(EVENT_CAPACITY);
         self.merged = Vec::with_capacity(EVENT_CAPACITY);
         self.out_events = vec![Event::default(); 64];
-        self.automated = Vec::with_capacity(AUTOMATED_CAPACITY);
         self.scratch_left = vec![0.0; max_frames.max(1)];
         self.scratch_right = vec![0.0; max_frames.max(1)];
         if let Some(instrument) = self.instrument.as_mut() {
@@ -229,7 +231,7 @@ impl InsertProcessor for PluginInsert {
         if self.instrument.is_some() {
             while let Some(bytes) = self.hosted.pop_midi() {
                 if self.notes.len() < self.notes.capacity() {
-                    self.notes.push(Event::midi(0, &bytes[..3]));
+                    self.notes.push(Event::midi(0, &bytes[..(bytes[3] as usize).min(3)]));
                 }
             }
         }
@@ -335,23 +337,28 @@ impl InsertProcessor for PluginInsert {
         if self.parameters.len() < self.parameters.capacity() {
             self.parameters.push(Event::param(offset, address, value));
         }
-        if !self.automated.contains(&address) && self.automated.len() < self.automated.capacity() {
-            self.automated.push(address);
-        }
+        self.hosted.automated.insert(address);
     }
 
     fn base_parameter(&mut self, address: u64, normalized: f64) {
+        self.base_parameter_at(address, normalized, 0);
+    }
+
+    fn base_parameter_at(&mut self, address: u64, normalized: f64, offset: u32) {
         match (address, self.instrument.as_mut()) {
             (INSTRUMENT_VOLUME, Some(instrument)) => instrument.volume = (normalized as f32).clamp(0.0, 2.0),
             (INSTRUMENT_PAN, Some(instrument)) => instrument.pan = (normalized as f32).clamp(-1.0, 1.0),
             (INSTRUMENT_VOLUME | INSTRUMENT_PAN, None) => {}
             _ => {
-                // The plug-in holds its own values; only what automation moved goes back.
-                if let Some(index) = self.automated.iter().position(|known| *known == address) {
-                    self.automated.swap_remove(index);
-                    if let Some(value) = self.hosted.table().plain(address, normalized) {
+                // The plug-in holds its own values; only what automation moved goes back, to
+                // the base the instance knows now (the plan's copy may be older: the user can
+                // have turned the control since). A bypassed insert is not processed: what
+                // automation moved stays remembered until it is.
+                let table = self.hosted.table();
+                if !self.bypass && self.hosted.automated.remove(address) {
+                    if let Some(value) = table.plain(address, table.base(address).unwrap_or(normalized)) {
                         if self.parameters.len() < self.parameters.capacity() {
-                            self.parameters.push(Event::param(0, address, value));
+                            self.parameters.push(Event::param(offset, address, value));
                         }
                     }
                 }

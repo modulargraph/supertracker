@@ -80,9 +80,10 @@ impl AudioEngine {
         }
     }
 
-    /// A controller for the plug-in instrument of `track` (pitch bend, mod wheel), applied at
-    /// the start of the next block. False when the track has none.
-    pub fn plugin_midi(&self, track: i32, bytes: [u8; 3]) -> bool {
+    /// A channel message for the plug-in instrument of `track`, for the first frame of its
+    /// next block ([`crate::plugins::manager::Hosted::send_midi`]). False when the track has
+    /// no plug-in instrument, or it is not processing.
+    pub(super) fn plugin_midi(&self, track: i32, bytes: [u8; 3]) -> bool {
         let Some(manager) = self.plugins.get() else { return false };
         let key = {
             let state = self.lock();

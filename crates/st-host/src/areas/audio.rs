@@ -10,7 +10,8 @@
 //! | `engine.project` | through [`ProjectAudio`]: the engine and the mixer follow every publication; the reply is the status |
 //! | `transport.play`, `.stop`, `.seek`, `.loop`, `.queue`, `.recordArm` | the reply of the first four is the status |
 //! | `note.on`, `note.off` | with `captureInput` the reply waits for the audio thread's acknowledgement (`inputAcknowledgement`) |
-//! | `step.preview`, `engine.panic`, `engine.instrumentParameter`, `midi.expression` | `midi.expression` reaches the engine (pitch bend, mod wheel, sustain); plug-ins and MIDI outputs do not exist yet |
+//! | `step.preview`, `engine.panic`, `engine.instrumentParameter` | |
+//! | `midi.expression` | pitch bend, controllers, channel and poly pressure for a track's instrument: the device of an external MIDI instrument, a plug-in instrument, the engine's own voices ([`Audio::expression`]) |
 //! | `engine.snapshot` | the project with built-in effect state captured; plug-in descriptors keep the state they carry |
 //! | `audio.devices`, `audio.configure` | outputs and the input; the choice is remembered in the settings section `audio.devices`. `audio.devices` also reports the line inputs of the published project (`lineInputs`, `lineInputError`) |
 //! | `builtin.effects`, `routing.status` | |
@@ -28,7 +29,7 @@
 //! worker threads; the sample commands and the events of finished decodes are in
 //! [`crate::areas::samples`].
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -97,7 +98,14 @@ pub struct Audio {
     stop_hooks: Mutex<Vec<Box<dyn Fn() + Send + Sync>>>,
     /// The state of the project's line inputs as the interface was told last.
     line_inputs: Mutex<Value>,
+    /// The MIDI area's part of `midi.expression`.
+    external_midi: OnceLock<ExternalMidi>,
 }
+
+/// Sends a channel message to the device of an external MIDI instrument, on the instrument's
+/// channel: `(instrument, [status, data1, data2])`. `None` when the instrument is not an
+/// external MIDI instrument; `Some(false)` when it is and its device is absent.
+pub type ExternalMidi = Box<dyn Fn(usize, [u8; 3]) -> Option<bool> + Send + Sync>;
 
 impl ProjectAudio for Audio {
     fn prepare(&self, project: &Project, options: &PublishOptions) -> Result<Value> {
@@ -174,6 +182,7 @@ struct ExpressionPayload {
     kind: String,
     track: Option<f64>,
     controller: Option<f64>,
+    note: Option<f64>,
     value: Option<f64>,
 }
 
@@ -218,6 +227,12 @@ impl Audio {
     /// The sample cache the engine reads from.
     pub fn samples(&self) -> &Arc<DecodedSamples> {
         &self.samples
+    }
+
+    /// Where `midi.expression` sends what belongs to an external MIDI instrument (the MIDI
+    /// area sets it; without it external instruments get nothing). Only the first call counts.
+    pub fn set_external_midi(&self, send: ExternalMidi) {
+        let _ = self.external_midi.set(send);
     }
 
     /// Tells the interface about samples that cannot be loaded, each once: `sample.error` for an
@@ -368,24 +383,33 @@ impl Audio {
         Ok(json!({ "ok": applied }))
     }
 
-    /// `midi.expression`, as far as the engine goes: pitch bend (±2 semitones), the mod wheel
-    /// and the sustain pedal. Other controllers have nowhere to go until plug-ins and MIDI
-    /// outputs exist; they answer `sent: false`.
+    /// `midi.expression`: pitch bend, a controller, channel pressure (`aftertouch`) or poly
+    /// pressure (`polyAftertouch`, with its `note`) played live for the instrument of `track`
+    /// (the track of the last note without one). `value` is -1..1 for pitch bend and 0..1
+    /// otherwise.
+    ///
+    /// The message goes where a key played on a MIDI keyboard would send it:
+    ///
+    /// - an external MIDI instrument: to its device, on its channel;
+    /// - a plug-in instrument: to the plug-in, with its next block (`AudioEngine::expression`);
+    /// - the engine's own instruments: pitch bend (two semitones either way) and the
+    ///   modulation wheel (controller 1); they have no use for the rest.
+    ///
+    /// `sent` tells whether the message went anywhere. The sustain pedal (`sustain`, or
+    /// controller 64) is the host's own: it holds back the release of the notes the
+    /// interface plays, whatever the instrument, and is not passed on.
     fn expression(&self, payload: ExpressionPayload) -> Result<Value> {
         let Some(value) = payload.value.filter(|value| value.is_finite()) else { fail!("Expression value must be a finite number.") };
-        let (track, instrument) = self.engine.note_destination(whole(payload.track), None);
-        let controller = whole(payload.controller).unwrap_or(1).clamp(0, 127);
-        let (kind, controller) = if payload.kind == "sustain" { ("cc", 64) } else { (payload.kind.as_str(), controller) };
-        let sent = match (kind, controller) {
+        let (track, last_instrument) = self.engine.note_destination(whole(payload.track), None);
+        let instrument = self.engine.with_project(|project| project.and_then(|project| project.track_list().get(track as usize).map(|track| track.instrument() as i32))).unwrap_or(last_instrument);
+        let seven = (value.clamp(0.0, 1.0) * 127.0).round() as u8;
+        let controller = whole(payload.controller).unwrap_or(1).clamp(0, 127) as u8;
+        let message = match (payload.kind.as_str(), controller) {
             ("pitchBend", _) => {
-                self.engine.pitch_bend(track, value.clamp(-1.0, 1.0) as f32 * 2.0);
-                true
+                let bend = (((value.clamp(-1.0, 1.0) + 1.0) * 8192.0).round() as u16).min(16_383);
+                [0xE0, (bend & 0x7F) as u8, (bend >> 7) as u8]
             }
-            ("cc", 1) => {
-                self.engine.mod_wheel(track, value.clamp(0.0, 1.0) as f32);
-                true
-            }
-            ("cc", 64) => {
+            ("sustain", _) | ("cc", 64) => {
                 let released = {
                     let mut sustain = self.sustain.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                     sustain.0 = value >= 0.5;
@@ -394,12 +418,19 @@ impl Audio {
                 for (track, note) in released {
                     self.engine.note_off(track, note);
                 }
-                true
+                return Ok(json!({ "sent": true, "track": track, "instrument": instrument }));
             }
-            ("cc", controller) if controller >= 120 => fail!("Use engine.panic for channel-mode messages."),
-            ("cc", _) | ("aftertouch", _) | ("polyAftertouch", _) => false,
+            ("cc", 120..) => fail!("Use engine.panic for channel-mode messages."),
+            ("cc", controller) => [0xB0, controller, seven],
+            ("aftertouch", _) => [0xD0, seven, 0],
+            ("polyAftertouch", _) => match whole(payload.note).filter(|note| (0..=127).contains(note)) {
+                Some(note) => [0xA0, note as u8, seven],
+                None => fail!("Poly aftertouch needs a note."),
+            },
             (other, _) => fail!("Unsupported expression kind: {other}."),
         };
+        let external = self.external_midi.get().and_then(|send| send(instrument.max(0) as usize, message));
+        let sent = external.unwrap_or_else(|| self.engine.expression(track, message));
         Ok(json!({ "sent": sent, "track": track, "instrument": instrument }))
     }
 
@@ -552,7 +583,7 @@ pub fn install(commands: &mut Commands, session: &crate::Session, settings: &Arc
         // Choosing the input opens nothing: it is opened when something uses it.
         let _ = engine.live().inputs().configure(&st_audio::inputs::InputRequest { uid: Some(input), ..Default::default() });
     }
-    let audio = Arc::new(Audio { engine, samples, events: events.clone(), settings: settings.clone(), sustain: Mutex::default(), reported: Mutex::default(), stop_hooks: Mutex::default(), line_inputs: Mutex::new(json!([])) });
+    let audio = Arc::new(Audio { engine, samples, events: events.clone(), settings: settings.clone(), sustain: Mutex::default(), reported: Mutex::default(), stop_hooks: Mutex::default(), line_inputs: Mutex::new(json!([])), external_midi: OnceLock::new()  });
     session.attach_audio(audio.clone());
     commands
         .with(&audio)

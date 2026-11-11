@@ -400,6 +400,46 @@ fn preview_discovery() {
     assert_eq!(kit::metadata(&package, None).unwrap().name, "Previewed", "the package name is the default kit name");
     let bad_preview = kit::save(&project, &header(json!({ "previewPath": temp.text("nothing.wav") })), &temp.text("Other.stkit"), &SaveOptions::default());
     assert!(bad_preview.unwrap_err().to_string().contains("kit preview is unavailable"));
+
+    // A preview rendered while saving: the renderer writes Preview.wav into the package that
+    // is being put together, and its note for the user is one of the kit's warnings.
+    let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::<std::path::PathBuf>::new()));
+    let renderer = |outcome: Result<Option<String>, String>, write: bool| {
+        let calls = calls.clone();
+        let audio = st_library::probe::fixtures::wav(0.2);
+        kit::PreviewRenderer::new(move |path| {
+            calls.lock().unwrap().push(path.to_path_buf());
+            if write {
+                fs::write(path, &audio).unwrap();
+            }
+            outcome.clone()
+        })
+    };
+    let rendered_package = temp.text("Rendered.stkit");
+    let options = SaveOptions { preview: Some(renderer(Ok(Some("One pad is not in the preview.".into())), true)), ..Default::default() };
+    let saved = kit::save(&project, &header(json!({})), &rendered_package, &options).unwrap();
+    assert_eq!(saved.metadata["previewPath"], format!("{rendered_package}/Preview.wav"));
+    assert_eq!(saved.warnings, ["One pad is not in the preview."]);
+    assert_eq!(kit::preview_path(&rendered_package), Some(format!("{rendered_package}/Preview.wav")));
+    assert_eq!(fs::read(format!("{rendered_package}/Preview.wav")).unwrap(), st_library::probe::fixtures::wav(0.2));
+    let staged = calls.lock().unwrap().pop().unwrap();
+    assert!(staged.ends_with("Preview.wav") && !staged.starts_with(&rendered_package), "rendered into the staged package: {}", staged.display());
+    // A renderer that fails, or writes nothing, costs the preview, not the kit.
+    for (outcome, write, reason) in [(Err("the kit plays no note.".to_string()), true, "the kit plays no note."), (Ok(None), false, "wrote no audio file")] {
+        let package = temp.text("Plain.stkit");
+        let options = SaveOptions { preview: Some(renderer(outcome, write)), overwrite: true, ..Default::default() };
+        let saved = kit::save(&project, &header(json!({})), &package, &options).unwrap();
+        assert!(saved.warnings.len() == 1 && saved.warnings[0].starts_with("The kit was saved without an audio preview: ") && saved.warnings[0].contains(reason), "{:?}", saved.warnings);
+        assert!(saved.metadata.get("previewPath").is_none() && kit::preview_path(&package).is_none());
+        assert!(!Path::new(&package).join("Preview.wav").exists());
+    }
+    // A ready-made preview wins, and a save that is refused never asks for a render.
+    calls.lock().unwrap().clear();
+    let options = SaveOptions { preview: Some(renderer(Ok(None), true)), overwrite: true, ..Default::default() };
+    kit::save(&project, &header(json!({ "previewPath": sample })), &temp.text("Plain.stkit"), &options).unwrap();
+    let options = SaveOptions { preview: Some(renderer(Ok(None), true)), ..Default::default() };
+    assert!(kit::save(&project, &header(json!({})), &rendered_package, &options).is_err(), "the package exists and may not be replaced");
+    assert!(calls.lock().unwrap().is_empty());
 }
 
 /// A synthetic NI SoundInfo item as found near the start of a .mxgrp (the archive is never read).

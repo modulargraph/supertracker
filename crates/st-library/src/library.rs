@@ -576,7 +576,18 @@ impl Library {
     /// `kit.save`: saves a group of the session as a kit package in the user's kit folder and
     /// rescans that folder. Save (a `path`) replaces the kit's own package; Save As (a `name`)
     /// reports an existing kit of that name unless `overwrite` is set.
+    ///
+    /// The package gets no audio preview; [`Library::kit_save_with_preview`] is the same save
+    /// with one.
     pub fn kit_save(&self, request: KitSaveRequest) -> Result<KitSaveResponse> {
+        self.kit_save_with_preview(request, None)
+    }
+
+    /// `kit.save` with the kit's audio preview: `preview` renders it into the package once it
+    /// is certain that the kit will be written (not when the answer is "a kit of that name
+    /// exists" or "choose a name"). A preview that cannot be rendered is a warning of the
+    /// saved kit, not a failure.
+    pub fn kit_save_with_preview(&self, request: KitSaveRequest, preview: Option<kit::PreviewRenderer>) -> Result<KitSaveResponse> {
         let group_id = request.group_id.as_deref().filter(|id| !id.is_empty()).ok_or_else(|| Error::invalid("Select a kit to save."))?;
         let directory = self.inner.config.user_kits_dir.clone().ok_or_else(|| Error::invalid("No kit folder is configured."))?;
         fs::create_dir_all(&directory).map_err(|error| Error::io("create", &directory, &error))?;
@@ -608,9 +619,6 @@ impl Library {
         if let Some(name) = &named {
             header.insert("name".to_string(), json!(name));
         }
-        if let Some(preview) = request.preview_path.as_deref().filter(|preview| !preview.is_empty()) {
-            header.insert("previewPath".to_string(), json!(preview));
-        }
         let replace = chosen.is_some() && request.overwrite;
         let destination = match chosen {
             Some(destination) => destination,
@@ -637,9 +645,9 @@ impl Library {
                 }
             }
         }
-        let options = kit::SaveOptions { copy_samples: request.copy_samples, relative_to: request.project_path.as_deref().map(PathBuf::from), overwrite: replace, cancel: None };
+        let options = kit::SaveOptions { copy_samples: request.copy_samples, relative_to: request.project_path.as_deref().map(PathBuf::from), overwrite: replace, cancel: None, preview };
         let mut saved = kit::save(&extracted.project, &header, &destination, &options)?;
-        saved.warnings = extracted.warnings;
+        saved.warnings.splice(0..0, extracted.warnings);
         let _ = self.inner.begin_scan(Some(vec![directory.to_string_lossy().into_owned()]));
         Ok(KitSaveResponse::Saved(saved))
     }

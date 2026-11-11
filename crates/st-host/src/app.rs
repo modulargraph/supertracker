@@ -93,8 +93,7 @@ pub fn install(bridge: &mut BridgeBuilder, options: HostOptions) -> Result<Host>
         (Some(audio), Some(plugins)) => crate::areas::plugins::install(commands, audio, &settings, &options.support, plugin_events, plugins).map_err(|error| eprintln!("supertracker: {error}")).ok(),
         _ => None,
     };
-    let engine = audio.as_ref().map(|audio| audio.engine().clone());
-    let services = crate::areas::services::install(commands, &session, &settings, &lifecycle, service_events, service_calls, engine, &options.support, &options.services)?;
+    let services = crate::areas::services::install(commands, &session, &settings, &lifecycle, service_events, service_calls, audio.as_ref(), &options.support, &options.services)?;
 
     if let Some(interval) = options.autosave_every {
         session.start_autosave_timer(interval);

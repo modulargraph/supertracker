@@ -188,8 +188,9 @@ fn live_notes_previews_and_expression_sound_without_the_transport() {
     engine.note_on(1, 0, 60, 100);
     let (held, _) = engine.render_offline(9_600, 512);
     assert!(peak(&held) > 0.05, "a live note sounds while stopped");
-    engine.pitch_bend(1, 2.0);
-    engine.mod_wheel(1, 0.5);
+    assert!(engine.expression(1, [0xE0, 0x7F, 0x7F]), "the engine bends its own voices");
+    assert!(engine.expression(1, [0xB0, 1, 64]), "and takes the modulation wheel");
+    assert!(!engine.expression(1, [0xD0, 100, 0]) && !engine.expression(1, [0xB0, 74, 9]) && !engine.expression(1, [0xB0, 123, 0]), "what the engine has no use for goes nowhere");
     engine.note_off(1, 60);
     engine.render_offline(9_600, 512);
     let (released, _) = engine.render_offline(4_800, 512);

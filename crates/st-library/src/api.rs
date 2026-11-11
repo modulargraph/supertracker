@@ -287,8 +287,6 @@ pub struct KitSaveRequest {
     /// Copy samples into the package. Absent: true.
     #[serde(default = "default_true", deserialize_with = "true_unless_false")]
     pub copy_samples: bool,
-    /// An audio preview to copy into the package (the host renders one before it calls).
-    pub preview_path: Option<String>,
     /// The session's project file, for relative sample paths.
     pub project_path: Option<String>,
 }

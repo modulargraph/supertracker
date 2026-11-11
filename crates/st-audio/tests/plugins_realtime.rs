@@ -3,7 +3,8 @@
 //! Like `realtime.rs`: the global allocator counts while a thread-local switch is on, and the
 //! switch is on only around `Renderer::render`. Here the mixer holds a CLAP effect, a VST3
 //! effect with a sidechain and automation, and a CLAP instrument playing a pattern; the count
-//! covers steady playback, a plan swap, live notes and controllers, a panic, and a plug-in
+//! covers steady playback, a plan swap, live notes, controllers and pressure, a stop, a
+//! seek and a new start (parameters go back to their base values), a panic, and a plug-in
 //! that crashes in the middle (its insert then passes through).
 
 mod common;
@@ -118,11 +119,25 @@ fn rendering_with_plug_ins_never_allocates_also_when_one_of_them_crashes() {
     engine.publish(&parse(&project)).unwrap();
     loudest = loudest.max(render_counted(&engine, 50, 127));
     engine.note_on(2, 1, 72, 100);
-    engine.pitch_bend(2, 1.0);
-    engine.mod_wheel(2, 0.5);
+    // Pitch bend, the modulation wheel, another controller, channel and poly pressure, more
+    // of them than one block's queue takes.
+    for step in 0..100u8 {
+        for message in [[0xE0, step, 64], [0xB0, 1, step], [0xB0, 74, step], [0xD0, step, 0], [0xA0, 72, step]] {
+            engine.expression(2, message);
+        }
+    }
     assert!(engine.set_insert_parameter("last", clap_gain::GAIN, 0.4));
     loudest = loudest.max(render_counted(&engine, 50, 4096));
+    assert!(engine.expression(2, [0xD0, 0, 0]), "the queue was drained on the render path");
     engine.note_off(2, 72);
+    // Stop, seek and start again: the parameters the lanes and the lock moved go back to
+    // their base values each time.
+    engine.stop();
+    render_counted(&engine, 4, 512);
+    engine.seek(None, 3, 0);
+    render_counted(&engine, 4, 512);
+    engine.play(&PlayOptions { song: false, from_start: true, ..Default::default() });
+    loudest = loudest.max(render_counted(&engine, 40, 512));
     engine.panic();
     render_counted(&engine, 20, 64);
     // The effect on track a aborts inside `process`; rendering goes on with its fallback.

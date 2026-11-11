@@ -631,26 +631,6 @@ impl AudioEngine {
         true
     }
 
-    pub fn pitch_bend(&self, track: i32, semitones: f32) {
-        {
-            let mut state = self.lock();
-            let (control, shared, _) = state.core.control.parts();
-            control.pitch_bend(shared, track, semitones);
-        }
-        // A plug-in instrument gets the bend as MIDI (the engine's range is two semitones).
-        let bend = (8192.0 + (semitones / 2.0).clamp(-1.0, 1.0) * 8191.0).round() as u16;
-        self.plugin_midi(track, [0xE0, (bend & 0x7F) as u8, (bend >> 7) as u8 & 0x7F]);
-    }
-
-    pub fn mod_wheel(&self, track: i32, value: f32) {
-        {
-            let mut state = self.lock();
-            let (control, shared, _) = state.core.control.parts();
-            control.mod_wheel(shared, track, value);
-        }
-        self.plugin_midi(track, [0xB0, 1, (value.clamp(0.0, 1.0) * 127.0).round() as u8]);
-    }
-
     /// A knob drag heard on sounding voices at once, without republishing the project.
     pub fn instrument_parameter(&self, instrument: i64, name: &str, value: f64) -> Result<bool, String> {
         let mut state = self.lock();

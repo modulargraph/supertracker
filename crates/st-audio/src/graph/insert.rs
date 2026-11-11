@@ -100,6 +100,12 @@ pub trait InsertProcessor: Send {
     fn base_parameter(&mut self, address: u64, normalized: f64) {
         self.parameter(address, normalized);
     }
+    /// [`InsertProcessor::base_parameter`] for `offset` frames into the next `process` call
+    /// (a step lock's row ended there). Only called when
+    /// [`InsertProcessor::timed_parameters`] is true.
+    fn base_parameter_at(&mut self, address: u64, normalized: f64, _offset: u32) {
+        self.base_parameter(address, normalized);
+    }
     /// A note or controller for an instrument, `offset` frames into the next `process` call
     /// (the engine's note events for a track whose instrument is a plug-in). `sequenced`
     /// tells a note of the pattern from a live one.

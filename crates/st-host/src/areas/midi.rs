@@ -17,6 +17,13 @@
 //!   release (retriggered, input route changed, panic) is closed with `{on: false, inputOwner,
 //!   recordingOnly: true, recordingCancelled: true, reason}`. Unarmed, the note is simply played
 //!   and reported with the transport position (`pattern`, `row`, `position`).
+//!   Controllers, channel and poly pressure, pitch bend and program changes played on a device
+//!   go to the instrument the service routed them to: `st-midi` sends them to the device of
+//!   an external MIDI instrument itself, on the instrument's channel; everything else arrives
+//!   here and goes to the engine (`AudioEngine::expression`: its own voices take pitch bend
+//!   and the modulation wheel, a plug-in instrument gets the message with its next block).
+//!   `midi.expression`, the audio area's command for the same messages from the interface,
+//!   uses the same two destinations ([`crate::areas::audio::Audio::set_external_midi`]).
 //! - **Output** ([`st_audio::midi::MidiOutput`], implemented here over
 //!   [`st_midi::RenderOutput`]): on the render thread, the engine's note events for instruments
 //!   of type `midi` become timed messages for their device and channel, the transport position
@@ -36,14 +43,14 @@
 //!
 //! | Need | Seam |
 //! |---|---|
-//! | Controllers, program changes and aftertouch from a keyboard for a track's plug-in | [`Midi::set_plugin_receiver`]; until the plug-in area sets one they go nowhere (pitch bend reaches the engine's own voices either way) |
-//! | `midi.expression` (the audio area's command) for external MIDI instruments | `MidiService::send_to_instrument` through [`Midi::service`] |
 //! | Line inputs: the latency of a synth heard back through its track | `MidiService::set_return_compensation` through [`Midi::service`] |
 //! | The device's output latency | `st_audio::midi::MidiBlock::playback_delay` (from the device's callback timestamps) |
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
+
+use crate::areas::audio::Audio;
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -87,9 +94,6 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-/// Receives a channel message for the plug-in of a track: `(track, status without channel, data1, data2)`.
-pub type PluginReceiver = Box<dyn Fn(usize, u8, u8, u8) + Send + Sync>;
-
 /// One key that is being recorded: the capture the interface opened for it.
 struct Capture {
     owner: String,
@@ -104,7 +108,6 @@ struct Input {
     /// Recorded keys still held, by `(source, channel, note)`.
     captures: Mutex<HashMap<(i32, u8, u8), Capture>>,
     next_owner: AtomicU64,
-    plugin: OnceLock<PluginReceiver>,
 }
 
 impl Input {
@@ -194,13 +197,7 @@ impl InputTarget for Input {
     }
 
     fn message(&self, track: usize, message: Message) {
-        if let Some(plugin) = self.plugin.get() {
-            plugin(track, message.status & 0xF0, message.data1, message.data2);
-        }
-    }
-
-    fn pitch_bend(&self, track: usize, semitones: f32) {
-        self.engine.pitch_bend(track as i32, semitones);
+        self.engine.expression(track as i32, [message.status, message.data1, message.data2]);
     }
 
     fn panic(&self) {
@@ -318,21 +315,12 @@ pub fn connect_output(engine: &AudioEngine, service: &Arc<MidiService>) {
 pub struct Midi {
     service: Arc<MidiService>,
     engine: Option<Arc<AudioEngine>>,
-    input: Option<Arc<Input>>,
 }
 
 impl Midi {
     /// The service, for other areas (see the seams in the module documentation).
     pub fn service(&self) -> &Arc<MidiService> {
         &self.service
-    }
-
-    /// Where controllers, program changes and aftertouch for a track's plug-in go. Only the
-    /// first call has an effect.
-    pub fn set_plugin_receiver(&self, receiver: PluginReceiver) {
-        if let Some(input) = &self.input {
-            let _ = input.plugin.set(receiver);
-        }
     }
 
     /// Silences external instruments, takes MIDI output off the render thread and closes every
@@ -353,7 +341,8 @@ impl Drop for Midi {
 
 /// Creates the MIDI service, connects it to the audio engine (when there is one) and to
 /// project publications, and registers the `midi.*` commands.
-pub fn install(commands: &mut Commands, session: &Session, settings: &Arc<Settings>, events: EventSink, engine: Option<Arc<AudioEngine>>, options: &MidiOptions) -> Result<Arc<Midi>> {
+pub fn install(commands: &mut Commands, session: &Session, settings: &Arc<Settings>, events: EventSink, audio: Option<&Arc<Audio>>, options: &MidiOptions) -> Result<Arc<Midi>> {
+    let engine = audio.map(|audio| audio.engine().clone());
     let (backend, poll_interval) = match &options.devices {
         MidiDevices::System => (st_midi::midir_backend::MidirBackend::new().map(|backend| Box::new(backend) as Box<dyn st_midi::ports::Backend>), Some(Duration::from_millis(500))),
         MidiDevices::Memory(ports) => (Ok(ports.backend()), None),
@@ -382,11 +371,20 @@ pub fn install(commands: &mut Commands, session: &Session, settings: &Arc<Settin
         .register("midi.clock", MidiService::clock_command)
         .register("midi.performance", MidiService::performance);
 
-    let input = engine.as_ref().map(|engine| Arc::new(Input { engine: engine.clone(), events, captures: Mutex::default(), next_owner: AtomicU64::new(1), plugin: OnceLock::new() }));
+    let input = engine.as_ref().map(|engine| Arc::new(Input { engine: engine.clone(), events, captures: Mutex::default(), next_owner: AtomicU64::new(1) }));
     if let (Some(engine), Some(input)) = (&engine, &input) {
         service.set_target(input.clone());
         service.set_audio_running(true);
         connect_output(engine, &service);
+    }
+    if let Some(audio) = audio {
+        // `midi.expression` for external MIDI instruments. Weak: the service plays through the
+        // engine the audio area owns.
+        let service = Arc::downgrade(&service);
+        audio.set_external_midi(Box::new(move |instrument, [status, data1, data2]| {
+            let service = service.upgrade()?;
+            service.host().route(instrument).external.then(|| service.send_to_instrument(instrument, Message::new(status, data1, data2)))
+        }));
     }
     {
         let service = service.clone();
@@ -396,5 +394,5 @@ pub fn install(commands: &mut Commands, session: &Session, settings: &Arc<Settin
     if let Some(project) = session.project() {
         service.set_project(&project.to_value());
     }
-    Ok(Arc::new(Midi { service, engine, input }))
+    Ok(Arc::new(Midi { service, engine }))
 }

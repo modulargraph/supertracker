@@ -45,7 +45,7 @@
 //! contents, and the renderer adopts one plan at a time. Cells and retired plans are freed on
 //! the control thread.
 
-use super::automation::{EventQueue, Segment, PARAM_GAIN, PARAM_PAN, PARAM_VOLUME};
+use super::automation::{EventQueue, Segment, BASE_VALUE, PARAM_GAIN, PARAM_PAN, PARAM_VOLUME};
 use super::insert::{BlockInfo, InsertFactory, InsertProcessor, PassThrough, ProcessContext};
 use super::meters::{block_peak, MeterBank};
 use super::pdc::{self, DelayLine};
@@ -957,6 +957,15 @@ impl Plan {
         }
     }
 
+    /// Render owner: playback started, stopped or moved (a seek). The engine returns its own
+    /// automated targets to the project's values at those moments; the inserts return to
+    /// their base parameters here, so a value a lane or a step lock left behind does not
+    /// outlive the stretch of playback that set it. Lanes that apply from the new position
+    /// follow as events of the same block.
+    pub fn transport_changed(&mut self) {
+        self.apply_insert_bases();
+    }
+
     /// Render owner: every automated value back to its default and waiting events forgotten.
     /// The engine re-sends what is still automated (`StatusHandle::refresh_automation`).
     pub fn reset_automation(&mut self) {
@@ -1076,7 +1085,8 @@ impl Plan {
                 Some(DestinationTarget::Mix(strip)) if event.address == 0 => schedule(*strip, PARAM_VOLUME, event.value.clamp(0.0, 2.0)),
                 Some(DestinationTarget::Mix(strip)) if event.address == 1 => schedule(*strip, PARAM_PAN, event.value.clamp(-1.0, 1.0)),
                 Some(DestinationTarget::Route(target)) if event.address == 0 => schedule(*target, PARAM_GAIN, event.value.clamp(0.0, 2.0)),
-                Some(DestinationTarget::Insert(target)) if event.address <= u32::MAX as u64 => schedule(*target, event.address as u32, event.value.clamp(0.0, 1.0)),
+                // A negative value is the project's "back to the base value" (`BASE_VALUE`).
+                Some(DestinationTarget::Insert(target)) if event.address <= u32::MAX as u64 => schedule(*target, event.address as u32, if event.value < 0.0 { BASE_VALUE as f64 } else { event.value.min(1.0) }),
                 _ => {}
             },
             _ => {}
@@ -1186,6 +1196,11 @@ impl Plan {
                         let mut at = 0u32;
                         for segment in events.segments(slot.target, frames) {
                             match segment {
+                                Segment::Event(event) if event.value < 0.0 => {
+                                    if let Some((address, base)) = slot.base.iter().find(|(address, _)| *address == event.param as u64) {
+                                        processor.base_parameter_at(*address, *base, at);
+                                    }
+                                }
                                 Segment::Event(event) => processor.parameter_at(event.param as u64, event.value as f64, at),
                                 Segment::Run(_, to) => at = to as u32,
                             }
@@ -1198,6 +1213,11 @@ impl Plan {
                     }
                     for segment in events.segments(slot.target, frames) {
                         match segment {
+                            Segment::Event(event) if event.value < 0.0 => {
+                                if let Some((address, base)) = slot.base.iter().find(|(address, _)| *address == event.param as u64) {
+                                    processor.base_parameter(*address, *base);
+                                }
+                            }
                             Segment::Event(event) => processor.parameter(event.param as u64, event.value as f64),
                             Segment::Run(from, to) if !skip => {
                                 processor.process(&mut work.left[from..to], &mut work.right[from..to], key.map(|(left, right)| (&left[from..to], &right[from..to])), &context);

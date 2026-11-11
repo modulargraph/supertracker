@@ -16,9 +16,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use st_audio::AudioEngine;
-
 use super::agent::{Agent, AgentOptions};
+use super::audio::Audio;
 use super::library::{LibraryArea, LibraryOptions};
 use super::midi::{Midi, MidiOptions};
 use super::mk3::{Mk3Devices, Mk3Options};
@@ -105,16 +104,16 @@ pub fn install(
     lifecycle: &Lifecycle,
     events: EventSink,
     calls: Calls,
-    engine: Option<Arc<AudioEngine>>,
+    audio: Option<&Arc<Audio>>,
     support: &Path,
     options: &ServiceOptions,
 ) -> Result<Services> {
     let library = match &options.library {
-        Some(library) => Some(super::library::install(commands, session, calls, events.clone(), library)?),
+        Some(library) => Some(super::library::install(commands, session, calls, events.clone(), audio, library)?),
         None => None,
     };
     let midi = match &options.midi {
-        Some(midi) => Some(super::midi::install(commands, session, settings, events.clone(), engine, midi)?),
+        Some(midi) => Some(super::midi::install(commands, session, settings, events.clone(), audio, midi)?),
         None => None,
     };
     let mk3 = options.mk3.as_ref().map(|mk3| super::mk3::install(commands, support, settings, events.clone(), mk3));

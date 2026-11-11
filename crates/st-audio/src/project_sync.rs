@@ -504,11 +504,15 @@ impl ProjectSync {
         }
         // A pattern without a lane for a driven destination holds that destination's default,
         // so the value returns when playback leaves the pattern (or the row) that drove it.
+        // For an insert's parameter the default is "the base value", which the insert resolves
+        // when the event arrives: the user may have turned the control since this publication.
         for (number, _) in &numbered {
             let points = host_points.entry(*number).or_default();
             for (index, address) in &driven {
                 if !points.iter().any(|point| point.destination == *index && point.address == *address) {
-                    if let Some(value) = spec.destinations.get(*index).and_then(|destination| defaults(destination, *address)) {
+                    let Some(destination) = spec.destinations.get(*index) else { continue };
+                    if let Some(value) = defaults(destination, *address) {
+                        let value = if matches!(destination, Destination::Insert(_)) { f64::from(crate::graph::automation::BASE_VALUE) } else { value };
                         points.push(HostPoint { destination: *index, address: *address, stepped: 1, row: 0.0, value });
                     }
                 }

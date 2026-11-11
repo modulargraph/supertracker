@@ -4,7 +4,8 @@
 //! allocated or freed while a thread-local switch is on, and the switch is on only around
 //! `Renderer::render`. Here the renderer has the host's MIDI hook
 //! (`st_host::areas::midi::RenderHook` over `st_midi::RenderOutput`): notes of an external
-//! instrument, MIDI clock with transport messages, and all-notes-off.
+//! instrument, MIDI clock with transport messages, and all-notes-off, while controllers and
+//! pressure for the same instrument are sent from a control thread.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -98,7 +99,14 @@ fn midi_output_from_the_render_thread_never_allocates() {
     // Stopped (clock only), playing (notes, clock, Start), stopped again (Stop, all notes off), panic.
     render_counted(&engine, 50);
     engine.play(&PlayOptions { song: true, from_start: true, ..PlayOptions::default() });
-    render_counted(&engine, 400);
+    render_counted(&engine, 200);
+    // Expression for the external instrument goes out from this thread (its device, its
+    // channel); the engine has no use for it. The render thread keeps to its own queue.
+    for step in 0..64u8 {
+        assert!(service.send_to_instrument(0, st_midi::Message::new(0xD0, step, 0)) && service.send_to_instrument(0, st_midi::Message::new(0xA0, 60, step)));
+        assert!(!engine.expression(0, [0xD0, step, 0]));
+        render_counted(&engine, 3);
+    }
     engine.stop();
     render_counted(&engine, 20);
     engine.panic();
@@ -108,7 +116,7 @@ fn midi_output_from_the_render_thread_never_allocates() {
     // And it did send: notes, clock pulses, Start and Stop, all notes off.
     std::thread::sleep(std::time::Duration::from_millis(300));
     let sent = ports.sent_messages(SYNTH);
-    for (what, wanted) in [("note-ons", 0x90u8), ("clock pulses", 0xF8), ("Start", 0xFA), ("Stop", 0xFC), ("all notes off", 0xB0)] {
+    for (what, wanted) in [("note-ons", 0x90u8), ("clock pulses", 0xF8), ("Start", 0xFA), ("Stop", 0xFC), ("all notes off", 0xB0), ("channel pressure", 0xD0), ("poly pressure", 0xA0)] {
         assert!(sent.iter().any(|message| message[0] == wanted), "{what} were sent: {} messages", sent.len());
     }
     engine.set_midi_output(None);

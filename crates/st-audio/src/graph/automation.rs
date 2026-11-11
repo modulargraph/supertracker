@@ -24,6 +24,12 @@ pub const PARAM_VOLUME: u32 = 0;
 pub const PARAM_PAN: u32 = 1;
 /// Parameter number of a route's gain.
 pub const PARAM_GAIN: u32 = 0;
+/// The value of an insert parameter event that means "back to the base value": the value
+/// the insert's parameter has when nothing automates it. The project sends it where a
+/// parameter that a lane or a step lock drives somewhere has no lane of its own, so the
+/// parameter returns when playback leaves the row or the pattern that drove it; the insert
+/// knows its base value at that moment better than the project did when it was published.
+pub const BASE_VALUE: f32 = -1.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TimedEvent {

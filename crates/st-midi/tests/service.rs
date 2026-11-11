@@ -56,9 +56,6 @@ impl InputTarget for Engine {
     fn message(&self, track: usize, message: Message) {
         self.push(format!("message t{track} {:#04x} {} {}", message.status, message.data1, message.data2));
     }
-    fn pitch_bend(&self, track: usize, semitones: f32) {
-        self.push(format!("bend t{track} {semitones}"));
-    }
     fn panic(&self) {
         self.push("panic".into());
     }
@@ -154,8 +151,10 @@ fn notes_reach_the_engine_and_the_interface() {
 #[test]
 fn controllers_sustain_and_transport() {
     let f = Fixture::new();
-    f.play(11, &[0xB0, 7, 99, 0xE0, 0, 96, 0xD0, 30]);
-    assert_eq!(f.engine.take(), ["message t0 0xb0 7 99", "message t0 0xe0 0 96", "bend t0 1", "message t0 0xd0 30 0"]);
+    // Controllers, pitch bend, channel and poly pressure and a program change go to the engine
+    // as they are (it bends its own voices and passes them to a plug-in instrument).
+    f.play(11, &[0xB0, 7, 99, 0xE0, 0, 96, 0xD0, 30, 0xA0, 60, 45, 0xC0, 5]);
+    assert_eq!(f.engine.take(), ["message t0 0xb0 7 99", "message t0 0xe0 0 96", "message t0 0xd0 30 0", "message t0 0xa0 60 45", "message t0 0xc0 5 0"]);
     assert_eq!(f.events("midi.message"), [json!({"status": 0xB0, "data1": 7, "data2": 99, "source": 11})], "only control changes are reported");
 
     f.play(11, &[0xB0, 64, 127, 0x90, 60, 100, 0x80, 60, 0]);
@@ -197,10 +196,10 @@ fn an_external_instrument_plays_through_from_its_keyboard() {
     f.play(22, &[0x90, 48, 70]);
     assert_eq!(f.engine.take(), ["on t1 i1 n48 v70"]);
     f.ports.clear_sent();
-    f.play(22, &[0xB0, 1, 50, 0xE0, 0, 64]);
-    wait_for("the controllers on the device", || f.ports.sent_messages(500).len() == 2);
-    assert_eq!(f.ports.sent_messages(500), [[0xB3, 1, 50], [0xE3, 0, 64]], "on the instrument's own channel");
-    assert_eq!(f.engine.take(), ["bend t1 0"], "not sent to a plug-in as well");
+    f.play(22, &[0xB0, 1, 50, 0xE0, 0, 64, 0xD0, 99, 0xA0, 48, 33]);
+    wait_for("the controllers on the device", || f.ports.sent_messages(500).len() == 4);
+    assert_eq!(f.ports.sent_messages(500), [vec![0xB3, 1, 50], vec![0xE3, 0, 64], vec![0xD3, 99], vec![0xA3, 48, 33]], "on the instrument's own channel");
+    assert!(f.engine.take().is_empty(), "not sent to the engine as well");
     // With its device unplugged the messages are dropped, not handed to a plug-in.
     f.ports.remove_output(500);
     f.service.refresh_devices();

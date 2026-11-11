@@ -16,6 +16,7 @@
 //! | a new plan | control -> render | [`RenderShared::publish`] swaps a pointer into `pending`; the render takes it at its next block and calls `Plan::adopt` |
 //! | the replaced plan | render -> control | pushed onto the `retired` ring; [`RenderShared::collect`] frees it (the render never frees a plan) |
 //! | "the project changed" | control -> render | `automation_epoch` counter: the render resets automated values to the plan's defaults and asks the engine to re-send lanes |
+//! | play, stop, seek | engine status -> render | the render compares the status of each block with the last one and returns inserts to their base parameters when playback started, stopped or moved ([`Plan::transport_changed`]) |
 //! | a knob turned | control -> render | `messages` ring of [`Message`]s, addressed by plan serial and target |
 //! | silence everything (panic) | control -> render | `clear_tails` flag |
 //! | meters | render -> reader | atomics in the plan's [`MeterBank`](super::meters::MeterBank) |
@@ -238,6 +239,8 @@ pub struct Renderer {
     /// Graph time of the next frame.
     time: u64,
     seen_epoch: u64,
+    /// The transport as the last block saw it: playing, and the engine's count of seeks.
+    seen_transport: (bool, u64),
     external: Option<Box<dyn ExternalEvents>>,
     sample_rate: f64,
     /// MIDI output: the hook and its block state (see [`crate::midi`]).
@@ -253,7 +256,7 @@ impl Renderer {
         shared.adopted_serial.store(plan.serial, Ordering::Relaxed);
         shared.latency_frames.store(plan.latency_frames, Ordering::Relaxed);
         let sample_rate = engine.sample_rate();
-        Renderer { engine, status, shared, plan, time: 0, seen_epoch: 0, external: None, sample_rate, midi: Default::default(), output_stage: None }
+        Renderer { engine, status, shared, plan, time: 0, seen_epoch: 0, seen_transport: (false, 0), external: None, sample_rate, midi: Default::default(), output_stage: None }
     }
 
     /// The MIDI output hook of this renderer (set, suspend for offline work).
@@ -364,7 +367,13 @@ impl Renderer {
                 break;
             }
             self.plan.begin_block(self.time, count);
-            self.plan.set_block(self.block_info(count, cycle_end_ns));
+            let info = self.block_info(count, cycle_end_ns);
+            let transport = (info.playing, self.status.status().transport_seek_revision);
+            if transport != self.seen_transport {
+                self.seen_transport = transport;
+                self.plan.transport_changed();
+            }
+            self.plan.set_block(info);
             if self.plan.wants_song_frame() {
                 // Where in the song the engine was at the block's first frame, exactly.
                 let song_frame = match self.engine.clock_span(self.time as i64, 1, 0) {

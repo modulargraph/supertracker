@@ -52,11 +52,12 @@
 //! | `library.kit` | [`Library::kit_metadata`] | [`api::PathRequest`] | [`kit::KitMetadata`] |
 //! | `kit.read` | [`Library::kit_read`] | [`api::PathRequest`] | [`api::KitReadResponse`] |
 //! | `kit.detail` | [`Library::kit_detail`] | [`api::KitDetailRequest`] | [`api::KitDetail`] |
-//! | `kit.save` | [`Library::kit_save`] | [`api::KitSaveRequest`] | [`api::KitSaveResponse`] |
+//! | `kit.save` | [`Library::kit_save_with_preview`] | [`api::KitSaveRequest`] | [`api::KitSaveResponse`] |
 //! | `plugin.loadNKS` (the NKS part) | [`Library::nks_preset`] | a path | [`nks::NksHostPreset`] |
 //!
 //! `library.chooseRoot` is the host's folder dialog followed by `library.scan`; the audio
-//! preview a kit is saved with is rendered by the host and passed to `kit.save` as `previewPath`;
+//! preview a kit is saved with is rendered by the host, through the [`kit::PreviewRenderer`] it
+//! gives [`Library::kit_save_with_preview`] (see [`kit`] for the file);
 //! `kit.detail` judges plug-in availability from the component list the host passes in.
 //!
 //! Events (through the [`EventSink`], from worker threads): `library.progress` and

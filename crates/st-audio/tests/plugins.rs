@@ -10,7 +10,7 @@ mod common;
 
 use common::*;
 use serde_json::{json, Value};
-use st_audio::plugins::testing::{artifacts, clap_gain, vst3_gain, Installed, CLAP_GAIN, CLAP_SINE, VST3_GAIN, VST3_SINE};
+use st_audio::plugins::testing::{artifacts, clap_gain, clap_sine, vst3_gain, vst3_sine, Installed, CLAP_GAIN, CLAP_NOTE_SINE, CLAP_SINE, VST3_GAIN, VST3_SINE};
 use st_audio::plugins::{Catalog, CatalogOptions, PluginEvent, PluginManager, PluginOptions};
 use st_audio::{AudioEngine, PlayOptions};
 use std::path::PathBuf;
@@ -230,6 +230,125 @@ fn a_plug_in_instrument_plays_the_notes_of_its_track_at_their_frames() {
         assert!(peak(&live) > 0.1, "{format}: a live note sounds");
         engine.panic();
         wait_until("silence after panic", || peak(&engine.render_offline(1024, 512).1) == 0.0);
+    }
+}
+
+/// The value of one parameter as the plug-in reports it now.
+fn value_of(hosted: &st_audio::plugins::manager::Hosted, address: u64) -> f64 {
+    hosted.values().unwrap().into_iter().find(|(id, _)| *id == address).map_or(f64::NAN, |(_, value)| value)
+}
+
+#[test]
+fn controllers_and_pressure_played_live_reach_a_plug_in_instrument_with_its_next_block() {
+    let fixture = Fixture::new("expression");
+    for format in ["clap", "clap-notes", "vst3"] {
+        let (engine, manager) = fixture.engine();
+        let mut project = project(2);
+        project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "au", "name": "Sine", "volume": 1, "pan": 0 }));
+        project["tracks"][0]["instrument"] = json!(1);
+        project["patterns"][0]["steps"][0] = json!(vec![Value::Null; 16]);
+        project["patterns"][0]["steps"][1] = json!(vec![Value::Null; 16]);
+        project["audioPlugins"] = json!([match format {
+            "clap" => fixture.clap("track:a", "instrument", 0, "synth", CLAP_SINE),
+            "clap-notes" => fixture.clap("track:a", "instrument", 0, "synth", CLAP_NOTE_SINE),
+            _ => fixture.vst3("track:a", "instrument", 0, "synth", VST3_SINE),
+        }]);
+        engine.publish(&parse(&project)).unwrap();
+        let hosted = manager.hosted("synth").expect("the instrument has an instance");
+
+        // A key held live, at the instrument's level of 0.5.
+        engine.note_on(0, 1, 60, 100);
+        let (before, _) = engine.render_offline(1_000, 512);
+        assert_bits(&before, |i| sine_sample(60, i as u64, 0.5), &format!("{format}: the held note"));
+
+        // Channel pressure doubles the level of both test instruments: from the first frame
+        // of the next block, not a frame later.
+        assert!(engine.expression(0, [0xD0, 127, 0]), "{format}: channel pressure");
+        assert!(engine.expression(0, [0xA0, 60, 45]), "{format}: poly pressure");
+        assert!(engine.expression(0, [0xB0, 74, 99]), "{format}: a control change");
+        assert!(engine.expression(0, [0xE5, 0x00, 0x60]), "{format}: pitch bend (the channel does not matter)");
+        let (after, _) = engine.render_offline(1_000, 512);
+        assert_bits(&after, |i| sine_sample(60, 1_000 + i as u64, 1.0), &format!("{format}: pressure from the next block's first frame"));
+
+        // What the plug-in received, in its format's own terms.
+        let (poly, bend) = ((60 * 128 + 45) as f64, (0x60 << 7) as f64);
+        match format {
+            "vst3" => {
+                // Controllers and channel pressure are the parameters the plug-in maps them to
+                // (its edit controller hears of them a moment later), poly pressure is an event.
+                wait_until("the mapped parameters", || value_of(&hosted, vst3_sine::PRESSURE) == 1.0 && value_of(&hosted, vst3_sine::BRIGHTNESS) == 99.0 / 127.0);
+                wait_until("pitch bend and poly pressure", || value_of(&hosted, vst3_sine::BEND) == bend / 16383.0 && value_of(&hosted, vst3_sine::POLY_PRESSURE) == poly / 16383.0);
+            }
+            _ => {
+                // MIDI for a note port that takes it; note expressions for one that does not
+                // (a control change then has nowhere to go).
+                let controller = if format == "clap" { (74 * 128 + 99) as f64 } else { 0.0 };
+                let probes = [clap_sine::LAST_CONTROLLER, clap_sine::PRESSURE, clap_sine::POLY_PRESSURE, clap_sine::BEND].map(|address| value_of(&hosted, address));
+                assert_eq!(probes, [controller, 127.0, poly, bend], "{format}");
+            }
+        }
+
+        // Pressure released; a program change is taken as well.
+        assert!(engine.expression(0, [0xD0, 0, 0]) && engine.expression(0, [0xC0, 3, 0]));
+        let (released, _) = engine.render_offline(500, 512);
+        assert_bits(&released, |i| sine_sample(60, 2_000 + i as u64, 0.5), &format!("{format}: pressure released"));
+        // Notes and channel-mode messages have their own calls; a track without a plug-in
+        // instrument has no use for pressure.
+        assert!(!engine.expression(0, [0x90, 60, 100]) && !engine.expression(0, [0xB0, 123, 0]) && !engine.expression(0, [0xF8, 0, 0]));
+        assert!(!engine.expression(1, [0xD0, 100, 0]), "{format}: the sampler ignores pressure");
+        engine.note_off(0, 60);
+    }
+}
+
+/// Lanes and step locks move a plug-in's parameter for a while. Where it goes back to is its
+/// base value: the value the user left it at, which the host keeps for every plug-in itself.
+#[test]
+fn a_parameter_a_step_lock_moved_returns_to_the_value_the_user_set() {
+    let fixture = Fixture::new("base");
+    // The pattern is 16 rows and loops; the reference covers the first rows of its second pass.
+    let reference = render(&project(1), 22 * ROW).0;
+    let playing = PlayOptions { song: false, from_start: true, ..PlayOptions::default() };
+    // (format, the gain's address, its value for a factor of one)
+    for (format, gain, unity) in [("clap", clap_gain::GAIN, 1.0), ("vst3", vst3_gain::GAIN, 0.5)] {
+        let (engine, manager) = fixture.engine();
+        let mut project = project(1);
+        project["audioPlugins"] = json!([if format == "clap" { fixture.clap("track:a", "effect", 0, "fx", CLAP_GAIN) } else { fixture.vst3("track:a", "effect", 0, "fx", VST3_GAIN) }]);
+        // A lock on row 2 halves the gain. No lane exists for the parameter.
+        project["patterns"][0]["steps"][0][2] = json!({ "fx1": { "type": "plugin", "instanceID": "fx", "address": gain.to_string(), "value": 0.25 } });
+        let (left, _) = play(&engine, &project, 5 * ROW, 512);
+        let hosted = manager.hosted("fx").unwrap();
+        let rows = |from: usize, to: usize| from * ROW..to * ROW;
+        assert_bits(&left[rows(0, 2)], |i| reference[i], &format!("{format}: before the lock"));
+        assert_bits(&left[rows(2, 3)], |i| reference[i + 2 * ROW] * 0.5, &format!("{format}: the locked row"));
+        assert_bits(&left[rows(3, 5)], |i| reference[i + 3 * ROW], &format!("{format}: back at the base value after the row"));
+
+        // The user turns the control while the song plays: that is the base from now on,
+        // without a publication in between.
+        hosted.set_parameter(gain, 1.5 * unity).unwrap();
+        let (left, _) = engine.render_offline(13 * ROW, 512);
+        assert_bits(&left[rows(1, 13)], |i| reference[i + 6 * ROW] * 1.5, &format!("{format}: rows 6 to 17, the second pass starting at the new value"));
+        // (Row 18 is row 2 of the second pass: the lock.) While the lock holds the parameter,
+        // reading the values shows the lock's value and does not take it for the user's.
+        engine.render_offline(ROW / 2, 512);
+        wait_until("the lock's value in the plug-in", || value_of(&hosted, gain) == 0.5 * unity);
+        let (left, _) = engine.render_offline(ROW / 2 + 2 * ROW, 512);
+        assert_bits(&left[ROW / 2..], |i| reference[i + 19 * ROW] * 1.5, &format!("{format}: after the lock, back at what the user set"));
+
+        // Stopped in the locked row of the next start: the plug-in has its base value again,
+        // so a state saved now is the patch the user made, not what the song did to it.
+        engine.play(&playing);
+        engine.render_offline(2 * ROW + ROW / 2, 512);
+        engine.stop();
+        engine.render_offline(1_024, 512);
+        wait_until("the base value after stop", || value_of(&hosted, gain) == 1.5 * unity);
+        // A new start, and a seek, begin at the base value as well.
+        engine.play(&playing);
+        let (left, _) = engine.render_offline(2 * ROW + ROW / 2, 512);
+        assert_bits(&left[..2 * ROW], |i| reference[i] * 1.5, &format!("{format}: a new start"));
+        engine.seek(None, 0, 0);
+        let (left, _) = engine.render_offline(ROW, 512);
+        assert_bits(&left, |i| reference[i] * 1.5, &format!("{format}: after a seek out of the locked row"));
+        engine.stop();
     }
 }
 

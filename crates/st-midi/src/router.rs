@@ -130,9 +130,10 @@ pub enum InputAction {
     /// Stop a note the pedal was holding (pedal up, or the input route changed). Not reported to
     /// the interface.
     Release(Destination),
-    /// Pass a controller, program change, aftertouch or pitch-bend message on to the instrument:
-    /// to its device when it is external, to its plug-in otherwise. `message.status` carries the
-    /// kind only (channel 0).
+    /// Pass a controller, program change, channel or poly pressure or pitch-bend message on to
+    /// the instrument: to its device when it is external, to the engine otherwise (its own
+    /// voices and a plug-in instrument on the track). `message.status` carries the kind only
+    /// (channel 0).
     Forward {
         /// Engine channel.
         track: usize,
@@ -140,13 +141,6 @@ pub enum InputAction {
         instrument: usize,
         /// The message, without a channel.
         message: Message,
-    },
-    /// Bend the engine's own voices on a track, in semitones (the wheel's range is ±2).
-    PitchBend {
-        /// Engine channel.
-        track: usize,
-        /// Bend in semitones.
-        semitones: f32,
     },
     /// Tell the interface about a control change (MIDI learn, mapped controls).
     Control {
@@ -367,10 +361,6 @@ impl InputRouter {
             0xB0 if data1 == 120 || data1 == 123 => actions.push(InputAction::Panic),
             0xA0 | 0xB0 | 0xC0 | 0xD0 | 0xE0 => {
                 actions.push(InputAction::Forward { track, instrument: instrument.min(self.routing.last_instrument()), message: Message::new(kind, data1, data2) });
-                if kind == 0xE0 {
-                    let wheel = i32::from(data1) | i32::from(data2) << 7;
-                    actions.push(InputAction::PitchBend { track, semitones: (wheel - 8192) as f32 / 8192.0 * 2.0 });
-                }
                 // The interface uses control changes only. Pitch bend and aftertouch stream at
                 // hundreds of messages a second and are not reported.
                 if kind == 0xB0 {
@@ -514,10 +504,7 @@ mod tests {
     #[test]
     fn controllers_pitch_bend_and_panic() {
         let mut router = router();
-        assert_eq!(
-            router.handle(Message::new(0xE0, 0, 96), 5, false),
-            [InputAction::Forward { track: 0, instrument: 0, message: Message::new(0xE0, 0, 96) }, InputAction::PitchBend { track: 0, semitones: 1.0 }]
-        );
+        assert_eq!(router.handle(Message::new(0xE0, 0, 96), 5, false), [InputAction::Forward { track: 0, instrument: 0, message: Message::new(0xE0, 0, 96) }]);
         assert_eq!(router.handle(Message::new(0xD0, 55, 0), 5, false), [InputAction::Forward { track: 0, instrument: 0, message: Message::new(0xD0, 55, 0) }]);
         assert_eq!(router.handle(Message::new(0xC0, 3, 0), 5, false).len(), 1);
         assert_eq!(router.handle(Message::new(0xA0, 60, 9), 5, false).len(), 1);

@@ -232,48 +232,145 @@ fn a_kit_is_saved_from_the_payloads_project_and_read_back() {
 }
 
 #[test]
-fn kits_use_the_plug_in_list_and_the_preview_render_of_other_areas_once_those_exist() {
+fn kits_use_the_plug_in_list_of_the_plug_in_area_once_it_exists() {
     let folder = TempDir::new("library-seams");
     let support = folder.path().join("support");
     let sample = folder.path().join("Sounds/Kick.wav");
     write_wav(&sample, 4_410, 60.0);
     let installed = Arc::new(Mutex::new(vec![json!({ "id": "vst3:ABCD", "name": "Fixture Synth" })]));
-    let rendered: Arc<Mutex<Vec<Value>>> = Arc::default();
     let fixture = start(&support, {
-        let (installed, rendered) = (installed.clone(), rendered.clone());
-        move |bridge| {
-            // Stand-ins for the plug-in area and the export area.
-            bridge.commands().register("plugins.list", move |_: NoPayload| -> st_host::Result<Value> { Ok(Value::Array(installed.lock().unwrap().clone())) });
-            bridge.commands().register_blocking("audio.kitPreview", move |payload: Value| -> st_host::Result<Value> {
-                write_wav(Path::new(payload["path"].as_str().unwrap()), 2_205, 110.0);
-                rendered.lock().unwrap().push(payload);
-                Ok(json!({ "path": "", "warning": "The preview was shortened." }))
-            });
-        }
+        let installed = installed.clone();
+        // A stand-in for the plug-in area.
+        move |bridge| bridge.commands().register("plugins.list", move |_: NoPayload| -> st_host::Result<Value> { Ok(Value::Array(installed.lock().unwrap().clone())) })
     });
     let host = &fixture.host;
 
     let saved = host.request("kit.save", json!({ "project": session(&sample), "groupID": "g1", "name": "Seam kit" })).unwrap();
     let path = saved["path"].as_str().unwrap().to_string();
-    let calls = rendered.lock().unwrap().clone();
-    assert_eq!(calls.len(), 1, "the preview is rendered once");
-    assert_eq!(calls[0]["groupID"], "g1");
-    assert!(saved["warnings"].as_array().unwrap().contains(&json!("The preview was shortened.")), "{saved}");
-    assert!(!Path::new(calls[0]["path"].as_str().unwrap()).exists(), "the scratch render is removed");
-
     let detail = host.request("kit.detail", json!({ "path": path })).unwrap();
     assert_eq!(detail["compatibility"]["missingPlugins"], json!([]), "the plug-in is installed: {detail}");
-    let preview = detail["previewPath"].as_str().expect("the kit carries its preview");
-    assert!(Path::new(preview).is_file());
-    assert_eq!(st_host::areas::library::kit_preview_path(&path).as_deref(), Some(preview));
-
-    // generatePreview: false and an own previewPath skip the render.
-    host.request("kit.save", json!({ "project": session(&sample), "groupID": "g1", "name": "Plain kit", "generatePreview": false })).unwrap();
-    assert_eq!(rendered.lock().unwrap().len(), 1);
+    // This host has no audio engine: the kit is saved without a preview, and without a word about it.
+    assert!(detail.get("previewPath").is_none() && saved["warnings"].as_array().unwrap().iter().all(|warning| !warning.as_str().unwrap().contains("preview")), "{saved}");
+    assert_eq!(st_host::areas::library::kit_preview_path(&path), None);
 
     installed.lock().unwrap().clear();
     let detail = host.request("kit.detail", json!({ "path": path })).unwrap();
     assert_eq!(detail["compatibility"]["missingPlugins"], json!(["Fixture Synth"]));
     assert_eq!(detail["compatibility"]["summary"], "Review import notes");
     assert!(detail["compatibility"]["warnings"].as_array().unwrap().iter().any(|warning| warning.as_str().unwrap().contains("Fixture Synth")));
+}
+
+/// A session as the page publishes it: a kit of two pads on a group bus with a built-in
+/// effect (a sampled kick on row 0 and the CLAP test sine of `crates/plugin-host` on rows 8
+/// and 9), and a bass track outside the kit that plays the same sample on row 4.
+fn kit_session(sample: &Path, clap: &Path) -> Value {
+    let mut kick = vec![Value::Null; 16];
+    kick[0] = json!({ "note": 60, "instrument": 0, "velocity": 100 });
+    let mut synth = vec![Value::Null; 16];
+    synth[8] = json!({ "note": 60, "instrument": 1, "velocity": 100, "gate": 2 });
+    let mut bass = vec![Value::Null; 16];
+    bass[4] = json!({ "note": 60, "instrument": 0, "velocity": 100 });
+    json!({
+        "version": 1, "name": "Session", "bpm": 120, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
+        "tracks": [
+            { "id": 0, "name": "Kick", "routingID": "kick", "groupID": "g1", "pad": 0, "padNote": 60, "instrument": 0, "volume": 1, "pan": 0 },
+            { "id": 1, "name": "Synth", "routingID": "synth", "groupID": "g1", "pad": 1, "instrument": 1, "volume": 1, "pan": 0 },
+            { "id": 2, "name": "Bass", "routingID": "bass", "instrument": 0, "volume": 1, "pan": 0 }
+        ],
+        "instruments": [
+            { "id": 0, "type": "sample", "name": "Kick", "samplePath": sample, "mode": "oneshot", "volume": 1, "attack": 0, "decay": 0.01, "sustain": 1, "release": 0.01 },
+            { "id": 1, "type": "au", "name": "Synth", "volume": 1, "pan": 0 }
+        ],
+        "groups": [ { "id": "g1", "name": "Bridge kit", "busID": "kitbus" } ],
+        "audioPlugins": [
+            { "instanceID": "p-synth", "owner": "track:synth", "track": 1, "kind": "instrument", "slot": 0, "component": format!("clap:{}", st_audio::plugins::testing::CLAP_SINE), "format": "CLAP", "bundlePath": clap, "name": "ST Test Sine" },
+            { "instanceID": "p-bus", "owner": "bus:kitbus", "kind": "effect", "slot": 0, "component": "stfx:eq", "name": "EQ" }
+        ],
+        "routing": { "version": 1, "mixModel": "standard", "buses": [ { "id": "kitbus", "name": "Bridge kit", "type": "group", "groupID": "g1", "volume": 1, "pan": 0 } ],
+            "outputs": { "track:kick": "bus:kitbus", "track:synth": "bus:kitbus", "bus:kitbus": "master" }, "sends": [], "sidechains": [] },
+        "patterns": [ { "id": 0, "length": 16, "steps": [kick, synth, bass], "automation": [] } ],
+        "sequence": [0], "loopSong": true
+    })
+}
+
+fn peak(samples: &[f32]) -> f32 {
+    samples.iter().fold(0.0f32, |peak, sample| peak.max(sample.abs()))
+}
+
+#[test]
+fn a_saved_kit_carries_a_preview_of_its_group_bus_that_the_browser_auditions() {
+    use st_audio::plugins::testing::artifacts;
+    use st_host::areas::audio::{AudioOptions, AudioOutput};
+    use st_host::areas::plugins::PluginAreaOptions;
+
+    let folder = TempDir::new("library-preview");
+    let support = folder.path().join("support");
+    let sample = folder.path().join("Sounds/Kick.wav");
+    write_wav(&sample, 4_410, 60.0);
+    let installed = artifacts().install(&folder.path().join("plugins"));
+    // The library with the audio engine on the null device and plug-ins in containers.
+    let mut services = None;
+    let host = TestHost::start(|bridge| {
+        let mut options = HostOptions::new(support.clone(), Arc::new(ScriptedDialogs::from_answers(Vec::new())));
+        options.autosave_every = None;
+        options.audio = Some(AudioOptions { output: AudioOutput::Null });
+        options.plugins = Some(PluginAreaOptions { container: Some(artifacts().container.clone()), folders: vec![installed.folder.clone()], only_these_folders: true });
+        options.services = ServiceOptions { library: Some(LibraryOptions::for_support(&support)), ..ServiceOptions::none() };
+        services = Some(install(bridge, options).expect("install the host"));
+    });
+    let ready = host.request("ready", json!({})).expect("the handshake");
+    assert!(!ready["commands"].as_array().unwrap().contains(&json!("audio.kitPreview")), "the preview is not a command of its own");
+    let long = |command: &str, payload: Value| host.reply_within(host.send(command, payload), Duration::from_secs(120));
+
+    // The page publishes the session and sends it along with kit.save. The song is playing.
+    let session = kit_session(&sample, &installed.clap);
+    long("engine.project", json!({ "project": session })).unwrap();
+    host.request("transport.play", json!({ "mode": "pattern", "fromStart": true })).unwrap();
+    let saved = long("kit.save", json!({ "project": session, "groupID": "g1", "name": "Bridge kit" })).unwrap();
+    let package = PathBuf::from(saved["path"].as_str().expect("the package's path"));
+    assert_eq!(saved["warnings"], json!([]), "{saved}");
+    // A kit of that name exists now: asking again renders nothing and changes nothing.
+    let modified = std::fs::metadata(package.join("Preview.wav")).expect("the preview is in the package").modified().unwrap();
+    assert_eq!(long("kit.save", json!({ "project": session, "groupID": "g1", "name": "Bridge kit" })).unwrap()["exists"], true);
+    assert_eq!(std::fs::metadata(package.join("Preview.wav")).unwrap().modified().unwrap(), modified);
+
+    // The file: 16-bit stereo WAV at 48 kHz; the pattern (16 rows, two seconds) and a second of tail.
+    let bytes = std::fs::read(package.join("Preview.wav")).unwrap();
+    let format = bytes.windows(4).position(|window| window == b"fmt ").expect("a format chunk") + 8;
+    let word = |offset: usize| u16::from_le_bytes([bytes[format + offset], bytes[format + offset + 1]]);
+    assert_eq!((word(0), word(2), u32::from_le_bytes(bytes[format + 4..format + 8].try_into().unwrap()), word(14)), (1, 2, 48_000, 16));
+    let preview = st_audio::samples::read_wav(&bytes).unwrap();
+    assert_eq!(preview.frames(), 3 * 48_000);
+    // Audio where the kit sounds: the kick on row 0 (a tenth of a second), the plug-in on rows
+    // 8 and 9 (a row is 6000 frames). The bass on row 4 is not part of the kit.
+    let (row, quiet) = (6_000, 4.0 / 32_768.0);
+    assert!(peak(&preview.left[..4_800]) > 0.05, "the kick: {}", peak(&preview.left[..4_800]));
+    assert!(peak(&preview.left[row..8 * row]) <= quiet, "nothing between the pads, the bass least of all: {}", peak(&preview.left[row..8 * row]));
+    assert!(peak(&preview.left[8 * row..10 * row]) > 0.05 && peak(&preview.right[8 * row..10 * row]) > 0.05, "the plug-in pad");
+    assert!(peak(&preview.left[10 * row + 2_400..]) <= quiet, "silence after the last pad and in the tail");
+
+    // The browser finds the preview with the kit and plays it on the preview mixer.
+    let detail = host.request("kit.detail", json!({ "path": package })).unwrap();
+    assert_eq!(detail["previewPath"], json!(package.join("Preview.wav")), "{detail}");
+    assert_eq!(st_host::areas::library::kit_preview_path(&package.to_string_lossy()), Some(package.join("Preview.wav").to_string_lossy().into_owned()));
+    let playing = long("sample.preview", json!({ "path": detail["previewPath"] })).unwrap();
+    assert_eq!(playing["playing"], true, "{playing}");
+    assert!((playing["duration"].as_f64().unwrap() - 3.0).abs() < 0.01, "{playing}");
+    host.request("sample.stopPreview", json!({})).unwrap();
+    // The live transport was not touched by the render.
+    assert_eq!(host.request("transport.stop", json!({})).unwrap()["playing"], false);
+
+    // A kit whose pads play nothing in the selected pattern is saved all the same, without a
+    // preview, and the reply says why.
+    let mut empty = session.clone();
+    empty["patterns"][0]["steps"][0] = json!(vec![Value::Null; 16]);
+    empty["patterns"][0]["steps"][1] = json!(vec![Value::Null; 16]);
+    long("engine.project", json!({ "project": empty })).unwrap();
+    let saved = long("kit.save", json!({ "project": empty, "groupID": "g1", "name": "Quiet kit" })).unwrap();
+    let warnings = saved["warnings"].as_array().unwrap();
+    assert!(warnings.len() == 1 && warnings[0].as_str().unwrap().starts_with("The kit was saved without an audio preview: the kit plays no note"), "{saved}");
+    let quiet_package = PathBuf::from(saved["path"].as_str().unwrap());
+    assert!(quiet_package.join("kit.json").is_file() && !quiet_package.join("Preview.wav").exists());
+    assert!(host.request("kit.detail", json!({ "path": quiet_package })).unwrap().get("previewPath").is_none());
+    services.unwrap().services.shutdown();
 }

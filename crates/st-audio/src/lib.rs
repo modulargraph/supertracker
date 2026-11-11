@@ -20,6 +20,7 @@
 //! | [`live`], [`preview`], [`inputs`], [`recording`] | what runs on the live output after the mixer: browser preview voices, the monitored input, the tap of a master take; the input device and what listens to it (meter, monitoring, takes, the line inputs of tracks); takes written by a writer thread |
 //! | [`offline`], [`export`], [`render_selection`], [`freeze`] | rendering on a private engine while the live one plays: song / pattern / stems / track export, selections to samples, Track Freeze (printing, and playing the prints) |
 //! | [`freeze_recording`] | Track Freeze for sound made outside the computer: the prints recorded from the live engine through a tap on the track's strip |
+//! | [`kit_preview`] | the audio preview a kit is saved with: its group bus in the selected pattern, rendered on a private engine |
 //! | [`graph`] | the mixer: spec, compiler and render plan, delay compensation, automation, inserts, send effects, meters, the renderer |
 //! | [`device`] | outputs: `cpal` devices and the null device |
 //! | [`midi`] | the MIDI seam: what the render thread tells MIDI output (external instruments, clock) |
@@ -68,6 +69,7 @@ pub mod freeze;
 pub mod freeze_recording;
 pub mod graph;
 pub mod inputs;
+pub mod kit_preview;
 pub mod live;
 pub mod midi;
 pub mod offline;
