@@ -80,7 +80,7 @@ fn start(label: &str) -> Fixture {
     };
     let sine = |id: i64| json!({ "id": id, "type": "sample", "name": "Sine", "samplePath": "builtin:wavetables/Basic/Sine.wav", "mode": "wavetable", "volume": 1, "attack": 0, "decay": 0.01, "sustain": 1, "release": 0.05 });
     let project = json!({
-        "version": 1, "name": "Live", "bpm": 120, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
+        "version": 2, "name": "Live", "bpm": 120, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
         "tracks": [track(EXTERNAL), track(SAMPLER), track(CLAP), track(VST3)],
         "instruments": [
             { "id": 0, "type": "midi", "name": "Hardware", "midiOutput": SYNTH, "midiChannel": 3 },
