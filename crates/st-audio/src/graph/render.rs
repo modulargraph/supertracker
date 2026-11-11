@@ -30,7 +30,6 @@
 use super::plan::Plan;
 use super::tap::NOT_PLAYING;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering};
-use tracker_engine::clock::{CLOCK_PLAYING, CLOCK_PREROLL};
 use std::sync::Arc;
 use tracker_engine::engine::abi::STEvent;
 use tracker_engine::engine::host::{RenderHalf, StatusHandle};
@@ -379,10 +378,7 @@ impl Renderer {
             self.plan.set_block(info);
             if self.plan.wants_song_frame() {
                 // Where in the song the engine was at the block's first frame, exactly.
-                let song_frame = match self.engine.clock_span(self.time as i64, 1, 0) {
-                    Ok(span) if span.context.flags & CLOCK_PLAYING != 0 && span.context.flags & CLOCK_PREROLL == 0 => span.context.song_frame,
-                    _ => NOT_PLAYING,
-                };
+                let song_frame = self.engine.block_song_frame().unwrap_or(NOT_PLAYING);
                 self.plan.set_song_frame(song_frame);
             }
             self.midi.begin_block(&self.status, self.time, count, self.sample_rate);
