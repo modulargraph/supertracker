@@ -535,7 +535,8 @@ Behaviour worth knowing:
   together (a group without tracks or without its group bus, members apart, a `groupID` that names
   no group), are left as they are and refused by the host with the reason. The page's edits keep
   them consistent: the edit that removes a track, bus or instrument removes its plug-ins and lanes,
-  and every edit ends by dropping the parameter pages of plug-ins that are gone.
+  and an edit that removes or replaces a plug-in takes its parameter pages along
+  (`STRoutingProject.setPlugins`, `ui/routing-project.js`).
 - An instrument's `type` is `sample`, `plugin` (a CLAP, VST3 or Audio Unit instrument) or `midi`.
 - The keyboard performance settings (`project.performance`: key, scale, scale mode, chord, chord
   set, whether a MIDI keyboard uses them) are the page's: it expands keys itself and sends the
