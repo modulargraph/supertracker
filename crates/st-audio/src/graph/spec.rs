@@ -63,6 +63,36 @@ impl InsertSpec {
     }
 }
 
+/// A live input mixed into a track strip's input, ahead of its inserts ([`crate::inputs`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LineInputSpec {
+    /// Where the render thread reads the input.
+    pub feed: FeedHandle,
+    /// Gain of the input in the strip, 0..2 (0 while the route is not monitored).
+    pub gain: f32,
+    /// Frames the input lags the engine: what lies between the engine rendering a frame and a
+    /// hardware instrument's answer to it arriving here (the output's latency, the input's,
+    /// and the feed's cushion). The mixer compensates for it like for an insert's latency.
+    pub latency_frames: u32,
+}
+
+/// A [`crate::inputs::LineFeed`] as a spec holds it: two handles are equal when they are the
+/// same feed.
+#[derive(Clone)]
+pub struct FeedHandle(pub std::sync::Arc<crate::inputs::LineFeed>);
+
+impl PartialEq for FeedHandle {
+    fn eq(&self, other: &FeedHandle) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl std::fmt::Debug for FeedHandle {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "LineFeed@{:p}", std::sync::Arc::as_ptr(&self.0))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct StripSpec {
     /// Owner name: `track:<routingID>`, `bus:<id>` or `master`.
@@ -79,6 +109,10 @@ pub struct StripSpec {
     /// Tracks: sends to the built-in delay and reverb returns (post-fader).
     pub delay_send: f32,
     pub reverb_send: f32,
+    /// Tracks: the live input mixed into the strip. Never set by [`GraphSpec::from_project`]:
+    /// which of a project's routes are live is the engine's to say (it knows the input device
+    /// in use), so it adds them to the spec it compiles ([`GraphSpec::set_line_input`]).
+    pub line_input: Option<LineInputSpec>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -246,6 +280,7 @@ impl GraphSpec {
                 inserts,
                 delay_send: clamp(track.delay_send(), 0.0, 1.0, 0.0),
                 reverb_send: clamp(track.reverb_send(), 0.0, 1.0, 0.0),
+                line_input: None,
                 id,
             });
         }
@@ -263,6 +298,7 @@ impl GraphSpec {
                 inserts: own_inserts(&id),
                 delay_send: 0.0,
                 reverb_send: 0.0,
+                line_input: None,
                 id,
             });
         }
@@ -278,6 +314,7 @@ impl GraphSpec {
             inserts: own_inserts(MASTER),
             delay_send: 0.0,
             reverb_send: 0.0,
+            line_input: None,
         });
 
         let mut sends = Vec::new();
@@ -331,6 +368,13 @@ impl GraphSpec {
         };
         spec.number_destinations(project);
         spec
+    }
+
+    /// Gives the strip of track `track` a live input (or takes it away).
+    pub fn set_line_input(&mut self, track: usize, input: Option<LineInputSpec>) {
+        if let Some(strip) = self.strips.iter_mut().find(|strip| strip.kind == StripKind::Track(track)) {
+            strip.line_input = input;
+        }
     }
 
     pub fn strip(&self, owner: &str) -> Option<&StripSpec> {

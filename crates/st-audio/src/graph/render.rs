@@ -19,13 +19,17 @@
 //! | a knob turned | control -> render | `messages` ring of [`Message`]s, addressed by plan serial and target |
 //! | silence everything (panic) | control -> render | `clear_tails` flag |
 //! | meters | render -> reader | atomics in the plan's [`MeterBank`](super::meters::MeterBank) |
+//! | a live input's audio | input thread -> render | the ring of its [`LineFeed`](crate::inputs::LineFeed), read by the plan |
+//! | a tapped strip | render -> recorder | the rings of a [`StripTap`](super::tap::StripTap), stamped with the song position the engine's clock gives for the block |
 //! | load, clock, counters | render -> anyone | atomics |
 //!
 //! Nothing here blocks: the render side uses atomic swaps and single-producer/single-consumer
 //! rings only, and allocates nothing.
 
 use super::plan::Plan;
+use super::tap::NOT_PLAYING;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering};
+use tracker_engine::clock::{CLOCK_PLAYING, CLOCK_PREROLL};
 use std::sync::Arc;
 use tracker_engine::engine::abi::STEvent;
 use tracker_engine::engine::host::{RenderHalf, StatusHandle};
@@ -361,6 +365,14 @@ impl Renderer {
             }
             self.plan.begin_block(self.time, count);
             self.plan.set_block(self.block_info(count, cycle_end_ns));
+            if self.plan.wants_song_frame() {
+                // Where in the song the engine was at the block's first frame, exactly.
+                let song_frame = match self.engine.clock_span(self.time as i64, 1, 0) {
+                    Ok(span) if span.context.flags & CLOCK_PLAYING != 0 && span.context.flags & CLOCK_PREROLL == 0 => span.context.song_frame,
+                    _ => NOT_PLAYING,
+                };
+                self.plan.set_song_frame(song_frame);
+            }
             self.midi.begin_block(&self.status, self.time, count, self.sample_rate);
             while let Some(message) = self.shared.messages.pop() {
                 if message.serial == self.plan.serial {

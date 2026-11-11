@@ -5,8 +5,13 @@
 //! sample_rate` seconds apart, without drift: each deadline is computed from the start); when
 //! the thread falls more than a second behind (a suspended machine), it starts over from now
 //! instead of rendering the backlog.
+//!
+//! The null device is also the clock of the null input of its engine: before each block it
+//! delivers that block's worth of input ([`NullDuplex`]), so input and output never drift
+//! apart, as on an audio interface that has both.
 
 use super::{OutputStream, SharedRenderer, NULL_DEVICE};
+use crate::inputs::NullDuplex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -16,14 +21,17 @@ pub struct NullDevice {
     thread: Option<std::thread::JoinHandle<()>>,
     sample_rate: f64,
     buffer_size: u32,
+    duplex: Option<Arc<NullDuplex>>,
 }
 
 impl NullDevice {
-    /// Starts rendering `buffer_size` frames at a time at the pace of `sample_rate`.
-    pub fn start(renderer: SharedRenderer, sample_rate: f64, buffer_size: u32) -> Result<NullDevice, String> {
+    /// Starts rendering `buffer_size` frames at a time at the pace of `sample_rate`. With
+    /// `duplex` the thread delivers the null input attached to it before every block.
+    pub fn start(renderer: SharedRenderer, sample_rate: f64, buffer_size: u32, duplex: Option<Arc<NullDuplex>>) -> Result<NullDevice, String> {
         let buffer_size = buffer_size.clamp(16, 8192);
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
+        let input = duplex.clone();
         let thread = std::thread::Builder::new()
             .name("audio-null-device".to_string())
             .spawn(move || {
@@ -33,6 +41,9 @@ impl NullDevice {
                 let mut start = Instant::now();
                 let mut blocks: u32 = 0;
                 while !flag.load(Ordering::Acquire) {
+                    if let Some(input) = &input {
+                        input.tick(frames);
+                    }
                     super::render_blocks(&renderer, &mut left, &mut right, frames, Duration::ZERO, |_, _, _| {});
                     blocks += 1;
                     let deadline = start + period * blocks;
@@ -46,7 +57,10 @@ impl NullDevice {
                 }
             })
             .map_err(|error| format!("The null audio device could not start: {error}"))?;
-        Ok(NullDevice { stop, thread: Some(thread), sample_rate, buffer_size })
+        if let Some(duplex) = &duplex {
+            duplex.set_driven(true);
+        }
+        Ok(NullDevice { stop, thread: Some(thread), sample_rate, buffer_size, duplex })
     }
 }
 
@@ -67,6 +81,9 @@ impl OutputStream for NullDevice {
 
 impl Drop for NullDevice {
     fn drop(&mut self) {
+        if let Some(duplex) = &self.duplex {
+            duplex.set_driven(false);
+        }
         self.stop.store(true, Ordering::Release);
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();

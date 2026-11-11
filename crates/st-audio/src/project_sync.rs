@@ -639,7 +639,7 @@ impl ProjectSync {
         }
         for print in &prints {
             match print {
-                crate::freeze::EnginePrint::Pattern { track, pattern, head, loop_print, gain } => {
+                crate::freeze::EnginePrint::Pattern { track, pattern, head, loop_print } => {
                     // Both files are asked for at once, so that they are decoded together.
                     let head = self.print_asset(control, shared, sample_rate, head, &mut report)?;
                     let loop_asset = match loop_print {
@@ -647,12 +647,12 @@ impl ProjectSync {
                         None => -1,
                     };
                     if let Some(head) = head {
-                        control.add_pattern_clip(head, loop_asset, *track as i32, clamp_i32(*pattern), *gain);
+                        control.add_pattern_clip(head, loop_asset, *track as i32, clamp_i32(*pattern), 1.0);
                     }
                 }
-                crate::freeze::EnginePrint::SongTail { track, path, start_frame, gain } => {
+                crate::freeze::EnginePrint::SongTail { track, path, start_frame } => {
                     if let Some(asset) = self.print_asset(control, shared, sample_rate, path, &mut report)? {
-                        control.add_song_tail_clip(asset, *track as i32, *start_frame, *gain);
+                        control.add_song_tail_clip(asset, *track as i32, *start_frame, 1.0);
                     }
                 }
             }

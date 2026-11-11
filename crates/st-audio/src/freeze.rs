@@ -14,7 +14,8 @@
 //! * removes the notes and source step effects (the mix step effects volume, pan, delay and
 //!   reverb stay as control-only rows), the source automation lanes (mix lanes stay) and the
 //!   track's timeline clips: they are in the print;
-//! * closes its line input;
+//! * closes its line input (the input device is released when no other track uses it, and the
+//!   hardware return's latency leaves the compensation plan);
 //! * adds the song print as a timeline clip on the track from beat 0. In a looping song the
 //!   clip ends a hair inside the musical end, so the loop length is unchanged; otherwise (and in
 //!   every export) it plays to the end of the file, tail included.
@@ -37,6 +38,10 @@
 //! tails of the earlier passes are in it). The tail is `tail` seconds, or in auto mode what
 //! stays above -90 dBFS (20 ms hold) within `maxTail` seconds. Prints are 32-bit float WAV
 //! files at the render rate, identified by their SHA-256.
+//!
+//! A track whose sound is made outside the computer (a live line input, an external MIDI
+//! instrument) cannot be rendered: [`FreezeMethod::Record`] plays the song on the live engine
+//! instead and records the same prints at the track's strip ([`crate::freeze_recording`]).
 //!
 //! # The fingerprint
 //!
@@ -115,7 +120,7 @@ pub fn playback_project(project: &Project) -> Cow<'_, Project> {
             // 0 plays to the end of the file (the tail extends a song that does not loop).
             duration_beats: Some(if looping { (end - 1e-7).max(1e-6) } else { 0.0 }),
             source_offset: Some(0.0),
-            gain: Some(1.0 / record.print_gain().clamp(0.25, 4.0)),
+            gain: Some(1.0),
             fade_in: Some(0.0),
             fade_out: Some(0.0),
             muted: Some(false),
@@ -130,10 +135,10 @@ pub fn playback_project(project: &Project) -> Cow<'_, Project> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EnginePrint {
     /// A pattern's prints for Pattern mode: the first pass with its tail, and the looping pass.
-    Pattern { track: usize, pattern: i64, head: String, loop_print: Option<String>, gain: f32 },
+    Pattern { track: usize, pattern: i64, head: String, loop_print: Option<String> },
     /// A looping song: the printed tail from frame `start_frame` of the print, played from the
     /// start of the next pass.
-    SongTail { track: usize, path: String, start_frame: i64, gain: f32 },
+    SongTail { track: usize, path: String, start_frame: i64 },
 }
 
 impl EnginePrint {
@@ -152,15 +157,14 @@ pub fn engine_prints(project: &Project) -> Vec<EnginePrint> {
     let mut prints = Vec::new();
     for (track, item) in project.track_list().iter().enumerate() {
         let Some(record) = &item.frozen else { continue };
-        let gain = (1.0 / record.print_gain().clamp(0.25, 4.0)) as f32;
         for print in record.pattern_prints.iter().flatten() {
             let (Some(pattern), Some(head)) = (print.pattern, print.path.as_deref().filter(|path| !path.is_empty())) else { continue };
             let loop_print = print.loop_print.as_ref().and_then(|print| print.path.clone()).filter(|path| !path.is_empty());
-            prints.push(EnginePrint::Pattern { track, pattern, head: head.to_string(), loop_print, gain });
+            prints.push(EnginePrint::Pattern { track, pattern, head: head.to_string(), loop_print });
         }
         let musical = record.musical_frames.unwrap_or(0);
         if let (true, true, Some(path)) = (project.loop_song(), musical > 0 && record.tail_frames.unwrap_or(0) > 0, record.path.as_deref().filter(|path| !path.is_empty())) {
-            prints.push(EnginePrint::SongTail { track, path: path.to_string(), start_frame: musical, gain });
+            prints.push(EnginePrint::SongTail { track, path: path.to_string(), start_frame: musical });
         }
     }
     prints
@@ -185,6 +189,16 @@ const AUTO_HOLD_SECONDS: f64 = 0.02;
 /// when the file cannot be read. The host caches these by file identity.
 pub type ContentHash<'a> = &'a dyn Fn(&str) -> Option<String>;
 
+/// How a track is printed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FreezeMethod {
+    /// Rendered on a private engine, faster than real time.
+    Offline,
+    /// Played once on the live engine and recorded at the track's strip
+    /// ([`crate::freeze_recording`]): for sound that is made outside the computer.
+    Record,
+}
+
 /// `freeze.track`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FreezeRequest {
@@ -193,22 +207,37 @@ pub struct FreezeRequest {
     pub tail: Option<f64>,
     /// Auto tail: the most that is kept, seconds (0..30, default 10).
     pub maximum_tail: f64,
+    pub method: FreezeMethod,
+    /// Freeze by recording: also record a head and a loop print of every pattern the track
+    /// uses (each is a take of its own). Without them the track is silent in Pattern mode.
+    pub patterns: bool,
+    /// Freeze by recording: whether the mix is heard during the takes.
+    pub monitor: bool,
 }
 
 impl FreezeRequest {
-    /// Reads `{track, tail?, maxTail?, method?}`.
+    /// Reads `{track, tail?, maxTail?, method?: "offline" or "record", patterns?, monitor?}`.
     pub fn from_payload(payload: &Value) -> Result<FreezeRequest, String> {
         let track = payload["track"].as_f64().filter(|track| track.is_finite() && *track >= 0.0).ok_or("Choose a track to freeze.")? as usize;
-        if payload["method"].as_str().is_some_and(|method| method != "offline") {
-            return Err("Freeze by recording is not available in this host yet: record the hardware into the track first, then freeze it.".to_string());
-        }
+        let method = match payload["method"].as_str() {
+            None | Some("offline") => FreezeMethod::Offline,
+            Some("record") => FreezeMethod::Record,
+            Some(other) => return Err(format!("Unknown freeze method {other}: choose offline or record.")),
+        };
         let seconds = |key: &str| -> Result<Option<f64>, String> {
             match &payload[key] {
                 Value::Null => Ok(None),
                 value => value.as_f64().filter(|seconds| (0.0..=30.0).contains(seconds)).map(Some).ok_or_else(|| "Choose a tail between 0 and 30 seconds.".to_string()),
             }
         };
-        Ok(FreezeRequest { track, tail: seconds("tail")?, maximum_tail: seconds("maxTail")?.unwrap_or(10.0) })
+        Ok(FreezeRequest {
+            track,
+            tail: seconds("tail")?,
+            maximum_tail: seconds("maxTail")?.unwrap_or(10.0),
+            method,
+            patterns: payload["patterns"].as_bool().unwrap_or(true),
+            monitor: payload["monitor"].as_bool().unwrap_or(true),
+        })
     }
 }
 
@@ -391,23 +420,25 @@ fn print_project(canonical: &Value, index: usize) -> Value {
     project
 }
 
-/// Why track `index` cannot be printed offline, if it cannot.
-fn refusal(project: &Value, index: usize) -> Option<String> {
+/// Why track `index` cannot be printed by `method`, if it cannot.
+fn refusal(project: &Value, index: usize, method: FreezeMethod) -> Option<String> {
     let track = &project["tracks"][index];
     let name = track["name"].as_str().map(str::to_string).unwrap_or_else(|| format!("Track {}", index + 1));
     if !track["frozen"].is_null() {
         return Some(format!("{name} is already frozen."));
     }
-    if track["audioInput"]["enabled"] == true {
-        return Some(format!("{name} plays a live line input, which cannot be rendered offline. Record it into the track first."));
-    }
-    let instruments = project["instruments"].as_array();
-    let mut used = vec![whole(&track["instrument"], 0)];
-    for pattern in project["patterns"].as_array().into_iter().flatten() {
-        used.extend(pattern["steps"][index].as_array().into_iter().flatten().map(|step| whole(&step["instrument"], -1)).filter(|instrument| *instrument >= 0));
-    }
-    if used.iter().any(|instrument| instruments.and_then(|items| items.get(*instrument as usize)).is_some_and(|item| item["type"] == "midi")) {
-        return Some(format!("{name} plays an external MIDI instrument, which cannot be rendered offline. Record its audio into the track first."));
+    if method == FreezeMethod::Offline {
+        if track["audioInput"]["enabled"] == true {
+            return Some(format!("{name} plays a live line input, which cannot be rendered offline. Choose Freeze by recording."));
+        }
+        let instruments = project["instruments"].as_array();
+        let mut used = vec![whole(&track["instrument"], 0)];
+        for pattern in project["patterns"].as_array().into_iter().flatten() {
+            used.extend(pattern["steps"][index].as_array().into_iter().flatten().map(|step| whole(&step["instrument"], -1)).filter(|instrument| *instrument >= 0));
+        }
+        if used.iter().any(|instrument| instruments.and_then(|items| items.get(*instrument as usize)).is_some_and(|item| item["type"] == "midi")) {
+            return Some(format!("{name} plays an external MIDI instrument, which cannot be rendered offline. Choose Freeze by recording, with the instrument's return as this track's live input."));
+        }
     }
     let owner = owner_of(track)?;
     let routing = &project["routing"];
@@ -423,11 +454,61 @@ fn refusal(project: &Value, index: usize) -> Option<String> {
     None
 }
 
-struct Print {
-    path: String,
-    sha256: String,
-    frames: u64,
-    musical: u64,
+/// One print file.
+pub(crate) struct Print {
+    pub path: String,
+    pub sha256: String,
+    pub frames: u64,
+    /// Frames of the musical part (the rest is tail).
+    pub musical: u64,
+}
+
+/// What a freeze prints, whichever way: the song, and the patterns as the record lists them.
+pub(crate) struct Prints {
+    /// Sample rate of the files.
+    pub rate: f64,
+    pub song: Print,
+    /// `{pattern, path, sha256, frames, passFrames, passes, loop: {path, sha256, frames}}` each.
+    pub patterns: Vec<Value>,
+    /// Patterns the track uses that have no print.
+    pub unprinted: Vec<i64>,
+    /// What the user should know about the prints.
+    pub notes: Vec<String>,
+}
+
+/// What a freeze of one track works from.
+pub(crate) struct PrintPlan<'a> {
+    /// The project with the state of every insert captured (no loop, no metronome).
+    pub canonical: &'a Value,
+    pub index: usize,
+    /// The track's strip, `track:<routingID>`.
+    pub owner: String,
+    pub name: String,
+    /// The numbers of the patterns the track uses, for Pattern mode.
+    pub used: Vec<i64>,
+    /// A fixed tail in seconds, or `None` for an automatic one of at most `maximum_tail`.
+    pub tail: Option<f64>,
+    pub maximum_tail: f64,
+    directory: &'a Path,
+    id: String,
+}
+
+impl PrintPlan<'_> {
+    /// The file of the print called `suffix` ("song", "p3-head", ...).
+    pub fn file(&self, suffix: &str) -> std::path::PathBuf {
+        let safe: String = self.name.chars().filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_')).take(40).collect();
+        self.directory.join(format!("{}-{}-{suffix}.wav", if safe.trim().is_empty() { "Track" } else { safe.trim() }, self.id))
+    }
+
+    /// Passes of a pattern's loop print: enough for the tails of the earlier passes to have
+    /// reached their steady state in the last one. `tail` is the head print's tail in frames.
+    pub fn loop_passes(&self, tail: u64, pass: u64, rate: f64) -> u64 {
+        match self.tail {
+            Some(fixed) => 1 + ((fixed * rate) as u64).div_ceil(pass.max(1)),
+            None => 1 + (tail * 3 / 2).div_ceil(pass.max(1)),
+        }
+        .clamp(2, 64)
+    }
 }
 
 /// What one print renders.
@@ -481,101 +562,103 @@ fn iso8601(seconds: u64) -> String {
     format!("{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z", rest / 3_600, rest % 3_600 / 60, rest % 60)
 }
 
+/// The song and the patterns of `plan`, rendered on a private engine.
+fn offline_prints(context: &RenderContext<'_>, plan: &PrintPlan<'_>, written: &mut Vec<String>) -> Result<Prints, String> {
+    let rate = RENDER_SAMPLE_RATE as f64;
+    let print = print_project(plan.canonical, plan.index);
+    let maximum_tail = (plan.maximum_tail * rate) as u64;
+    let fixed_tail = plan.tail.map(|tail| (tail * rate) as u64);
+    let steps = 1 + 2 * plan.used.len();
+    let mut offline = offline_engine(context, &print)?;
+    let duration = offline.engine().duration(true);
+    if !(duration > 0.0 && duration < 86_400.0) {
+        return Err("The song is empty or too long to freeze.".to_string());
+    }
+    let musical_frames = (duration * rate) as u64;
+    let song_path = plan.file("song");
+    written.push(song_path.to_string_lossy().into_owned());
+    let start = whole(&plan.canonical["activePattern"], 0) as i32;
+    let song = render_print(context, &offline, &plan.owner, &PrintJob { pattern: start, musical_frames, fixed_tail, maximum_tail, drop_frames: 0, destination: &song_path }, &|fraction| (context.progress)(fraction / steps as f64, "song"))?;
+
+    // Each pattern: a head (one pass and its tail) and the looping pass.
+    let mut patterns = Vec::new();
+    for (position, number) in plan.used.iter().enumerate() {
+        let step = |part: usize| move |fraction: f64| (context.progress)((1 + 2 * position + part) as f64 / steps as f64 + fraction / steps as f64, "patterns");
+        let mut project = print.clone();
+        project["audioClips"] = json!([]);
+        project["sequence"] = json!([number]);
+        offline.publish(&st_project::model::Project::from_value(project.clone()).map_err(|error| error.to_string())?)?;
+        let pass = (offline.engine().duration(true) * rate) as u64;
+        if pass == 0 {
+            continue;
+        }
+        let head_path = plan.file(&format!("p{number}-head"));
+        written.push(head_path.to_string_lossy().into_owned());
+        let head = render_print(context, &offline, &plan.owner, &PrintJob { pattern: *number as i32, musical_frames: pass, fixed_tail, maximum_tail, drop_frames: 0, destination: &head_path }, &step(0))?;
+        let tail = head.frames.saturating_sub(pass);
+        let passes = plan.loop_passes(tail, pass, rate);
+        project["sequence"] = json!(vec![*number; passes as usize]);
+        offline.publish(&st_project::model::Project::from_value(project).map_err(|error| error.to_string())?)?;
+        let loop_path = plan.file(&format!("p{number}-loop"));
+        written.push(loop_path.to_string_lossy().into_owned());
+        let total = (offline.engine().duration(true) * rate) as u64;
+        let looped = render_print(context, &offline, &plan.owner, &PrintJob { pattern: *number as i32, musical_frames: total, fixed_tail: Some(tail), maximum_tail, drop_frames: total.saturating_sub(pass), destination: &loop_path }, &step(1))?;
+        patterns.push(json!({
+            "pattern": number, "path": head.path, "sha256": head.sha256, "frames": head.frames, "passFrames": pass, "passes": passes,
+            "loop": { "path": looped.path, "sha256": looped.sha256, "frames": looped.frames },
+        }));
+    }
+    Ok(Prints { rate, song, patterns, unprinted: Vec::new(), notes: Vec::new() })
+}
+
 /// `freeze.track`: prints the track's song and patterns into `directory` and answers with
 /// `{record, audioPlugins, releasedPlugins, unprintedPatterns, notes, track}`: `record` is the
 /// `frozen` object the interface stores in the track, `audioPlugins` the project's plug-in
 /// descriptors with the state captured for the print. `context.progress` gets 0..1 and the
-/// phase ("song", "patterns").
+/// phase ("song", "patterns"). The prints are rendered offline or, with
+/// [`FreezeMethod::Record`], recorded from the live engine ([`crate::freeze_recording`]).
 pub fn freeze_track(context: &RenderContext<'_>, request: &FreezeRequest, directory: &Path, hash: ContentHash<'_>) -> Result<Value, String> {
-    let canonical = snapshot_for_render(context.live)?;
     // The snapshot is for rendering (no loop, no metronome); the project's own values of those
     // are not part of a print.
+    let canonical = snapshot_for_render(context.live)?;
     let index = request.track;
     if canonical["tracks"].get(index).is_none() {
         return Err("Choose an existing track.".to_string());
     }
-    if let Some(reason) = refusal(&canonical, index) {
+    if let Some(reason) = refusal(&canonical, index, request.method) {
         return Err(reason);
     }
     let track = &canonical["tracks"][index];
     let owner = owner_of(track).unwrap_or_else(|| format!("track:#{index}"));
     let name = track["name"].as_str().map(str::to_string).unwrap_or_else(|| format!("Track {}", index + 1));
-    let print = print_project(&canonical, index);
-    let rate = RENDER_SAMPLE_RATE as f64;
-    let maximum_tail = (request.maximum_tail * rate) as u64;
-    let fixed_tail = request.tail.map(|tail| (tail * rate) as u64);
     let id = format!("{}{}", st_samples::paths::unique_suffix(), st_samples::paths::unique_suffix()).to_lowercase();
     std::fs::create_dir_all(directory).map_err(|error| format!("The folder for frozen audio could not be created: {error}"))?;
-    let safe: String = name.chars().filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_')).take(40).collect();
-    let file = |suffix: &str| directory.join(format!("{}-{id}-{suffix}.wav", if safe.trim().is_empty() { "Track" } else { safe.trim() }));
-
-    // Patterns the track uses, for Pattern mode.
     let empty = Vec::new();
-    let used: Vec<(i64, &Value)> = canonical["patterns"].as_array().unwrap_or(&empty).iter().enumerate().filter(|(_, pattern)| track_uses(pattern, index, Some(&owner))).map(|(position, pattern)| (pattern_id(pattern, position), pattern)).collect();
-    let steps = 1 + 2 * used.len();
+    // Patterns the track uses, for Pattern mode.
+    let used: Vec<i64> = canonical["patterns"].as_array().unwrap_or(&empty).iter().enumerate().filter(|(_, pattern)| track_uses(pattern, index, Some(&owner))).map(|(position, pattern)| pattern_id(pattern, position)).collect();
+    let plan = PrintPlan { canonical: &canonical, index, owner: owner.clone(), name, used, tail: request.tail, maximum_tail: request.maximum_tail, directory, id: id.clone() };
     let mut written: Vec<String> = Vec::new();
     let outcome = (|| -> Result<Value, String> {
-        // The song.
-        let mut offline = offline_engine(context, &print)?;
-        let duration = offline.engine().duration(true);
-        if !(duration > 0.0 && duration < 86_400.0) {
-            return Err("The song is empty or too long to freeze.".to_string());
-        }
-        let musical_frames = (duration * rate) as u64;
-        let lines = print["linesPerBeat"].as_f64().unwrap_or(4.0).clamp(1.0, 32.0);
+        let prints = match request.method {
+            FreezeMethod::Offline => offline_prints(context, &plan, &mut written)?,
+            FreezeMethod::Record => crate::freeze_recording::recorded_prints(context, &plan, request, &mut written)?,
+        };
+        let song = &prints.song;
+        let lines = canonical["linesPerBeat"].as_f64().unwrap_or(4.0).clamp(1.0, 32.0);
         let length_of = |number: i64| canonical["patterns"].as_array().unwrap_or(&empty).iter().enumerate().find(|(position, pattern)| pattern_id(pattern, *position) == number).map_or(64, |(_, pattern)| whole(&pattern["length"], 64).clamp(1, 256));
         let sequence: Vec<i64> = canonical["sequence"].as_array().map_or_else(|| vec![0], |sequence| sequence.iter().map(|item| whole(item, 0)).collect());
         let musical_end_beat: f64 = sequence.iter().map(|number| length_of(*number) as f64 / lines).sum();
-        let song_path = file("song");
-        written.push(song_path.to_string_lossy().into_owned());
-        let start = whole(&canonical["activePattern"], 0) as i32;
-        let song = render_print(context, &offline, &owner, &PrintJob { pattern: start, musical_frames, fixed_tail, maximum_tail, drop_frames: 0, destination: &song_path }, &|fraction| (context.progress)(fraction / steps as f64, "song"))?;
-
-        // Each pattern: a head (one pass and its tail) and the looping pass.
-        let mut pattern_prints = Vec::new();
-        for (position, (number, _)) in used.iter().enumerate() {
-            let step = |part: usize| move |fraction: f64| (context.progress)((1 + 2 * position + part) as f64 / steps as f64 + fraction / steps as f64, "patterns");
-            let mut project = print.clone();
-            project["audioClips"] = json!([]);
-            project["sequence"] = json!([number]);
-            offline.publish(&st_project::model::Project::from_value(project.clone()).map_err(|error| error.to_string())?)?;
-            let pass = (offline.engine().duration(true) * rate) as u64;
-            if pass == 0 {
-                continue;
-            }
-            let head_path = file(&format!("p{number}-head"));
-            written.push(head_path.to_string_lossy().into_owned());
-            let head = render_print(context, &offline, &owner, &PrintJob { pattern: *number as i32, musical_frames: pass, fixed_tail, maximum_tail, drop_frames: 0, destination: &head_path }, &step(0))?;
-            let tail = head.frames.saturating_sub(pass);
-            // Enough passes for the tails of earlier passes to have reached their steady state.
-            let passes = match fixed_tail {
-                Some(tail) => 1 + tail.div_ceil(pass),
-                None => 1 + (tail * 3 / 2).div_ceil(pass),
-            }
-            .clamp(2, 64);
-            project["sequence"] = json!(vec![*number; passes as usize]);
-            offline.publish(&st_project::model::Project::from_value(project).map_err(|error| error.to_string())?)?;
-            let loop_path = file(&format!("p{number}-loop"));
-            written.push(loop_path.to_string_lossy().into_owned());
-            let total = (offline.engine().duration(true) * rate) as u64;
-            let looped = render_print(context, &offline, &owner, &PrintJob { pattern: *number as i32, musical_frames: total, fixed_tail: Some(tail), maximum_tail, drop_frames: total.saturating_sub(pass), destination: &loop_path }, &step(1))?;
-            pattern_prints.push(json!({
-                "pattern": number, "path": head.path, "sha256": head.sha256, "frames": head.frames, "passFrames": pass, "passes": passes,
-                "loop": { "path": looped.path, "sha256": looped.sha256, "frames": looped.frames },
-            }));
-        }
-        drop(offline);
         let dormant: Vec<&str> = canonical["audioPlugins"].as_array().unwrap_or(&empty).iter().filter(|plugin| plugin["owner"].as_str() == Some(owner.as_str())).filter_map(|plugin| plugin["instanceID"].as_str()).collect();
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |elapsed| elapsed.as_secs());
         let record = json!({
-            "version": 1, "id": id, "path": song.path, "sha256": song.sha256, "sampleRate": rate,
+            "version": 1, "id": id, "path": song.path, "sha256": song.sha256, "sampleRate": prints.rate,
             "frames": song.frames, "musicalFrames": song.musical.min(song.frames), "tailFrames": song.frames.saturating_sub(song.musical),
             "musicalEndBeat": musical_end_beat, "tailSeconds": request.tail.unwrap_or(request.maximum_tail),
             "dormantPluginIDs": dormant, "fingerprint": fingerprint(&canonical, index, hash)?, "mixMode": "routed", "createdAt": iso8601(now),
-            "patternPrints": pattern_prints, "unprintedPatterns": [], "printGain": 1.0,
-            "tailMode": if request.tail.is_some() { "fixed" } else { "auto" }, "method": "offline",
+            "patternPrints": prints.patterns, "unprintedPatterns": prints.unprinted,
+            "tailMode": if request.tail.is_some() { "fixed" } else { "auto" }, "method": if request.method == FreezeMethod::Record { "recorded" } else { "offline" },
         });
-        Ok(json!({ "track": index, "record": record, "audioPlugins": canonical["audioPlugins"], "releasedPlugins": dormant.len(), "unprintedPatterns": [], "notes": [] }))
+        Ok(json!({ "track": index, "record": record, "audioPlugins": canonical["audioPlugins"], "releasedPlugins": dormant.len(), "unprintedPatterns": prints.unprinted, "notes": prints.notes }))
     })();
     if outcome.is_err() {
         for path in &written {

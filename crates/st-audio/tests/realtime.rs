@@ -64,8 +64,90 @@ fn render_counted(engine: &st_audio::AudioEngine, blocks: usize, frames: usize, 
     loudest
 }
 
+/// The tests of this file share the counter: one at a time.
+static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// As [`render_counted`], with a block of the manual input delivered before every render (the
+/// input thread's part, counted too) when `deliver` says so for the block.
+fn render_with_input(engine: &st_audio::AudioEngine, blocks: usize, frames: usize, left: &mut [f32], right: &mut [f32], deliver: impl Fn(usize) -> usize) -> f32 {
+    let renderer = engine.renderer();
+    let mut renderer = renderer.lock().unwrap();
+    let hub = engine.live().inputs().hub().clone();
+    let mut loudest = 0.0f32;
+    for block in 0..blocks {
+        ARMED.with(|armed| armed.set(true));
+        for _ in 0..deliver(block) {
+            hub.deliver(frames, 8, |frame, channel| ((frame + channel * 7) % 64) as f32 / 256.0);
+        }
+        renderer.render(&mut left[..frames], &mut right[..frames]);
+        ARMED.with(|armed| armed.set(false));
+        loudest = loudest.max(peak(&left[..frames]));
+    }
+    loudest
+}
+
+#[test]
+fn line_inputs_and_a_strip_tap_do_not_allocate_on_the_input_or_the_render_thread() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (mut left, mut right) = (vec![0.0f32; 512], vec![0.0f32; 512]);
+    let engine = engine();
+    engine.live().inputs().configure(&st_audio::inputs::InputRequest { uid: Some(st_audio::inputs::NULL_MANUAL_INPUT.to_string()), ..Default::default() }).unwrap();
+    let mut project: serde_json::Value = serde_json::from_str(include_str!("fixtures/demo_project.json")).unwrap();
+    for (index, track) in project["tracks"].as_array_mut().unwrap().iter_mut().enumerate() {
+        track["routingID"] = json!(format!("t{index}"));
+    }
+    let line = |channels: &[u32]| json!({ "enabled": true, "deviceUID": st_audio::inputs::NULL_MANUAL_INPUT, "channels": channels, "gain": 0.8 });
+    project["tracks"][0]["audioInput"] = line(&[0, 1]);
+    project["tracks"][2]["audioInput"] = line(&[5]);
+    project["audioPlugins"] = json!([effect("track:t0", 0, "lat", "test:latency:200"), effect("track:t0", 1, "comp", "stfx:compressor")]);
+    engine.publish(&parse(&project)).unwrap();
+    assert_eq!(engine.line_inputs().0.iter().filter(|row| row["state"] == "live").count(), 2);
+    engine.play(&PlayOptions { song: true, from_start: true, ..Default::default() });
+    render_with_input(&engine, 4, 512, &mut left, &mut right, |_| 1);
+    COUNTED.store(0, Ordering::Relaxed);
+
+    // In step; then the input stalls (an underrun and a new start) and floods (an overrun).
+    let mut loudest = render_with_input(&engine, 100, 512, &mut left, &mut right, |_| 1);
+    render_with_input(&engine, 12, 512, &mut left, &mut right, |block| usize::from(block >= 6));
+    render_with_input(&engine, 12, 512, &mut left, &mut right, |block| if block == 2 { 8 } else { 1 });
+    let rows = engine.line_inputs().0;
+    assert!(rows[0]["underruns"].as_u64().unwrap() >= 1 && rows[0]["overruns"].as_u64().unwrap() >= 1, "{rows:?}");
+    // A tap on the first strip, read by this thread between the counted renders.
+    let tap = std::sync::Arc::new(st_audio::graph::tap::StripTap::new(48_000));
+    engine.set_strip_tap(Some((0, tap.clone()))).unwrap();
+    let (mut tapped, mut other, mut blocks, mut heard) = (Vec::new(), Vec::new(), 0, 0.0f32);
+    for _ in 0..40 {
+        loudest = loudest.max(render_with_input(&engine, 5, 512, &mut left, &mut right, |_| 1));
+        while let Some(block) = tap.pop(&mut tapped, &mut other) {
+            assert!(block.frames == 512 && block.arrival >= 712);
+            blocks += 1;
+            heard = heard.max(peak(&tapped));
+            tapped.clear();
+            other.clear();
+        }
+    }
+    assert!(blocks == 200 && heard > 0.05 && tap.dropped() == 0, "{blocks} blocks, peak {heard}");
+    // A tap nobody reads fills up and drops, without a word from the allocator.
+    render_with_input(&engine, 120, 512, &mut left, &mut right, |_| 1);
+    assert!(tap.dropped() > 0);
+    // The routes change (one feed goes, one comes), then the tap goes.
+    project["tracks"][0].as_object_mut().unwrap().remove("audioInput");
+    project["tracks"][3]["audioInput"] = line(&[2, 3]);
+    engine.publish(&parse(&project)).unwrap();
+    render_with_input(&engine, 20, 512, &mut left, &mut right, |_| 1);
+    engine.set_strip_tap(None).unwrap();
+    render_with_input(&engine, 20, 512, &mut left, &mut right, |_| 1);
+    engine.stop();
+    render_with_input(&engine, 10, 512, &mut left, &mut right, |_| 1);
+
+    assert!(loudest > 0.02, "the song and the inputs were really rendered (peak {loudest})");
+    assert_eq!(COUNTED.load(Ordering::Relaxed), 0, "allocations or frees on the input or the render path");
+    engine.tick();
+}
+
 #[test]
 fn rendering_never_allocates_or_frees_even_across_project_and_plan_changes() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     // The counter itself works: an allocation made while armed is seen.
     ARMED.with(|armed| armed.set(true));
     drop(std::hint::black_box(vec![0u8; 64]));

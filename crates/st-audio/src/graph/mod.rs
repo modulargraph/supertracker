@@ -10,6 +10,7 @@
 //! | [`sends`] | the built-in delay and reverb returns |
 //! | [`meters`] | per-strip peak meters and their ballistics |
 //! | [`render`] | the renderer: pulls the engine, runs the plan; the hand-over of plans between threads |
+//! | [`tap`] | a tap on a strip before its fader, with each block's place in the song (Freeze by recording) |
 
 pub mod automation;
 pub mod insert;
@@ -19,3 +20,4 @@ pub mod plan;
 pub mod render;
 pub mod sends;
 pub mod spec;
+pub mod tap;

@@ -6,13 +6,14 @@
 //! | `audio.bounceTrack` `{track, path?, tail?}` | a track-mode export (32-bit float at the render rate) to `path` or to `Renders` in the support folder; answers with a clip for the timeline |
 //! | `render.selection` `{pattern, tracks, firstRow, lastRow, mode?, tail?, sampleRate?, channels?, normalize?, name?, path?}` | `st_audio::render_selection`; the sample goes to `Recordings` in the support folder unless `path` is given; `render.selectionProgress` `{job, phase, progress}` events |
 //! | `render.cancelSelection` | cancels the running selection render: `{cancelled: bool}` |
-//! | `freeze.track` `{track, tail?, maxTail?}` | `st_audio::freeze::freeze_track`: prints the track's song and patterns into `Freezes` of the support folder and answers `{record, audioPlugins, releasedPlugins, unprintedPatterns, notes}`; the interface stores `record` as `tracks[i].frozen` and publishes, from when the engine plays the prints and the track's plug-ins are unloaded. `freeze.progress` `{track, progress, phase, recording: false}` events. Freeze by recording (`method: "record"`) is refused |
+//! | `freeze.track` `{track, tail?, maxTail?, method?, patterns?, monitor?}` | `st_audio::freeze::freeze_track`: prints the track's song and patterns into `Freezes` of the support folder and answers `{record, audioPlugins, releasedPlugins, unprintedPatterns, notes}`; the interface stores `record` as `tracks[i].frozen` and publishes, from when the engine plays the prints and the track's plug-ins are unloaded (and its line input closed). `freeze.progress` `{track, progress, phase, recording}` events. `method: "record"` records the prints from the live engine instead (`st_audio::freeze_recording`): the song plays in real time, once per print, and `transport.stop` cancels |
 //! | `freeze.unfreeze` `{track}` | nothing to do in the host but to agree: the interface removes `frozen` and publishes, and the engine plays the live chain again (the plug-ins load from their descriptors) |
 //! | `freeze.status` | `{tracks: [{track, id, available, stale, patternPlayback, …}], busy}`: a print is stale when the fingerprint of what it was made from has changed; media files count by content (SHA-256), so Save As and relinking do not make a print stale |
 //!
 //! Each render runs on its command's own worker thread, on an engine of its own
-//! ([`st_audio::offline`]): the live engine keeps playing and is not touched. One export (or
-//! bounce) and one selection render can run at a time; while an export runs the status reports
+//! ([`st_audio::offline`]): the live engine keeps playing and is not touched. The exception is
+//! a freeze by recording, which is the live engine playing. One export (or bounce, or freeze)
+//! and one selection render can run at a time; while an export runs the status reports
 //! `exporting`.
 
 use std::path::{Path, PathBuf};
@@ -178,9 +179,11 @@ impl Export {
 
     fn freeze_track(&self, payload: Value) -> Result<Value> {
         let request = st_audio::freeze::FreezeRequest::from_payload(&payload).map_err(Error::new)?;
+        // One render at a time, and Stop cancels it: for a freeze by recording that is the
+        // transport's own Stop, which ends the take.
         let running = self.begin_export()?;
-        let track = request.track;
-        let progress = |fraction: f64, phase: &str| self.events.emit("freeze.progress", json!({ "track": track, "progress": fraction.clamp(0.0, 1.0), "phase": phase, "recording": false }));
+        let (track, recording) = (request.track, request.method == st_audio::freeze::FreezeMethod::Record);
+        let progress = |fraction: f64, phase: &str| self.events.emit("freeze.progress", json!({ "track": track, "progress": fraction.clamp(0.0, 1.0), "phase": phase, "recording": recording }));
         let context = RenderContext { live: self.audio.engine(), samples: self.audio.samples(), cancel: &running.token, progress: &progress };
         st_audio::freeze::freeze_track(&context, &request, &self.support.join("Freezes"), &|path| self.content_hash(path)).map_err(Error::new)
     }

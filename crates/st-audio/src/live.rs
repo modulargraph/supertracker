@@ -9,13 +9,15 @@
 //!   plan (strips ... master fader, meters)  ->  + preview voices  ->  + monitored input  ->  master tap  ->  device
 //! ```
 //!
-//! A master recording therefore holds what the device got (previews and monitoring included,
-//! as in the Swift host, whose tap sat on the output mixer). [`Live`] also owns the input
-//! ([`crate::inputs::Inputs`]) and the take in progress ([`Live::record`], [`Live::stop_record`]).
+//! A master recording therefore holds what the device got, previews and monitoring included.
+//! [`Live`] also owns the input ([`crate::inputs::Inputs`]: one stream for the meter,
+//! monitoring, takes and the line inputs of the project's tracks) and the take in progress
+//! ([`Live::record`], [`Live::stop_record`]).
 //!
-//! So previews bypass the project's master strip, as they did in the Swift host (its preview
-//! node fed the output mixer directly): the master fader, the master inserts and the master
-//! meter do not see them, and neither do offline renders, which run on engines of their own.
+//! Previews bypass the project's master strip: the master fader, the master inserts and the
+//! master meter do not see them, and neither do offline renders, which run on engines of their
+//! own. The line inputs of tracks are not part of this stage: they enter the mixer at their
+//! strips ([`crate::graph::plan`]).
 
 use crate::graph::render::OutputStage;
 use crate::inputs::{InputHub, Inputs};
@@ -223,6 +225,12 @@ impl Live {
             }
             if devices["defaultInput"].is_null() {
                 devices["defaultInput"] = serde_json::json!(0);
+            }
+        }
+        // The test tone input is listed while it is the chosen one, so a page can show it.
+        if let Some(tone) = self.inputs.tone_input() {
+            if let (Some(inputs), Ok(tone)) = (devices["inputs"].as_array_mut(), serde_json::to_value(&tone)) {
+                inputs.push(tone);
             }
         }
         devices["inputLatencyFrames"] = serde_json::json!(self.inputs.latency_frames());

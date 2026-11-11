@@ -25,6 +25,7 @@ use tracker_engine::engine::host::{self, ControlHalf, StatusHandle};
 use tracker_engine::engine::tables::MAX_BLOCK;
 
 mod hooks;
+mod lines;
 mod midi;
 mod plugins;
 
@@ -154,6 +155,10 @@ struct State {
     /// Bumped when the project or the record arm changes: older input edges no longer count.
     input_generation: u64,
     last_report: ApplyReport,
+    /// The enabled line inputs of `project` and what became of each (`engine/lines.rs`).
+    lines: Vec<lines::ResolvedLine>,
+    /// Counts publications ([`AudioEngine::publication`]).
+    publications: u64,
 }
 
 /// The audio core. See the module documentation.
@@ -169,6 +174,12 @@ pub struct AudioEngine {
     live: Arc<crate::live::Live>,
     /// The plug-in manager, once attached (`engine/plugins.rs`).
     plugins: std::sync::OnceLock<Arc<crate::plugins::PluginManager>>,
+    /// Held for the length of a publication: what a publication prepares outside the state's
+    /// lock (plug-in instances, the input device of line inputs) belongs to the project it
+    /// then applies, so publications do not interleave.
+    publish_gate: Mutex<()>,
+    /// The devices changed since the line inputs were resolved last (`engine/lines.rs`).
+    lines_stale: std::sync::atomic::AtomicBool,
 }
 
 /// What `audio.devices` answers.
@@ -239,6 +250,8 @@ impl AudioEngine {
                 pending_inputs: HashMap::new(),
                 input_generation: 0,
                 last_report: ApplyReport::default(),
+                lines: Vec::new(),
+                publications: 0,
             }),
             renderer: Arc::new(Mutex::new(renderer)),
             samples: Mutex::new(options.samples),
@@ -247,6 +260,8 @@ impl AudioEngine {
             midi: Default::default(),
             live: Default::default(),
             plugins: std::sync::OnceLock::new(),
+            publish_gate: Mutex::default(),
+            lines_stale: Default::default(),
         });
         engine.attach_live();
         engine.open_device(&mut engine.lock())?;
@@ -272,25 +287,61 @@ impl AudioEngine {
     /// As [`AudioEngine::publish`]. With `force_plugin_state` every plug-in's saved state is
     /// loaded again (a project was opened or replaced), not only the states that changed.
     pub fn publish_with(&self, project: &Project, force_plugin_state: bool) -> Result<ApplyReport, String> {
-        // Plug-in instances follow the project before the mixer is compiled, outside the lock.
+        let _gate = self.publish_gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.publish_gated(project, force_plugin_state)
+    }
+
+    /// A publication, with the publish gate held.
+    fn publish_gated(&self, project: &Project, force_plugin_state: bool) -> Result<ApplyReport, String> {
+        // Plug-in instances and the input device of the line inputs follow the project before
+        // the mixer is compiled, outside the lock.
         let remade = self.reconcile_plugins(project, force_plugin_state);
+        let lines = self.resolve_lines(project);
         let mut state = self.lock();
         for key in &remade {
             state.core.compiler.invalidate_insert(key);
         }
         state.core.recompile |= !remade.is_empty();
-        let report = Self::publish_locked(&mut state, project)?;
+        let previous = std::mem::replace(&mut state.lines, lines);
+        let report = match Self::publish_locked(&mut state, project) {
+            Ok(report) => report,
+            Err(error) => {
+                // The engine keeps the project it had; so does the list of its line inputs
+                // (the input device is put right at the next tick).
+                state.lines = previous;
+                self.lines_stale.store(true, std::sync::atomic::Ordering::Release);
+                return Err(error);
+            }
+        };
         state.project = Some(project.clone());
         state.input_generation += 1;
+        state.publications += 1;
         state.last_report = report.clone();
         Ok(report)
+    }
+
+    /// Counts the publications of this engine. A caller that publishes a project of its own for
+    /// a while (Freeze by recording) reads it to notice that somebody else published meanwhile.
+    pub fn publication(&self) -> u64 {
+        self.lock().publications
+    }
+
+    /// Publishes `project` if nobody has published since publication `expected`. Returns
+    /// whether it did.
+    pub fn publish_unless_changed(&self, project: &Project, expected: u64) -> Result<bool, String> {
+        let _gate = self.publish_gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if self.lock().publications != expected {
+            return Ok(false);
+        }
+        self.publish_gated(project, false).map(|_| true)
     }
 
     fn publish_locked(state: &mut State, project: &Project) -> Result<ApplyReport, String> {
         // Frozen tracks play their prints (`crate::freeze`).
         let project = &*crate::freeze::playback_project(project);
+        let mut spec = GraphSpec::from_project(project);
+        lines::apply(&mut spec, &state.lines);
         let core = &mut state.core;
-        let spec = GraphSpec::from_project(project);
         // Compile first: routing that cannot be rendered must not reach the engine either.
         let plan = if spec != core.spec || core.recompile { Some(core.compiler.compile(&spec)?) } else { None };
         core.recompile = false;
@@ -629,15 +680,23 @@ impl AudioEngine {
     /// in for a wanted device, that one is tried again every two seconds.
     /// Returns true when the device in use changed.
     pub fn tick(&self) -> bool {
-        let mut state = self.lock();
-        let core = &mut state.core;
-        core.shared.collect();
-        let (control, shared, _) = core.control.parts();
-        control.collect(shared);
-        let meters = core.meters.clone();
-        state.display.read(&meters);
-        let input_lost = self.live.collect();
-        self.watch_device(&mut state) | input_lost
+        let changed = {
+            let mut state = self.lock();
+            let core = &mut state.core;
+            core.shared.collect();
+            let (control, shared, _) = core.control.parts();
+            control.collect(shared);
+            let meters = core.meters.clone();
+            state.display.read(&meters);
+            let input_lost = self.live.collect();
+            self.watch_device(&mut state) | input_lost
+        };
+        // The line inputs follow the devices: a lost input pauses its routes, an input that is
+        // back (or an output with another block size) is taken up again.
+        if changed {
+            self.lines_stale.store(true, std::sync::atomic::Ordering::Release);
+        }
+        changed | self.refresh_lines_if_due()
     }
 
     /// The status the interface animates from (`status` events and transport replies).
@@ -803,7 +862,8 @@ impl AudioEngine {
             state.device_error = Some("No audio output device is connected.".to_string());
         }
         let rate = state.core.compiler.sample_rate();
-        state.stream = Some(Box::new(NullDevice::start(self.renderer.clone(), rate, state.buffer_size)?));
+        // The null device is the clock of this engine's null input too.
+        state.stream = Some(Box::new(NullDevice::start(self.renderer.clone(), rate, state.buffer_size, Some(self.live.inputs().null_duplex().clone()))?));
         Ok(())
     }
 
@@ -952,6 +1012,9 @@ impl AudioEngine {
         }
         if reopen || state.stream.is_none() {
             self.open_device(&mut state)?;
+            // The line inputs are resolved against the new device ([`AudioEngine::refresh_inputs`],
+            // or the next tick).
+            self.lines_stale.store(true, std::sync::atomic::Ordering::Release);
         }
         Ok(Self::devices_locked(&state))
     }

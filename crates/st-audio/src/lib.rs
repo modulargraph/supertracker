@@ -17,8 +17,9 @@
 //! | [`project_sync`] | applies a project to the engine, incrementally (pattern reuse, samples installed once) |
 //! | [`samples`] | [`SampleSource`]: where decoded PCM comes from (the seam to `st-samples`) |
 //! | [`samples_async`] | [`DecodedSamples`]: the source the host runs on, decoding files on worker threads |
-//! | [`live`], [`preview`], [`inputs`], [`recording`] | what runs on the live output after the mixer: browser preview voices, the monitored input, the tap of a master take; input devices; takes written by a writer thread |
+//! | [`live`], [`preview`], [`inputs`], [`recording`] | what runs on the live output after the mixer: browser preview voices, the monitored input, the tap of a master take; the input device and what listens to it (meter, monitoring, takes, the line inputs of tracks); takes written by a writer thread |
 //! | [`offline`], [`export`], [`render_selection`], [`freeze`] | rendering on a private engine while the live one plays: song / pattern / stems / track export, selections to samples, Track Freeze (printing, and playing the prints) |
+//! | [`freeze_recording`] | Track Freeze for sound made outside the computer: the prints recorded from the live engine through a tap on the track's strip |
 //! | [`graph`] | the mixer: spec, compiler and render plan, delay compensation, automation, inserts, send effects, meters, the renderer |
 //! | [`device`] | outputs: `cpal` devices and the null device |
 //! | [`midi`] | the MIDI seam: what the render thread tells MIDI output (external instruments, clock) |
@@ -39,12 +40,23 @@
 //! | Other insert processors | [`graph::insert::InsertFactory`] / [`graph::insert::InsertProcessor`]; an insert the factory cannot make passes through and is reported unavailable. Plug-ins are made by [`plugins::PluginFactory`] once a manager is attached ([`AudioEngine::set_plugins`]) |
 //! | Other consumers of note events | [`graph::render::ExternalEvents`] receives the engine's note events on the render thread (a track's plug-in instrument gets its notes inside the plan, through [`graph::insert::InsertProcessor::midi`]) |
 //! | MIDI outputs, MIDI clock | [`midi`]: [`AudioEngine::set_midi_output`] puts a [`midi::MidiRender`] on the render thread (the host implements it over `st-midi`) |
-//! | Live line inputs into track strips | the input's audio reaches the render thread ([`inputs::InputHub`]) but only the output stage; a strip needs a source in [`graph::plan`] beside its engine channel |
+//!
+//! # Line inputs
+//!
+//! A track's `audioInput` in the project routes channels of the input device into the track's
+//! strip, ahead of its inserts. The project is the only description: every publication tells
+//! [`inputs::Inputs`] the enabled routes, the live ones become sources of the mixer
+//! ([`graph::spec::LineInputSpec`]), and their audio crosses from the input thread to the
+//! render thread through one ring per route ([`inputs::LineFeed`], which also says what happens
+//! when the input's clock and the output's disagree). `engine/lines.rs` has the latency a
+//! hardware return is given in the delay compensation.
 //!
 //! # Platforms
 //!
 //! Tested on Linux (ALSA through `cpal`; building needs `libasound2-dev`). The macOS (CoreAudio)
-//! device code is `cpal`'s and has only been type-checked for `aarch64-apple-darwin`.
+//! device code is `cpal`'s and has only been type-checked for `aarch64-apple-darwin`. No input
+//! device has been opened anywhere: inputs, line inputs and Freeze by recording are tested on
+//! the null devices.
 
 // The status object is one large `json!` literal.
 #![recursion_limit = "256"]
@@ -53,6 +65,7 @@ pub mod device;
 pub mod engine;
 pub mod export;
 pub mod freeze;
+pub mod freeze_recording;
 pub mod graph;
 pub mod inputs;
 pub mod live;

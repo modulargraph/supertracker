@@ -157,7 +157,8 @@ fn devices_are_listed_configured_and_remembered() {
     assert_eq!((configured["bufferSize"].clone(), configured["outputUid"].clone(), configured["running"].clone()), (json!(256), json!("null"), json!(true)));
     assert!(host.request("audio.configure", json!({ "bufferSize": 1 })).unwrap_err().contains("buffer size"));
     assert!(host.request("audio.configure", json!({ "outputDevice": 4242 })).unwrap_err().contains("not connected"));
-    // Input fields are accepted and ignored for now.
+    // Monitoring and the input's channels are not settings, and no input was chosen: none is
+    // remembered (tests/line_inputs.rs chooses one).
     assert_eq!(host.request("audio.configure", json!({ "monitor": true, "inputChannels": [0, 1] })).unwrap()["bufferSize"], 256);
     assert_eq!(host.request("settings.get", json!({})).unwrap()["values"], json!({}), "device settings are not interface settings");
     assert_eq!(fixture.services.settings.get_raw("audio.devices"), Some(json!({ "output": "null", "bufferSize": 256, "sampleRate": 48000.0 })));

@@ -187,7 +187,8 @@ fn a_track_is_frozen_reported_and_unfrozen() {
     host.request("engine.project", json!({ "project": edited })).unwrap();
     assert_eq!(host.request("freeze.status", json!({})).unwrap()["tracks"][0]["stale"], true);
     assert!(long_request(host, "freeze.track", json!({ "track": 1 })).unwrap_err().contains("already frozen"));
-    assert!(host.request("freeze.track", json!({ "track": 0, "method": "record" })).unwrap_err().contains("recording"));
+    // Freeze by recording is in tests/line_inputs.rs; a method the host does not know is refused.
+    assert!(host.request("freeze.track", json!({ "track": 0, "method": "resample" })).unwrap_err().contains("offline or record"));
 
     assert_eq!(host.request("freeze.unfreeze", json!({ "track": 1 })).unwrap()["track"], 1);
     assert!(host.request("freeze.unfreeze", json!({ "track": 0 })).unwrap_err().contains("not frozen"));

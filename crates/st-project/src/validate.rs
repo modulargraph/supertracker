@@ -38,6 +38,8 @@ pub const MAX_AUTOMATION_POINTS: usize = 4096;
 pub const BPM_RANGE: (f64, f64) = (20.0, 400.0);
 /// Frames in a Track Freeze print (`AudioFreezeTrack.Record.parse`).
 pub const MAX_FREEZE_FRAMES: i64 = 100_000_000;
+/// Input channels of an audio device that a track's live input can name (0..=255).
+pub const MAX_INPUT_CHANNELS: i64 = 256;
 
 /// The value range of a track or instrument automation target (`ProjectLayout.nativeAutomationRanges`).
 pub fn native_automation_range(target: &str) -> Option<(f64, f64)> {
@@ -183,6 +185,35 @@ pub fn validate(project: &Project) -> Result<()> {
         if let Some(record) = &track.frozen {
             validate_freeze(record).map_err(|error| Error::invalid(format!("{}: {}", track.display_name(index), error.message())))?;
         }
+        if track.extra.contains_key("audioInput") {
+            return fail(format!("{}: the live input must be an object.", track.display_name(index)));
+        }
+        if let Some(input) = &track.audio_input {
+            validate_audio_input(input).map_err(|error| Error::invalid(format!("{}: {}", track.display_name(index), error.message())))?;
+        }
+    }
+    Ok(())
+}
+
+/// A track's live input (`tracks[i].audioInput`): one channel of the device for mono or two
+/// different ones for stereo, a gain of 0..2 and, while it is enabled, the device it was chosen
+/// on.
+fn validate_audio_input(input: &AudioInput) -> Result<()> {
+    if ["enabled", "deviceUID", "channels", "gain", "monitor"].iter().any(|key| input.extra.contains_key(*key)) {
+        return fail("The live input has an unreadable setting.");
+    }
+    if let Some(channels) = &input.channels {
+        let distinct = channels.len() != 2 || channels[0] != channels[1];
+        if channels.is_empty() || channels.len() > 2 || !distinct || channels.iter().any(|channel| !(0..MAX_INPUT_CHANNELS).contains(channel)) {
+            return fail("The live input needs one input channel (mono) or two different ones (stereo).");
+        }
+    }
+    let gain = input.gain();
+    if !gain.is_finite() || !(0.0..=2.0).contains(&gain) {
+        return fail("The live input's gain must be between 0 and 2.");
+    }
+    if input.enabled() && (input.channels.is_none() || input.device_uid.as_deref().unwrap_or("").is_empty()) {
+        return fail("An enabled live input needs its audio device and input channels.");
     }
     Ok(())
 }

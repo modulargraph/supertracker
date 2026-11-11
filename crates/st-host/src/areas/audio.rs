@@ -12,11 +12,17 @@
 //! | `note.on`, `note.off` | with `captureInput` the reply waits for the audio thread's acknowledgement (`inputAcknowledgement`) |
 //! | `step.preview`, `engine.panic`, `engine.instrumentParameter`, `midi.expression` | `midi.expression` reaches the engine (pitch bend, mod wheel, sustain); plug-ins and MIDI outputs do not exist yet |
 //! | `engine.snapshot` | the project with built-in effect state captured; plug-in descriptors keep the state they carry |
-//! | `audio.devices`, `audio.configure` | outputs; the choice is remembered in the settings section `audio.devices` |
+//! | `audio.devices`, `audio.configure` | outputs and the input; the choice is remembered in the settings section `audio.devices`. `audio.devices` also reports the line inputs of the published project (`lineInputs`, `lineInputError`) |
 //! | `builtin.effects`, `routing.status` | |
 //!
+//! Line inputs have no command: a track's `audioInput` in the project is the whole routing, and
+//! every publication applies it (`st_audio`'s `engine/lines.rs`). What the host adds is the
+//! state of each route in `audio.devices`, sent as an event when a publication or a device
+//! changes it.
+//!
 //! Events: `status` (20 Hz), `audio.devices` (the output changed by itself: a device was lost
-//! or came back), `sample.error` (a sample of the published project could not be loaded).
+//! or came back; a line input went live or was paused), `sample.error` (a sample of the
+//! published project could not be loaded).
 //!
 //! Samples come from `st-samples` through [`st_audio::DecodedSamples`], which decodes on its own
 //! worker threads; the sample commands and the events of finished decodes are in
@@ -68,6 +74,10 @@ struct DeviceSettings {
     output: Option<String>,
     buffer_size: Option<u32>,
     sample_rate: Option<f64>,
+    /// `uid` of the chosen input; absent to follow the system's default. The line inputs of a
+    /// project name their device, and are live only while it is the input.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input: Option<String>,
 }
 
 const SETTINGS_SECTION: &str = "audio.devices";
@@ -85,6 +95,8 @@ pub struct Audio {
     reported: Mutex<Vec<st_audio::SampleProblem>>,
     /// Called on `transport.stop` and `engine.panic`: Stop also cancels a running export.
     stop_hooks: Mutex<Vec<Box<dyn Fn() + Send + Sync>>>,
+    /// The state of the project's line inputs as the interface was told last.
+    line_inputs: Mutex<Value>,
 }
 
 impl ProjectAudio for Audio {
@@ -93,6 +105,8 @@ impl ProjectAudio for Audio {
         let report = self.engine.publish_with(project, options.force_plugin_state).map_err(Error::new)?;
         self.report_samples(report);
         crate::areas::samples::retain_for(&self.samples, project);
+        // A publication is what routes line inputs: the page hears what became of them.
+        self.report_line_inputs();
         Ok(self.engine.status())
     }
 }
@@ -449,10 +463,22 @@ impl Audio {
         live.inputs().set_format(status.sample_rate, status.buffer_size, status.output_uid == st_audio::device::NULL_DEVICE);
         let mut value = serde_json::to_value(status).unwrap_or(Value::Null);
         live.decorate_devices(&mut value);
-        // Line inputs into track strips are not implemented yet; the interface reads these keys.
-        value["lineInputs"] = json!([]);
-        value["lineInputError"] = Value::Null;
+        // The line inputs the published project routes into its tracks, and why the first one
+        // that should run does not.
+        let (lines, problem) = self.engine.line_inputs();
+        *self.line_inputs.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = line_states(&lines);
+        value["lineInputs"] = Value::Array(lines);
+        value["lineInputError"] = json!(problem);
         value
+    }
+
+    /// Sends `audio.devices` when the state of a line input is not what the interface was told
+    /// last (a publication routed or paused one, a device came or went).
+    fn report_line_inputs(&self) {
+        let states = line_states(&self.engine.line_inputs().0);
+        if *self.line_inputs.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) != states {
+            self.events.emit("audio.devices", self.devices_value(self.engine.devices()));
+        }
     }
 
     fn devices(&self, _: NoPayload) -> Result<Value> {
@@ -487,12 +513,22 @@ impl Audio {
             DeviceChoice::Null => Some(st_audio::device::NULL_DEVICE.to_string()),
             DeviceChoice::SystemDefault | DeviceChoice::None => None,
         };
-        self.settings.set(SETTINGS_SECTION, &DeviceSettings { output, buffer_size: Some(buffer_size), sample_rate: Some(status.sample_rate) })?;
         // The input after the output: it runs at the engine's (possibly new) sample rate.
         live.inputs().set_format(status.sample_rate, status.buffer_size, status.output_uid == st_audio::device::NULL_DEVICE);
-        live.inputs().configure(&input).map_err(Error::new)?;
+        let configured = live.inputs().configure(&input).map_err(Error::new);
+        self.settings.set(SETTINGS_SECTION, &DeviceSettings { output, buffer_size: Some(buffer_size), sample_rate: Some(status.sample_rate), input: live.inputs().chosen() })?;
+        // The project's line inputs follow the devices: another input or another block size
+        // pauses, resumes or re-times them.
+        self.engine.refresh_inputs().map_err(Error::new)?;
+        configured?;
         Ok(self.devices_value(status))
     }
+}
+
+/// What the interface shows of each line input: the part of `lineInputs` that an `audio.devices`
+/// event is worth sending for (not the counters).
+fn line_states(lines: &[Value]) -> Value {
+    Value::Array(lines.iter().map(|line| json!([line["track"], line["state"], line["status"], line["monitoring"], line["latencyFrames"]])).collect())
 }
 
 /// Creates the audio engine, attaches it to `session` and registers the audio commands.
@@ -512,7 +548,11 @@ pub fn install(commands: &mut Commands, session: &crate::Session, settings: &Arc
         device,
     })
     .map_err(Error::new)?;
-    let audio = Arc::new(Audio { engine, samples, events: events.clone(), settings: settings.clone(), sustain: Mutex::default(), reported: Mutex::default(), stop_hooks: Mutex::default() });
+    if let Some(input) = saved.input.filter(|uid| !uid.is_empty()) {
+        // Choosing the input opens nothing: it is opened when something uses it.
+        let _ = engine.live().inputs().configure(&st_audio::inputs::InputRequest { uid: Some(input), ..Default::default() });
+    }
+    let audio = Arc::new(Audio { engine, samples, events: events.clone(), settings: settings.clone(), sustain: Mutex::default(), reported: Mutex::default(), stop_hooks: Mutex::default(), line_inputs: Mutex::new(json!([])) });
     session.attach_audio(audio.clone());
     commands
         .with(&audio)
@@ -538,6 +578,7 @@ pub fn install(commands: &mut Commands, session: &crate::Session, settings: &Arc
     let weak = Arc::downgrade(&audio);
     audio.engine.start_service(move |engine, device_changed| {
         status_events.emit_latest("status", engine.status());
+        // A device that came or went (which pauses and resumes line inputs too).
         if device_changed {
             if let Some(audio) = weak.upgrade() {
                 status_events.emit("audio.devices", audio.devices_value(engine.devices()));

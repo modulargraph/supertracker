@@ -6,7 +6,7 @@ mod common;
 use common::*;
 use serde_json::{json, Value};
 use st_audio::export::{export, ExportRequest, RenderContext};
-use st_audio::freeze::{fingerprint, freeze_track, status, FreezeRequest};
+use st_audio::freeze::{fingerprint, freeze_track, status, FreezeMethod, FreezeRequest};
 use st_audio::samples::{read_wav, wav_bytes};
 use st_audio::{AudioEngine, DecodedSamples, EngineOptions, PlayOptions, SamplePcm};
 use st_samples::CancelToken;
@@ -22,6 +22,11 @@ struct Fixture {
 
 fn hash(path: &str) -> Option<String> {
     st_project::media::hash_file(Path::new(path), u64::MAX, None).ok()
+}
+
+/// An offline freeze of `track`.
+fn offline(track: usize, tail: Option<f64>, maximum_tail: f64) -> FreezeRequest {
+    FreezeRequest { track, tail, maximum_tail, method: FreezeMethod::Offline, patterns: true, monitor: true }
 }
 
 impl Fixture {
@@ -134,7 +139,7 @@ fn a_frozen_track_plays_what_the_live_track_played() {
     let cancel = CancelToken::new();
     let progress = std::sync::Mutex::new(Vec::new());
     let context = RenderContext { live: &fixture.live, samples: &fixture.samples, cancel: &cancel, progress: &|fraction, phase| progress.lock().unwrap().push((fraction, phase.to_string())) };
-    let result = freeze_track(&context, &FreezeRequest { track: 0, tail: None, maximum_tail: 10.0 }, &fixture.folder.join("Freezes"), &hash).unwrap();
+    let result = freeze_track(&context, &offline(0, None, 10.0), &fixture.folder.join("Freezes"), &hash).unwrap();
     let record = result["record"].clone();
     assert_eq!((result["releasedPlugins"].clone(), record["dormantPluginIDs"].clone(), record["tailMode"].clone(), record["method"].clone()), (json!(2), json!(["comp", "limit"]), json!("auto"), json!("offline")));
     assert_eq!((record["version"].clone(), record["sampleRate"].clone(), record["musicalFrames"].clone(), record["musicalEndBeat"].clone()), (json!(1), json!(48_000.0), json!(192_000), json!(8.0)));
@@ -192,7 +197,7 @@ fn the_fingerprint_follows_content_not_paths() {
     project["audioClips"] = json!([{ "id": "c", "track": 0, "startBeat": 0, "durationBeats": 1, "path": fixture.sample }]);
     fixture.publish(&project);
     let cancel = CancelToken::new();
-    let result = freeze_track(&fixture.context(&cancel), &FreezeRequest { track: 0, tail: Some(0.5), maximum_tail: 10.0 }, &fixture.folder.join("Freezes"), &hash).unwrap();
+    let result = freeze_track(&fixture.context(&cancel), &offline(0, Some(0.5), 10.0), &fixture.folder.join("Freezes"), &hash).unwrap();
     let record = result["record"].clone();
     assert_eq!((record["tailMode"].clone(), record["tailFrames"].clone(), record["frames"].clone()), (json!("fixed"), json!(24_000), json!(192_000 + 24_000)));
     project["tracks"][0]["frozen"] = record.clone();
@@ -257,9 +262,24 @@ fn the_fingerprint_follows_content_not_paths() {
     // Refusals.
     let cancel = CancelToken::new();
     let refuse = |request: FreezeRequest| freeze_track(&fixture.context(&cancel), &request, &fixture.folder.join("Freezes"), &hash).unwrap_err();
-    assert!(refuse(FreezeRequest { track: 0, tail: None, maximum_tail: 10.0 }).contains("already frozen"));
-    assert!(refuse(FreezeRequest { track: 9, tail: None, maximum_tail: 10.0 }).contains("existing track"));
-    assert!(FreezeRequest::from_payload(&json!({ "track": 0, "method": "record" })).unwrap_err().contains("recording"));
+    assert!(refuse(offline(0, None, 10.0)).contains("already frozen"));
+    assert!(refuse(offline(9, None, 10.0)).contains("existing track"));
     assert!(FreezeRequest::from_payload(&json!({ "track": 0, "tail": 31 })).unwrap_err().contains("between 0 and 30"));
-    assert_eq!(FreezeRequest::from_payload(&json!({ "track": 1, "maxTail": 4 })).unwrap(), FreezeRequest { track: 1, tail: None, maximum_tail: 4.0 });
+    assert_eq!(FreezeRequest::from_payload(&json!({ "track": 1, "maxTail": 4 })).unwrap(), offline(1, None, 4.0));
+    assert_eq!(FreezeRequest::from_payload(&json!({ "track": 1, "tail": 2, "method": "offline", "patterns": false })).unwrap(), FreezeRequest { patterns: false, ..offline(1, Some(2.0), 10.0) });
+    let recorded = FreezeRequest::from_payload(&json!({ "track": 1, "method": "record", "patterns": false, "monitor": false })).unwrap();
+    assert_eq!(recorded, FreezeRequest { method: FreezeMethod::Record, patterns: false, monitor: false, ..offline(1, None, 10.0) });
+    assert!(FreezeRequest::from_payload(&json!({ "track": 0, "method": "bounce" })).unwrap_err().contains("offline or record"));
+    // Freeze by recording plays in real time: an engine without a device cannot (the takes
+    // themselves are in tests/freeze_recording.rs).
+    assert!(refuse(FreezeRequest { method: FreezeMethod::Record, ..offline(1, None, 10.0) }).contains("running audio device"));
+    // A track that plays a live input, or an external MIDI instrument, is not rendered offline.
+    let mut hardware = fixture.project();
+    hardware["tracks"][1]["audioInput"] = json!({ "enabled": true, "deviceUID": "Interface", "channels": [0, 1], "gain": 1 });
+    fixture.publish(&hardware);
+    assert!(refuse(offline(1, None, 10.0)).contains("Choose Freeze by recording"));
+    hardware["tracks"][1].as_object_mut().unwrap().remove("audioInput");
+    hardware["instruments"][0]["type"] = json!("midi");
+    fixture.publish(&hardware);
+    assert!(refuse(offline(1, None, 10.0)).contains("external MIDI instrument"));
 }

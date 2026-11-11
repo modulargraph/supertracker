@@ -94,6 +94,13 @@ impl AudioRing {
         count
     }
 
+    /// Consumer: drops the oldest `count` frames waiting (all of them when fewer wait).
+    pub fn skip(&self, count: usize) {
+        let read = self.read.load(Ordering::Relaxed);
+        let count = count.min(self.written.load(Ordering::Acquire).wrapping_sub(read));
+        self.read.store(read.wrapping_add(count), Ordering::Release);
+    }
+
     /// Consumer: drops everything waiting.
     pub fn clear(&self) {
         self.read.store(self.written.load(Ordering::Acquire), Ordering::Release);
@@ -362,6 +369,12 @@ mod tests {
         assert_eq!(right[0], -3.0);
         ring.push(&[1.0], &[1.0]);
         ring.clear();
+        assert_eq!(ring.available(), 0);
+        // Skipping drops the oldest frames, and no more than there are.
+        ring.push(&[1.0, 2.0, 3.0], &[1.0, 2.0, 3.0]);
+        ring.skip(2);
+        assert_eq!((ring.pop(&mut left, &mut right), left[0]), (1, 3.0));
+        ring.skip(5);
         assert_eq!(ring.available(), 0);
     }
 

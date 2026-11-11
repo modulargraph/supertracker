@@ -85,7 +85,6 @@
     "unprintedPatterns": [
      1
     ],
-    "printGain": 1,
     "tailMode": "auto",
     "method": "offline",
     "futureFreezeField": 1

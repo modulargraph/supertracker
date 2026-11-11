@@ -164,8 +164,6 @@ model! {
         "patternPrints" => pattern_prints: Vec<PatternPrint>,
         /// Patterns with content that were not printed.
         "unprintedPatterns" => unprinted_patterns: Vec<i64>,
-        /// The pre-insert gain the print was made at.
-        "printGain" => print_gain: f64 = 1.0,
         /// `auto` (tail ends at silence) or `fixed`.
         "tailMode" => tail_mode: String,
         /// `offline` (rendered) or `recorded` (hardware return captured in real time).

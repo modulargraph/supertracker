@@ -34,17 +34,22 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 model! {
-    /// A track's live audio input (`line-inputs.js`).
+    /// A track's live audio input (`line-inputs.js`): channels of an audio device mixed into
+    /// the track's mixer channel ahead of its inserts. This is the whole routing: the host
+    /// derives what it opens and mixes from it at every publication.
     pub struct AudioInput {
         /// Whether the input feeds the track.
         "enabled" => enabled: bool = false,
-        /// The audio device.
+        /// The audio device the channels were chosen on (the `uid` the host lists it with).
+        /// The input is live only while that device is the host's audio input.
         "deviceUID" => device_uid: String,
-        /// Input channels of the device (one for mono, two for stereo).
+        /// Input channels of the device, from 0: one for mono (heard on both sides), two for
+        /// stereo.
         "channels" => channels: Vec<i64>,
-        /// Input gain.
+        /// Input gain, 0..2.
         "gain" => gain: f64 = 1.0,
-        /// Whether the input is heard while not recording. Absent: monitored.
+        /// Whether the input is heard through the track. Absent: it is. Off keeps the route
+        /// (and what it names) but mixes nothing into the track.
         "monitor" => monitor: bool = true,
     }
 }

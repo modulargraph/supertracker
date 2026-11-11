@@ -285,6 +285,25 @@ fn plug_in_parameter_locks() {
 }
 
 #[test]
+fn live_inputs_of_tracks() {
+    let input = |value: Value| move |p: &mut Value| p["tracks"][1]["audioInput"] = value;
+    accepted(input(json!({ "enabled": true, "deviceUID": "Interface", "channels": [3], "gain": 1 })));
+    accepted(input(json!({ "enabled": true, "deviceUID": "Interface", "channels": [255, 0], "gain": 2, "monitor": false })));
+    // A route that is switched off keeps whatever was saved of it.
+    accepted(input(json!({ "enabled": false })));
+    accepted(input(json!({ "enabled": false, "deviceUID": "", "channels": [1, 2] })));
+    let channels = "Track 2: The live input needs one input channel (mono) or two different ones (stereo).";
+    for bad in [json!([]), json!([1, 1]), json!([0, 1, 2]), json!([-1]), json!([256])] {
+        assert_eq!(rejected(input(json!({ "enabled": true, "deviceUID": "Interface", "channels": bad }))), channels);
+    }
+    assert_eq!(rejected(input(json!({ "enabled": true, "deviceUID": "Interface", "channels": [0], "gain": 2.5 }))), "Track 2: The live input's gain must be between 0 and 2.");
+    assert_eq!(rejected(input(json!({ "enabled": true, "channels": [0] }))), "Track 2: An enabled live input needs its audio device and input channels.");
+    assert_eq!(rejected(input(json!({ "enabled": true, "deviceUID": "Interface" }))), "Track 2: An enabled live input needs its audio device and input channels.");
+    assert_eq!(rejected(input(json!({ "enabled": true, "deviceUID": "Interface", "channels": "left" }))), "Track 2: The live input has an unreadable setting.");
+    assert_eq!(rejected(input(json!("Interface"))), "Track 2: the live input must be an object.");
+}
+
+#[test]
 fn track_freeze_records() {
     let record = json!({ "version": 1, "id": "f", "path": "/p.wav", "sha256": "", "sampleRate": 48000, "frames": 1000, "musicalFrames": 900, "tailFrames": 100, "musicalEndBeat": 16 });
     let with = |change: &dyn Fn(&mut Value)| {

@@ -77,11 +77,13 @@ pub fn snapshot_for_render(live: &AudioEngine) -> Result<Value, String> {
     Ok(value)
 }
 
-/// Refuses projects that cannot be rendered offline.
+/// Refuses projects that cannot be rendered offline: a track that plays a live line input. A
+/// frozen track does not (its input is closed and its print holds what it played), so Freeze
+/// by recording is what makes such a track exportable.
 pub fn require_renderable(project: &Value) -> Result<(), String> {
-    let live_input = project["tracks"].as_array().is_some_and(|tracks| tracks.iter().any(|track| track["audioInput"]["enabled"] == true));
+    let live_input = project["tracks"].as_array().is_some_and(|tracks| tracks.iter().any(|track| track["audioInput"]["enabled"] == true && !track["frozen"].is_object()));
     if live_input {
-        return Err("Record or disable live line inputs before offline rendering. Hardware inputs cannot be rendered offline.".to_string());
+        return Err("Freeze, record or disable live line inputs before offline rendering. Hardware inputs cannot be rendered offline.".to_string());
     }
     Ok(())
 }

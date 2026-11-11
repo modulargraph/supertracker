@@ -9,8 +9,11 @@
 //! # The graph
 //!
 //! A strip is `input -> inserts -> pre-fader -> fader -> post-fader`. Its input sums the
-//! strip's sources: the engine channel of a track, the outputs of strips routed into it, and
-//! sends. A track's inserts are the chain of its assigned instrument followed by its own. Sends
+//! strip's sources: the engine channel of a track, the track's live input
+//! ([`super::spec::LineInputSpec`], read from its [`LineFeed`] once per block), the outputs of
+//! strips routed into it, and sends. A live input is a source with latency (the hardware's
+//! round trip), so the engine channel beside it and every other path are delayed to meet it.
+//! A track's inserts are the chain of its assigned instrument followed by its own. Sends
 //! and sidechains tap a strip before its inserts, before its fader or after it; a sidechain
 //! ends in the auxiliary input of an insert. Every track also feeds the two built-in returns
 //! (delay, reverb) after its fader, through its `delaySend` / `reverbSend`; the returns and the
@@ -30,6 +33,9 @@
 //!
 //! Delay compensation is planned by [`super::pdc`]; edges that need it own a delay line.
 //!
+//! A strip can carry a tap ([`Compiler::set_taps`]): its pre-fader signal is copied, block by
+//! block, into a [`StripTap`] for a recording that lines up with the song.
+//!
 //! # State that outlives a plan
 //!
 //! Every change of the mixer compiles a new plan. What must survive the swap lives in cells the
@@ -45,6 +51,8 @@ use super::meters::{block_peak, MeterBank};
 use super::pdc::{self, DelayLine};
 use super::sends::{DelayReturn, ReverbReturn};
 use super::spec::{Destination, GraphSpec, RouteDestination, SendEffectsSpec, StripKind, INSERT_SLOTS};
+use super::tap::{StripTap, TapBlock, NOT_PLAYING};
+use crate::inputs::LineFeed;
 use st_project::model::Tap;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
@@ -160,6 +168,20 @@ enum Source {
     EngineTrack(usize),
     /// The engine's return bus: the metronome and count-in clicks.
     EngineReturn,
+    /// A live input (index into the plan's lines).
+    Line(usize),
+}
+
+/// A live input of the plan: its feed and the block read from it.
+struct PlanLine {
+    feed: Arc<LineFeed>,
+    block: Buffer,
+}
+
+/// A tap of the plan and how many frames the tapped signal lags the engine.
+struct PlanTap {
+    tap: Arc<StripTap>,
+    arrival: u32,
 }
 
 struct Edge {
@@ -196,7 +218,8 @@ enum Op {
     /// Sum the edges into a buffer.
     Sum { buffer: usize, edges: Range<usize> },
     Insert { buffer: usize, copy_from: Option<usize>, delay: Option<Arc<DelayCell>>, insert: usize, sidechain: Option<usize> },
-    Fader { from: usize, to: usize, strip: usize },
+    /// `tap`: copy `from` (the strip before its fader) to this tap of the plan first.
+    Fader { from: usize, to: usize, strip: usize, tap: Option<usize> },
     Delay { buffer: usize },
     Reverb { buffer: usize },
 }
@@ -236,6 +259,12 @@ pub struct Plan {
     edges: Vec<Edge>,
     strips: Vec<StripState>,
     inserts: Vec<PlanInsert>,
+    lines: Vec<PlanLine>,
+    strip_taps: Vec<PlanTap>,
+    /// Graph time of the block being processed, and the song frame the engine rendered there
+    /// ([`NOT_PLAYING`] while the transport does not play): what a tap stamps its blocks with.
+    block_start: u64,
+    song_frame: i64,
     buffers: Vec<Buffer>,
     scratch: Buffer,
     events: EventQueue,
@@ -273,11 +302,15 @@ pub struct Compiler {
     insert_targets: HashMap<String, u32>,
     /// Parameter values set live (not yet in the project's saved state), by insert key.
     live_values: HashMap<String, Vec<(u64, f64)>>,
+    /// Taps by strip owner: every plan compiled while they are set carries them.
+    taps: Vec<(String, Arc<StripTap>)>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
 enum EdgeKind {
     Native(usize),
+    /// A track strip's live input (the strip's index).
+    Line(usize),
     Metronome,
     Chain,
     Fader,
@@ -305,7 +338,15 @@ impl Compiler {
             unavailable_routes: Vec::new(),
             insert_targets: HashMap::new(),
             live_values: HashMap::new(),
+            taps: Vec::new(),
         }
+    }
+
+    /// The taps the plans compiled from now on carry: each strip owner (`track:<id>`, ...) with
+    /// the tap its pre-fader signal is copied to. A strip that does not exist has no tap. The
+    /// plan in use is not changed: compile and publish one.
+    pub fn set_taps(&mut self, taps: Vec<(String, Arc<StripTap>)>) {
+        self.taps = taps;
     }
 
     /// The serial of the plan compiled last.
@@ -438,17 +479,25 @@ impl Compiler {
             pre: usize,
             post: usize,
             source: Option<usize>,
+            /// The live input: a source as late as the hardware's round trip.
+            line: Option<usize>,
         }
         let mut nodes: Vec<StripNodes> = Vec::with_capacity(spec.strips.len());
+        // The live inputs, in strip order: (strip, feed).
+        let mut lines: Vec<(usize, Arc<LineFeed>)> = Vec::new();
         for (index, strip) in spec.strips.iter().enumerate() {
             let source = matches!(strip.kind, StripKind::Track(_)).then(|| node(0));
+            let line = strip.line_input.as_ref().filter(|_| source.is_some()).map(|input| {
+                lines.push((index, input.feed.0.clone()));
+                node(input.latency_frames as u64)
+            });
             let input = node(0);
             let first = input + 1;
             for insert in strip_inserts[index].clone() {
                 node(inserts[insert].cell.latency as u64);
             }
             let insert_nodes = first..first + strip_inserts[index].len();
-            nodes.push(StripNodes { input, inserts: insert_nodes, pre: node(0), post: node(0), source });
+            nodes.push(StripNodes { input, inserts: insert_nodes, pre: node(0), post: node(0), source, line });
         }
         let system = [(node(0), node(0)), (node(0), node(0))];
         let metronome = node(0);
@@ -472,6 +521,9 @@ impl Compiler {
             let stages = &nodes[index];
             if let (Some(source), StripKind::Track(track)) = (stages.source, &strip.kind) {
                 edge(source, stages.input, EdgeKind::Native(*track), format!("native:{}", strip.id));
+            }
+            if let Some(line) = stages.line {
+                edge(line, stages.input, EdgeKind::Line(index), format!("line:{}", strip.id));
             }
             let mut previous = stages.input;
             for (insert_node, insert) in stages.inserts.clone().zip(&strip.inserts) {
@@ -623,6 +675,7 @@ impl Compiler {
         };
         let mut ops: Vec<Op> = Vec::new();
         let mut edges: Vec<Edge> = Vec::new();
+        let mut strip_taps: Vec<PlanTap> = Vec::new();
         let mut route_targets: HashMap<&str, u32> = HashMap::new();
         let mut builtin_targets = vec![[NO_TARGET; 2]; strip_count];
         let mut sum = |ops: &mut Vec<Op>, edges: &mut Vec<Edge>, buffer: usize, list: &[usize], delay_for: &mut dyn FnMut(usize) -> Option<Arc<DelayCell>>| {
@@ -630,6 +683,10 @@ impl Compiler {
             for &index in list {
                 let (source, gain) = match kinds[index] {
                     EdgeKind::Native(track) => (Source::EngineTrack(track), 1.0),
+                    EdgeKind::Line(strip) => {
+                        let Some(line) = lines.iter().position(|(owner, _)| *owner == strip) else { continue };
+                        (Source::Line(line), spec.strips[strip].line_input.as_ref().map_or(0.0, |input| input.gain))
+                    }
                     EdgeKind::Metronome => (Source::EngineReturn, 1.0),
                     EdgeKind::Output(strip) => (Source::Buffer(strip_buffers[strip].2), 1.0),
                     EdgeKind::Send(send) | EdgeKind::Sidechain(send) => {
@@ -660,7 +717,14 @@ impl Compiler {
                 let (input, work, post) = strip_buffers[strip];
                 match role {
                     0 => sum(&mut ops, &mut edges, input, &incoming[current], &mut delay_for),
-                    1 => ops.push(Op::Fader { from: work, to: post, strip }),
+                    1 => {
+                        let tap = self.taps.iter().find(|(owner, _)| *owner == spec.strips[strip].id).map(|(_, tap)| {
+                            // What the strip's signal lags the engine by before its fader.
+                            strip_taps.push(PlanTap { tap: tap.clone(), arrival: latency.arrival[nodes[strip].pre].min(u32::MAX as u64) as u32 });
+                            strip_taps.len() - 1
+                        });
+                        ops.push(Op::Fader { from: work, to: post, strip, tap });
+                    }
                     _ => {
                         let position = role - 2;
                         let insert = strip_inserts[strip].start + position;
@@ -731,6 +795,10 @@ impl Compiler {
             edges,
             strips: spec.strips.iter().map(|strip| StripState { volume: strip.volume, pan: strip.pan, default_volume: strip.volume, default_pan: strip.pan, mute: strip.mute }).collect(),
             inserts,
+            lines: lines.into_iter().map(|(_, feed)| PlanLine { feed, block: Buffer::new(self.max_frames) }).collect(),
+            strip_taps,
+            block_start: 0,
+            song_frame: NOT_PLAYING,
             buffers: (0..buffer_count).map(|_| Buffer::new(self.max_frames)).collect(),
             scratch: Buffer::new(self.max_frames),
             events: EventQueue::new(target_offsets.len(), EVENT_CAPACITY),
@@ -948,6 +1016,19 @@ impl Plan {
     /// Starts the block `start..start + frames` for automation.
     pub fn begin_block(&mut self, start: u64, frames: usize) {
         self.events.begin_block(start, frames);
+        self.block_start = start;
+    }
+
+    /// Whether the plan stamps what it captures with the song position (it carries a tap), so
+    /// that the renderer asks the engine for it.
+    pub fn wants_song_frame(&self) -> bool {
+        !self.strip_taps.is_empty()
+    }
+
+    /// The song frame the engine rendered at the start of the block about to be processed, or
+    /// [`NOT_PLAYING`].
+    pub fn set_song_frame(&mut self, song_frame: i64) {
+        self.song_frame = song_frame;
     }
 
     /// The transport and render cycle of the block about to be processed (for plug-ins).
@@ -1006,7 +1087,8 @@ impl Plan {
     pub fn process(&mut self, engine: &BlockView<'_>, frames: usize, out_l: &mut [f32], out_r: &mut [f32]) {
         let frames = frames.min(self.max_frames).min(out_l.len()).min(out_r.len());
         let context = ProcessContext { sample_rate: self.sample_rate, tempo: self.bpm, block: self.block };
-        let Plan { ops, edges, strips, inserts, buffers, scratch, events, meters, delay, reverb, effects, bpm, master_buffer, .. } = self;
+        let tap_block = TapBlock { time: self.block_start, frames: frames as u32, arrival: 0, song_frame: self.song_frame, silent: false };
+        let Plan { ops, edges, strips, inserts, lines, strip_taps, buffers, scratch, events, meters, delay, reverb, effects, bpm, master_buffer, .. } = self;
         for op in ops.iter() {
             match op {
                 Op::Sum { buffer, edges: range } => {
@@ -1016,6 +1098,12 @@ impl Plan {
                         let source: Option<(&[f32], &[f32])> = match edge.source {
                             Source::EngineTrack(track) => engine.track(track),
                             Source::EngineReturn => Some(engine.return_bus()),
+                            Source::Line(index) => {
+                                // Each live input has one edge, so its feed is read once per block.
+                                let line = &mut lines[index];
+                                let heard = line.feed.read(&mut line.block.left[..frames], &mut line.block.right[..frames]);
+                                heard.then_some((&line.block.left[..], &line.block.right[..]))
+                            }
                             Source::Buffer(index) => {
                                 let source = &buffers[index];
                                 (!source.silent).then_some((&source.left[..], &source.right[..]))
@@ -1119,7 +1207,11 @@ impl Plan {
                     }
                     buffers[*buffer] = work;
                 }
-                Op::Fader { from, to, strip } => {
+                Op::Fader { from, to, strip, tap } => {
+                    if let Some(tap) = tap.and_then(|tap| strip_taps.get(tap)) {
+                        let source = &buffers[*from];
+                        tap.tap.capture(TapBlock { arrival: tap.arrival, ..tap_block }, (!source.silent).then_some((&source.left[..frames], &source.right[..frames])));
+                    }
                     let mut post = std::mem::take(&mut buffers[*to]);
                     if from != to {
                         let source = &buffers[*from];

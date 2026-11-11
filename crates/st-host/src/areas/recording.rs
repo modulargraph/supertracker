@@ -7,8 +7,10 @@
 //!
 //! The input device, its channels, the meter and monitoring are part of `audio.configure` and
 //! `audio.devices` ([`crate::areas::audio`]); the status events carry `recording`,
-//! `recordingDuration`, `inputPeakLeft` / `inputPeakRight` and `inputMetering`. Live line inputs
-//! routed into track strips (`audio.inputs`, `audio.inputs.configure`) are not implemented.
+//! `recordingDuration`, `inputPeakLeft` / `inputPeakRight` and `inputMetering`. The same input
+//! stream feeds the line inputs a project routes into its tracks; those are part of the project
+//! and have no command ([`crate::areas::audio`]). A master take holds them, as it holds
+//! everything the device gets.
 //!
 //! The audio of a take never touches these handlers: the render thread (master) or the input
 //! device's thread copies it into a ring that a writer thread drains ([`st_audio::recording`]).
