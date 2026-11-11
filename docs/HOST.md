@@ -259,9 +259,9 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the hand
 | `freeze.status` | `{}` | {tracks: [{track, id, available, stale, path, dormantPlugins, patternPrints, patternPlayback, unprintedPatterns}], busy} | implemented | stale: the fingerprint of what the print was made from changed (media files by SHA-256 of their content, so Save As and relinking do not make a print stale); available: every print file is readable. |
 | `freeze.track` | `{track, tail? (fixed, 0..30 s), maxTail? (auto tail bound, default 10 s), method?: "offline" (default) or "record", patterns? (record: also the pattern prints, default true), monitor? (record: hear the mix during the takes, default true)}` | {track, record (the object the page stores as tracks[i].frozen: version, id, path, sha256, sampleRate, frames, musicalFrames, tailFrames, musicalEndBeat, tailSeconds, dormantPluginIDs, fingerprint, createdAt, patternPrints, unprintedPatterns, tailMode, method: "offline" or "recorded"), audioPlugins, releasedPlugins, unprintedPatterns, notes}; progress in freeze.progress {track, progress, phase: "song" / "patterns" / "done", recording} events | implemented | Long: the page sends it with ST.longRequest. Offline (st_audio::freeze on a private engine): the song print and a head and loop print of every pattern the track uses, 32-bit float WAV at 48 kHz in Freezes of the support folder; refused for a track with a live line input or an external MIDI instrument. method "record" (st_audio::freeze_recording) is for those: the live engine plays the song once in real time (and, with patterns, each pattern for its head and its loop print) while the track's strip is recorded through a tap after its inserts and before its fader, each frame placed at its song frame (the strip's delay compensation, which holds the hardware return's latency, taken out); the prints are at the engine's sample rate. It needs a running device and a stopped transport, publishes a project of its own for the takes (no song loop, no metronome, the master silent without monitor) and the page's project again afterwards. transport.stop cancels either method; a take also fails when playback stops early or jumps, the strip delivers nothing, audio was lost, or a project is published meanwhile. Nothing is kept of a failed freeze. The fingerprint counts media by content hash, not by path. |
 | `freeze.unfreeze` | `{track}` | {track, audioPlugins} | implemented | The page removes tracks[i].frozen and publishes; the engine then plays the live chain again and the track's plug-ins load from their descriptors. |
-| `midi.expression` | `{kind: "pitchBend" or "cc" or "aftertouch" or "polyAftertouch" or "sustain", owner? (track:<routingID>), controller? (cc; default 1), note (polyAftertouch), value (-1..1 for pitchBend, else 0..1)}` | {sent: bool, owner, instrument} | implemented | Live expression for the instrument of the track whose channel is owner (the track of the last note without one; an owner that is no track of the project is refused), to where a MIDI keyboard's controllers go: an external MIDI instrument gets the message on its device and channel; a plug-in instrument gets it with its next block, in its format's terms (CLAP: MIDI, or note expressions for pressure and pitch bend when its note port takes no MIDI; VST3: the parameters it maps controllers, channel pressure and pitch bend to, and poly pressure events; Audio Units: MIDI); the engine's own instruments take pitch bend (±2 semitones) and the mod wheel (cc 1) and ignore the rest (sent: false). The pedals (kind sustain, which is cc 64, and cc 66 sostenuto and cc 67 soft) are the interface's own pedals and act on the notes the interface plays: a plug-in or external MIDI instrument gets the pedal with its value (half-pedalling is the instrument's) and its note-offs as played, and sustains by itself; the engine's own instruments have no pedal, so the host holds back their note-offs while sustain is at 0.5 or more (sostenuto and soft: sent false), and so it does for a plug-in that controller 64 cannot reach (a CLAP note port without MIDI, a VST3 plug-in that maps no parameter to it). A pedal that is down follows the interface's notes to other tracks (each instrument gets it with the first note played to it) and its release reaches every instrument it reached, whatever owner the message names; an instrument that several pedals reach (the interface's, a MIDI keyboard's) hears the highest. transport.stop sends pedal-up to every instrument; engine.panic forgets the pedals. Live input only: patterns carry no pedal. Controllers 120 and up are refused (engine.panic silences). |
-| `note.off` | `{note, track?, instrument?, applyNote?, captureInput?, …}` | {ok: true, sustained?, inputAcknowledgement?} | implemented | With captureInput the reply waits for the audio thread and carries inputAcknowledgement. sustained: true when the interface's sustain pedal is down (midi.expression): the note sounds on until the pedal comes up. A plug-in or external MIDI instrument still gets the note-off (it sustains by itself); the note-off of one of the engine's own instruments is held back by the host. The interface keeps the recording of such a note open and closes it with a capture-only edge (applyNote: false) when its pedal comes up. |
-| `note.on` | `{note, velocity?, track?, instrument?, captureInput?, …}` | {ok: true, inputAcknowledgement?} | implemented | Quick command: order with note.off matters. With captureInput (and inputOwner) the reply waits for the audio thread and carries inputAcknowledgement {status, applied, pattern, row, sequence, recordingClock?, …}. |
+| `midi.expression` | `{kind: "pitchBend" or "cc" or "aftertouch" or "polyAftertouch" or "sustain", owner? (track:<routingID>), controller? (cc; default 1), note (polyAftertouch), value (-1..1 for pitchBend, else 0..1)}` | {sent: bool, owner, instrument} | implemented | Live expression for the instrument of the track whose channel is owner (the track of the last note without one; an owner that is no track of the project is refused), to where a MIDI keyboard's controllers go, behind the notes played before it (notes and messages reach an instrument in the order they were played): an external MIDI instrument gets the message on its device and channel, timed like its notes; a plug-in instrument gets it with its next block, in its format's terms (CLAP: MIDI, or note expressions for pressure and pitch bend when its note port takes no MIDI; VST3: the parameters it maps controllers, channel pressure and pitch bend to, and poly pressure events; Audio Units: MIDI); the engine's own instruments take pitch bend (±2 semitones) and the mod wheel (cc 1) and ignore the rest (sent: false). The pedals (kind sustain, which is cc 64, and cc 66 sostenuto and cc 67 soft) are the interface's own pedals and act on the notes the interface plays: a plug-in or external MIDI instrument gets the pedal with its value (half-pedalling is the instrument's) and its note-offs as played, and sustains by itself; the engine's own instruments have no pedal, so the host holds back their note-offs while sustain is at 0.5 or more (sostenuto and soft: sent false), and so it does for a plug-in that controller 64 cannot reach (a CLAP note port without MIDI, a VST3 plug-in that maps no parameter to it). A pedal that is down follows the interface's notes to other tracks (each instrument gets it with the first note played to it) and its release reaches every instrument it reached, whatever owner the message names; an instrument that several pedals reach (the interface's, a MIDI keyboard's) hears the highest. transport.stop sends pedal-up to every instrument; engine.panic forgets the pedals. Live input only: patterns carry no pedal. Controllers 120 and up are refused (engine.panic silences). |
+| `note.off` | `{note, track?, instrument?, applyNote?, captureInput?, …}` | {ok: true, sustained?, inputAcknowledgement?} | implemented | track is the place the key's note.on named: the release ends the note that key started there and nothing else. A key whose track a publication has moved or removed since was released by the host before that publication; its note.off then ends nothing. With captureInput the reply waits for the audio thread and carries inputAcknowledgement. sustained: true when the interface's sustain pedal is down (midi.expression): the note sounds on until the pedal comes up. A plug-in or external MIDI instrument still gets the note-off (it sustains by itself); the note-off of one of the engine's own instruments is held back by the host. The interface keeps the recording of such a note open and closes it with a capture-only edge (applyNote: false) when its pedal comes up. |
+| `note.on` | `{note, velocity?, track?, instrument?, captureInput?, …}` | {ok: true, inputAcknowledgement?} | implemented | Quick command: order with note.off and midi.expression matters, and is kept all the way to the instrument (a plug-in, a device, the engine's voices). track is the track's place in the list (default: that of the last note); the host keeps the key with that place until its note.off. With captureInput (and inputOwner) the reply waits for the audio thread and carries inputAcknowledgement {status, applied, pattern, row, sequence, recordingClock?, …}. |
 | `plugin.editor` | `{owner, kind, slot, instanceID?, open?: false to close}` | {shown, open, name, custom, width, height, windowID} | implemented | Opens the plug-in's own window in its container process, or brings the open one to the front. Built-in effects have none. On Linux only CLAP plug-ins with floating windows have editors; macOS windows (and yielding activation to the container) are type-checked only. |
 | `plugin.load` | `{owner, kind: "instrument" or "effect", slot, component (or id): "clap:<id>", "vst3:<class id>", "au:<type:subtype:manufacturer>" or "stfx:<effect>", bundlePath?, state?, name?, bypass?, instanceID?, nks?}` | the descriptor {owner, kind, slot, instanceID, component, format, bundlePath, name, manufacturer, bypass, latency, tailTime, presets, hostStatus, parameters} | implemented | Long. Creates the instance in a container (or the built-in effect), replaces what the slot held in the engine's project, and answers once it is audible; the interface stores the descriptor and publishes. A failed load leaves the engine as it was. |
 | `plugin.loadNKS` | `plugin.load target + {path of the .nksf / .nksfx preset}` | the descriptor, with nks: {name, path, identity, pages, warnings} | implemented | Long. The preset's VST3 class (or the VST3 a vendor ships for its VST2 identity) is looked up in the catalogue, loaded with the preset's exact state bytes, and the controller pages are bound to the parameters the plug-in has. |
@@ -286,7 +286,7 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the hand
 | `sample.stopPreview` | `{}` | {playing: false} \| | implemented | Fades the preview out. engine.panic stops it too. |
 | `sample.wavetables` | `{}` | [{group, name, path, frames, frameSize, wavetable}] built-in wavetables \| | implemented | From st-samples (builtin::wavetable_list). |
 | `sampler.playheads` | `{enabled: bool, instrument?}` | {ok: true, watching: instrument (-1 all, -2 off)}; positions in sampler.playheads events {instrument, voices: [{instrument, track, note, mode, direction, releasing, zone, preview, position, windowStart, windowEnd, frames, level, grains}]} (30 per second, emit_latest, only when the engine's snapshot changed) \| | implemented |  |
-| `step.preview` | `{step: {note, instrument, velocity, chord?…}, track?, duration?}` | {auditioning: bool} | implemented | Audition of one tracker step. |
+| `step.preview` | `{step: {note, instrument, velocity, chord?…}, track?, duration?}` | {auditioning: bool} | implemented | Audition of one tracker step on the track at place track (default: that of the last note). It ends by itself after duration seconds; no key is kept for it. |
 | `transport.loop` | `{loop: {start, end} or null} (or the range itself)` | transport status \| | implemented | Pattern-mode row loop; anything that is not a range clears it. |
 | `transport.play` | `{mode?: "pattern" or "song", songMode?, fromStart?, loop?, countIn?}` | transport status | implemented | mode "pattern" or songMode: false plays the active pattern; loop is a row range for Pattern mode; countIn is bars (0..4). Then status events, 20 per second (emit_latest). |
 | `transport.queue` | `{pattern?, sequence?, mode?, clear?}` | {queued, pattern, sequence, mode?} | implemented | Queues a jump at the next boundary. |
@@ -424,8 +424,11 @@ Exercised on Linux (Ubuntu 24.04, x86-64):
   the next start or seek, and before a state is captured while stopped), a plug-in
   instrument playing a pattern, controllers and pressure
   played live reaching it with the next block (as MIDI, as CLAP note expressions, as the
-  parameters a VST3 plug-in maps them to), the sustain pedal reaching it before the notes of
-  that block and coming up with a panic, a sidechain, state into
+  parameters a VST3 plug-in maps them to), the sustain pedal and the notes reaching it in the
+  order they were played and the pedal coming up with a panic, a block the plug-in misses
+  costing its audio and none of its events (notes, pedal and a parameter change arrive with
+  the next block, in order; a plug-in that stays away for two seconds is silenced when it
+  is back), a sidechain, state into
   `engine.snapshot` and back from a reopened project, an offline copy equal to the live render, a
   crash inside `process` during playback (pass-through, report, restore with state), a plug-in
   that crashes while loading held back at the next start, no allocation on the render path; and
@@ -493,7 +496,9 @@ Not exercised anywhere yet:
   the container before an editor is focused (`yieldActivationToApplication:`, called by the window
   through `st_audio::plugins::manager::yield_activation`), and the short socket directory chosen on
   macOS are type-checked only. Real-time deadlines have only met the null device: a block may
-  take what is left of its render call, at least half a millisecond.
+  take what is left of its render call, at least half a millisecond. A block a plug-in misses
+  costs that block's audio; its events wait for the next block (see "Blocks a plug-in
+  misses" below).
 - **MIDI devices**: no port of the ALSA sequencer or of CoreMIDI has been opened (the container has
   no sequencer; the host then runs without devices and says so in `midi.devices`). Everything above
   the device layer is tested with in-memory ports. Controllers and pressure for Audio Units are
@@ -579,9 +584,10 @@ Behaviour worth knowing:
   capture a base patch: nothing needs capturing. A state captured while the song plays
   contains what the lanes and locks hold at that moment.
 - Expression: controllers, channel and poly pressure, pitch bend and program changes played
-  live (`midi.expression`, a MIDI keyboard) go to the instrument of their track. An external
-  MIDI instrument gets them on its device and channel at once. A plug-in instrument gets them
-  at the first frame of its next block: as MIDI (CLAP note ports that take it, Audio Units),
+  live (`midi.expression`, a MIDI keyboard) go to the instrument of their track, the way its
+  live notes go and behind the ones played before (see "One stream of live input" below). An
+  external MIDI instrument gets them on its device and channel, timed like its notes. A
+  plug-in instrument gets them at the first frame of its next block: as MIDI (CLAP note ports that take it, Audio Units),
   as note expressions for pressure and pitch bend (CLAP note ports that take CLAP events
   only; control changes have no CLAP event), or as the parameters it maps controllers,
   channel pressure and pitch bend to plus poly pressure events (VST3). The engine's own
@@ -589,11 +595,10 @@ Behaviour worth knowing:
 - The pedals: the sustain pedal belongs to the instrument. A plug-in instrument and an
   external MIDI instrument get it (controller 64, with its value, so half-pedalling and
   re-pedalling are the instrument's; likewise sostenuto, 66, and soft, 67) and their
-  note-offs as played: the instrument sustains. A plug-in gets a pedal at the first frame of
-  its next block, before the notes of that block, so a key released after the pedal went
-  down is released after it for the plug-in as well (the other way round, a pedal pressed
-  less than one audio block after a key came up can still catch the note; the same holds for
-  a device, whose notes are timed to the audio while its pedal is sent at once). The engine's
+  note-offs as played: the instrument sustains. A pedal reaches a plug-in and a device in its
+  place among the notes: a key released after the pedal went down is released after it for
+  the instrument as well, and a pedal pressed after a key came up does not catch that note,
+  however close the two were. The engine's
   own instruments have no pedal: while a sustain pedal is at 64 or more the host holds back
   the note-offs of the keys its source releases. So it does for a plug-in instrument that
   controller 64 cannot reach (a CLAP note port that takes CLAP note events only; a VST3
@@ -611,13 +616,55 @@ Behaviour worth knowing:
   restored after a crash, another device or channel, a device that came back) gets the pedal
   again with the next note; a device or channel an instrument leaves is sent pedal-up, and so
   is a plug-in whose track a publication moves or removes (before the publication, which also
-  lets go of the notes the host holds on such a track). A keyboard that is unplugged, and an
+  lets go of the notes the host holds on such a track; the host waits, a quarter of a second
+  at most, until the audio thread has delivered that). A keyboard that is unplugged, and an
   input route that changes, lift their pedals. When a song ends by itself the render thread
   silences the external instruments as on Stop; a pedal still down is sent again with the
   next note.
   Patterns carry notes with gates and no pedal data, so all of this is live input only; while
   a live pedal is down on a plug-in or a device, the notes the song plays on that instrument
   are sustained by it too, as on the instrument itself.
+- One stream of live input: what is played live for an instrument reaches it in the order it
+  was played. Notes (`note.on`, `note.off`, a MIDI keyboard), pedals, controllers, pressure
+  and pitch bend are all queued for the audio thread in one queue (the engine's commands)
+  and come out with the next audio block, at its first frame, in that order: applied to the
+  engine's own voices, handed to a plug-in instrument as one list of events, and sent to an
+  external instrument's device with the times of that block (`st_midi::RenderOutput::note`
+  and `message`; messages for one time leave in the order they were handed over). VST3 has
+  no order between a note and a controller at one sample (a controller is a parameter
+  there, and a plug-in applies parameters first), so its backend puts a mapped controller
+  that follows a note one sample behind it, and a note that follows such a controller no
+  earlier than it. Within one block everything played live lands on the first frame: order
+  is exact, time is the block's. An offline render sends devices nothing, live messages
+  included.
+- Held keys: `note.on`, `note.off` and MIDI input name a track by its place in the list (the
+  interface sends the place; `midi.expression` and the plug-in commands name the channel,
+  `track:<routingID>`). The host keeps every key that is down with the place its key-down
+  named (`areas/audio.rs`), and a release finds its key there: it ends the note that key
+  started and nothing else. A publication that moves or removes the track of a held key
+  takes the instrument away from that place, so before it is published the host releases
+  the note where it sounds (the sampler's voice, the plug-in, the device), and the later
+  release of that key ends nothing: it does not reach the track that stands there now, and
+  a note another player holds there goes on. A note being recorded from a MIDI keyboard
+  loses its capture then (`midi.note` with `recordingCancelled`, reason "the track was moved
+  or removed"). A track that stays where it is keeps its keys also when its instrument is
+  replaced: the release goes to the voices the key started; a plug-in that was replaced
+  took its notes with it, and a device or channel an instrument left was silenced as a
+  whole. `step.preview` holds no key (it ends by itself).
+- Blocks a plug-in misses: a plug-in that does not answer a block within its deadline, or
+  whose container is busy with a control operation, plays its fallback for that block
+  (silence for an instrument, the dry signal for an effect). The block's events are not
+  lost: notes on and off, pedals, controllers, pressure, pitch bend, parameter changes of
+  lanes and step locks and returns to base values wait in the plug-in client and reach the
+  plug-in with the next block it takes, at that block's first frame, in their order, before
+  the block's own events (the events of a block the plug-in was merely late for have
+  arrived when it finishes that block, and are not sent twice). Waiting is bounded: by two
+  seconds of audio, and by the number of events one block can carry (2048). Beyond a bound
+  everything that waits is given up together, never a note-off without its note-on: the
+  mixer then starts the plug-in's next block with the pedals up, all notes off and a
+  note-off for every note the plug-in may hold, sends the returns to base values again, and
+  the pedal record sends a pedal that is still down again with the next note. Nothing
+  waits for a plug-in whose container is lost: a restored plug-in starts silent.
 - Recording under the pedal: a recorded note is as long as it sounded. A key released while
   the sustain pedal of its source is down keeps its capture open until the note ends (the
   pedal comes up or goes below half, the same key is struck again on that instrument, Stop),

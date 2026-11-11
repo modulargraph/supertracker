@@ -100,6 +100,7 @@ them.
   `RenderHalf` for the audio thread, the clonable `StatusHandle` for everyone). `engine/host.rs` states why they may
   cross threads. The audio thread calls `render_block` and reads the track buses and the return bus (the
   metronome) from `block()`, the events of the block from `pop_event` (notes of plug-in and MIDI instruments,
+  the channel messages played live for them in their place among the live notes,
   the mixer values of the tracks, the values of host lanes and step locks) and, when it records, the song frame
   of the block from `block_song_frame`. [AUDIO_ENGINE.md](AUDIO_ENGINE.md) describes the behaviour.
 - `tracker_engine::effects`: the built-in effect catalogue, `Effect` (an instance with lock-free parameter

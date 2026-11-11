@@ -163,6 +163,43 @@ fn external_notes_are_frame_exact() {
     assert_eq!((status.playing, status.row, status.track_count), (1, 3, 1));
 }
 
+/// Channel messages played live keep their place among the live notes: everything queued
+/// before a block comes out as that block's events, at its first frame, in the order queued.
+#[test]
+fn live_channel_messages_come_out_in_their_place_among_the_live_notes() {
+    let mut engine = engine();
+    let (control, audio, _) = engine.halves();
+    let mut instrument = default_instrument();
+    instrument.type_ = ST_INSTRUMENT_AU;
+    begin_project(control, instrument);
+    commit(control);
+    render(audio, 256, 256);
+    events(audio); // the mixer values of the new project
+    let (edit, shared, _) = control.parts();
+    edit.note_on(shared, 0, 0, 60, 100);
+    assert!(edit.midi(shared, 0, -1, 0xB3, 64, 127), "the pedal, for the plug-in of track 0");
+    edit.note_off(shared, 0, 60);
+    assert!(edit.midi(shared, -1, 5, 0xE0, 0, 96), "a pitch bend, for the external instrument 5");
+    edit.note_on(shared, 0, 0, 62, 90);
+    assert!(edit.midi(shared, 0, -1, 0xB0, 64, 0));
+    render(audio, 256, 256);
+    let seen: Vec<(i32, i32, i32, i32, i32, i32, i32)> = events(audio).iter().map(|event| (event.type_, event.track, event.instrument, event.target, event.note, event.velocity, event.frame_offset)).collect();
+    assert_eq!(
+        seen,
+        [
+            (ST_EVENT_NOTE_ON, 0, 0, 0, 60, 100, 0),
+            (ST_EVENT_MIDI, 0, -1, 0xB0, 64, 127, 0),
+            (ST_EVENT_NOTE_OFF, 0, 0, 0, 60, 0, 0),
+            (ST_EVENT_MIDI, -1, 5, 0xE0, 0, 96, 0),
+            (ST_EVENT_NOTE_ON, 0, 0, 0, 62, 90, 0),
+            (ST_EVENT_MIDI, 0, -1, 0xB0, 64, 0, 0),
+        ]
+    );
+    // Nothing of it sounds in the engine, and nothing is left for the next block.
+    render(audio, 256, 256);
+    assert!(events(audio).is_empty());
+}
+
 #[test]
 fn queued_transport_is_reported_until_rendered() {
     let mut engine = engine();
