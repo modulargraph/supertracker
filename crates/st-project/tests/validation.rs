@@ -11,7 +11,7 @@ use st_project::Project;
 /// A valid project: two tracks, a group bus and a return bus.
 fn base() -> Value {
     json!({
-        "version": 2, "name": "Valid", "bpm": 120, "masterVolume": 0.7,
+        "version": 3, "name": "Valid", "bpm": 120, "masterVolume": 0.7,
         "tracks": [{ "id": 0, "routingID": "t0", "volume": 0.8, "pan": 0 }, { "id": 1, "routingID": "t1" }],
         "instruments": [{ "id": 0, "type": "sample" }],
         "patterns": [{ "id": 0, "length": 16, "steps": [[], []], "automation": [] }],

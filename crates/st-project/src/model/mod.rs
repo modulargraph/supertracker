@@ -37,7 +37,7 @@ use std::collections::BTreeMap;
 /// The project format this crate reads and writes (`project.version`). It changes whenever a
 /// project written before the change would no longer mean the same, or be refused, after it.
 /// `PROJECT_VERSION` in `ui/app-project-model.js` is the same number.
-pub const FORMAT_VERSION: i64 = 2;
+pub const FORMAT_VERSION: i64 = 3;
 
 model! {
     /// A track's live audio input (`line-inputs.js`): channels of an audio device mixed into

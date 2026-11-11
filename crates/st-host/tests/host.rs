@@ -69,7 +69,7 @@ impl Fixture {
 
 fn project(name: &str) -> Value {
     json!({
-        "version": 2, "name": name, "bpm": 120,
+        "version": 3, "name": name, "bpm": 120,
         "tracks": [{"name": "Track 01", "routingID": "track-1", "instrument": 0}],
         "instruments": [{"name": "Instrument 01", "type": "sample", "samplePath": ""}],
         "patterns": [{"id": 0, "length": 64, "steps": [[{"note": 60, "instrument": 0}]]}],

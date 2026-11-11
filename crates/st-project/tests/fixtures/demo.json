@@ -2705,7 +2705,7 @@
   "mix": 0.25
  },
  "audioPlugins": [],
- "version": 2,
+ "version": 3,
  "timeSignature": {
   "numerator": 4,
   "denominator": 4

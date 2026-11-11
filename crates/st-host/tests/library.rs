@@ -169,7 +169,7 @@ fn a_folder_is_added_scanned_searched_and_favorites_survive_the_host() {
 /// A session with one kit group: a sampler pad and a plug-in pad.
 fn session(sample: &Path) -> Value {
     json!({
-        "version": 2, "name": "Session", "bpm": 120, "linesPerBeat": 4,
+        "version": 3, "name": "Session", "bpm": 120, "linesPerBeat": 4,
         "tracks": [
             { "id": 0, "name": "Kick", "routingID": "kick", "groupID": "g1", "pad": 0, "padNote": 60, "instrument": 0 },
             { "id": 1, "name": "Synth", "routingID": "synth", "groupID": "g1", "pad": 1, "instrument": 1 }
@@ -271,7 +271,7 @@ fn kit_session(sample: &Path, clap: &Path) -> Value {
     let mut bass = vec![Value::Null; 16];
     bass[4] = json!({ "note": 60, "instrument": 0, "velocity": 100 });
     json!({
-        "version": 2, "name": "Session", "bpm": 120, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
+        "version": 3, "name": "Session", "bpm": 120, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
         "tracks": [
             { "id": 0, "name": "Kick", "routingID": "kick", "groupID": "g1", "pad": 0, "padNote": 60, "instrument": 0, "volume": 1, "pan": 0 },
             { "id": 1, "name": "Synth", "routingID": "synth", "groupID": "g1", "pad": 1, "instrument": 1, "volume": 1, "pan": 0 },

@@ -5,7 +5,7 @@
 //! A group project is a small project document holding exactly that:
 //!
 //! ```json
-//! { "version": 2, "name": "My kit", "bpm": 120, "linesPerBeat": 4,
+//! { "version": 3, "name": "My kit", "bpm": 120, "linesPerBeat": 4,
 //!   "tracks": [ { "id": 0, "name": "Kick", "routingID": "…", "groupID": "g", "pad": 0, "instrument": 0, … } ],
 //!   "instruments": [ { "id": 0, "type": "sample", "samplePath": "…", … } ],
 //!   "groups": [ { "id": "g", "name": "My kit", "busID": "b", … } ],

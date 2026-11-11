@@ -58,13 +58,16 @@ Each of these was tested on Linux with the silent test devices, in-memory MIDI p
 
 - VST2 hosting. NKS presets and Maschine groups that name a VST2 plug-in are still read: a preset loads into the
   vendor's VST2-compatible VST3 when that is installed; a group keeps the plug-in's state and says so.
-- Opening projects, kits, built-in effect states and plug-in states saved by 0.1 or by earlier builds of 0.2 (project format 2, kit package format 3; any other number is refused with one message). Nothing is migrated.
+- Opening projects, kits, built-in effect states and plug-in states saved by 0.1 or by earlier builds of 0.2 (project format 3, kit package format 4; any other number is refused with one message). Nothing is migrated.
 - The second mixer ("legacy" mix) and the dialog that switched a song to standard routing. Every project uses the routed mixer.
 - Tempo and meter maps: the engine's clock module and the interface's reading of `project.timing`. A project has one tempo and one meter.
 - Engine features the host never called: its own mixer (faders, mute/solo, delay and reverb sends; the host mixes), plug-in automation lanes and track/slot step locks, the frozen-song provider, the unit range cache, the timestamped bus history, transport checkpoints, its own meters, zone regions.
 - Base patch capture (the host keeps every plug-in parameter's base value itself), "Bounce track" (Render stem remains), the "Routing needs repair" state (a project the mixer cannot render is refused when published), and the mapping of former factory chord-set IDs.
 - The in-app self-test modes and the hidden script runner. The host tests and the browser test take their place.
-- Looser spellings of project data: the instrument type `au` (it is `plugin`), a plug-in entry without an `instanceID` or a `format`, a choke group on the instrument (it is the track's), a recording input saved by device name only, and the earlier shape of the kit browser's saved settings. The host refuses the first four; the interface reads a loaded project's parts without checking for them ([HOST.md](HOST.md) lists what every project has).
+- Looser spellings of project data. Each thing has one name and one place, and the host refuses the others: the instrument type is `plugin` (not `au`); a plug-in entry has an `instanceID`, a `component` written `<format>:<id>` and the `format` it names; the choke group and the voice mode are the track's, not the instrument's; a zone's sample is `samplePath`, a clip's file `path`, slice markers `slicePoints`; a recording input has a `deviceUID`.
+- Repairs on load. The interface reads a loaded project's parts without checking for them and repairs nothing ([HOST.md](HOST.md) lists what every project has); the host refuses plug-ins, lanes and parameter pages that belong to nothing, and track groups that do not hold together.
+- Second spellings in what the host answers: a plug-in list entry has `component`, `manufacturer` and `kind` only; `sample.analyzeSlices` answers `slicePoints` only.
+- The mixer's second insert rack and the Song view's plain sequence list (each panel is rendered once), and the earlier shape of the kit browser's saved settings.
 
 ## Features of the interface
 

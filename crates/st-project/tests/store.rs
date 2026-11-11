@@ -125,7 +125,7 @@ fn zones_clips_takes_and_extensionless_files_are_collected() {
     fs::write(&alternate, [4u8, 3, 2, 1]).unwrap();
     let text = |path: &Path| path.to_string_lossy().into_owned();
     let project = Project::from_value(json!({
-        "version": 2, "name": "Complex", "bpm": 120, "tracks": [{ "id": 0, "routingID": "t0" }], "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
+        "version": 3, "name": "Complex", "bpm": 120, "tracks": [{ "id": 0, "routingID": "t0" }], "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
         "instruments": [{ "id": 0, "samplePath": text(&source), "zones": [{ "samplePath": text(&source), "rootNote": 60 }] }],
         "patterns": [{ "id": 0, "length": 4, "steps": [[]] }], "sequence": [0],
         "audioClips": [{ "id": "phrase", "track": 0, "startBeat": 0.0, "durationBeats": 4.0, "path": text(&source),
@@ -381,7 +381,7 @@ fn templates_and_the_startup_session() {
     let sample = root.join("template.wav");
     fs::write(&sample, b"template audio").unwrap();
     let hardware = Project::from_value(json!({
-        "version": 2, "name": "Eight tracks", "bpm": 120,
+        "version": 3, "name": "Eight tracks", "bpm": 120,
         "tracks": (0..8).map(|index| json!({ "id": index, "routingID": format!("t{index}"), "name": format!("Track {}", index + 1), "instrument": if index < 3 { index } else { -1 } })).collect::<Vec<_>>(),
         "instruments": (0..3).map(|index| json!({ "id": index, "name": format!("Synth {index} Editor"), "type": "midi", "samplePath": if index == 0 { sample.to_string_lossy().into_owned() } else { String::new() } })).collect::<Vec<_>>(),
         "patterns": [{ "id": 0, "length": 64, "steps": (0..8).map(|_| vec![Value::Null; 64]).collect::<Vec<_>>(), "automation": [] }],

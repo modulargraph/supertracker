@@ -537,7 +537,7 @@
   "sends": [],
   "sidechains": []
  },
- "version": 2,
+ "version": 3,
  "linesPerBeat": 4,
  "timeSignature": {
   "numerator": 4,

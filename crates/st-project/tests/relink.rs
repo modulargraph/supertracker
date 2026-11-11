@@ -26,7 +26,7 @@ fn fixture(sample: &str, zone: Option<&str>, clip: Option<&str>) -> Project {
         instrument["zones"] = json!([{ "samplePath": zone, "rootNote": 42, "keyLow": 20, "keyHigh": 80, "volume": 0.7 }, { "samplePath": sample, "rootNote": 64 }]);
     }
     let mut project = json!({
-        "version": 2, "name": "Relink fixture", "bpm": 120.0, "linesPerBeat": 4, "tracks": [{ "id": 0, "routingID": "t0" }], "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
+        "version": 3, "name": "Relink fixture", "bpm": 120.0, "linesPerBeat": 4, "tracks": [{ "id": 0, "routingID": "t0" }], "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
         "instruments": [instrument], "patterns": [{ "id": 0, "length": 64, "steps": [[]] }], "sequence": [0],
         "audioPlugins": [{ "owner": "master", "instanceID": "vendor", "component": "clap:com.vendor.effect", "format": "CLAP", "opaqueVendorState": { "path": "/keep/opaque/plugin.wav" } }]
     });
@@ -258,7 +258,7 @@ fn takes_follow_the_clip() {
     let (first, second, found) = (text(&root.join("gone/take1.wav")), text(&root.join("gone/take2.wav")), root.join("found.wav"));
     put(b"take", &found);
     let project = Project::from_value(json!({
-        "version": 2, "bpm": 120, "tracks": [{ "routingID": "t0" }], "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] }, "instruments": [], "patterns": [{ "length": 4, "steps": [[]] }],
+        "version": 3, "bpm": 120, "tracks": [{ "routingID": "t0" }], "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] }, "instruments": [], "patterns": [{ "length": 4, "steps": [[]] }],
         "audioClips": [{ "id": "c", "track": 0, "startBeat": 0, "durationBeats": 4, "path": second,
             "takeSet": { "activeID": "b", "takes": [{ "id": "a", "path": first, "sourceOffset": 0 }, { "id": "b", "path": second, "sourceOffset": 0 }] } }]
     }))

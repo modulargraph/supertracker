@@ -32,7 +32,7 @@ fn tree_bytes(directory: &Path) -> BTreeMap<String, Vec<u8>> {
 /// the group feeds, and routes into and out of the group.
 fn session(sample: &str, zone: &str) -> Value {
     json!({
-        "version": 2, "name": "Session", "bpm": 123.5, "linesPerBeat": 4,
+        "version": 3, "name": "Session", "bpm": 123.5, "linesPerBeat": 4,
         "tracks": [
             { "id": 0, "name": "Lead", "routingID": "lead", "instrument": 0, "volume": 0.8 },
             { "id": 1, "name": "Layered kick", "routingID": "kick", "groupID": "g1", "pad": 0, "padNote": 60, "instrument": 2, "volume": 0.63, "pan": -0.23, "chokeGroup": 2,

@@ -48,7 +48,7 @@ pub const EXTENSIONS: [&str; 2] = ["stkit", "mxgrp"];
 /// The kit package format this crate reads and writes (the header's `version`). It changes with
 /// the package layout and with the project format of `project.json`
 /// ([`st_project::model::FORMAT_VERSION`]); a package with another number is refused.
-pub const FORMAT_VERSION: u64 = 3;
+pub const FORMAT_VERSION: u64 = 4;
 /// Largest `project.json`.
 pub const MAXIMUM_PROJECT_BYTES: u64 = 64 * 1024 * 1024;
 /// Largest `kit.json`.

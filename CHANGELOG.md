@@ -45,8 +45,8 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
 
 ### Removed, without migration
 
-- **Projects and kits saved by 0.1, or by earlier builds of 0.2, do not open.** The project format is version 2 and
-  the kit package format version 3; a file with any other number (projects, templates, recovery copies, kits) is
+- **Projects and kits saved by 0.1, or by earlier builds of 0.2, do not open.** The project format is version 3 and
+  the kit package format version 4; a file with any other number (projects, templates, recovery copies, kits) is
   refused with one message. Nothing is converted.
 - **Plug-in and built-in effect states saved by 0.1 are not read.** Plug-ins are identified as `clap:…`, `vst3:…`
   and `au:type:subtype:manufacturer`.
@@ -72,6 +72,23 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
 - A choke group saved on an instrument is not read: the choke group is the track's.
 - A hardware instrument's recording input saved by device name only (no `deviceUID`) is refused.
 - Kit browser settings saved as `{filters: {expansions, tags}, userOnly}` are not restored.
+- **One name for each piece of sample data.** A zone's sample is `samplePath`, an audio clip's file is `path`, slice
+  markers are `slicePoints` (`sample.analyzeSlices` answers that name only). The other spellings (`path` on a zone,
+  `samplePath` on a clip, `slices`) are refused.
+- **The voice mode is the track's only**, like the choke group; an instrument has none. A sample loaded as a new
+  instrument and an empty kit pad are mono on the track made with them; another track given the same instrument is
+  poly until set.
+- **One name for each fact about a plug-in.** A plug-in list entry has `component`, `manufacturer` and `kind`
+  (`id`, `vendor`, `type` and `isInstrument` are gone); `plugin.load` takes `component`; the recovery report and an
+  NKS identity say `component` and `manufacturer`. A component is always `<format>:<id>` (`clap:`, `vst3:` with 32
+  upper-case hex digits, `au:type:subtype:manufacturer`, `stfx:`; `vst2:` only for a plug-in a Maschine import
+  keeps but cannot load) and `format` must be the format it names.
+- **The interface repairs no loaded project.** The host refuses a plug-in, automation lane or parameter page whose
+  owner or plug-in does not exist, an instrument's kept plug-in that is not a complete instrument descriptor, and
+  track groups that do not hold together (no bus of their own, no members, members not adjacent).
+- The mixer's second insert rack and the Song view's plain sequence list (each panel is rendered once). With them
+  went four undocumented keys on the song's sequence list: Command/Control with Up, Down, Return and Delete.
+- The plug-in browser's "Custom editor / Parameters" badge, which no host answered.
 
 ### Fixed along the way
 
