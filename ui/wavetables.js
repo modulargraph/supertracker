@@ -46,7 +46,7 @@
       size = Number(inst.wavetableFrameSize) > 0 ? Number(inst.wavetableFrameSize)
         : Number(meta?.wavetableFrameSize) > 0 ? Number(meta.wavetableFrameSize) : DEFAULT_FRAME;
     if (!frames) return { frames: 0, size, count: 0, index: 0 };
-    const first = Math.floor((inst.start ?? 0) * frames), last = Math.ceil((inst.end ?? 1) * frames),
+    const first = Math.floor(inst.start * frames), last = Math.ceil(inst.end * frames),
       region = Math.max(1, last - first), width = Math.min(size, region), count = Math.max(1, Math.floor(region / width));
     const position = Math.min(1, Math.max(0, Number(inst.wavetablePosition) || 0)),
       index = Math.min(count - 1, Math.round(position * (count - 1)));

@@ -114,9 +114,9 @@
       preventScroll: true
     });
   }
-  const sliceSignature = inst => JSON.stringify([inst.type, inst.samplePath, inst.start ?? 0, inst.end ?? 1, inst.mode, inst.sliceCount,
+  const sliceSignature = inst => JSON.stringify([inst.type, inst.samplePath, inst.start, inst.end, inst.mode, inst.sliceCount,
       inst.slicePoints, inst.slices]);
-  const auditionSignature = inst => JSON.stringify([sliceSignature(inst), inst.rootNote ?? 60, inst.zones || []]);
+  const auditionSignature = inst => JSON.stringify([sliceSignature(inst), inst.rootNote, inst.zones || []]);
   function selectedSlice(inst = current()) {
     if (audition.instrument !== inst) { audition.instrument = inst; audition.selected = 0; audition.message = ''; audition.error = false; }
     audition.selected = Math.max(0, Math.min(slicePoints(inst).length - 1, audition.selected));
@@ -127,7 +127,7 @@
     if (!inst || inst.type !== 'sample') return '';
     const index = selectedSlice(inst);
     if (audition.message) return audition.message;
-    return `Slice ${index + 1} · ${note(inst.rootNote ?? 60)} · Preview up to 2 seconds`;
+    return `Slice ${index + 1} · ${note(inst.rootNote)} · Preview up to 2 seconds`;
   }
   function updateSliceSelection() {
     const inst = current(); if (!inst || inst.type !== 'sample') return;
@@ -192,7 +192,7 @@
       if (result === false) return;
       if (result == null) throw new Error('Could not synchronize the sample before auditioning.');
       if (!validAudition(job)) return;
-      const root = Math.round(limit(inst.rootNote ?? 60,0,127));
+      const root = Math.round(limit(inst.rootNote,0,127));
       job.sent = true;
       const response = await ST().request('step.preview',{...previewStep(job,root,{velocity:100,fx1:{type:'slice',value:index + 1}}),duration:2});
       if (!validAudition(job)) return;
@@ -354,9 +354,9 @@
     const points = slicePoints(inst), manual = markerList(inst).length > 0, selected = selectedSlice(inst);
     const markerRows = points.map((value, index) => `<div id="sampler-row-${index}" data-sampler-row="${index}" class="sampler-marker${index === selected ? ' is-selected' : ''}">`
         + `<button id="sampler-audition-${index}" data-sampler-audition="${index}" class="sampler-slice-audition" tabindex="${index === selected ? 0 : -1}"`
-        + ` aria-current="${index === selected}" aria-label="Audition slice ${index + 1} at ${note(inst.rootNote ?? 60)}" aria-describedby="sampler-audition-help"`
+        + ` aria-current="${index === selected}" aria-label="Audition slice ${index + 1} at ${note(inst.rootNote)}" aria-describedby="sampler-audition-help"`
         + ` ${inst.samplePath ? '' : 'disabled'}>▶</button><span class="sampler-marker-index">${String(index + 1).padStart(2, '0')}</span>`
-        + `<span class="sampler-marker-note">${esc(sliceNote(inst.rootNote ?? 60, index, points.length))}</span>`
+        + `<span class="sampler-marker-note">${esc(sliceNote(inst.rootNote, index, points.length))}</span>`
         + `<label><span class="sr-only">Slice ${index + 1} start percentage</span><input type="number" id="sampler-marker-${index}"`
         + ` data-sampler-marker="${index}" tabindex="${index === selected && index > 0 ? 0 : -1}" min="${index ? ((points[index - 1] + .00001) * 100).toFixed(3) : '0'}"`
         + ` max="${((points[index + 1] ?? 1) * 100 - .001).toFixed(3)}" step=".1" value="${(value * 100).toFixed(3)}" ${index === 0 ? 'disabled' : ''}>`
@@ -365,7 +365,7 @@
     return `<section id="sampler-slice-map" class="panel wide sampler-slices" aria-label="Slice map"><div class="panel-head">`
         + `<h2>Slice map</h2><span class="chip">${points.length} SLICES${inst.mode === 'slice' ? '' : ' · SLICE MODE OFF'}</span>`
         + `</div><div class="panel-body sampler-slice-layout">
-      <div class="sampler-slice-tools"><p class="sampler-help">Chop the playback region (${((inst.start ?? 0) * 100).toFixed(1)}–${((inst.end ?? 1) * 100).toFixed(1)}% `
+      <div class="sampler-slice-tools"><p class="sampler-help">Chop the playback region (${(inst.start * 100).toFixed(1)}–${(inst.end * 100).toFixed(1)}% `
           + `of the source). Set Start/End on the Sample page first to leave out silence. Editing markers enables Slice play mode.</p>
       <div id="sampler-transient-tools" class="sampler-transient-tools" aria-busy="${!!slicing.analysis}"><h3 class="sampler-subhead">Detect `
           + `transients</h3><div class="sampler-inline"><button id="sampler-detect-transients" ${!inst.samplePath || slicing.analysis ? 'disabled' : ''}>${slicing.analysis ? 'Analyzing…' : 'Detect transients'}</button>`
@@ -389,7 +389,7 @@
           + `</label><button id="sampler-apply-beat-grid">Chop by beats</button></div><p id="sampler-beat-estimate" class="sampler-help">${beatEstimate()}</p></div>
       <details id="sampler-slice-help" class="sampler-more"><summary>How slices play</summary><p class="sampler-help">Enter the region’s length `
           + `in quarter-note beats. This creates equal markers; it does not detect tempo or stretch audio.</p><p class="sampler-help">Slice starts are `
-          + `percentages within the sample start/end range. Play ${note(inst.rootNote ?? 60)} upward to trigger successive slices. For independent pitch, `
+          + `percentages within the sample start/end range. Play ${note(inst.rootNote)} upward to trigger successive slices. For independent pitch, `
           + `put Slice 1–${points.length} in either step FX slot beside a note; the note transposes that slice from the root note. A Slice FX without `
           + `a note does not retrigger.</p></details></div>
       <div class="sampler-slice-list"><div class="sampler-slice-ruler" aria-label="Slice start positions">${points.map((value, index) => `<span data-sampler-slice-region="${index}" class="${index === selected ? 'is-selected' : ''}" style="left:${value * 100}%;width:${((points[index + 1] ?? 1) - value) * 100}%"`
@@ -435,7 +435,7 @@
         const inst = resolveInstrument(context, project); if (!inst) return;
         inst.zones ||= [];
         if (replace != null && inst.zones[replace]) { inst.zones[replace].samplePath = path; delete inst.zones[replace].path; }
-        else if (inst.zones.length < 128) inst.zones.push({ samplePath: path, keyLow: 0, keyHigh: 127, velocityLow: 0, velocityHigh: 127, rootNote: inst.rootNote ?? 60, tune: 0, volume: 1 });
+        else if (inst.zones.length < 128) inst.zones.push({ samplePath: path, keyLow: 0, keyHigh: 127, velocityLow: 0, velocityHigh: 127, rootNote: inst.rootNote, tune: 0, volume: 1 });
       });
       ST().toast(`${replace == null ? 'Zone added' : 'Zone sample replaced'}. Audio loads in the background.`);
     } catch (error) { ST().toast(error.message, 'error'); }
@@ -691,10 +691,10 @@
     return seconds ? `${(position * seconds).toFixed(seconds * position >= 10 ? 2 : 3)} s` : `${(position * 100).toFixed(2)}%`;
   }
   function editorMarkers(inst) {
-    const start = inst.start ?? 0, end = inst.end ?? 1;
+    const start = inst.start, end = inst.end;
     const list = [{ key: 'start', label: 'Start', pos: start }, { key: 'end', label: 'End', pos: end }];
-    if (LOOP_MODES.has(inst.mode)) list.push({ key: 'loopStart', label: 'Loop start', pos: inst.loopStart ?? 0 },
-        { key: 'loopEnd', label: 'Loop end', pos: inst.loopEnd ?? 1 });
+    if (LOOP_MODES.has(inst.mode)) list.push({ key: 'loopStart', label: 'Loop start', pos: inst.loopStart },
+        { key: 'loopEnd', label: 'Loop end', pos: inst.loopEnd });
     if (inst.mode === 'slice') slicePoints(inst).forEach((point, index) => {
       if (index) list.push({ key: `slice:${index}`, label: `Slice ${index + 1}`, pos: start + point * (end - start), slice: index });
     });
@@ -707,11 +707,11 @@
     return marker;
   }
   function markerBounds(inst, key) {
-    const frame = frameSize(inst), start = inst.start ?? 0, end = inst.end ?? 1;
+    const frame = frameSize(inst), start = inst.start, end = inst.end;
     if (key === 'start') return [0, end - frame];
     if (key === 'end') return [start + frame, 1];
-    if (key === 'loopStart') return [Math.min(start, inst.loopStart ?? 0), (inst.loopEnd ?? 1) - frame];
-    if (key === 'loopEnd') return [(inst.loopStart ?? 0) + frame, Math.max(end, inst.loopEnd ?? 1)];
+    if (key === 'loopStart') return [Math.min(start, inst.loopStart), inst.loopEnd - frame];
+    if (key === 'loopEnd') return [inst.loopStart + frame, Math.max(end, inst.loopEnd)];
     const points = slicePoints(inst), index = Number(key.split(':')[1]), width = end - start;
     return [start + points[index - 1] * width + frame, start + (points[index + 1] ?? 1) * width - frame];
   }
@@ -721,7 +721,7 @@
     let value = limit(position, lo, Math.max(lo, hi));
     if (frames) value = limit(Math.round(value * frames) / frames, lo, Math.max(lo, hi));
     if (key.startsWith('slice:')) {
-      const points = slicePoints(inst), index = Number(key.split(':')[1]), start = inst.start ?? 0, end = inst.end ?? 1;
+      const points = slicePoints(inst), index = Number(key.split(':')[1]), start = inst.start, end = inst.end;
       points[index] = (value - start) / (end - start);
       inst.slicePoints = points; inst.slices = [...points]; inst.sliceCount = points.length;
       return;
@@ -730,8 +730,8 @@
     if ((key === 'start' || key === 'end') && LOOP_MODES.has(inst.mode)) {
       // Loop points live inside the playback region, as on the hardware.
       const frame = frameSize(inst);
-      inst.loopStart = limit(inst.loopStart ?? 0, inst.start, inst.end - frame);
-      inst.loopEnd = limit(inst.loopEnd ?? 1, inst.loopStart + frame, inst.end);
+      inst.loopStart = limit(inst.loopStart, inst.start, inst.end - frame);
+      inst.loopEnd = limit(inst.loopEnd, inst.loopStart + frame, inst.end);
     }
   }
   function scheduleEditorRefresh() {
@@ -872,12 +872,12 @@
     const g = canvas.getContext('2d'); g.setTransform(ratio, 0, 0, ratio, 0, 0);
     const [from, to] = s.view, span = to - from, x = position => (position - from) / span * width, wave = height - 14, middle = wave / 2;
     g.fillStyle = '#161913'; g.fillRect(0, 0, width, height);
-    const start = inst.start ?? 0, end = inst.end ?? 1;
+    const start = inst.start, end = inst.end;
     g.fillStyle = '#463621'; g.globalAlpha = .28; g.fillRect(x(start), 0, x(end) - x(start), wave); g.globalAlpha = 1;
     if (LOOP_MODES.has(inst.mode)) {
       g.fillStyle = '#cfad67';
       g.globalAlpha = .13;
-      g.fillRect(x(inst.loopStart ?? 0), 0, x(inst.loopEnd ?? 1) - x(inst.loopStart ?? 0), wave);
+      g.fillRect(x(inst.loopStart), 0, x(inst.loopEnd) - x(inst.loopStart), wave);
       g.globalAlpha = 1;
     }
     g.strokeStyle = '#42432e'; g.lineWidth = 1; g.beginPath(); g.moveTo(0, middle + .5); g.lineTo(width, middle + .5); g.stroke();
@@ -940,7 +940,7 @@
       const value = button.querySelector?.('b'); if (value) value.textContent = timeText(inst, item.pos);
     });
     const view = document.getElementById('sampler-editor-view');
-    if (view) view.textContent = `View ${timeText(inst, s.view[0])} – ${timeText(inst, s.view[1])} · ${(1 / (s.view[1] - s.view[0])).toFixed(1)}× · Region ${timeText(inst, (inst.end ?? 1) - (inst.start ?? 0))}`;
+    if (view) view.textContent = `View ${timeText(inst, s.view[0])} – ${timeText(inst, s.view[1])} · ${(1 / (s.view[1] - s.view[0])).toFixed(1)}× · Region ${timeText(inst, inst.end - inst.start)}`;
     const snap = document.getElementById('sampler-editor-snap');
     if (snap) {
       snap.setAttribute?.('aria-pressed', String(!!s.snap));
@@ -960,7 +960,7 @@
   }
   function startEditorAudition(inst) {
     if (editorHeld || !inst.samplePath || window.STFreeze?.blockAudition?.(state().track)) return;
-    const marker = selectedMarker(inst), root = Math.round(limit(inst.rootNote ?? 60, 0, 127));
+    const marker = selectedMarker(inst), root = Math.round(limit(inst.rootNote, 0, 127));
     stopAudition();
     const job = {...destination(inst),signature:auditionSignature(inst),marker:marker.key,slice:inst.mode === 'slice',sent:false};
     if (!job.slice) {
@@ -1017,7 +1017,7 @@
     const transaction = window.STInstrumentEdits;
     if (!transaction?.run) { ST().toast('The sample editing service is unavailable. Reopen the app before processing audio.',
         'error'); return; }
-    const start = inst.start ?? 0, end = inst.end ?? 1, path = inst.samplePath, job = { operation }, origin = document.activeElement;
+    const start = inst.start, end = inst.end, path = inst.samplePath, job = { operation }, origin = document.activeElement;
     const context = destination(inst), owns = () => ownsDestination(context);
     const visible = () => owns() && current() === inst && state().view === 'instrument' && !state().modal;
     editorJob.current = job; stopEditorAudition(); setEditorMessage(`${label}… writing a new audio file`); updateEditorBusy();
@@ -1026,9 +1026,9 @@
       const apply = (p,value) => {
         const target = resolveInstrument(context,p); target.samplePath = value.path;
         if (operation === 'trim') {
-          const width = Math.max(1e-9,end-start), map = value => limit(((value ?? 0)-start)/width,0,1);
-          target.loopStart = map(target.loopStart ?? 0);
-          target.loopEnd = Math.min(1, Math.max(map(target.loopEnd ?? 1), target.loopStart + 1e-6));
+          const width = Math.max(1e-9,end-start), map = value => limit((value-start)/width,0,1);
+          target.loopStart = map(target.loopStart);
+          target.loopEnd = Math.min(1, Math.max(map(target.loopEnd), target.loopStart + 1e-6));
           target.start = 0;
           target.end = 1;
         }
@@ -1075,7 +1075,7 @@
     });
   }
   function addSliceAtMarker(inst) {
-    const points = slicePoints(inst), marker = selectedMarker(inst), start = inst.start ?? 0, end = inst.end ?? 1;
+    const points = slicePoints(inst), marker = selectedMarker(inst), start = inst.start, end = inst.end;
     if (points.length >= 128) { ST().toast('An instrument holds up to 128 slices.'); return; }
     let value;
     if (marker.key === 'start' || marker.slice) { const index = marker.slice || 0; value = (points[index] + (points[index + 1] ?? 1)) / 2; }
@@ -1102,8 +1102,8 @@
     if (!inst?.samplePath) { ST().toast('Load a sample first.'); return; }
     if (p.patterns.length >= 256) { ST().toast('This session supports up to 256 patterns.', 'error'); return; }
     if (p.tracks[track]?.instrument !== id) { ST().toast(`Assign this instrument to ${p.tracks[track]?.name || 'the track'} first, so the pattern plays it.`); return; }
-    const points = slicePoints(inst), count = points.length, root = Math.round(limit(inst.rootNote ?? 60, 0, 127));
-    const regionSeconds = sampleSeconds(inst) * ((inst.end ?? 1) - (inst.start ?? 0)),
+    const points = slicePoints(inst), count = points.length, root = Math.round(limit(inst.rootNote, 0, 127));
+    const regionSeconds = sampleSeconds(inst) * (inst.end - inst.start),
       rowSeconds = 60 / Number(p.bpm) / Number(p.linesPerBeat);
     let rows = points.map((point, index) => index);
     const timed = regionSeconds > 0 ? points.map(point => Math.round(point * regionSeconds / rowSeconds)) : null;
@@ -1157,8 +1157,8 @@
     if (key === 'Escape' && stopEditorAudition()) { setEditorMessage('Audition stopped'); return done(); }
     if ((key === 'Delete' || key === 'Backspace') && removeSelectedSlice(inst)) return done();
     if (!letter || event.repeat || state().keyboardPlay) return false;  // Letters play notes while the computer keyboard (⌘P) is on.
-    if (letter === 'f') { const pad = ((inst.end ?? 1) - (inst.start ?? 0)) * .03; setEditorView(inst, (inst.start ?? 0) - pad,
-        (inst.end ?? 1) + pad); drawEditor(); return done(); }
+    if (letter === 'f') { const pad = (inst.end - inst.start) * .03; setEditorView(inst, inst.start - pad,
+        inst.end + pad); drawEditor(); return done(); }
     if (letter === 'z') { if (event.shiftKey) void snapSelectedMarker(inst); else { s.snap = !s.snap; setEditorMessage(s.snap
         ? 'Zero-crossing snap on · nudges land on zero crossings'
         : 'Zero-crossing snap off'); drawEditor(); } return done(); }
@@ -1320,7 +1320,7 @@
       { separator: true },
       { title: 'Snap marker to zero crossing', key: '⇧Z', enabled: !!inst.samplePath, action: () => snapSelectedMarker(inst) },
       { title: 'Zero-crossing snap', key: 'Z', checked: !!s.snap, action: () => { s.snap = !s.snap; drawEditor(); } },
-      { title: 'Zoom to region', key: 'F', action: () => { setEditorView(inst, inst.start ?? 0, inst.end ?? 1); drawEditor(); } },
+      { title: 'Zoom to region', key: 'F', action: () => { setEditorView(inst, inst.start, inst.end); drawEditor(); } },
       { title: 'Show whole sample', key: '0', action: () => { setEditorView(inst, 0, 1); drawEditor(); } },
       { separator: true },
       { title: 'Add slice here', key: 'A', enabled: !!inst.samplePath, action: () => addSliceAtMarker(inst) },
@@ -1339,7 +1339,7 @@
     const mode = PLAY_MODES.some(([value]) => value === inst.mode) ? inst.mode : 'oneshot';
     // Wavetable mode: frames, Position, table and frame size live in the Wavetable panel above (wavetables.js).
     const frameSize = Number(inst.wavetableFrameSize) > 0 ? Number(inst.wavetableFrameSize) : Number(sampleMeta(inst)?.wavetableFrameSize) || 2048,
-      cycles = Math.floor(frames * ((inst.end ?? 1) - (inst.start ?? 0)) / frameSize);
+      cycles = Math.floor(frames * (inst.end - inst.start) / frameSize);
     const modeParams = mode === 'wavetable' ? `<div class="sampler-mode-params"><p class="sampler-help">${frames ? `${Math.max(1, cycles)} frame${cycles === 1 ? '' : 's'}`
         + ` of ${frameSize} samples in the region. ` : ''}Pitch follows the played note; Position (Wavetable panel, automation, `
         + `LFO → Position or the POS step effect) morphs between adjacent frames.</p></div>` : '';
@@ -1357,7 +1357,7 @@
           ? 'LOADING…'
           : 'NO SAMPLE';
     return `<section id="sampler-editor" class="panel wide sampler-editor" aria-label="Sample editor"><div class="panel-head">`
-        + `<div class="sampler-editor-title"><h2>Sample</h2><span class="sampler-file" title="${esc(inst.samplePath || '')}">${esc(inst.samplePath ? window.STWavetables?.displayName(inst.samplePath) || fileName(inst.samplePath) : 'Load or record a sample to begin')}</span>`
+        + `<div class="sampler-editor-title"><h2>Sample</h2><span class="sampler-file" title="${esc(inst.samplePath)}">${esc(inst.samplePath ? window.STWavetables?.displayName(inst.samplePath) || fileName(inst.samplePath) : 'Load or record a sample to begin')}</span>`
         + `<span class="chip">${facts}</span></div><div class="sampler-editor-head-actions">${builtin}${inst.samplePath && !window.STWavetables?.parse(inst.samplePath) ? '<button id="sample-reveal" class="quiet">Show in Finder</button>' : ''}<button `
         + `id="sampler-editor-audition" ${inst.samplePath ? '' : 'disabled'} title="Hold to audition · Space on the waveform">▶ Hold to audition</button>`
         + `</div></div><div class="panel-body stack">
@@ -1416,11 +1416,11 @@
     info(columns = 0) {
       const inst = current(); if (!inst || inst.type !== 'sample') return null;
       const s = editorState(inst), marker = selectedMarker(inst);
-      return { name: inst.name, path: inst.samplePath || '', mode: inst.mode, modeLabel: (PLAY_MODES.find(([mode]) => mode === inst.mode) || PLAY_MODES[0])[1], rootNote: inst.rootNote ?? 60,
-        start: inst.start ?? 0,
-        end: inst.end ?? 1,
-        loopStart: inst.loopStart ?? 0,
-        loopEnd: inst.loopEnd ?? 1,
+      return { name: inst.name, path: inst.samplePath, mode: inst.mode, modeLabel: (PLAY_MODES.find(([mode]) => mode === inst.mode) || PLAY_MODES[0])[1], rootNote: inst.rootNote,
+        start: inst.start,
+        end: inst.end,
+        loopStart: inst.loopStart,
+        loopEnd: inst.loopEnd,
         loop: LOOP_MODES.has(inst.mode),
         seconds: sampleSeconds(inst),
         frames: sampleFrames(inst),
@@ -1463,8 +1463,8 @@
     showRegion() {
       const inst = current();
       if (inst?.type !== 'sample') return;
-      const pad = ((inst.end ?? 1) - (inst.start ?? 0)) * .03;
-      setEditorView(inst, (inst.start ?? 0) - pad, (inst.end ?? 1) + pad);
+      const pad = (inst.end - inst.start) * .03;
+      setEditorView(inst, inst.start - pad, inst.end + pad);
       drawEditor();
     },
     toggleSnap() {

@@ -130,9 +130,9 @@
             ? `<option value="${esc(String(inst.midiOutput))}" selected>Unavailable output · ${esc(String(inst.midiOutput))}</option>`
             : ''}${midiOutputs.map(x => `<option value="${x.id}" ${String(inst.midiOutput) === String(x.id) ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>`
         + `</label><label class="field"><span>Input channel (0 = omni)</span><input type="number" id="inst-midiInputChannel"`
-        + ` data-inst-param="midiInputChannel" min="0" max="16" value="${inst.midiInputChannel || 0}">`
+        + ` data-inst-param="midiInputChannel" min="0" max="16" value="${inst.midiInputChannel}">`
         + `</label><label class="field"><span>Output channel</span><input type="number" id="inst-midiChannel"`
-        + ` data-inst-param="midiChannel" min="1" max="16" value="${inst.midiChannel || 1}">`
+        + ` data-inst-param="midiChannel" min="1" max="16" value="${inst.midiChannel}">`
         + `</label></div><div class="notice info">Pattern notes and the computer keyboard send MIDI to your hardware. `
         + `Sample a patch to a new sampler track while keeping this hardware connection.</div>`
         + `<p id="hardware-input-summary" class="small-note">${esc(window.STRecording?.inputSummary(inst) || 'Current Studio input · no saved interface')}</p>`

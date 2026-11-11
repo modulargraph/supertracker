@@ -51,7 +51,7 @@
     const inst = P().instruments[st().instrument];
     if (!inst) return;
     if (on) {
-      S().noteOn(inst.rootNote ?? 60, 'mk3-audition', false);
+      S().noteOn(inst.rootNote, 'mk3-audition', false);
     } else {
       S().noteOff('mk3-audition');
     }
@@ -101,7 +101,7 @@
       }), button('Bounce', () => perform('bounceTrack')), button('Dup track',
           () => perform('duplicateTrack')), button('Add track', () => perform('addTrack')), button('Back', () => mk.setScreen('channel'))],
       knobs, data: { kind: 'info', title: `${P().tracks[track]?.name} · routing`, lines: [inst?.type === 'midi'
-          ? `External MIDI · out ch ${inst.midiChannel || 1} · in ch ${inst.midiInputChannel || 'omni'}`
+          ? `External MIDI · out ch ${inst.midiChannel} · in ch ${inst.midiInputChannel || 'omni'}`
           : `Instrument: ${inst?.name || '–'} (${inst?.type || ''})`,
           `Volume ${fmt.db(P().tracks[track]?.volume ?? .8)} · Pan ${fmt.pan(P().tracks[track]?.pan ?? 0)}`,
           `Delay send ${fmt.pct(P().tracks[track]?.delaySend || 0)} · Reverb send ${fmt.pct(P().tracks[track]?.reverbSend || 0)}`,

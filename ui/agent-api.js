@@ -538,7 +538,7 @@
       instruments: p.instruments.map((x, i) => ({
         index: i, name: x.name, type: x.type,
         ...(x.type === 'sample' ? { sample: x.samplePath || null, mode: x.mode } : {}),
-        ...(x.type === 'sample' && x.mode === 'wavetable' ? { wavetablePosition: formatValue('pct', x.wavetablePosition ?? 0) } : {}),
+        ...(x.type === 'sample' && x.mode === 'wavetable' ? { wavetablePosition: formatValue('pct', x.wavetablePosition) } : {}),
         ...(x.type === 'plugin' && instrumentPlugin(p, i) ? (plugin => ({
           plugin: {
             name: plugin.name,

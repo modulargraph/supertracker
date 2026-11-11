@@ -18,7 +18,7 @@
           ? 'External MIDI'
           : x.mode === 'wavetable'
           ? 'wavetable' + (window.STWavetables?.displayName(x.samplePath) ? ' · ' + esc(window.STWavetables.displayName(x.samplePath)) : '')
-          : x.samplePath ? esc(x.mode || 'sample') : 'empty sampler'}</div>`
+          : x.samplePath ? esc(x.mode) : 'empty sampler'}</div>`
       + `</span>${i === state.project.tracks[state.track]?.instrument ? '<span class="color-dot"></span>' : ''}</button>`).join('');
 
   const addButton = kind => `<button class="quiet" data-add="${kind}" title="Add ${kind === 'patterns' ? 'pattern' : 'instrument'}"`

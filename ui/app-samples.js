@@ -183,16 +183,16 @@
       return await app.runInstrumentEdit(id, [], async edit => {
         const result = await edit.native('sample.edit', source);
         if (!result?.path) throw new Error('The sample editor returned no edited file.');
-        const start = source.start ?? 0,
-          end = source.end ?? 1;
+        const start = source.start,
+          end = source.end;
         await edit.commit(operation + ' sample', p => {
           const target = p.instruments[id];
           target.samplePath = result.path;
           if (operation === 'trim') {
             const width = Math.max(1e-9, end - start),
-              map = value => clamp(((value ?? 0) - start) / width, 0, 1);
-            target.loopStart = map(target.loopStart ?? 0);
-            target.loopEnd = Math.max(map(target.loopEnd ?? 1), target.loopStart + 1e-6);
+              map = value => clamp((value - start) / width, 0, 1);
+            target.loopStart = map(target.loopStart);
+            target.loopEnd = Math.max(map(target.loopEnd), target.loopStart + 1e-6);
             target.start = 0;
             target.end = 1;
           }

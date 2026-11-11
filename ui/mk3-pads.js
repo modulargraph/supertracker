@@ -82,7 +82,7 @@
             { voicing: { chordSet: '', chord: 'single', scale: 'chromatic' } }); return; }
         const index = M.padBank.pad * 16 + i, inst = P().instruments[index]; if (!inst) return;
         st().instrument = index;
-        info.key = play(pad, inst.rootNote ?? 60, velocity, { instrument: index, voicing: { chordSet: '', chord: 'single', scale: 'chromatic' } });
+        info.key = play(pad, inst.rootNote, velocity, { instrument: index, voicing: { chordSet: '', chord: 'single', scale: 'chromatic' } });
         mk.schedule();
       }
     }
