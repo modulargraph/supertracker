@@ -973,7 +973,7 @@
   {
    "name": "load_plugin",
    "method": "loadPlugin",
-   "description": "Load a plug-in on a track: kind \"instrument\" (plays the track's notes) or \"effect\" (insert slot 0–15). channel instead of track loads an insert effect on a bus or the master channel (\"master\", bus name or \"bus:<id>\"; standard routing). Plug-in names (built-in effects such as \"Reverb\" or \"Peak Limiter\" too) are matched like list_plugins; use the id when ambiguous.",
+   "description": "Load a plug-in on a track: kind \"instrument\" (plays the track's notes) or \"effect\" (insert slot 0–15). channel instead of track loads an insert effect on a bus or the master channel (\"master\", bus name or \"bus:<id>\"). Plug-in names (built-in effects such as \"Reverb\" or \"Peak Limiter\" too) are matched like list_plugins; use the id when ambiguous.",
    "properties": {
     "plugin": {
      "type": "string",
@@ -1223,7 +1223,7 @@
   {
    "name": "set_automation",
    "method": "setAutomation",
-   "description": "Create or replace an automation lane for a track, bus or master (channel) parameter in a pattern. points [{row, value}] use the parameter's units (\"800 Hz\", \"-6 dB\", or numbers in its range; plug-in targets 0–1 or \"50%\"). Buses: volume, pan, send:<id>, plug-in effects; master: volume and plug-in effects (standard routing). merge:true keeps existing points at other rows.",
+   "description": "Create or replace an automation lane for a track, bus or master (channel) parameter in a pattern. points [{row, value}] use the parameter's units (\"800 Hz\", \"-6 dB\", or numbers in its range; plug-in targets 0–1 or \"50%\"). Buses: volume, pan, send:<id>, plug-in effects; master: volume and plug-in effects. merge:true keeps existing points at other rows.",
    "properties": {
     "pattern": {
      "type": [
@@ -1355,7 +1355,7 @@
   {
    "name": "edit_channel",
    "method": "editChannel",
-   "description": "Change mixer channels as one undo step: name, volume (\"-6 dB\"; tracks and master up to 1.5 gain, buses up to 2), pan (\"30% L\"), mute, solo, output (a group/return bus, \"master\" or \"none\"; standard routing). channel may list several channels (not for name). Master takes volume only.",
+   "description": "Change mixer channels as one undo step: name, volume (\"-6 dB\"; tracks and master up to 1.5 gain, buses up to 2), pan (\"30% L\"), mute, solo, output (a group/return bus, \"master\" or \"none\"). channel may list several channels (not for name). Master takes volume only.",
    "properties": {
     "channel": {
      "type": [
@@ -1417,7 +1417,7 @@
   {
    "name": "create_bus",
    "method": "createBus",
-   "description": "Create a group or return bus (standard routing) as one undo step. inputs: tracks/buses whose output moves to the new bus (group buses); return buses are fed with set_send. The bus outputs to Master unless output says otherwise.",
+   "description": "Create a group or return bus as one undo step. inputs: tracks/buses whose output moves to the new bus (group buses); return buses are fed with set_send. The bus outputs to Master unless output says otherwise.",
    "properties": {
     "name": {
      "type": "string",
@@ -1497,7 +1497,7 @@
   {
    "name": "set_send",
    "method": "setSend",
-   "description": "Add, change or remove a custom send (standard routing) from a track or bus to a group/return bus or Master, as one undo step. A send from→to that exists is edited; otherwise it is created (gain 0 dB, post-fader). The built-in delay/reverb sends are edit_track delaySend/reverbSend.",
+   "description": "Add, change or remove a custom send from a track or bus to a group/return bus or Master, as one undo step. A send from→to that exists is edited; otherwise it is created (gain 0 dB, post-fader). The built-in delay/reverb sends are edit_track delaySend/reverbSend.",
    "properties": {
     "from": {
      "type": [

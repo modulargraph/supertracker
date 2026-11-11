@@ -718,7 +718,6 @@ pub struct PluginManager {
     /// The manager whose instances an offline copy takes its states from.
     live: Option<Weak<PluginManager>>,
     stop: Arc<AtomicBool>,
-    restoring: AtomicU32,
     panic: AtomicBool,
 }
 
@@ -771,7 +770,6 @@ impl PluginManager {
             listeners: Mutex::new(Vec::new()),
             live,
             stop: Arc::new(AtomicBool::new(false)),
-            restoring: AtomicU32::new(0),
             panic: AtomicBool::new(false),
         });
         let weak = Arc::downgrade(&manager);
@@ -843,11 +841,6 @@ impl PluginManager {
     pub fn container_pid(&self, hosted: &Hosted) -> u32 {
         let container = hosted.instance.container();
         self.supervisor.as_ref().ok().and_then(|supervisor| supervisor.containers().iter().find(|info| info.id == container).map(|info| info.pid)).unwrap_or(0)
-    }
-
-    /// Whether plug-ins of a project are being loaded or restored right now.
-    pub fn busy(&self) -> bool {
-        self.restoring.load(Ordering::Relaxed) > 0
     }
 
     // ---- lookups -------------------------------------------------------------------------
@@ -1038,7 +1031,6 @@ impl PluginManager {
             return Vec::new();
         }
         let _loading = self.loading.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        self.restoring.fetch_add(1, Ordering::Relaxed);
         let mut events = Vec::new();
         let mut changed: Vec<String> = Vec::new();
         // What is no longer wanted goes first, so a replaced plug-in frees its place.
@@ -1149,7 +1141,6 @@ impl PluginManager {
                 }
             }
         }
-        self.restoring.fetch_sub(1, Ordering::Relaxed);
         drop(_loading);
         for event in events {
             self.emit(event);
@@ -1214,7 +1205,6 @@ impl PluginManager {
     /// state back. Returns `(name, error)` for those that could not be restored.
     pub fn restore(&self, keys: Option<&[String]>) -> Vec<(String, String)> {
         let _loading = self.loading.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        self.restoring.fetch_add(1, Ordering::Relaxed);
         let lost: Vec<Arc<Hosted>> = self.all().into_iter().filter(|hosted| hosted.lost().is_some() && keys.is_none_or(|keys| keys.contains(&hosted.identity.key()))).collect();
         let mut errors = Vec::new();
         let mut changed = Vec::new();
@@ -1231,7 +1221,6 @@ impl PluginManager {
                 Err(error) => errors.push((hosted.identity.display_name().to_string(), format!("could not be restored: {error}"))),
             }
         }
-        self.restoring.fetch_sub(1, Ordering::Relaxed);
         drop(_loading);
         if !changed.is_empty() {
             self.emit(PluginEvent::Graph { keys: changed.clone() });

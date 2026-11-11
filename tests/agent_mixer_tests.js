@@ -39,8 +39,7 @@ function fixture() {
     sequence: [0]
   };
 }
-const capabilities = () => ({ supported: true, mixModels: ['standard'], outputs: true, buses: { group: true, return: true, max: 64 },
-  sends: { enabled: true, taps: ['preFader', 'postFader'], max: 128 }, sidechains: { enabled: false, taps: [], inputs: [] } });
+const capabilities = () => ({ buses: { max: 64 }, sends: { taps: ['preFader', 'postFader'], max: 128 }, sidechains: { taps: [], max: 128, inputs: [] } });
 
 function harness(project = fixture(), { duringLoad, dropWrite, queueWrites, applyAfterReads = 1 } = {}) {
   const document = makeDocument(), calls = [], timers = new Map(), pending = [];
@@ -114,8 +113,7 @@ function harness(project = fixture(), { duringLoad, dropWrite, queueWrites, appl
       for (const [from, to] of Object.entries(r.outputs)) if (!owners.has(from) || (to !== null && !owners.has(to))) return { valid: false, error: `Unknown routing owner ${from} → ${to}.` };
       return { valid: true, status: { unavailable: [] } };
     },
-    'routing.apply': p => { host = clone(p.project); return { project: clone(p.project), capabilities: capabilities(), status: { unavailable: [] } }; },
-    'routing.status': () => ({ unavailable: [] })
+    'routing.apply': p => { host = clone(p.project); return { project: clone(p.project), capabilities: capabilities(), status: { unavailableSidechains: [] } }; }
   };
   const window = { addEventListener() {}, removeEventListener() {}, localStorage: { getItem() { return null; }, setItem() {} }, location: { search: '' }, STHostTransport: hostStub({ post(message) {
     const request = clone(message); calls.push(request);
@@ -163,7 +161,7 @@ test('mixer describes master, buses and tracks; channels resolve by name, "bus:<
   assert.equal(kit.channel, 'bus:kit'); assert.equal(kit.type, 'group'); assert.equal(kit.output, 'master');
   assert.deepEqual(kit.inputs, ['Kick', 'ClosedHH Avenue 1']); assert.deepEqual(kit.inserts.map(x => [x.slot, x.name, x.format, x.bypass]), [[0, 'Multimode Filter', 'Builtin', false], [1, 'Saturator', 'Builtin', false]]);
   assert.equal(mixer.tracks[1].output, 'bus:kit'); assert.equal(mixer.tracks[1].outputName, 'Avenue Kit'); assert.equal(mixer.tracks[2].output, 'master');
-  assert.equal(mixer.capabilities.groupBuses, true);
+  assert.deepEqual(mixer.limits, { buses: 64, sendsAndSidechains: 128, sendTaps: ['preFader', 'postFader'] });
   assert.match(mixer.sendEffects.delay.time, /ms/);
   assert.equal((await h.ok('mixer', { channel: 'avenue kit' })).channel, 'bus:kit');
   assert.equal((await h.ok('mixer', { channel: 'bus:kit' })).name, 'Avenue Kit');

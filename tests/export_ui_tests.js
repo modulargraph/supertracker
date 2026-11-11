@@ -15,7 +15,7 @@ const decode = value => value.replace(/&(amp|lt|gt|quot|#39);/g, (_, c) => ({ am
 // What the host answers to routing.capabilities for the fixture project, and how it confirms a delivery.
 const { audioExport, exportDelivery: delivered } = require('./helpers/host');
 function capabilities() {
-  return { fullGraphStems: true, audioExport: audioExport(), exportTargets: [
+  return { audioExport: audioExport(), exportTargets: [
     { owner: 'track:keys', name: 'Keys', kind: 'track', boundary: 'postFaderPreParent', available: true },
     { owner: 'track:bass', name: 'Bass', kind: 'track', boundary: 'postFaderPreParent', available: true },
     { owner: 'bus:drums', name: 'Drum group', kind: 'group', boundary: 'postFaderPreParent', available: true },

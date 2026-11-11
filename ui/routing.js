@@ -28,9 +28,12 @@
       : `{${Object.keys(value).sort().map(name => `${JSON.stringify(name)}:${stable(value[name])}`).join(',')}}`;
   const currentOwner = () => S().state.mixerOwner || endpoints(project()).find(item => item.track === S().state.track)?.owner || 'master';
   const routing = (p = project()) => p.routing;
-  const available = () => ui.capabilities?.supported === true;
-  const canOutput = owner => available() && ui.capabilities.outputs === true && owner !== 'master' && !!ownerEntity(owner);
-  const canSend = owner => available() && ui.capabilities.sends?.enabled === true && taps().length > 0 && owner !== 'master' && !!ownerEntity(owner);
+  // What the host said about routing (routing.capabilities): the limits of the project format, the taps,
+  // and the sidechain inputs of the inserts in use. Edits wait for it.
+  const available = () => !!ui.capabilities;
+  const unavailable = () => ui.capabilityError || 'The audio host has not answered about routing yet. Try again.';
+  const canOutput = owner => available() && owner !== 'master' && !!ownerEntity(owner);
+  const canSend = owner => available() && taps().length > 0 && owner !== 'master' && !!ownerEntity(owner);
   const taps = () => (ui.capabilities?.sends?.taps || []).filter(tap => ['preFader', 'postFader'].includes(tap));
   const keyTaps = () => (ui.capabilities?.sidechains?.taps || []).filter(tap => ['preInserts', 'preFader', 'postFader'].includes(tap));
   const tapName = tap => ({preInserts:'Pre-inserts',preFader:'Pre-fader',postFader:'Post-fader'}[tap] || String(tap));
@@ -148,7 +151,7 @@
 
   async function transaction(label, edit, options = {}) {
     if (ui.application || ui.preparing) throw new Error('A routing change is already being applied.');
-    if (!available()) throw new Error('Advanced routing is not available from the current audio host.');
+    if (!available()) throw new Error(unavailable());
     if (window.STStudio?.isEditingPlugin
         || window.STStudio?.isMovingEffect) throw new Error('Finish the plug-in rack change before changing routing.');
     const startingProject = project();
@@ -276,17 +279,13 @@
   function render(owner = currentOwner()) {
     const p = project(), endpoint = endpoints(p).find(item => item.owner === owner); if (!endpoint) return '';
     const token = key(owner), caps = ui.capabilities, pending = !!ui.application;
-    const status = !caps
-        ? ui.capabilityError || 'Inspecting audio routing capabilities…'
-        : !available()
-        ? 'Advanced routing is not supported by the current audio host.'
-        : '';
+    const status = caps ? '' : ui.capabilityError || 'Asking the audio host about routing…';
     const sends = (routing(p).sends || []).filter(send => send.source === owner);
-    const canSend = owner !== 'master' && caps?.sends?.enabled === true && taps().length;
+    const canSend = owner !== 'master' && !!caps && taps().length;
     return `<section class="routing-panel" data-routing-owner="${esc(owner)}" aria-busy="${pending}"><div class="routing-heading">`
         + `<h3>Routing</h3><span>${pending ? 'Applying…' : endpoint.type === 'master' ? 'Stereo output' : 'Standard mix'}</span>`
         + `</div>${status ? `<p class="routing-description">${esc(status)}</p>` : ''}<fieldset ${pending || !available() ? 'disabled' : ''}>
-      ${owner === 'master' ? '<p class="routing-description">Master is the final audio destination.</p>' : `<div class="routing-output"><span>Output</span>${caps?.outputs === true ? `<button id="routing-output-${token}" data-routing-action="output" aria-label="Output destination for ${esc(endpoint.name)}">${esc(channelName(activeOutput(owner,p),p))}<span>⌄</span>`
+      ${owner === 'master' ? '<p class="routing-description">Master is the final audio destination.</p>' : `<div class="routing-output"><span>Output</span>${caps ? `<button id="routing-output-${token}" data-routing-action="output" aria-label="Output destination for ${esc(endpoint.name)}">${esc(channelName(activeOutput(owner,p),p))}<span>⌄</span>`
           + `</button>` : `<strong>${esc(channelName(activeOutput(owner,p),p))}</strong>`}</div>`}
       ${lineInputSection(owner,p)}
       ${sends.length || canSend ? `<div class="routing-subhead"><h4>Sends</h4>${canSend
@@ -301,12 +300,9 @@
           + ` data-routing-send-field="gain" data-owner="${esc(owner)}" data-automate="send:${esc(send.id)}" data-name="Send to ${esc(channelName(send.destination,p))}"`
           + ` aria-label="Send gain to ${esc(channelName(send.destination,p))}" ${!canSend ? 'disabled' : ''}></label>`
           + `<button id="routing-send-remove-${key(send.id)}" class="routing-remove" data-routing-send-action="remove" aria-label="Remove send to ${esc(channelName(send.destination,p))}">×</button>${routeStatus(send.id)}</div>`).join('')}${!sends.length ? '<p class="routing-description">No custom sends.</p>' : ''}</div>` : ''}
-      ${(caps?.buses?.group === true || caps?.buses?.return === true)
-          ? `<div class="routing-bus-actions">${caps.buses.group === true
-              ? `<button id="routing-new-group-${token}" data-routing-action="new-group">+ Group</button>`
-              : ''}${caps.buses.return === true
-              ? `<button id="routing-new-return-${token}" data-routing-action="new-return">+ Return</button>`
-              : ''}${endpoint.type === 'group' || endpoint.type === 'return'
+      ${caps
+          ? `<div class="routing-bus-actions"><button id="routing-new-group-${token}" data-routing-action="new-group">+ Group</button>`
+              + `<button id="routing-new-return-${token}" data-routing-action="new-return">+ Return</button>${endpoint.type === 'group' || endpoint.type === 'return'
               ? `<button id="routing-remove-bus-${token}" data-routing-action="remove-bus">Remove bus…</button>`
               : ''}</div>`
           : ''}</fieldset></section>`;
@@ -396,9 +392,8 @@
     if(!openingEntity)return S().toast('This channel is no longer available.');
     if(!ui.capabilities)await refreshCapabilities();
     if(project()!==openingProject||ownerEntity(owner)!==openingEntity)return S().toast('The selected channel changed. Open bus creation again.');
-    if(!available()
-        ||!['group','return'].includes(kind)
-        || ui.capabilities?.buses?.[kind]!==true)return S().toast('This bus type is not available from the current audio host.');
+    if(!available())return S().toast(unavailable());
+    if(!['group','return'].includes(kind))return;
     const p=project();
     if((routing(p).buses||[]).length>=Math.min(window.TRACK_SANITY_LIMIT??Infinity,
         number(ui.capabilities.buses.max,window.TRACK_SANITY_LIMIT??Infinity)))return S().toast('This project has reached its bus limit.');
@@ -513,7 +508,7 @@
     if(!plugin?.instanceID)return '';
     const inputs = inputMetadata(plugin.instanceID),
       saved = (routing().sidechains || []).filter(route => route.destination?.instanceID === plugin.instanceID),
-      supported = available() && ui.capabilities?.sidechains?.enabled === true;
+      supported = available();
     if(!saved.length&&(!supported||!inputs.length||!keyTaps().length))return '';
     const owner=pluginOwner(plugin), token=key(plugin.instanceID);
     return `<section class="routing-sidechains" data-routing-plugin="${esc(plugin.instanceID)}" data-routing-plugin-owner="${esc(owner)}">`
@@ -540,7 +535,7 @@
       section.dataset.routingBound='true';const instanceID=section.dataset.routingPlugin;
       const currentPlugin=(p=project())=>(p.audioPlugins||[]).find(plugin=>plugin.instanceID===instanceID);
       section.querySelector('[data-routing-key-action="add"]')?.addEventListener('click',()=>{
-        if(!available()||ui.capabilities?.sidechains?.enabled!==true||!keyTaps().length)return;
+        if(!available()||!keyTaps().length)return;
         const focusID=`routing-key-add-${key(instanceID)}`;
         const inputs = inputMetadata(instanceID),
           options = inputs.map(input => ({
@@ -623,7 +618,6 @@
       if(Object.hasOwn(payload,'routing'))receiveStatus(payload.routing);
       return;
     }
-    if(type==='routing.capabilities'){ui.capabilityGeneration++;ui.capabilities=payload.capabilities||payload;ui.capabilityError='';if(S().state.view==='mixer')S().refresh();}
     // The page replaced its project (studio.js passes the notice on): what the host said about the old one is void.
     if(type==='project.loaded'){ui.capabilityGeneration++;ui.status=null;ui.capabilities=null;ui.capabilityError='';}
   }
@@ -632,7 +626,7 @@
     const openingProject=project(),openingEntity=ownerEntity(owner);
     if(!ui.capabilities)await refreshCapabilities();
     if(project()!==openingProject||ownerEntity(owner)!==openingEntity)return S().toast('The selected channel changed. Choose its output again.');
-    if(!available()||ui.capabilities.outputs!==true)return S().toast('Output routing is not available from the current audio host.');
+    if(!available())return S().toast(unavailable());
     if(owner==='master')return S().toast('Master is the final audio destination.');
     if(!ownerEntity(owner))return S().toast('This channel is no longer available.');
     setOutput(owner,focusID||`routing-output-${key(owner)}`);
@@ -642,9 +636,7 @@
     const openingProject=project(),openingEntity=ownerEntity(owner);
     if(!ui.capabilities)await refreshCapabilities();
     if(project()!==openingProject||ownerEntity(owner)!==openingEntity)return S().toast('The selected channel changed. Add its send again.');
-    if(!available()
-        ||ui.capabilities.sends?.enabled!==true
-        ||!taps().length)return S().toast('Custom sends are not available from the current audio host.');
+    if(!available()||!taps().length)return S().toast(unavailable());
     if(owner==='master')return S().toast('Master cannot feed a send.');
     if(!ownerEntity(owner))return S().toast('This channel is no longer available.');
     addSend(owner,focusID||`routing-add-send-${key(owner)}`);

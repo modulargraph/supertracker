@@ -52,7 +52,7 @@ function prepareRoutingChange(h) {
   h.loadModule('routing.js');h.p.tracks[0].routingID='fixture-tone';
   for(const descriptor of [h.p.audioPlugins[0],h.p.instruments[0].plugin,h.plugin])descriptor.owner='track:fixture-tone';
   h.p.routing={buses:[{id:'repair-group',name:'Repair group',type:'group',volume:1,pan:0,mute:false,solo:false}],outputs:{'track:fixture-tone':'bus:repair-group','bus:repair-group':null},sends:[],sidechains:[]};
-  const capabilities={supported:true,outputs:true,buses:{group:true,return:true,max:16},sends:{enabled:true,taps:['preFader','postFader'],max:128},sidechains:{enabled:true,taps:['preInserts','preFader','postFader'],inputs:[]}};
+  const capabilities={buses:{max:16},sends:{taps:['preFader','postFader'],max:128},sidechains:{taps:['preInserts','preFader','postFader'],max:128,inputs:[]}};
   h.handlers.set('routing.capabilities',()=>capabilities);
   h.handlers.set('engine.snapshot',()=>copy(h.p));
   h.handlers.set('routing.validate',()=>({valid:true}));

@@ -444,10 +444,8 @@
       delay = { time: .375, feedback: .35, mix: .3, ...p.delay },
       reverb = { size: .7, damping: .4, mix: .25, ...p.reverb };
     return `<div class="studio-mixer studio-routed-mixer" id="mixer-workspace" data-scroll="mixer-workspace"><div class="panel-head">`
-        + `<div>${mixerHeading()}<p class="muted">← → channel · ↑ ↓ adjust · Tab controls · ⌥A automate</p></div><div class="studio-mixer-actions">${window.STRouting?.capabilities?.buses?.group === true
-            ? '<button class="btn" data-studio-action="new-group">+ Group</button>'
-            : ''}${window.STRouting?.capabilities?.buses?.return === true
-            ? '<button class="btn" data-studio-action="new-return">+ Return</button>'
+        + `<div>${mixerHeading()}<p class="muted">← → channel · ↑ ↓ adjust · Tab controls · ⌥A automate</p></div><div class="studio-mixer-actions">${window.STRouting?.capabilities
+            ? '<button class="btn" data-studio-action="new-group">+ Group</button><button class="btn" data-studio-action="new-return">+ Return</button>'
             : ''}<button `
         + `class="btn" data-studio-action="panic">Silence all</button></div></div>
     <div class="studio-channels${mixerVirtual(strips.length) ? ' is-virtual' : ''}" id="mixer-channels" data-scroll="mixer-channels"`

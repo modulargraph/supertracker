@@ -1845,8 +1845,8 @@
   async function routingCapabilities() {
     const R = window.STRouting; if (!R) fail('Routing is unavailable in this interface.');
     if (!R.available()) await R.refreshCapabilities();
-    if (!R.available()) fail('Advanced routing is not available from the current audio host.');
-    return R.capabilities || {};
+    if (!R.available()) fail('The audio host did not answer about routing. Try again.');
+    return R.capabilities;
   }
   async function routingCommit(label, edit, owner) {
     const busy = blockedByBusyUI() || (window.STInserts?.busy ? 'a plug-in change is in progress' : null);
@@ -1905,8 +1905,7 @@
           input: route.destination?.layoutSignature?.name || null }, tap: route.tap, gain: formatValue('db', route.gain ?? 1), enabled: route.enabled !== false };
       }),
       sendEffects: sendEffectsOut(q),
-      ...(caps ? { capabilities: { outputs: caps.outputs === true, groupBuses: caps.buses?.group === true, returnBuses: caps.buses?.return === true, sends: caps.sends?.enabled === true,
-        sendTaps: caps.sends?.taps || [] } } : {})
+      ...(caps ? { limits: { buses: caps.buses?.max, sendsAndSidechains: caps.sends?.max, sendTaps: caps.sends?.taps || [] } } : {})
     };
   });
   /* An output destination: a group/return bus or Master that adds no feedback loop (routing.js decides), or null = disconnected. */
@@ -1923,7 +1922,7 @@
     return destination.owner;
   }
   method('editChannel', 'Change mixer channels: name, volume ("-6 dB"; tracks/master 0–1.5, buses 0–2 gain), pan ("30% L"), mute, solo, output (a bus, "master" or '
-      + '"none"; standard routing). channel: "master", a bus name or "bus:<id>", a track index/name, or a list of them. Master takes volume only.', ['channel', 'name',
+      + '"none"). channel: "master", a bus name or "bus:<id>", a track index/name, or a list of them. Master takes volume only.', ['channel', 'name',
           'volume', 'pan', 'mute', 'solo', 'output', 'label'], async params => {
     const p = project();
     if (params.channel === undefined) fail('channel is required: "master", a bus name or "bus:<id>", a track index or name, or a list of them (see mixer).');
@@ -1944,7 +1943,7 @@
     });
     let output;
     if (params.output !== undefined) {
-      if ((await routingCapabilities()).outputs !== true) fail('Output routing is not available from the current audio host.');
+      await routingCapabilities();
       if (project() !== p) fail('The project changed while routing was being prepared. Try again.');
       output = outputDestination(p, channels, params.output);
     }
@@ -1967,12 +1966,11 @@
     const q = project();
     return { ...result, channels: channels.map(ch => describeChannel(q, ch.type === 'track' ? trackChannel(q, ch.track) : channelOf(q, ch.owner) || ch)) };
   });
-  method('createBus', 'Create a group or return bus (standard routing) as one undo step: name, type ("group" default, or "return"), inputs (tracks/buses whose output '
+  method('createBus', 'Create a group or return bus as one undo step: name, type ("group" default, or "return"), inputs (tracks/buses whose output '
       + 'moves to the new bus), output (default "master"), volume, pan.', ['name', 'type', 'inputs', 'output', 'volume', 'pan', 'label'], async params => {
     const type = params.type === undefined ? 'group' : params.type;
     if (!['group', 'return'].includes(type)) fail('type must be "group" or "return".');
     const caps = await routingCapabilities(), q = project();
-    if (caps.buses?.[type] !== true) fail(`The current audio host cannot create ${type} buses.`);
     const limit = Math.min(LIMITS.tracks, Number.isFinite(Number(caps.buses?.max)) ? Number(caps.buses.max) : Infinity);
     if ((q.routing.buses || []).length >= limit) fail(`This song already has ${limit} buses, the most the audio host supports.`);
     const name = params.name === undefined ? `${type === 'group' ? 'Group' : 'Return'} ${(q.routing.buses || []).filter(bus => bus.type === type).length + 1}` : checkName(params.name);
@@ -2017,11 +2015,10 @@
     }, ch.owner);
     return { ...result, removed: ch.owner, name: ch.name };
   });
-  method('setSend', 'Add, change or remove a custom send (standard routing) from a track or bus (from) to a bus or Master (to): gain ("-6 dB" or 0–2; new sends '
+  method('setSend', 'Add, change or remove a custom send from a track or bus (from) to a bus or Master (to): gain ("-6 dB" or 0–2; new sends '
       + '0 dB), tap ("postFader" default, "preFader"), enabled, remove:true. id picks an existing send (see mixer).', ['from', 'to', 'id', 'gain', 'tap', 'enabled',
           'remove', 'label'], async params => {
     const caps = await routingCapabilities(), q = project(), sends = q.routing.sends || [];
-    if (caps.sends?.enabled !== true) fail('Custom sends are not available from the current audio host.');
     const taps = (caps.sends?.taps || []).filter(tap => ['preFader', 'postFader'].includes(tap));
     let send = null;
     if (params.id !== undefined) {

@@ -107,7 +107,6 @@ impl AudioEngine {
                 insert["reason"] = json!(reason);
             }
         }
-        routing["pluginsRestoring"] = json!(manager.busy());
     }
 
     /// `engine.snapshot` for one plug-in descriptor: its state read from its instance now

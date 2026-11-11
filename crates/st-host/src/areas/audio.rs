@@ -450,10 +450,7 @@ impl Audio {
     }
 
     fn routing_status(&self, _: NoPayload) -> Result<Value> {
-        let mut status = self.engine.routing_status();
-        status["projectUnavailable"] = json!(false);
-        status["failure"] = Value::Null;
-        Ok(status)
+        Ok(self.engine.routing_status())
     }
 
     /// `routing.capabilities`: what the mixer can route and export. The limits are the project
@@ -482,14 +479,9 @@ impl Audio {
             })
             .collect();
         Ok(json!({
-            "supported": true,
-            "mixModels": ["standard"],
-            "outputs": true,
-            "buses": { "group": true, "return": true, "max": st_project::validate::MAX_BUSES },
-            "sends": { "enabled": true, "taps": ["preFader", "postFader"], "max": st_project::validate::MAX_ROUTES },
-            "sidechains": { "enabled": true, "taps": ["preInserts", "preFader", "postFader"], "max": st_project::validate::MAX_ROUTES, "inputs": sidechain_inputs },
-            "projectUnavailable": false,
-            "fullGraphStems": true,
+            "buses": { "max": st_project::validate::MAX_BUSES },
+            "sends": { "taps": ["preFader", "postFader"], "max": st_project::validate::MAX_ROUTES },
+            "sidechains": { "taps": ["preInserts", "preFader", "postFader"], "max": st_project::validate::MAX_ROUTES, "inputs": sidechain_inputs },
             "exportTargets": export_targets,
             "audioExport": st_samples::export::format::capabilities(),
         }))

@@ -707,7 +707,7 @@ impl AudioEngine {
             "timingRevision": "0", "transportSeekRevision": engine.transport_seek_revision.to_string(),
             "peakL": peak_l, "peakR": peak_r, "inputPeakLeft": 0.0, "inputPeakRight": 0.0, "inputMetering": false,
             "trackPeaks": track_peaks, "busPeaks": bus_peaks,
-            "routing": routing_status(core), "routingFailure": Value::Null,
+            "routing": routing_status(core),
             "cpu": (core.shared.load() as f64 * 100.0), "sampleRate": sample_rate,
             "recordArmSupported": true, "inputAcknowledgements": input_capability(), "noteRecordArmed": state.record_armed,
             "transportRecording": engine.recording != 0, "queuedPattern": engine.queued_pattern, "queuedSequence": engine.queued_sequence,
@@ -716,7 +716,7 @@ impl AudioEngine {
             "running": state.stream.as_ref().is_some_and(|stream| stream.is_alive()),
             "droppedCommands": engine.dropped_commands, "droppedEvents": engine.dropped_events + dropped_mix, "engineDroppedEvents": engine.dropped_events,
             "latencyCompensation": { "frames": latency, "seconds": latency as f64 / sample_rate },
-            "pluginsRestoring": false, "playPreparing": false, "previewPreparing": false, "graphMutationsPending": 0,
+            "playPreparing": false, "previewPreparing": false, "graphMutationsPending": 0,
         });
         // Exporting, recording and input meters are the live stage's to report.
         self.live.decorate_status(&mut status);
@@ -1078,7 +1078,6 @@ impl Drop for AudioEngine {
 fn routing_status(core: &Core) -> Value {
     let unavailable: Vec<Value> = core.compiler.unavailable_routes().iter().map(|(id, reason)| json!({ "id": id, "reason": reason })).collect();
     json!({
-        "standard": true,
         "strips": core.spec.strips.iter().map(|strip| strip.id.clone()).collect::<Vec<_>>(),
         "inserts": core.compiler.insert_report(),
         "unavailableSidechains": unavailable,

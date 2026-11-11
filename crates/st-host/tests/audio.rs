@@ -195,9 +195,14 @@ fn the_snapshot_and_the_mixer_report_follow_the_project() {
         { "owner": "track:t0", "kind": "effect", "slot": 0, "instanceID": "comp", "component": "stfx:compressor", "name": "Compressor" },
         { "owner": "master", "kind": "effect", "slot": 0, "instanceID": "vendor", "component": "com.vendor.eq", "name": "Vendor EQ", "state": "b3BhcXVl" },
     ]);
+    let project_tracks = project["tracks"].as_array().unwrap().len();
     host.request("engine.project", json!({ "project": project })).unwrap();
     let routing = host.request("routing.status", json!({})).unwrap();
-    assert_eq!((routing["projectUnavailable"].clone(), routing["failure"].clone()), (json!(false), Value::Null));
+    // What the compiled mixer is, and nothing that could only have one value.
+    let mut keys: Vec<&str> = routing.as_object().unwrap().keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["inserts", "latencyFrames", "strips", "unavailableSidechains"]);
+    assert_eq!(routing["strips"].as_array().unwrap().len(), project_tracks + 1);
     let inserts = routing["inserts"].as_array().unwrap();
     assert_eq!((inserts[0]["instanceID"].clone(), inserts[0]["available"].clone()), (json!("comp"), json!(true)));
     assert_eq!((inserts[1]["instanceID"].clone(), inserts[1]["available"].clone()), (json!("vendor"), json!(false)));
@@ -251,7 +256,12 @@ fn routing_changes_are_validated_applied_and_reported() {
 
     // What the mixer offers: one mix model, every channel as a stem, the compressor's key input.
     let capabilities = host.request("routing.capabilities", json!({})).unwrap();
-    assert_eq!((capabilities["supported"].clone(), capabilities["mixModels"].clone(), capabilities["fullGraphStems"].clone()), (json!(true), json!(["standard"]), json!(true)));
+    let mut keys: Vec<&str> = capabilities.as_object().unwrap().keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["audioExport", "buses", "exportTargets", "sends", "sidechains"]);
+    assert_eq!(capabilities["buses"], json!({ "max": 1024 }));
+    assert_eq!(capabilities["sends"], json!({ "taps": ["preFader", "postFader"], "max": 128 }));
+    assert_eq!((capabilities["sidechains"]["taps"].clone(), capabilities["sidechains"]["max"].clone()), (json!(["preInserts", "preFader", "postFader"]), json!(128)));
     let targets = capabilities["exportTargets"].as_array().unwrap();
     let tracks = project["tracks"].as_array().unwrap().len();
     assert_eq!(targets.len(), tracks + 1, "every track and Master: {targets:?}");
