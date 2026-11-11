@@ -33,6 +33,11 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
 - **The sustain pedal belongs to the instrument.** Plug-in and external MIDI instruments receive the pedal with its
   value (also sostenuto and soft) and sustain by themselves; built-in instruments are held by the host. Notes
   recorded under the pedal get the length they sounded.
+- **Live input keeps its order.** Notes, pedals, controllers, pressure and pitch bend played live reach an instrument
+  in the order they were played; a pedal pressed just after a key came up no longer catches that note.
+- **A plug-in that misses an audio block loses that block's sound, not what was played.** Notes, pedals, controllers
+  and automation of a missed block arrive with the next one.
+- **A key held while its track is moved or removed** is released where it sounds before the change.
 - **Plug-in parameters return to the value you set** after a locked row and at Play or Seek, for every plug-in
   format (this replaces base patch capture).
 - **AI clients can take screenshots of the window** (`screenshot` tool, `supertracker --ctl app.screenshot`).

@@ -277,7 +277,10 @@ async function main() {
     await page.waitForSelector('#browser-results-list .browser-result:has(strong:text-is("Kick 02")) .browser-star.is-favorite');
     const favorites = await request(page, 'library.search', { favorites: true });
     assert.deepEqual(favorites.ok.items.map(item => item.name), ['Kick 02']);
-    assert.ok(fs.existsSync(path.join(folder, 'support/Library/favorites.json')), 'the library keeps its files in Library/ of the support folder');
+    // The library writes its files on a worker thread: give it a moment.
+    const favoritesFile = path.join(folder, 'support/Library/favorites.json');
+    for (const deadline = Date.now() + 10000; !fs.existsSync(favoritesFile) && Date.now() < deadline;) await page.waitForTimeout(50);
+    assert.ok(fs.existsSync(favoritesFile), 'the library keeps its files in Library/ of the support folder');
     pass('a folder added from the Browser is scanned; searches show its sounds in the result list; a favorite is set');
     await page.click('#view-pattern');
 

@@ -454,7 +454,7 @@ mod tests {
         let kernel = Arc::new(Kernel::new(48_000.0, 48_000.0));
         let mut converter = Converter::new(kernel.clone(), 2.0, 64);
         let one = step(1.0);
-        let mut render = |converter: &mut Converter, expected: Option<(i64, usize)>| {
+        let render = |converter: &mut Converter, expected: Option<(i64, usize)>| {
             let asked = converter.wanted(64, one);
             if let Some(expected) = expected {
                 assert_eq!(asked, expected);
