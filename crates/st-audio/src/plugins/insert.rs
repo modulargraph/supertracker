@@ -150,7 +150,8 @@ impl PluginInsert {
     }
 
     /// Builds the block's event list: note silence first when it is due, then the pedals
-    /// played live, then returns to base values, parameter changes and notes by frame. On the same frame a return comes before
+    /// played live, then returns to base values, parameter changes and notes by frame. On
+    /// the same frame a return comes before
     /// a parameter change (a new start returns a parameter, then the first row's lock sets
     /// it) and a parameter change before a note (a step's lock applies to the step's note).
     fn merge_events(&mut self, frames: u32, silence: bool) {
