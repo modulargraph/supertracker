@@ -152,8 +152,8 @@ fn test_automation() {
     e.set_instrument(0, i);
     e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0, 0, 0.0, 0.0);
     e.add_automation_point(0, 0, ST_TARGET_VOLUME, 0, 0, 0, 1.0, 1.0);
-    e.add_automation_point(0, 0, ST_TARGET_PLUGIN, -1, 1234, 0, 0.0, 0.2);
-    e.add_automation_point(0, 0, ST_TARGET_PLUGIN, -1, 1234, 0, 1.0, 0.8);
+    e.add_host_automation_point(0, 3, 1234, 0, 0.0, 0.2);
+    e.add_host_automation_point(0, 3, 1234, 0, 1.0, 0.8);
     e.commit_update();
     e.note_on(0, 0, 60, 127);
     e.play(0);
@@ -170,8 +170,8 @@ fn test_automation() {
         if event.type_ == ST_EVENT_PARAMETER && event.target == ST_TARGET_VOLUME && event.track == 0 {
             volume.push(event.value);
         }
-        if event.type_ == ST_EVENT_PARAMETER && event.target == ST_TARGET_PLUGIN {
-            assert!(event.slot == -1 && event.address == 1234);
+        if event.type_ == ST_EVENT_HOST_PARAMETER {
+            assert!(event.target == 3 && event.address == 1234);
             if first < 0.0 {
                 first = event.value;
             }

@@ -27,8 +27,8 @@ fn test_large_pull_protects_note_offs() {
     step.gate = 10.0;
     e.set_step(0, 0, 0, step, &[]);
     for lane in 0..40 {
-        e.add_automation_point(0, 0, ST_TARGET_PLUGIN, -1, lane as u64, 0, 0.0, 0.0);
-        e.add_automation_point(0, 0, ST_TARGET_PLUGIN, -1, lane as u64, 0, 64.0, 1.0);
+        e.add_host_automation_point(0, lane, lane as u64, 0, 0.0, 0.0);
+        e.add_host_automation_point(0, lane, lane as u64, 0, 64.0, 1.0);
     }
     e.commit_update();
     e.play(0);
@@ -78,7 +78,6 @@ fn test_exact_stepped_automation() {
         ST_TARGET_PAN,
         ST_TARGET_DELAY,
         ST_TARGET_REVERB,
-        ST_TARGET_PLUGIN,
         ST_TARGET_INSTRUMENT_VOLUME,
         ST_TARGET_INSTRUMENT_PAN,
     ];
@@ -87,10 +86,10 @@ fn test_exact_stepped_automation() {
         e.add_automation_point(0, 0, target, 0, 0, 1, 1.0, 1.0);
         e.add_automation_point(0, 0, target, 0, 0, 1, 1.5, 0.5);
     }
-    e.add_automation_point(0, 0, ST_TARGET_PLUGIN, -1, 333, 1, 0.0, 0.0);
-    e.add_automation_point(0, 0, ST_TARGET_PLUGIN, -1, 333, 1, 0.1, 0.75);
-    e.add_automation_point(0, 0, ST_TARGET_PLUGIN, -1, 333, 1, 0.5, 0.75);
-    e.add_automation_point(0, 0, ST_TARGET_PLUGIN, -1, 333, 1, 1.0, 1.0);
+    e.add_host_automation_point(0, 9, 333, 1, 0.0, 0.0);
+    e.add_host_automation_point(0, 9, 333, 1, 0.1, 0.75);
+    e.add_host_automation_point(0, 9, 333, 1, 0.5, 0.75);
+    e.add_host_automation_point(0, 9, 333, 1, 1.0, 1.0);
     e.commit_update();
     e.play(0);
     let mut events = render_events_block(&mut e, 12001, 257);
@@ -116,7 +115,7 @@ fn test_exact_stepped_automation() {
         assert!(values.len() == 1 && values[0].frame == 0 && values[0].e.value == 0.5);
         restored += 1;
     }
-    assert!(restored == 7);
+    assert!(restored == 6);
     let mut locked = Engine::new();
     configure(&mut locked, TONE);
     locked.begin_update();
