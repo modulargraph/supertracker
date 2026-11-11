@@ -13,10 +13,10 @@ run and test it, and every bridge command with the crate that owns it and its st
 | `--serve`: HTTP + WebSocket on 127.0.0.1 | `st-app` | done, tested end to end in Chromium |
 | Window: tao + wry + muda, menus, native context menus, file choosers, quit handshake | `st-app` | runs on Linux (GTK/WebKitGTK, checked in a virtual display); macOS code type-checks, **not yet run on a Mac** |
 | Audio playback core: project to engine, the mixer graph (strips, inserts with built-in effects, sends, sidechains, buses, master, delay compensation, automation, meters), transport, live notes, devices (cpal and the null device), offline render | `st-audio` on `tracker-engine`, registered in `st-host` (`areas/audio.rs`) | done, tested on Linux (offline renders, allocation-free render path, null device, Chromium end to end); CoreAudio only type-checked |
-| Plug-ins: instances in container processes as inserts and instruments of the mixer (latency into delay compensation, sidechains, automation and step locks with frame offsets, notes of plug-in instruments, state in the project), the catalogue (scanned by container processes, blocklist), crash recovery (`plugin.*`, `plugins.*`) | `st-audio` (`plugins`) on the container client (`crates/plugin-host`), registered in `st-host` (`areas/plugins.rs`) | done, tested on Linux with the CLAP and VST3 test plug-ins and the real container process (offline renders compared bit for bit, allocation-free render path with plug-ins, the bridge on the null device, Chromium end to end). Audio Units, editor windows of VST3 and Audio Units, and yielding activation to a container before its editor is focused are macOS only: type-checked, **not yet run on a Mac**. No third-party plug-in has been loaded yet |
-| Samples (decoding on worker threads, edits, slices, sampler playheads), browser previews, export / bounce / render selection / Track Freeze on a private offline engine, recording of the master output or an input, live line inputs into track strips, Track Freeze by recording on the live engine | `st-audio` (with `st-samples`), registered in `st-host` (`areas/samples.rs`, `areas/export.rs`, `areas/recording.rs`) | done, tested on Linux (offline renders, the null device and the null input, Chromium end to end for sample loading and export); `cpal` input streams only type-checked for macOS and never opened on a real device, so line inputs and freeze by recording have only met the null input. Not implemented: `audio.kitPreview` |
-| Sound library: folders, index and search, favorites and labels, NKS catalogue, kits (`library.*`, `kit.*`) | `st-library`, registered in `st-host` (`areas/library.rs`) | done, tested on Linux (bridge tests on generated audio files; the Browser workspace in Chromium end to end). The standard content folders and NKS registrations of macOS are named in code that has not run on a Mac |
-| MIDI: devices with hot-plug, input to the engine (with recording captures), output of external-MIDI instruments from the render thread, MIDI clock and transport out (`midi.*`) | `st-midi`, connected to `st-audio` in `st-host` (`areas/midi.rs`; the audio side's seam is `st_audio::midi`) | done, tested on Linux with in-memory ports (note times, clock against tempo, input acknowledgements). **No real MIDI device has been opened** (ALSA sequencer, CoreMIDI) |
+| Plug-ins: instances in container processes as inserts and instruments of the mixer (latency into delay compensation, sidechains, automation and step locks with frame offsets and a return to the base value the host keeps per parameter, notes of plug-in instruments, live controllers and pressure for them, state in the project), the catalogue (scanned by container processes, blocklist), crash recovery (`plugin.*`, `plugins.*`) | `st-audio` (`plugins`) on the container client (`crates/plugin-host`), registered in `st-host` (`areas/plugins.rs`) | done, tested on Linux with the CLAP and VST3 test plug-ins and the real container process (offline renders compared bit for bit, allocation-free render path with plug-ins, the bridge on the null device, Chromium end to end). Audio Units, editor windows of VST3 and Audio Units, and yielding activation to a container before its editor is focused are macOS only: type-checked, **not yet run on a Mac**. No third-party plug-in has been loaded yet |
+| Samples (decoding on worker threads, edits, slices, sampler playheads), browser previews, export / bounce / render selection / Track Freeze on a private offline engine, recording of the master output or an input, live line inputs into track strips, Track Freeze by recording on the live engine | `st-audio` (with `st-samples`), registered in `st-host` (`areas/samples.rs`, `areas/export.rs`, `areas/recording.rs`) | done, tested on Linux (offline renders, the null device and the null input, Chromium end to end for sample loading and export); `cpal` input streams only type-checked for macOS and never opened on a real device, so line inputs and freeze by recording have only met the null input |
+| Sound library: folders, index and search, favorites and labels, NKS catalogue, kits with the audio preview they are saved with (`library.*`, `kit.*`) | `st-library`, registered in `st-host` (`areas/library.rs`); the preview is rendered by `st_audio::kit_preview` on a private offline engine | done, tested on Linux (bridge tests on generated audio files and generated kits; the Browser workspace in Chromium end to end). The standard content folders and NKS registrations of macOS are named in code that has not run on a Mac |
+| MIDI: devices with hot-plug, input to the engine (with recording captures), controllers, pressure and pitch bend from input and from `midi.expression` to the instrument a track plays (an external device, a plug-in, the engine), output of external-MIDI instruments from the render thread, MIDI clock and transport out (`midi.*`) | `st-midi`, connected to `st-audio` in `st-host` (`areas/midi.rs`; the audio side's seam is `st_audio::midi`) | done, tested on Linux with in-memory ports (note times, clock against tempo, input acknowledgements, expression to every kind of instrument). **No real MIDI device has been opened** (ALSA sequencer, CoreMIDI) |
 | Maschine MK3 (`mk3.*`), off unless turned on in Settings; `--mk3-probe` | `st-mk3`, registered in `st-host` (`areas/mk3.rs`) | commands tested through the bridge against the in-memory controller; **never run with a controller** (see `cargo doc -p st-mk3`) |
 | AI control: the local control socket, `supertracker --mcp` and `--ctl` (`agent.*`) | `st-agent`, registered in `st-host` (`areas/agent.rs`); the page answers `agent.call` events | done, tested on Linux (bridge tests; MCP session and `--ctl` against the page in Chromium end to end). Unix sockets only. Screenshots (`app.screenshot`, the MCP tool `screenshot`) are taken by the window's web view (`st-app`, `screenshot.rs`, installed through `areas::agent::Agent::set_screenshot_provider`): tested on Linux in the real window under Xvfb; the macOS path is type-checked only; `--serve` has no window and answers with a message |
 
@@ -75,12 +75,12 @@ the standard folders out.
 | What | How |
 |---|---|
 | Bridge guarantees, session and settings commands, catalogue; the audio commands on the null device (`tests/audio.rs`) | `cargo test -p st-host` |
-| The audio core: unit tests, offline renders against the mixer's rules (`tests/offline.rs`), the demo song, transport, devices (`tests/playback.rs`), no allocation on the render path (`tests/realtime.rs`) | `cargo test -p st-audio` |
+| The audio core: unit tests, offline renders against the mixer's rules (`tests/offline.rs`), the demo song, transport, devices (`tests/playback.rs`), no allocation on the render path (`tests/realtime.rs`), kit previews of generated kits with a built-in effect and a plug-in in a container (`tests/kit_preview.rs`) | `cargo test -p st-audio` |
 | Line inputs: a manual input through a track's inserts, fader and meter, delay compensation of its latency, paused routes, the tap on a strip (`tests/line_inputs.rs`), no allocation on the input and render paths with line inputs and a tap (`tests/realtime.rs`); Freeze by recording in real time on the null device, a recorded print against the offline print of the same track, cancelled and disturbed takes (`tests/freeze_recording.rs`) | `cargo test -p st-audio` |
 | Line inputs and Freeze by recording through the bridge, on the null device with the null input's test tone: a route in the project heard on its track's meter and reported in `audio.devices`, paused routes, the remembered input, a hardware track frozen by recording, played from its print, exported and unfrozen (`tests/line_inputs.rs`) | `cargo test -p st-host` |
 | Render cost of the demo song and of a 64-track project | `cargo run --release -p st-audio --example bench` |
-| The library through the bridge, on generated audio files: add a folder, scan, search, favorites and browser state across a restart, kits, the seams to the plug-in list and the kit preview (`tests/library.rs`) | `cargo test -p st-host` |
-| MIDI with in-memory ports: a pattern's notes for an external instrument at their times, all-notes-off on stop and panic, clock against the tempo, a keyboard note that sounds and is acknowledged for recording, MIDI Start/Stop, hot-plug, shutdown (`tests/midi.rs`); no allocation on the render path with MIDI output connected (`tests/midi_realtime.rs`) | `cargo test -p st-host` |
+| The library through the bridge, on generated audio files: add a folder, scan, search, favorites and browser state across a restart, kits, a kit saved with the preview of its group bus and auditioned (the file's format, length and where it has audio), the seam to the plug-in list (`tests/library.rs`) | `cargo test -p st-host` |
+| MIDI with in-memory ports: a pattern's notes for an external instrument at their times, all-notes-off on stop and panic, clock against the tempo, a keyboard note that sounds and is acknowledged for recording, MIDI Start/Stop, hot-plug, shutdown (`tests/midi.rs`); no allocation on the render path with MIDI output connected (`tests/midi_realtime.rs`); controllers, channel and poly pressure and pitch bend from `midi.expression` and from a keyboard to an external instrument, the sampler, and the CLAP and VST3 test instruments (`tests/expression.rs`) | `cargo test -p st-host` |
 | The audio core's MIDI seam with a recording hook: blocks with the transport position, notes of external instruments at their frames, all-notes-off on stop and panic, nothing during an offline render (`tests/midi.rs`) | `cargo test -p st-audio` |
 | The Maschine MK3 through the bridge against `st_mk3::fake` (`tests/mk3.rs`); AI control through the bridge with a control-socket client, the setting and the quit fence (`tests/agent.rs`) | `cargo test -p st-host` |
 | Command line, WebSocket framing, file serving, menus, window helpers | `cargo test -p st-app` |
@@ -415,7 +415,10 @@ Exercised on Linux (Ubuntu 24.04, x86-64):
   (`cargo test -p st-audio --test plugins --test plugins_realtime`, `cargo test -p st-host --test
   plugins`; the tests build the container and the plug-ins when they are missing): an effect in
   the graph bit for bit, delay compensation following a latency change, automation lanes and step
-  locks on their frames, a plug-in instrument playing a pattern, a sidechain, state into
+  locks on their frames, a locked parameter back at the value the user set (after its row, on
+  stop, start and seek), a plug-in instrument playing a pattern, controllers and pressure
+  played live reaching it with the next block (as MIDI, as CLAP note expressions, as the
+  parameters a VST3 plug-in maps them to), a sidechain, state into
   `engine.snapshot` and back from a reopened project, an offline copy equal to the live render, a
   crash inside `process` during playback (pass-through, report, restore with state), a plug-in
   that crashes while loading held back at the next start, no allocation on the render path; and
@@ -470,7 +473,9 @@ Not exercised anywhere yet:
   take what is left of its render call, at least half a millisecond.
 - **MIDI devices**: no port of the ALSA sequencer or of CoreMIDI has been opened (the container has
   no sequencer; the host then runs without devices and says so in `midi.devices`). Everything above
-  the device layer is tested with in-memory ports. The timing of scheduled MIDI against the audio
+  the device layer is tested with in-memory ports. Controllers and pressure for Audio Units are
+  type-checked and unit-tested as far as the scheduling of their MIDI bytes; no Audio Unit has
+  received them. The timing of scheduled MIDI against the audio
   output is unverified: a block's messages are delayed by the output latency the device reports
   with each callback (`st_audio::midi::RenderMidi::set_playback_delay`), which has only ever been
   zero (the null device).
@@ -523,7 +528,22 @@ Behaviour worth knowing:
   descriptors; the host pushes no plug-in list of its own. A publication loads its plug-ins
   before it answers. The recovery store holds a plug-in back after two crashes at load in a row
   (or a load the host did not survive); a crash while playing costs one container and is restored
-  with Retry. `plugin.captureBasePatch` is not implemented. Editors report parameter changes with
-  the events `plugin.parameter` and `plugin.gesture`. Pitch bend and the mod wheel reach a plug-in
-  instrument as MIDI; sustain holds its notes in the host; other controllers and aftertouch do
-  not reach it yet.
+  with Retry. Editors report parameter changes with the events `plugin.parameter` and
+  `plugin.gesture`.
+- Plug-in parameters and automation: the value the user leaves a parameter at (loaded with the
+  state, set from the interface, changed in the plug-in's editor) is its base value, which the
+  host keeps for every plug-in of every format (`st_audio::plugins::manager::ParamTable`). A
+  lane or a step lock moves the parameter only while it applies: it is back at its base value
+  at the end of a locked row where no lane takes over, and when playback stops, starts or seeks,
+  so a state captured while stopped is the patch as the user made it. There is no command to
+  capture a base patch: nothing needs capturing. A state captured while a lane holds a
+  parameter contains the lane's value.
+- Expression: controllers, channel and poly pressure, pitch bend and program changes played
+  live (`midi.expression`, a MIDI keyboard) go to the instrument of their track. An external
+  MIDI instrument gets them on its device and channel at once. A plug-in instrument gets them
+  at the first frame of its next block: as MIDI (CLAP note ports that take it, Audio Units),
+  as note expressions for pressure and pitch bend (CLAP note ports that take CLAP events
+  only; control changes have no CLAP event), or as the parameters it maps controllers,
+  channel pressure and pitch bend to plus poly pressure events (VST3). The engine's own
+  instruments take pitch bend (two semitones either way) and the mod wheel. The sustain pedal
+  holds notes in the host and is not passed on to a plug-in or a device.

@@ -69,9 +69,7 @@
   const flag = (name, property) => () => !!window[name]?.[property];
   const recording = () => !!(window.STRecording?.isRecording || window.STRecording?.isBusy);
   const STANDARD = {
-    basePatch: { active: flag('STBasePatch', 'isBusy'), reason: 'Wait for the base patch update to finish.',
-      reasons: { replace: 'Wait for the current patch or template update to finish.' } },
-    templates: { active: flag('STProjectTemplates', 'isBusy'), reason: 'Wait for the current patch or template update to finish.' },
+    templates: { active: flag('STProjectTemplates', 'isBusy'), reason: 'Wait for the current template update to finish.' },
     lineInputs: { active: flag('STLineInputs', 'isBusy'), reason: 'Wait for line inputs to finish applying.' },
     export: { active: flag('STExport', 'isBusy'), reason: 'Finish or cancel the audio export first.',
       reasons: {

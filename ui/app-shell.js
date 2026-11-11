@@ -60,7 +60,6 @@
     if (state.view === 'recording') window.STLineInputs?.bind();
     if (state.view === 'mixer') window.STStudio?.bindMixer();
     if (state.view === 'automation') window.STStudio?.bindAutomation();
-    window.STBasePatch?.bind();
     $$('[data-scroll]').forEach(el => {
       if (scroll[el.dataset.scroll]) {
         el.scrollTop = scroll[el.dataset.scroll][0];

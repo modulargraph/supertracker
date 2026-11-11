@@ -143,7 +143,7 @@
         + `<div class="plugin-overview-main"><div class="plugin-overview-name"><span>Plug-in instrument${plugin.format ? ' · ' + esc(plugin.format) : ''}</span>`
         + `<h2>${esc(plugin.name || inst.name)}</h2></div><div class="plugin-overview-actions">`
         + `<button id="browse-plugins">Browse instruments</button><button id="plugin-editor">Open plug-in editor</button>`
-        + `<button id="plugin-parameters">Parameters & presets</button>${window.STBasePatch?.render(plugin) || ''}</div>`
+        + `<button id="plugin-parameters">Parameters & presets</button></div>`
         + `</div><details class="plugin-overview-help" id="plugin-overview-help"><summary id="plugin-overview-help-summary">About `
         + `instrument controls</summary><p>Each track hosts one instrument plug-in. Assign it to a track before entering `
         + `notes; hosted plug-ins cannot switch per step. Use the native editor for the complete interface, or the accessible `

@@ -245,10 +245,11 @@ being controlled in Pitch / Mod / Perform modes. Swiping in the default state sc
 ### Analog knobs and pedal
 
 The master, headphone and microphone knobs belong to the MK3's audio interface and are shown on the settings page
-only. The pedal jack acts as sustain (CC64) for pads and keyboard: plug-ins and external MIDI receive CC64 and the
-host defers the release of every note the app plays until the pedal comes up. Pad pressure sends channel
-aftertouch (default) or poly aftertouch with the pad's note to the selected track's instrument; choose Off / Channel /
-Poly on SETTINGS (encoder 8, "Pressure"). Built-in instruments ignore aftertouch.
+only. The pedal jack acts as sustain for pads and keyboard: the host defers the release of every note the app plays
+until the pedal comes up, whatever the instrument (the pedal itself is not passed on to plug-ins or external MIDI).
+Pad pressure sends channel aftertouch (default) or poly aftertouch with the pad's note to the selected track's
+instrument (a plug-in, or an external MIDI instrument on its channel); choose Off / Channel / Poly on SETTINGS
+(encoder 8, "Pressure"). Built-in instruments ignore aftertouch.
 
 ## Software contract (native driver ⇄ interface)
 
@@ -279,10 +280,11 @@ Interface → native commands:
 
 Interface → audio host commands used by the controller (also available to the rest of the app):
 - `midi.expression {track, kind:"pitchBend"|"cc"|"aftertouch"|"polyAftertouch"|"sustain", value, controller?, note?}` —
-  live expression for the track's instrument through the same destinations as hardware MIDI input: plug-ins get the
-  MIDI message, external MIDI instruments get it on their output channel, built-in instruments get pitch bend
-  (`pitch_bend`, ±2 semitones) and CC1 (`mod_wheel`, filter close). `value` is −1…1 for pitch
-  bend, 0…1 otherwise; `sustain` = CC64. Repeated identical values are dropped natively; the controller quantizes to
+  live expression for the track's instrument through the same destinations as hardware MIDI input: a plug-in gets the
+  message with its next block (as MIDI, or in its format's own terms), an external MIDI instrument gets it on its
+  device and channel, built-in instruments get pitch bend (±2 semitones) and CC1 (the mod wheel, filter close) and
+  ignore the rest (the reply's `sent` is then false). `value` is −1…1 for pitch bend, 0…1 otherwise; `sustain` (or
+  CC64) holds the app's own notes in the host. The controller drops repeated identical values, quantizes to
   MIDI resolution and sends at most one message per stream every 15 ms with a trailing latest value.
 - `transport.queue {pattern}|{sequence}|{clear:true}` — queued jump honoured by the engine at the next pattern (or
   pattern-loop-range) end, sample-accurately (`queue_jump`). Ignored while stopped (`queued:false`).

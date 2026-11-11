@@ -240,18 +240,12 @@ async function main() {
     assert.deepEqual(onDisk.patterns[0].steps[0][0], NOTE);
     pass('a note entered in the page is saved to the chosen file through project.save');
 
-    // ---- An unimplemented command fails with its name, and the page carries on ---------------
-    // (Whichever of these the host does not implement yet.)
-    const unimplemented = ['plugin.captureBasePatch', 'audio.kitPreview'].find(command => !boot.commands.includes(command));
-    if (unimplemented) {
-      const refused = await request(page, unimplemented, { track: 0, kind: 'instrument' });
-      assert.match(refused.error, new RegExp('^`' + unimplemented.replace('.', '\\.') + '` is not implemented yet \\(it belongs to st-[a-z*-]+\\)\\.$'));
-    }
+    // ---- An unknown command fails with its name, and the page carries on ----------------------
     assert.equal((await request(page, 'no.such.command')).error, '`no.such.command` is not a command this host knows.');
     assert.deepEqual(await request(page, 'settings.set', { key: 'e2e', value: 7 }), { ok: {} });
     assert.deepEqual(await request(page, 'settings.get', { key: 'e2e' }), { ok: { value: 7 } });
     assert.deepEqual(await noteAt(page), NOTE);
-    pass('an unimplemented command is refused with its name and owner, and the next requests still work');
+    pass('an unknown command is refused with its name, and the next requests still work');
 
     // ---- Reload: the host hands the session back; New clears it; Open (through the Open window) restores it
     await page.reload();

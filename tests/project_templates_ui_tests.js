@@ -36,6 +36,4 @@ const copy=x=>JSON.parse(JSON.stringify(x));
  r.handlers.set('project.templates.save',()=>new Promise(done=>finish=done));r.element('template-name').value='Snapshot';const saving=r.element('template-save').onclick();for(let i=0;i<30&&!finish;i++)await tick();assert(finish);r.ST.closeModal();r.ST.openModal('Other dialog','Keep this','',{kind:'other'});finish({});await saving;assert.equal(r.ST.state.modal,'other');assert.equal(r.calls.filter(c=>c.command==='project.templates.list').length,1);assert.equal(r.window.STProjectTemplates.isBusy,false);
  console.log('PASS completed template save never reopens a dismissed manager');
  }
- h.window.STBasePatch={isBusy:true};const old=h.ST.state.project;assert.equal(await h.ST.projectAction('new'),false);assert.equal(await h.ST.projectAction('save'),false);assert.equal(h.ST.state.project,old);
- console.log('PASS base-patch transaction blocks competing session replacement and save');
 })().catch(error=>{console.error(error);process.exitCode=1;});

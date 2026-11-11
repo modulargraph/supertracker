@@ -65,7 +65,7 @@ model! {
     ///
     /// The host writes these when it loads a plug-in and captures state; the interface keeps
     /// them in `project.audioPlugins` and moves them with their owner. Fields the host adds for
-    /// display only (`parameters`, `presets`, `currentPreset`, `hostStatus`, `basePatch`,
+    /// display only (`parameters`, `presets`, `currentPreset`, `hostStatus`,
     /// `migration`, `editorOpen`, `windowFrame`) stay in `extra`.
     pub struct PluginDescriptor {
         /// The owner: `track:<routingID>`, `bus:<id>`, `master` or `instrument:<index>`; see [`Owner`].

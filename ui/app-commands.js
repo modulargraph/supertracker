@@ -38,7 +38,7 @@
   function perform(command) {
     // Stop always runs; everything else waits for operations that own the session.
     if (command !== 'stop') {
-      if (busy.refuse('perform', ['basePatch', 'lineInputs', 'settings'])) return false;
+      if (busy.refuse('perform', ['lineInputs', 'settings'])) return false;
       if (busy.refuse('perform', ['export', command !== 'recordInput' && 'recording'])) return;
     }
     const handler = commandHandler(command);

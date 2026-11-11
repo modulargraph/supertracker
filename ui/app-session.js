@@ -128,7 +128,7 @@
   }
 
   async function saveProject(action = 'save', path) {
-    if (window.STBusy.refuse('save', ['basePatch', 'lineInputs'])) return false;
+    if (window.STBusy.refuse('save', ['lineInputs'])) return false;
     if (window.STBusy.refuse('save', ['export', 'saving'])) return false;
     const mk3Owner = state.project;
     if ((await window.STMK3?.flushEdits?.({ nativeCapture: true, render: false })) === false) return false;
@@ -217,7 +217,7 @@
   }
 
   async function replaceSession(label, operation) {
-    if (window.STBusy.refuse('replace', ['basePatch', 'templates', 'lineInputs', 'settings'])) return false;
+    if (window.STBusy.refuse('replace', ['templates', 'lineInputs', 'settings'])) return false;
     if (window.STBusy.refuse('replace', ['export', 'recording', 'sessionDialog'])) return false;
     app.sessionTransition = true;
     try {

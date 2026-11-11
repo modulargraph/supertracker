@@ -11,7 +11,6 @@
     // Commits of the operation that holds the gate (and quiet native captures) pass their own gate.
     const quietCapture = options.nativeCapture === true && options.render === false;
     if (busy.refuse('edit', [
-      !options.basePatchCommit && !options.nativeCapture && 'basePatch',
       !options.recordingCommit && !options.nativeCapture && !options.kitEdit && 'inlineRecording',
       !options.lineInputCommit && !quietCapture && 'lineInputs'
     ])) return false;
