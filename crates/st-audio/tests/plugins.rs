@@ -441,7 +441,11 @@ fn a_block_a_plug_in_misses_costs_its_audio_and_none_of_its_events() {
         let (again, _) = engine.render_offline(512, 512);
         assert_eq!((peak(&missed), peak(&again)), (0.0, 0.0), "{format}: two missed blocks");
         let (next, _) = engine.render_offline(1_000, 512);
-        assert_bits(&next, |i| sine_sample(64, i as u64, 1.0), &format!("{format}: note 64 alone, at the new level, from the first frame"));
+        // (VST3 has no order between a note and a controller at one sample, so its backend
+        // spreads them: the note-off at the first frame, the pedal and the note played after
+        // it one frame later.)
+        let shift = if format == "vst3" { 1 } else { 0 };
+        assert_bits(&next, |i| if i < shift { 0.0 } else { sine_sample(64, (i - shift) as u64, 1.0) }, &format!("{format}: note 64 alone, at the new level, from the first frame"));
         // The second note's release under the pedal, in a missed block again: sustained.
         hosted.instance.hold_blocks(1);
         engine.note_off(0, 64);
