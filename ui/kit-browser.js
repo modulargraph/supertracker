@@ -251,7 +251,7 @@
     const sounds = Array.isArray(meta?.sounds) ? meta.sounds : [];
     const slots = Array.from({ length: 16 }, (_, index) => {
       const slot = (3 - Math.floor(index / 4)) * 4 + index % 4;
-      const sound = sounds.find(value => Number(value.slot ?? value.index) === slot) || (sounds[slot]?.slot == null && sounds[slot]?.index == null ? sounds[slot] : null);
+      const sound = sounds.find(value => value.slot === slot);
       return { slot, sound: sound?.empty ? null : sound };
     });
     const filled = sounds.filter(sound => sound && !sound.empty).length;
