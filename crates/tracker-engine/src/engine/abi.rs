@@ -1,5 +1,5 @@
 //! The plain data and constants of the engine API: tracks, instruments, steps, events, status,
-//! transport checkpoints, and the bus arithmetic.
+//! and the bus arithmetic.
 //!
 //! The names carry the `ST` prefix: the mixer crate imports this module wholesale.
 
@@ -380,26 +380,6 @@ pub struct STStatus {
     pub requested_playing: i32,
     /// Changes only when a seek is admitted; published coherently with position.
     pub transport_seek_revision: u64,
-}
-
-/// Ephemeral checkpoint for the same engine/project, not a saved project format.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct STTransportState {
-    pub playing: i32,
-    pub song_mode: i32,
-    pub pattern: i32,
-    pub row: i32,
-    pub sequence: i32,
-    pub row_has_started: i32,
-    pub sequence_finished: i32,
-    pub row_remaining: f64,
-    pub row_duration: f64,
-    pub transport_frames: f64,
-    pub recording: i32,
-    pub pattern_clip_frame: i64,
-    pub pattern_clip_pattern: i32,
-    pub pattern_clip_looped: i32,
-    pub pattern_clip_valid: i32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

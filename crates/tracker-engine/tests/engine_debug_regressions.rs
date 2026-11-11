@@ -56,96 +56,39 @@ fn install_print(e: &mut Engine) {
     e.commit_update();
 }
 
-fn temporary_song_render(e: &mut Engine) {
-    e.stop();
-    e.seek(0, 0, 0);
-    e.play(1);
-    audio(e, 73);
-}
-
-fn checkpoint_print(after_wrap: bool) {
+/// A pattern print plays from the frame its pass has reached: the head print on the first pass,
+/// the loop print once the pattern has wrapped.
+fn pattern_print(after_wrap: bool) {
     let mut e = Engine::new();
     setup(&mut e, 4);
     install_print(&mut e);
     e.play(0);
     audio(&mut e, if after_wrap { 25000 } else { 1000 });
-    let state = e.capture_transport();
-    temporary_song_render(&mut e);
-    realtime(|| e.restore_transport(state, true));
     let out = audio(&mut e, 500);
     let pcm = print_pcm();
     let sign: f32 = if after_wrap { -1.0 } else { 1.0 };
-    if (out[0] - sign * pcm[1000]).abs() > 1e-7f32 {
-        println!("checkpoint loop={} actual={} expected={}", after_wrap as i32, out[0], sign * pcm[1000]);
-    }
     for n in 0..out.len() {
-        require(
-            out[n] == sign * pcm[1000 + n],
-            "Pattern print checkpoint must restore exact cursor and head/loop asset",
-        );
+        require(out[n] == sign * pcm[1000 + n], "The print plays at the pass's frame, with the head or loop asset");
     }
-    require(e.status().row == 0 && e.status().playing != 0, "Checkpoint musical row preserved");
+    require(e.status().row == 0 && e.status().playing != 0, "The transport is on row 0 and playing");
 }
 
-fn checkpoint_bounds() {
-    let mut e = Engine::new();
-    setup(&mut e, 4);
-    install_print(&mut e);
-    e.play(0);
-    audio(&mut e, 7250);
-    let good = e.capture_transport();
-    for invalid in 0..5 {
-        let mut state = good;
-        if invalid == 0 {
-            state.pattern_clip_valid = 0;
-            state.pattern_clip_frame = 0;
-            state.pattern_clip_pattern = 0;
-            state.pattern_clip_looped = 0;
-        }
-        if invalid == 1 {
-            state.pattern_clip_frame = i64::MAX;
-        }
-        if invalid == 2 {
-            state.pattern_clip_frame = -1;
-        }
-        if invalid == 3 {
-            state.pattern_clip_pattern = 99;
-        }
-        if invalid == 4 {
-            state.pattern_clip_looped = 2;
-        }
-        temporary_song_render(&mut e);
-        realtime(|| e.restore_transport(state, true));
-        let out = audio(&mut e, 64);
-        let pcm = print_pcm();
-        for n in 0..out.len() {
-            require(
-                out[n] == pcm[7250 + n],
-                "Invalid/default print checkpoint reconstructs row-local head position",
-            );
-        }
-    }
-    temporary_song_render(&mut e);
-    e.restore_transport(good, false);
-    let silent = audio(&mut e, 100);
-    require(silent.iter().all(|&x| x == 0.0), "Canceled export must not resume frozen PCM");
-}
-
-fn checkpoint_at_boundary() {
+/// The frame after the pattern's last row starts the loop print at its first frame; a stopped
+/// transport plays no print.
+fn pattern_print_wrap_and_stop() {
     let mut e = Engine::new();
     setup(&mut e, 4);
     install_print(&mut e);
     e.play(0);
     audio(&mut e, 24000);
-    let state = e.capture_transport();
-    require(state.row_remaining == 0.0, "Pending wrap boundary");
-    temporary_song_render(&mut e);
-    e.restore_transport(state, true);
     let out = audio(&mut e, 64);
     let pcm = print_pcm();
     for n in 0..out.len() {
-        require(out[n] == -pcm[n], "Pending natural wrap restores then selects steady loop print");
+        require(out[n] == -pcm[n], "A natural wrap selects the loop print from its start");
     }
+    e.stop();
+    let silent = audio(&mut e, 100);
+    require(silent.iter().all(|&x| x == 0.0), "A stopped transport plays no print");
 }
 
 fn silent_sample_region() {
@@ -276,26 +219,20 @@ fn external_retrigger() {
 }
 
 #[test]
-fn pattern_head_checkpoint() {
-    checkpoint_print(false);
+fn pattern_print_head() {
+    pattern_print(false);
     zero_render_allocations();
 }
 
 #[test]
-fn pattern_loop_checkpoint() {
-    checkpoint_print(true);
+fn pattern_print_loop() {
+    pattern_print(true);
     zero_render_allocations();
 }
 
 #[test]
-fn checkpoint_bounds_and_cancellation() {
-    checkpoint_bounds();
-    zero_render_allocations();
-}
-
-#[test]
-fn checkpoint_at_pending_wrap() {
-    checkpoint_at_boundary();
+fn pattern_print_at_wrap_and_after_stop() {
+    pattern_print_wrap_and_stop();
     zero_render_allocations();
 }
 

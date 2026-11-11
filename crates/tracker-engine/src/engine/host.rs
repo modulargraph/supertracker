@@ -55,13 +55,8 @@
 //!    `Control`, `Render` and `Shared` are too, so safe code outside cannot forge that state.
 //! 6. **Drop.** `EngineCore` is dropped by the last `Arc`, when no handle and therefore no
 //!    borrow of either half exists; the dropping thread then stands in for both.
-//!
-//! One rule remains a documented contract rather than a type: [`RenderHalf::capture_transport`],
-//! [`RenderHalf::restore_transport`] and [`RenderHalf::forget_external_voices`] are meant for a
-//! stopped graph. Calling them between blocks is memory-safe (they need the render half, like
-//! rendering) but changes what plays.
 
-use super::abi::{STEvent, STInputAck, STStatus, STTransportState, STVoicePosition};
+use super::abi::{STEvent, STInputAck, STStatus, STVoicePosition};
 use super::control::Control;
 use super::state::{Render, EngineCore, Shared};
 use super::tables::{TablesState, MAX_BLOCK};
@@ -228,25 +223,6 @@ impl RenderHalf {
     /// ring's single consumer.
     pub fn pop_event(&mut self) -> Option<STEvent> {
         self.engine.shared.pop_event()
-    }
-
-    /// A checkpoint of the transport and of everything that sounds (stopped graph).
-    pub fn capture_transport(&mut self) -> STTransportState {
-        let (render, shared) = self.parts();
-        render.capture_transport(shared)
-    }
-
-    /// Returns to a checkpoint taken from this engine with the same project (stopped graph).
-    pub fn restore_transport(&mut self, state: &STTransportState, resume: bool) {
-        let (render, shared) = self.parts();
-        render.restore_transport(shared, state, resume);
-    }
-
-    /// Ends every external (plug-in or MIDI) voice on `channel` without emitting its note-off
-    /// and returns how many there were (stopped graph).
-    pub fn forget_external_voices(&mut self, channel: i32) -> i32 {
-        let (render, shared) = self.parts();
-        render.forget_external_voices(shared, channel)
     }
 
     pub fn sample_rate(&self) -> f64 {

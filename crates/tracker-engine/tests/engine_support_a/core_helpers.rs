@@ -232,41 +232,6 @@ pub fn assert_pan_switch(a: &Audio, expected: usize) {
     }
 }
 
-/// C++ `configureCheckpointMusic`.
-pub fn configure_checkpoint_music(e: &mut Engine) {
-    configure(e, ST_INSTRUMENT_MIDI);
-    e.begin_update();
-    e.set_timing(123.0, 4, 0.2, 0.7);
-    e.set_pattern(0, 4);
-    e.set_pattern(1, 3);
-    let sequence = [0, 1];
-    e.set_sequence(&sequence, 0, 1);
-    for p in 0..2 {
-        for r in 0..(if p != 0 { 3 } else { 4 }) {
-            let mut step = default_step();
-            step.note = 60 + p * 12 + r;
-            step.gate = 8.0;
-            e.set_step(p, 0, r, step, &[]);
-        }
-    }
-    e.add_automation_point(1, 0, ST_TARGET_VOLUME, 0, 0, 1, 0.0, 0.25);
-    e.add_automation_point(1, 0, ST_TARGET_VOLUME, 0, 0, 1, 2.0, 0.75);
-    e.commit_update();
-}
-
-/// C++ `temporaryExport`: what an offline export does to the transport between a capture and a
-/// restore.
-pub fn temporary_export(e: &mut Engine) {
-    e.seek(0, 0, 0);
-    e.play(1);
-    let mut a = Audio::new(2048);
-    render(e, &mut a);
-    e.stop();
-    render(e, &mut a);
-    e.panic();
-    e.seek(0, 0, 0);
-}
-
 /// C++ `configureLoopMusic(e,swing)`: rows 0..15 each carry note 60+row; one row is 6000
 /// frames at 120 BPM, 4 lines per beat.
 pub fn configure_loop_music(e: &mut Engine, swing: f32) {

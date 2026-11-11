@@ -3,7 +3,6 @@
 //! eight-comb/four-allpass reverb), the metronome and count-in clicks, and timeline audio
 //! (`mixClips`, pattern-mode clips and their printed tails, song-loop tails).
 
-use super::abi::*;
 use super::state::*;
 use super::tables::MAX_BLOCK;
 use super::util::{clamp, cmax, cmin, lowest_bit, PI};
@@ -109,38 +108,6 @@ impl<'a> Rt<'a> {
     fn pattern_row_frame(&self, r: i32) -> f64 {
         let p = self.p;
         p.beat_for_row(r) * 60.0 / p.bpm * self.e.sample_rate
-    }
-
-    /// Restore the Pattern-mode print cursor from a transport checkpoint.
-    pub fn restore_pattern_clips(&mut self, state: &STTransportState) {
-        self.reset_pattern_clips();
-        if self.e.song_mode || !self.e.row_has_started {
-            return;
-        }
-        let p = self.p;
-        // The old head/loop cursor is meaningful only for this restored pattern and row. Ignore
-        // malformed/default checkpoint fields without importing any state left by the temporary
-        // export. Frame bounds are integer and include the just-finished row while its next
-        // trigger is still pending.
-        let begin = self.pattern_row_frame(self.e.row);
-        let end = self.pattern_row_frame(self.e.row + 1);
-        let saved = state.pattern_clip_valid == 1
-            && state.pattern_clip_pattern == self.e.pattern
-            && (state.pattern_clip_looped == 0 || state.pattern_clip_looped == 1)
-            && state.pattern_clip_frame >= 0
-            && state.pattern_clip_frame as f64 >= begin.floor()
-            && state.pattern_clip_frame as f64 <= end.ceil();
-        let e = &mut *self.e;
-        e.pattern_clip_frame = if saved {
-            state.pattern_clip_frame
-        } else {
-            (begin + clamp(e.row_duration - e.row_remaining, 0.0, e.row_duration) - 1e-6).ceil() as i64
-        };
-        e.pattern_clip_looped = saved && state.pattern_clip_looped != 0;
-        e.pattern_clip_pattern = e.pattern;
-        e.pattern_clip_row = e.row;
-        e.pattern_clip_length = p.pattern_length(e.pattern);
-        e.pattern_clip_valid = true;
     }
 
     fn push_pattern_tail(&mut self, pattern: i32, looped: bool, position: i64) {

@@ -475,18 +475,6 @@ impl Engine {
         self.render_bus(bus, time, left, right);
     }
 
-    pub fn capture_transport(&mut self) -> STTransportState {
-        self.e.render().capture_transport()
-    }
-
-    pub fn restore_transport(&mut self, state: STTransportState, resume: bool) {
-        self.e.render().restore_transport(&state, resume);
-    }
-
-    pub fn forget_external_voices(&mut self, channel: i32) -> i32 {
-        self.e.render().forget_external_voices(channel)
-    }
-
     pub fn pop_event(&mut self) -> Option<STEvent> {
         self.e.render().pop_event()
     }

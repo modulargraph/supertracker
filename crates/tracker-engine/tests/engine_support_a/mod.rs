@@ -17,7 +17,7 @@ use std::cell::Cell;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tracker_engine::engine::edits::Pcm;
 use tracker_engine::engine::host;
-use tracker_engine::engine::{STEvent, STInstrument, STStatus, STStep, STTrack, STTransportState};
+use tracker_engine::engine::{STEvent, STInstrument, STStatus, STStep, STTrack};
 
 // ---------------------------------------------------------------------------------------------
 // Allocation counting: the C++ tests' `operator new` with `thread_local bool realtime`.
@@ -536,15 +536,6 @@ half_methods! { RenderHalf, render_half;
             pull_block(self.half, self.block, sample_time, left.len());
             copy_bus(self.half, bus, left, right);
         });
-    }
-    fn capture_transport(&mut self) -> STTransportState {
-        realtime(|| self.half.capture_transport())
-    }
-    fn restore_transport(&mut self, state: STTransportState, resume: i32) {
-        realtime(|| self.half.restore_transport(&state, resume != 0));
-    }
-    fn forget_external_voices(&mut self, channel: i32) -> i32 {
-        self.half.forget_external_voices(channel)
     }
     /// The next event (the render thread is the serialized consumer).
     fn pop_event(&mut self) -> Option<STEvent> {

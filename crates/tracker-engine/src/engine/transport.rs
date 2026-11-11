@@ -1,7 +1,6 @@
 //! Transport and command handling: project adoption and the command queue (`refresh`),
 //! Play/Stop/Seek/count-in, the musical clock (`update_clock`), timeline resolution, row advance
-//! with song/pattern loops and queued jumps, input acknowledgements, status publication and the
-//! quiescent flush used by transport checkpoints.
+//! with song/pattern loops and queued jumps, input acknowledgements and status publication.
 //!
 //! The transport counts frames at the project's one tempo: a row lasts
 //! `rate * 60 / bpm / lines per beat` frames (swing lengthens even rows and shortens odd ones),
@@ -11,7 +10,7 @@ use super::abi::*;
 use super::project::Project;
 use super::state::*;
 use super::tables::LaneEventState;
-use super::util::{clamp, cmax, cmin, finite, finite64, next_down};
+use super::util::{clamp, cmax, cmin, finite, next_down};
 use super::voice::{NoteOn, VoiceSink};
 use std::sync::atomic::{fence, Ordering};
 
@@ -61,50 +60,6 @@ impl Render {
         self.process(sh, left, right, frames, false, 0);
     }
 
-    /// Exclusive stopped-graph operation.
-    pub fn capture_transport(&mut self, sh: &Shared) -> STTransportState {
-        if !self.owns(sh) {
-            return STTransportState::default();
-        }
-        self.flush_quiescent(sh);
-        // SAFETY: `&mut self` is the render half and no adoption happens while the view exists.
-        unsafe { Rt::attach(self, sh) }.capture_transport()
-    }
-
-    /// Exclusive stopped-graph operation.
-    pub fn restore_transport(&mut self, sh: &Shared, state: &STTransportState, resume: bool) {
-        if !self.owns(sh) {
-            return;
-        }
-        self.flush_quiescent(sh);
-        // SAFETY: as in `capture_transport`.
-        unsafe { Rt::attach(self, sh) }.restore_transport(state, resume);
-    }
-
-    /// End every AU/external-MIDI voice on `channel`
-    /// without emitting its note-off. Returns the number of voices ended.
-    pub fn forget_external_voices(&mut self, sh: &Shared, channel: i32) -> i32 {
-        if !self.owns(sh) {
-            return 0;
-        }
-        // SAFETY: `tb` points to the tables of the project in use; `&mut self` is the render
-        // half, their only accessor.
-        let channels = unsafe { &*self.tb }.channels;
-        if channel < 0 || channel >= channels {
-            return 0;
-        }
-        let mut count = 0;
-        let mut sink = VoiceSink { masks: &mut self.active_voice_masks, out: &self.out, sh };
-        for (index, v) in self.voices.iter_mut().enumerate() {
-            if v.active && v.external && v.track == channel {
-                v.off_sent = true;
-                sink.kill(v, index);
-                count += 1;
-            }
-        }
-        count
-    }
-
     /// `refresh`: adopt the latest published project, then apply queued commands and a pending
     /// automation refresh. Called at the start of every newly rendered block.
     pub(crate) fn refresh(&mut self, sh: &Shared) {
@@ -112,8 +67,8 @@ impl Render {
         if !next.is_null() {
             self.adopt_project(sh, next);
         }
-        // SAFETY: called on the render thread (or by an exclusive stopped-graph operation); the
-        // view ends with this function, before any later adoption.
+        // SAFETY: called on the render thread; the view ends with this function, before any
+        // later adoption.
         let mut rt = unsafe { Rt::attach(self, sh) };
         rt.run_commands();
         // This request has a separate mailbox: AU graph preparation may call it on the audio
@@ -260,24 +215,6 @@ impl Render {
         rt.reset_track_state(true);
         rt.reconcile_voices();
         sh.status_tracks.store(rt.p.track_count, Ordering::Relaxed);
-    }
-
-    /// Adopt pending project/control changes at zero audio time (transport capture/restore).
-    /// Discards queued events.
-    pub(crate) fn flush_quiescent(&mut self, sh: &Shared) {
-        self.out.suppress_events = true;
-        self.out.frame_offset = 0;
-        self.refresh(sh);
-        {
-            // SAFETY: exclusive stopped-graph operation standing in for the render thread; the
-            // view ends before any later adoption.
-            let mut rt = unsafe { Rt::attach(self, sh) };
-            rt.finish_input_acks(false, false, 0);
-            while sh.events.pop().is_some() {}
-            rt.publish_transport();
-        }
-        self.out.suppress_events = false;
-        sh.automation_refresh_requested.store(true, Ordering::Release);
     }
 }
 
@@ -1025,86 +962,5 @@ impl<'a> Rt<'a> {
         }
         self.e.pattern = self.valid_pattern(self.sequence_pattern(self.e.sequence));
         self.reset_track_state(true);
-    }
-
-    /// `capture_transport` after the quiescent flush: the exact frame-domain cursor.
-    pub fn capture_transport(&self) -> STTransportState {
-        let e = &*self.e;
-        STTransportState {
-            playing: e.playing as i32,
-            song_mode: e.song_mode as i32,
-            pattern: e.pattern,
-            row: e.row,
-            sequence: e.sequence,
-            row_has_started: e.row_has_started as i32,
-            sequence_finished: e.sequence_finished as i32,
-            row_remaining: e.row_remaining,
-            row_duration: e.row_duration,
-            transport_frames: e.transport_frames,
-            recording: e.recording as i32,
-            pattern_clip_frame: e.pattern_clip_frame,
-            pattern_clip_pattern: e.pattern_clip_pattern,
-            pattern_clip_looped: e.pattern_clip_looped as i32,
-            pattern_clip_valid: e.pattern_clip_valid as i32,
-        }
-    }
-
-    /// `restore_transport` after the quiescent flush: clear temporary voices, effects
-    /// and schedules, restore the cursor/mode, resume only if `state.playing && resume`.
-    pub fn restore_transport(&mut self, state: &STTransportState, resume: bool) {
-        let p = self.p;
-        let rate = self.e.sample_rate;
-        self.e.reset_input_run();
-        self.forget_early_inputs();
-        self.e.out.suppress_events = true;
-        self.all_off(true, false);
-        self.clear_scheduled();
-        self.e.clear_effects();
-        self.tb.pitch_bend.fill(0.0);
-        self.tb.mod_wheel.fill(0.0);
-        self.clear_queued();
-        self.e.count_in_total = 0;
-        self.e.click_age = 1e9;
-        self.e.click_beat = -1;
-        self.e.playing = state.playing != 0 && resume;
-        self.e.recording = state.recording != 0;
-        self.e.song_mode = state.song_mode != 0;
-        self.e.pattern = self.valid_pattern(state.pattern);
-        self.e.row = clamp(state.row, 0, p.pattern_length(self.e.pattern) - 1);
-        self.e.sequence = clamp(state.sequence, 0, p.sequence.len() as i32 - 1);
-        self.e.row_has_started = state.row_has_started != 0;
-        self.e.sequence_finished = state.sequence_finished != 0 && self.e.song_mode;
-        // `1 + sign * swing` is formed in single precision, as in C++.
-        let sign: f32 = if self.e.row & 1 != 0 { -1.0 } else { 1.0 };
-        let default_duration = rate * 60.0 / p.bpm / p.lpb as f64 * (1.0f32 + sign * p.swing) as f64;
-        self.e.row_duration = clamp(finite64(state.row_duration, default_duration), 1.0, rate * 6.0);
-        self.e.row_remaining = if self.e.sequence_finished {
-            1e100
-        } else if self.e.row_has_started {
-            clamp(finite64(state.row_remaining, 0.0), -1.0, self.e.row_duration)
-        } else {
-            0.0
-        };
-        self.e.transport_frames = clamp(finite64(state.transport_frames, 0.0), 0.0, 1e15);
-        self.e.click_beat = if self.e.transport_frames > 0.0 {
-            ((self.e.transport_frames - 1.0) * p.bpm * p.denominator as f64 / (rate * 240.0)).floor() as i64
-        } else {
-            -1
-        };
-        self.restore_pattern_clips(state);
-        self.reset_track_state(false);
-        self.e.out.suppress_events = false;
-        self.sh.automation_refresh_requested.store(true, Ordering::Release);
-        self.publish_transport();
-        self.sh.peak_l.store(0.0, Ordering::Relaxed);
-        self.sh.peak_r.store(0.0, Ordering::Relaxed);
-        let store = self.sh.peak_store.load(Ordering::Acquire);
-        if !store.is_null() {
-            // SAFETY: peak stores live until the engine is destroyed.
-            let store = unsafe { &*store };
-            for n in 0..store.values.len() {
-                store.store(n, 0.0);
-            }
-        }
     }
 }

@@ -182,7 +182,7 @@ fn song_wraps_and_pattern_travel_count_every_cycle() {
 }
 
 #[test]
-fn command_order_discontinuities_stopped_endpoints_restore_and_zero_audio_flush_outcomes() {
+fn command_order_discontinuities_stopped_endpoints_and_zero_audio_flush_outcomes() {
     let mut e = Engine::new();
     fixture(&mut e);
     e.play(1);
@@ -209,17 +209,8 @@ fn command_order_discontinuities_stopped_endpoints_restore_and_zero_audio_flush_
             && (after.flags & ST_INPUT_CLOCK_PLAYING) == 0
             && before.run_id != after.run_id
     );
-    let saved = e.capture_transport();
-    let stopped_run = after.run_id;
-    e.restore_transport(saved, false);
     assert!(edge(&mut e, 5));
-    render(&mut e, 1);
-    assert!(ack(&mut e).run_id != stopped_run);
-    assert!(edge(&mut e, 6));
     render(&mut e, 0);
-    assert!(ack(&mut e).status == ST_INPUT_ACK_CONTROL_FLUSH);
-    assert!(edge(&mut e, 7));
-    let _ = e.capture_transport();
     assert!(ack(&mut e).status == ST_INPUT_ACK_CONTROL_FLUSH);
     zero_render_allocations();
 }
@@ -386,11 +377,11 @@ fn the_placed_row_skips_its_own_trigger_of_the_early_note_once() {
     zero_render_allocations();
 }
 
-/// Seek, restore and Panic end the live voice the early note stood for, so the placed row
-/// triggers normally.
+/// Seek and Panic end the live voice the early note stood for, so the placed row triggers
+/// normally.
 #[test]
-fn seek_restore_and_panic_forget_a_pending_early_note_its_row_triggers() {
-    for transport in 0..3 {
+fn seek_and_panic_forget_a_pending_early_note_its_row_triggers() {
+    for transport in 0..2 {
         let mut e = Engine::new();
         fixture(&mut e);
         row_one_note(&mut e);
@@ -401,10 +392,6 @@ fn seek_restore_and_panic_forget_a_pending_early_note_its_row_triggers() {
         assert!(ack(&mut e).early != 0);
         if transport == 0 {
             e.seek(0, 1, 0); // row 1 starts at once
-        } else if transport == 1 {
-            let saved = e.capture_transport();
-            e.restore_transport(saved, true);
-            render(&mut e, 1999); // resumes mid-row 0
         } else {
             e.panic();
             render(&mut e, 1999); // playback continues into row 1

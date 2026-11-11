@@ -453,22 +453,6 @@ fn test_transhost_doc_follows_queued_commands() {
         let s = e.status();
         assert!(!playing(&e) && s.queued_pattern == -1 && s.transport_pending == 0);
     }
-    // A capture/restore (export) flush publishes the applied serial with the transport state.
-    {
-        let mut e = Engine::new();
-        configure(&mut e, TONE);
-        e.play(0);
-        let mut a = Audio::new(1000);
-        render(&mut e, &mut a);
-        e.stop();
-        let mut state = e.capture_transport();
-        assert!(state.playing == 0);
-        let s = e.status();
-        assert!(s.playing == 0 && s.transport_pending == 0);
-        e.play(0);
-        state = e.capture_transport();
-        assert!(state.playing != 0 && e.status().transport_pending == 0 && e.status().playing != 0);
-    }
     assert_zero_render_allocations();
 }
 
@@ -560,25 +544,17 @@ fn test_mod_wheel() {
     assert_zero_render_allocations();
 }
 
-/// Pad reorder: a host that released a moved plug-in's notes itself can end the old channel's
-/// external voices silently, so the channel's new occupant gets no stray release. Note events
-/// mark sequencer ownership in slot (1) versus live/preview (0).
+/// Note events mark sequencer ownership in slot (1) versus live/preview (0).
 #[test]
-fn test_forget_external_voices_and_sequenced_flag() {
+fn test_sequenced_flag() {
     {
         let mut e = Engine::new();
         configure(&mut e, ST_INSTRUMENT_AU);
         e.note_on(0, 0, 60, 100);
         let mut ev = note_events(render_events(&mut e, 64));
         assert!(ev.len() == 1 && ev[0].e.type_ == ST_EVENT_NOTE_ON && ev[0].e.slot == 0);
-        assert!(
-            e.forget_external_voices(-1) == 0
-                && e.forget_external_voices(channel_count(ST_MIN_RETURN_BUS)) == 0
-                && e.forget_external_voices(1) == 0
-        );
-        assert!(e.forget_external_voices(0) == 1);
         e.note_off(0, 60);
-        assert!(note_events(render_events(&mut e, 256)).is_empty());
+        render_events(&mut e, 256);
         e.note_on(0, 0, 62, 100);
         e.note_off(0, 62);
         ev = note_events(render_events(&mut e, 64));

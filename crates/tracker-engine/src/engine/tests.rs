@@ -98,7 +98,6 @@ fn rejects_invalid_engines_and_foreign_shared_state() {
     render_state.render(foreign, Some(&mut buffer), Some(&mut second), 8);
     assert_eq!((buffer, second), ([0.0; 8], [0.0; 8]));
     assert_eq!(render_state.render_block(foreign, 0, 64), 0);
-    assert_eq!(render_state.forget_external_voices(foreign, 0), 0);
     // Both engines still work with their own.
     control.commit().expect("the first engine commits its own draft");
     other_render.advance(16);

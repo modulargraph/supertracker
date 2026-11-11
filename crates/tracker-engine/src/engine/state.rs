@@ -4,8 +4,7 @@
 //! * [`Shared`]: atomics and lock-free rings both threads touch.
 //! * `Control` (see `control.rs`): the draft/published projects and everything the control
 //!   thread allocates.
-//! * [`Render`]: voices, transport and effects, touched only by the render thread
-//!   (or by an "exclusive stopped-graph operation" standing in for it).
+//! * [`Render`]: voices, transport and effects, touched only by the render thread.
 //!
 //! The render thread works through [`Rt`], a view that pairs `Render` with the project and the
 //! channel tables it is currently using.
@@ -736,7 +735,6 @@ impl Shared {
 /// Where events go: the part of the render state `emit` needs, kept separate so voices can be
 /// ended while other render fields are borrowed.
 pub struct EventOut {
-    pub(crate) suppress_events: bool,
     pub(crate) frame_offset: i32,
 }
 
@@ -747,9 +745,6 @@ pub struct EventOut {
 /// oversized AU pull cannot hang notes.
 #[inline]
 pub fn emit_event(out: &EventOut, sh: &Shared, mut event: STEvent) -> bool {
-    if out.suppress_events {
-        return true;
-    }
     event.frame_offset = if out.frame_offset > 0 { out.frame_offset } else { 0 };
     let free = sh.events.available();
     if ((event.type_ == ST_EVENT_PARAMETER || event.type_ == ST_EVENT_HOST_PARAMETER) && free <= (MAX_VOICES * 2) as u32)
@@ -924,7 +919,7 @@ impl Render {
             song_mode: false,
             row_has_started: false,
             sequence_finished: false,
-            out: EventOut { suppress_events: false, frame_offset: 0 },
+            out: EventOut { frame_offset: 0 },
             song_end_frames: 0.0,
             scheduled_count: 0,
             pattern: 0,
@@ -987,9 +982,9 @@ impl<'a> Rt<'a> {
     /// Pair the render state with the project and tables it currently uses.
     ///
     /// # Safety
-    /// The caller must be the render thread, or an exclusive stopped-graph operation standing in
-    /// for it, and the returned view must be dropped before the next `Render::refresh` (which may
-    /// retire the project it borrows).
+    /// The caller must be the render thread (or engine creation and destruction, when no render
+    /// thread exists), and the returned view must be dropped before the next `Render::refresh`
+    /// (which may retire the project it borrows).
     #[inline(always)]
     pub unsafe fn attach(e: &'a mut Render, sh: &'a Shared) -> Rt<'a> {
         // SAFETY: `current` always points to a live project: the render thread received it
