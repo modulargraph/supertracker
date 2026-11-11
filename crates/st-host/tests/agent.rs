@@ -3,7 +3,7 @@
 //! the status events and the quit fence.
 #![cfg(unix)]
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Map, Value};
@@ -132,6 +132,59 @@ fn a_client_reads_and_edits_through_the_page_and_the_setting_and_the_quit_fence_
     fixture.services.services.shutdown();
     assert!(client.call_within("app.ping", Map::new(), Duration::from_secs(2)).is_err());
     assert!(!fixture.socket.exists());
+}
+
+/// A PNG file of 3×2 pixels (a red, a green and a blue column).
+const PNG_3X2: [u8; 73] = [
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x08,
+    0x02, 0x00, 0x00, 0x00, 0x12, 0x16, 0xF1, 0x4D, 0x00, 0x00, 0x00, 0x10, 0x49, 0x44, 0x41, 0x54, 0x78, 0xDA, 0x63, 0xF8, 0xCF, 0xC0, 0xC0, 0x00, 0xC1,
+    0x70, 0x16, 0x00, 0x3B, 0xD8, 0x05, 0xFB, 0x36, 0x11, 0x98, 0xEA, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+];
+const PNG_3X2_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAIAAAASFvFNAAAAEElEQVR42mP4z8DAAMFwFgA72AX7NhGY6gAAAABJRU5ErkJggg==";
+
+#[test]
+fn screenshots_come_from_the_window_layer_and_a_host_without_a_window_says_so() {
+    let folder = TempDir::new("agent-shot");
+    let support = folder.path().join("support");
+    let fixture = start(&support);
+    fixture.services.services.start_agent();
+    let mut client = ControlClient::new(&fixture.socket);
+
+    // No window layer installed anything (this is what `--serve` runs): a message, not a picture.
+    let refused = client.call("app.screenshot", Map::new()).unwrap_err().to_string();
+    assert_eq!(refused, "SuperTracker is running without a window (for example with --serve), so there is no window to take a screenshot of.");
+
+    // The window layer's part, played by the test: it is asked on the client's request, with the
+    // width the client wants, and its PNG file is the answer.
+    let asked = Arc::new(Mutex::new(Vec::new()));
+    let agent = fixture.services.services.agent.as_ref().expect("AI control is installed");
+    agent.set_screenshot_provider(Box::new({
+        let asked = asked.clone();
+        move |width| {
+            asked.lock().unwrap().push(width);
+            match width {
+                Some(1000) => Err("The SuperTracker window did not produce a screenshot within 10 s.".to_string()),
+                _ => Ok(PNG_3X2.to_vec()),
+            }
+        }
+    }));
+    let shot = client.call("app.screenshot", Map::new()).unwrap();
+    assert_eq!(shot.result, json!({ "mimeType": "image/png", "data": PNG_3X2_BASE64, "width": 3, "height": 2 }));
+    assert!(shot.notices.is_empty());
+    client.call("app.screenshot", params(json!({ "width": 800 }))).unwrap();
+    client.call("app.screenshot", params(json!({ "width": 5 }))).unwrap();
+    client.call("app.screenshot", params(json!({ "width": 100000 }))).unwrap();
+    let failed = client.call("app.screenshot", params(json!({ "width": 1000 }))).unwrap_err().to_string();
+    assert_eq!(failed, "The SuperTracker window did not produce a screenshot within 10 s.", "the window's own words");
+    assert_eq!(*asked.lock().unwrap(), [None, Some(800), Some(320), Some(2560), Some(1000)], "the width is limited to 320–2560");
+    assert!(fixture.host.wait_for_event("agent.call", Duration::from_millis(200)).is_none(), "the page is never asked for a screenshot");
+
+    // The quit fence covers screenshots like every other request.
+    assert_eq!(fixture.services.lifecycle.request_quit(), QuitRequest::Asked);
+    let fenced = client.call("app.screenshot", Map::new()).unwrap_err().to_string();
+    assert!(fenced.to_lowercase().contains("quit"), "{fenced}");
+    assert_eq!(asked.lock().unwrap().len(), 5);
+    fixture.services.services.shutdown();
 }
 
 #[test]

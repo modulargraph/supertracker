@@ -78,7 +78,7 @@ Prints the JSON result; exits 1 with the error message on failure.
 |---|---|
 | `get_song` | Overview: tempo, meter, tracks, instruments, patterns, song blocks, sends, performance, history |
 | `get_ui_state` | View, dialog, cursor, selection, transport |
-| `screenshot` | PNG of the window (MCP image content) |
+| `screenshot` | PNG of the window's interface (MCP image content); optional `width` scales it down. See [Screenshots](#screenshots) |
 | `read_pattern` | Steps with readable notes/FX and automation; `format:"grid"` for tracker text |
 | `write_steps` | Set/merge/clear steps (notes, chords, velocity, optional gate, instrument, FX). New notes have no gate: they play until the next note, `OFF` or `CUT` on their track; `gate: 0`/`null` removes a gate. Optional `column` (0–7) writes a note column (columns 1–7 hold note, instrument, velocity and gate; the row's FX stay in column 0); `read_pattern` lists extra columns under `columns` |
 | `clear_steps`, `insert_rows`, `delete_rows` | Range edits |
@@ -143,11 +143,43 @@ Dropped values are written again, one at a time, before the capture.
 
 Not reachable yet: sidechain connections (listed by `get_mixer`, edited in the mixer). Songs with a tempo map change their first tempo/meter through the timing editor.
 
+## Screenshots
+
+`screenshot` (control method `app.screenshot`) returns what the window's web view shows, as a PNG file:
+MCP image content plus a line of text with its size, or from the command line
+`{"mimeType": "image/png", "data": "<base64>", "width": …, "height": …}`:
+
+```sh
+supertracker --ctl app.screenshot '{"width": 800}'
+```
+
+- The picture is the interface. The menu bar, native menus, file choosers and plug-in editor windows
+  are not in it.
+- Without `width` the picture is as wide as the window's content in layout units (1500 pixels for
+  the default window; not doubled on a high-density display). `width` (320 to 2560 pixels) is the
+  widest picture wanted: a wider window is scaled down to it and keeps its proportions, a narrower
+  one is not enlarged.
+- The web view takes the picture on the window's thread. The request waits for that thread for at most
+  ten seconds; while a native menu or dialog is open it is not served, and the tool fails with
+  "The SuperTracker window did not produce a screenshot within 10 s. …".
+- A host without a window (`supertracker --serve`, and Windows, where the window does not exist)
+  answers "SuperTracker is running without a window (for example with --serve), so there is no
+  window to take a screenshot of."
+
+State: on Linux (WebKitGTK's snapshot, PNG written by cairo) this is tested in the real window under
+Xvfb (`tests/host_e2e/window_smoke.sh`). On macOS (`WKWebView`'s
+`takeSnapshotWithConfiguration:completionHandler:`, PNG written by AppKit) the code is type-checked
+from Linux only; it has never run.
+
 ## Development
 
 - API: `ui/agent-api.js` (tests: `tests/agent_api_tests.js`, `tests/agent_safety_tests.js`; mixer, routing
   and inserts on the real mixer modules: `tests/agent_mixer_tests.js`, which also checks that every MCP tool names an
   existing method).
 - Host side: the crate `st-agent` (`server.rs` is the application's listener, `client.rs` and `framing.rs` the
-  client and wire format, `mcp.rs` and `tools.json` the MCP server and its tool catalogue; tests in
-  `crates/st-agent/tests/`). The browser test (`tests/host_e2e/run.js`) runs an MCP session against the page.
+  client and wire format, `mcp.rs` and `tools.json` the MCP server and its tool catalogue,
+  `screenshot.rs` the reply of `app.screenshot`; tests in `crates/st-agent/tests/`). The browser
+  test (`tests/host_e2e/run.js`) runs an MCP session against the page.
+- Screenshots: the window layer (`crates/st-app/src/screenshot.rs`) installs what takes the picture
+  with `Agent::set_screenshot_provider` (`crates/st-host/src/areas/agent.rs`); `st-host` has no window
+  code. The window test (`tests/host_e2e/window_smoke.sh`) asks the real window for pictures.

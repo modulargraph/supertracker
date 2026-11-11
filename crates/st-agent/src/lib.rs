@@ -10,7 +10,9 @@
 //! - The **control socket** is a Unix domain socket only this user can open (mode 0600, and the
 //!   peer's user id is checked). Its protocol is one JSON-RPC 2.0 request per line; the methods are
 //!   the page's agent API (`ui/agent-api.js`, `help` lists them) plus `app.ping` and
-//!   `app.screenshot`, which the host answers itself.
+//!   `app.screenshot`, which the host answers itself. The picture for `app.screenshot` comes from
+//!   the window layer through a [`ScreenshotProvider`] (see [`screenshot`]); a host without a
+//!   window answers that it has none.
 //! - The **application** executes a request by handing it to the page through [`Page`], an
 //!   abstraction `st-host` implements over its bridge ([`BridgePage`]), and returns the page's
 //!   result. Edits therefore go through the same code as the user's own (undo, engine sync).
@@ -46,6 +48,7 @@
 //!     .register("agent.status", st_agent::AgentService::status)
 //!     .register("agent.configure", st_agent::AgentService::configure);
 //! bridge.commands().with(&page).register("agent.reply", st_agent::BridgePage::reply);
+//! page.set_screenshot_provider(/* from the layer that owns the window, if there is one */);
 //! agent.start();   // once the interface is attached
 //! ```
 //!
@@ -67,6 +70,7 @@ mod error;
 pub mod framing;
 pub mod mcp;
 mod paths;
+pub mod screenshot;
 pub mod server;
 mod service;
 pub mod transport;
@@ -74,5 +78,6 @@ pub mod transport;
 pub use client::{CallOutcome, ControlClient};
 pub use error::ControlError;
 pub use paths::{fnv1a, max_socket_path_bytes, socket_path, socket_path_for};
+pub use screenshot::ScreenshotProvider;
 pub use server::{ControlServer, Page, ServerState};
 pub use service::{AgentOptions, AgentService, AgentSettings, BridgePage, Configure, Error, EventCallback, PageReply, SaveSettings, Status};

@@ -28,10 +28,20 @@ rfd = { version = "0.18", default-features = false }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
+# Pictures of the web view for AI clients (src/screenshot.rs): WebKitGTK's snapshot (the web view wry
+# shows, so the same version), written as PNG by cairo.
+webkit2gtk = "2.0"
+cairo-rs = { version = "0.18", features = ["png"] }
 
-# Activation hand-over to plug-in containers (src/native.rs).
+# Activation hand-over to plug-in containers (src/native.rs), and pictures of the web view for AI
+# clients (src/screenshot.rs): WKWebView's snapshot, written as PNG by AppKit. The framework crates
+# are the ones wry uses.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSString"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "NSBitmapImageRep", "NSColor", "NSGraphics", "NSGraphicsContext", "NSImage", "NSImageRep"] }
+objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-app-kit", "objc2-core-foundation", "WKSnapshotConfiguration", "WKWebView"] }
 
 # Termination signals (src/signals.rs).
 [target.'cfg(unix)'.dependencies]

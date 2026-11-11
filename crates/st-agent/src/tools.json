@@ -18,11 +18,11 @@
   {
    "name": "screenshot",
    "method": "app.screenshot",
-   "description": "Capture the SuperTracker window as a PNG image to see exactly what the user sees.",
+   "description": "Capture the SuperTracker window's interface as a PNG image to see what the user sees. Native menus and dialogs are not in the picture, and while one is open the request fails after ten seconds. Fails with a message when SuperTracker runs without a window.",
    "properties": {
     "width": {
      "type": "integer",
-     "description": "Image width in pixels (320–2560). Default: the window width.",
+     "description": "Widest image wanted, in pixels (320–2560): a wider window is scaled down to it, keeping its proportions; a narrower one is not enlarged. Default: the window's width.",
      "minimum": 320,
      "maximum": 2560
     }

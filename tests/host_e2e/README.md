@@ -74,10 +74,19 @@ the plug-in with the saved state.
 tests/host_e2e/window_smoke.sh
 ```
 
-Needs `xvfb-run`, `xdotool` and the GTK 3 / WebKitGTK 4.1 runtime. It starts the window under Xvfb
-with `SUPERTRACKER_TRACE=1` and drives it with synthetic keys and clicks: handshake over the web
+Needs `xvfb-run`, `xdotool`, `node` and the GTK 3 / WebKitGTK 4.1 runtime. It starts the window under
+Xvfb with `SUPERTRACKER_TRACE=1` and drives it with synthetic keys and clicks: handshake over the web
 view's channel, a menu shortcut, a native context menu, the native file chooser, and Quit through the
-handshake with the page. It reads the bridge trace; it does not look at pixels.
+handshake with the page. For these it reads the bridge trace.
+
+It also asks the window for the screenshots AI clients get, through `supertracker --ctl
+app.screenshot` and an MCP session over `supertracker --mcp` (`window_screenshot.js`, which decodes
+the PNG files itself): the picture has the size of the web view (the window without its menu bar),
+a requested `width` scales it down with its proportions kept and a larger one does not enlarge it,
+it has the interface in it (many colours, none of them on most of the pixels), and a picture taken
+with the command palette open differs from the one before. A request made while the file chooser is
+open must fail with a message after ten seconds, and a host started with `--serve` must refuse with
+a message. `SUPERTRACKER_SMOKE_PICTURES=<folder>` keeps the pictures for a look.
 
 ## Scripted file choosers
 

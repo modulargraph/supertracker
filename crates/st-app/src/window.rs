@@ -7,6 +7,9 @@
 //! the page has not acknowledged a batch (it is busy, or hung), nothing more is pushed into the web
 //! view, and the outbox keeps only the newest of each snapshot event.
 //!
+//! AI clients get their screenshots from here too: the request arrives as an event of the loop and
+//! the web view takes the picture (`screenshot.rs`).
+//!
 //! Implemented for macOS and Linux (GTK). The macOS-only parts are type-checked from Linux and have
 //! not run on a Mac yet; docs/HOST.md lists what was exercised.
 
@@ -17,6 +20,11 @@ pub fn run(_: &crate::cli::Options) -> Result<(), String> {
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub use desktop::run;
+
+/// What the window shows before the page has drawn, and behind anything the page leaves
+/// transparent: red, green, blue, alpha.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub const BACKGROUND: (u8, u8, u8, u8) = (14, 17, 22, 255);
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod desktop {
@@ -43,7 +51,8 @@ mod desktop {
 
     use crate::cli::Options;
     use crate::menus::{self, Item, Role, Standard, MENUS};
-    use crate::{native, serve};
+    use super::BACKGROUND;
+    use crate::{native, screenshot, serve};
 
     /// The interface is loaded from `supertracker://localhost/…`, served from the interface folder.
     const SCHEME: &str = "supertracker";
@@ -72,6 +81,8 @@ mod desktop {
         /// allowed to take the keyboard; the sender is answered once AppKit has been told.
         #[cfg(target_os = "macos")]
         YieldActivation(u32, std::sync::mpsc::Sender<()>),
+        /// An AI client asked for a picture of the window; the request carries where the answer goes.
+        Screenshot(screenshot::Request),
     }
 
     /// Posts events to the window's loop from any thread.
@@ -221,6 +232,12 @@ mod desktop {
                 }
             }));
         }
+        if let Some(agent) = &host.services.agent {
+            // AI clients ask for screenshots on a thread of the control server; the web view takes
+            // them on this one. A loop that is busy for too long costs the client an error.
+            let poster = poster.clone();
+            agent.set_screenshot_provider(screenshot::provider(move |request| poster.post(UserEvent::Screenshot(request)), screenshot::PATIENCE));
+        }
         if let Some(project) = &options.open {
             host.session.request_open(std::path::absolute(project).unwrap_or_else(|_| project.clone()));
         }
@@ -240,7 +257,7 @@ mod desktop {
             .with_inner_size(LogicalSize::new(stored.width.max(MIN_SIZE.width), stored.height.max(MIN_SIZE.height)))
             .with_min_inner_size(MIN_SIZE)
             .with_maximized(stored.maximized)
-            .with_background_color((14, 17, 22, 255));
+            .with_background_color(BACKGROUND);
         if let (Some(x), Some(y)) = (stored.x, stored.y) {
             builder = builder.with_position(PhysicalPosition::new(x, y));
         }
@@ -302,7 +319,7 @@ mod desktop {
             .with_back_forward_navigation_gestures(false)
             .with_hotkeys_zoom(false)
             .with_accept_first_mouse(true)
-            .with_background_color((14, 17, 22, 255))
+            .with_background_color(BACKGROUND)
             .with_devtools(true);
         #[cfg(target_os = "macos")]
         let web_view = web_view_builder.build(&window);
@@ -383,6 +400,10 @@ mod desktop {
                     crate::native::yield_activation_to(container_pid);
                     let _ = done.send(());
                 }
+                #[cfg(target_os = "linux")]
+                Event::UserEvent(UserEvent::Screenshot(request)) => screenshot::take(&web_view, request),
+                #[cfg(target_os = "macos")]
+                Event::UserEvent(UserEvent::Screenshot(request)) => screenshot::take(&web_view, window.scale_factor(), request),
                 Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => begin_quit(&host.lifecycle, &mut quit_deadline, &mut finish),
                 Event::WindowEvent { event: WindowEvent::Resized(size), .. } => remember_size(&window, size, &mut frame),
                 Event::WindowEvent { event: WindowEvent::Moved(position), .. } => {

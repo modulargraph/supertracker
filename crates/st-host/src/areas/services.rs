@@ -6,6 +6,8 @@
 //! executable has to do with it:
 //!
 //! - call `host.services.start_agent()` once its transport can attach the interface;
+//! - if it shows the interface in a window, give AI control what takes the window's picture
+//!   (`host.services.agent`, [`Agent::set_screenshot_provider`]);
 //! - call `host.services.shutdown()` when the host quits, and on termination signals: it
 //!   closes the control socket, leaves the controller dark with the vendor's agents restored,
 //!   silences external MIDI instruments and closes the devices, and writes the library's index.

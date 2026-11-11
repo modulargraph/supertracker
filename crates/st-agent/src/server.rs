@@ -12,7 +12,7 @@ use serde_json::{json, Map, Value};
 
 use crate::framing::{self, LineBuffer};
 use crate::transport::{self, Channel, Listener};
-use crate::ControlError;
+use crate::{screenshot, ControlError};
 
 /// The interface (the web page) as the control server sees it. `st-host` implements this over its
 /// bridge ([`crate::BridgePage`] does most of it); tests implement it directly.
@@ -35,10 +35,12 @@ pub trait Page: Send + Sync {
     }
 
     /// A picture of the window for `app.screenshot`:
-    /// `{"mimeType": "image/png", "data": <base64>, "width": .., "height": ..}`.
-    /// `width` is the requested width in pixels (320 to 2560), if any.
+    /// `{"mimeType": "image/png", "data": <base64>, "width": .., "height": ..}`
+    /// ([`crate::screenshot::reply`] builds it from a PNG file). `width` is the widest picture the
+    /// client asked for, in pixels (320 to 2560), if it asked. A page that is not in a window of
+    /// the application has nothing to take a picture of and says so, which is what this does.
     fn screenshot(&self, _width: Option<u32>) -> Result<Value, String> {
-        Err("Screenshots are not available in this version of SuperTracker.".into())
+        Err(screenshot::NO_WINDOW.into())
     }
 }
 
@@ -388,7 +390,7 @@ impl Shared {
                 Vec::new(),
             )),
             "app.screenshot" => {
-                let width = params.get("width").and_then(Value::as_f64).map(|width| width.clamp(320.0, 2560.0) as u32);
+                let width = params.get("width").and_then(Value::as_f64).map(|width| width.clamp(f64::from(screenshot::MIN_WIDTH), f64::from(screenshot::MAX_WIDTH)) as u32);
                 let _running = Running::enter(self);
                 self.page.screenshot(width).map(|image| (image, Vec::new())).map_err(ControlError::Remote)
             }

@@ -2508,16 +2508,22 @@ dependencies = [
 name = "st-app"
 version = "0.2.0"
 dependencies = [
+ "block2",
+ "cairo-rs",
  "getrandom",
  "gtk",
  "libc",
  "muda",
  "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "objc2-web-kit",
  "rfd",
  "serde",
  "serde_json",
  "st-host",
  "tao",
+ "webkit2gtk",
  "wry",
 ]
 

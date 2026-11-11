@@ -22,6 +22,13 @@
 //! attach the interface. A request that arrives while no interface is ready is refused by the
 //! control server with a message.
 //!
+//! # Screenshots
+//!
+//! `app.screenshot` is answered by the host, not the page, and only a window can take the
+//! picture. The executable's window layer installs it with [`Agent::set_screenshot_provider`];
+//! this crate has no window code. A host without a window (`--serve`) installs nothing, and the
+//! method answers that there is no window to take a screenshot of.
+//!
 //! # The socket
 //!
 //! [`AgentOptions::for_support`]: `control.sock` in the host's support folder (or
@@ -41,6 +48,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+/// What the window layer installs to take the picture for `app.screenshot`, and the widest
+/// picture a client gets.
+pub use st_agent::screenshot::{ScreenshotProvider, MAX_WIDTH as SCREENSHOT_MAX_WIDTH};
 use st_agent::{AgentService, BridgePage};
 
 use crate::commands::Commands;
@@ -85,6 +95,13 @@ impl Agent {
     /// The interface as the control server calls it.
     pub fn page(&self) -> &Arc<BridgePage> {
         &self.page
+    }
+
+    /// Installs what takes the picture of the window for `app.screenshot`: called with the widest
+    /// picture the client asked for (pixels), if it asked, it returns a PNG file. The window
+    /// layer calls this; without it the method answers that there is no window.
+    pub fn set_screenshot_provider(&self, provider: ScreenshotProvider) {
+        self.page.set_screenshot_provider(provider);
     }
 
     /// Opens the control socket if the setting allows it. Call once the transport is up.

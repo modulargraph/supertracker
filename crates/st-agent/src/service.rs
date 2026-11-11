@@ -13,6 +13,7 @@ use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::screenshot::{self, ScreenshotProvider};
 use crate::server::{ControlServer, Page};
 
 /// An error of an `agent.*` command; its text is the reply's `error`.
@@ -221,6 +222,9 @@ pub struct PageReply {
 /// {...}}`. The page runs `STAgent.dispatch(method, params)` and sends the outcome back with the
 /// command `agent.reply` and the payload `{"id": n, "reply": <what dispatch returned>}`, which the
 /// host hands to [`BridgePage::reply`].
+///
+/// The picture for `app.screenshot` does not come from the page: the window that shows the page
+/// takes it ([`BridgePage::set_screenshot_provider`]).
 pub struct BridgePage {
     emit: EventCallback,
     connected: Box<dyn Fn() -> bool + Send + Sync>,
@@ -228,6 +232,7 @@ pub struct BridgePage {
     waiting: Mutex<HashMap<u64, SyncSender<Value>>>,
     next: AtomicU64,
     timeout_millis: AtomicU64,
+    screenshot: Mutex<Option<Arc<ScreenshotProvider>>>,
 }
 
 impl BridgePage {
@@ -245,7 +250,15 @@ impl BridgePage {
             waiting: Mutex::new(HashMap::new()),
             next: AtomicU64::new(1),
             timeout_millis: AtomicU64::new(crate::client::DEFAULT_TIMEOUT.as_millis() as u64),
+            screenshot: Mutex::new(None),
         })
+    }
+
+    /// Installs what takes the picture for `app.screenshot`. The layer that owns the window calls
+    /// this; until it has, and in a host without a window, the method answers that there is no
+    /// window ([`screenshot::NO_WINDOW`]).
+    pub fn set_screenshot_provider(&self, provider: ScreenshotProvider) {
+        *lock(&self.screenshot) = Some(Arc::new(provider));
     }
 
     /// Changes how long a call waits for the interface (the default is ten minutes, like the
@@ -295,5 +308,11 @@ impl Page for BridgePage {
 
     fn project_path(&self) -> Option<String> {
         (self.project_path)()
+    }
+
+    fn screenshot(&self, width: Option<u32>) -> Result<Value, String> {
+        // The provider runs without the lock: it waits for the window's thread.
+        let provider = lock(&self.screenshot).clone().ok_or(screenshot::NO_WINDOW)?;
+        screenshot::reply(&provider(width)?)
     }
 }

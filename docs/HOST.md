@@ -18,7 +18,7 @@ run and test it, and every bridge command with the crate that owns it and its st
 | Sound library: folders, index and search, favorites and labels, NKS catalogue, kits (`library.*`, `kit.*`) | `st-library`, registered in `st-host` (`areas/library.rs`) | done, tested on Linux (bridge tests on generated audio files; the Browser workspace in Chromium end to end). The standard content folders and NKS registrations of macOS are named in code that has not run on a Mac |
 | MIDI: devices with hot-plug, input to the engine (with recording captures), output of external-MIDI instruments from the render thread, MIDI clock and transport out (`midi.*`) | `st-midi`, connected to `st-audio` in `st-host` (`areas/midi.rs`; the audio side's seam is `st_audio::midi`) | done, tested on Linux with in-memory ports (note times, clock against tempo, input acknowledgements). **No real MIDI device has been opened** (ALSA sequencer, CoreMIDI) |
 | Maschine MK3 (`mk3.*`), off unless turned on in Settings; `--mk3-probe` | `st-mk3`, registered in `st-host` (`areas/mk3.rs`) | commands tested through the bridge against the in-memory controller; **never run with a controller** (see `cargo doc -p st-mk3`) |
-| AI control: the local control socket, `supertracker --mcp` and `--ctl` (`agent.*`) | `st-agent`, registered in `st-host` (`areas/agent.rs`); the page answers `agent.call` events | done, tested on Linux (bridge tests; MCP session and `--ctl` against the page in Chromium end to end). Unix sockets only; no screenshots (`app.screenshot` answers with a message) |
+| AI control: the local control socket, `supertracker --mcp` and `--ctl` (`agent.*`) | `st-agent`, registered in `st-host` (`areas/agent.rs`); the page answers `agent.call` events | done, tested on Linux (bridge tests; MCP session and `--ctl` against the page in Chromium end to end). Unix sockets only. Screenshots (`app.screenshot`, the MCP tool `screenshot`) are taken by the window's web view (`st-app`, `screenshot.rs`, installed through `areas::agent::Agent::set_screenshot_provider`): tested on Linux in the real window under Xvfb; the macOS path is type-checked only; `--serve` has no window and answers with a message |
 
 The interface (`ui/`) reaches its host through `host-transport.js` only.
 
@@ -430,6 +430,14 @@ Exercised on Linux (Ubuntu 24.04, x86-64):
 - `tests/host_e2e/window_smoke.sh` under Xvfb: the GTK window with WebKitGTK loads the page from the
   custom scheme, the message channel works both ways, a menu shortcut reaches the page, a native
   context menu and the native file chooser open and are answered, Quit runs the handshake and exits 0.
+  Screenshots for AI clients: `supertracker --ctl app.screenshot` and the MCP tool `screenshot` over
+  `supertracker --mcp` return a PNG file of the web view (1500×915 in the 1500×940 window, whose
+  menu bar takes the rest), scaled to a requested width with its proportions kept, with the
+  interface in it (the script decodes the files and counts colours) and following what the window
+  shows (the command palette); a request made while the native file chooser is open fails after ten
+  seconds with a message; `supertracker --serve` refuses with "running without a window". Checked
+  by hand with `GDK_SCALE=2` (two pixels per layout unit): the picture is 1500 wide by default and
+  2560 wide on request.
 
 Not exercised anywhere yet:
 
@@ -439,6 +447,10 @@ Not exercised anywhere yet:
 - **Everything macOS**: the AppKit window (transparent title bar, full-size content), `window.titleBar`
   dragging, the application menu and its standard items, `rfd` panels and the alert for a hung page,
   context menus through `show_context_menu_for_nsview`, `Event::Opened` (files opened from Finder),
+  screenshots for AI clients (`takeSnapshotWithConfiguration:completionHandler:`, drawn into an
+  `NSBitmapImageRep` of the wanted size and encoded as PNG by AppKit; the code takes the snapshot's
+  size to be in points and the window's scale factor to be its pixels per point, which only a
+  Retina display can confirm),
   and whether a key the page handles also triggers its menu shortcut. The code type-checks for `aarch64-apple-darwin`; it has not been
   linked or run.
 - **Plug-ins beyond the test plug-ins**: no third-party plug-in has been loaded through the host.
@@ -458,7 +470,7 @@ Not exercised anywhere yet:
   `--mk3-probe --exclusive` ends the process without restoring Native Instruments' agents; the next
   launch of the application restores them from the record.
 - **AI control on macOS and Windows**: Unix sockets on Linux only so far; Windows has no transport
-  (named pipes are not written). `app.screenshot` has no implementation.
+  (named pipes are not written), and no window, so no screenshots.
 - The hung-page path of the quit handshake in a real window (covered in `st-host` tests only).
 - Windows: `--serve` should work; the window is not implemented there.
 
@@ -475,8 +487,14 @@ Behaviour worth knowing:
 - A termination signal (SIGINT, SIGTERM, SIGHUP) ends the host through the same shutdown as Quit,
   without asking about unsaved changes (the recovery copy is written first). What `midir` cannot
   do is listed in `cargo doc -p st-midi` (`midir_backend`).
-- AI control: the socket is `control.sock` in the support folder; the screenshot tool answers that
-  screenshots are not available.
+- AI control: the socket is `control.sock` in the support folder. A screenshot is a picture of the
+  web view (the interface), taken by the web view itself: the menu bar, native menus, file choosers
+  and plug-in editor windows are not in it. It is as wide as the window's content in layout units
+  (not doubled on a high-density display) unless the client asks for a `width` (320 to 2560 pixels):
+  a wider window is scaled down to that, a narrower one is never enlarged. The request waits for the
+  window's event loop for at most ten seconds; while a native menu or dialog is open the loop does
+  not serve it, and the client gets an error saying so. A host without a window (`--serve`) answers
+  that it has none.
 - Audio: one mix model (every project is mixed as "standard" routing; a project without `routing` is
   the same mixer without buses). The delay and reverb returns are the engine's own DSP run as mixer
   returns. Built-in effect state is base64 JSON (`SuperTracker.BuiltinFX`); a state in any other

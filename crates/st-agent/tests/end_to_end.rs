@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread;
 use std::time::Duration;
 
-use common::{wait_for, TempDir};
+use common::{wait_for, TempDir, PNG_3X2, PNG_3X2_BASE64};
 use serde::de::IgnoredAny;
 use serde_json::{json, Value};
 use st_agent::{AgentOptions, AgentService, AgentSettings, BridgePage, Configure, PageReply};
@@ -160,9 +160,39 @@ fn mcp_process_to_control_socket_to_page() {
     assert_eq!(text(&failed), "Unknown method \"nonsense\".");
     let ping = mcp.tool("call_api", json!({"method": "app.ping"}));
     assert!(text(&ping).contains("\"app\":\"SuperTracker\"") && text(&ping).contains("\"project\":\"/music/demo.supertracker\""), "{}", text(&ping));
+
+    // Screenshots. This host has no window yet: the tool says so, and the page is not asked.
+    let asked_before = host.calls.lock().unwrap().len();
     let shot = mcp.tool("screenshot", json!({}));
     assert_eq!(shot["isError"], true);
-    assert_eq!(text(&shot), "Screenshots are not available in this version of SuperTracker.");
+    assert_eq!(text(&shot), "SuperTracker is running without a window (for example with --serve), so there is no window to take a screenshot of.");
+    // The window layer installs what takes the picture; the client gets it as MCP image content.
+    let widths = Arc::new(Mutex::new(Vec::new()));
+    host.page.set_screenshot_provider(Box::new({
+        let widths = widths.clone();
+        move |width| {
+            widths.lock().unwrap().push(width);
+            match width {
+                Some(1000) => Err("The window did not answer in time.".to_string()),
+                Some(1001) => Ok(b"<html>".to_vec()),
+                _ => Ok(PNG_3X2.to_vec()),
+            }
+        }
+    }));
+    let shot = mcp.tool("screenshot", json!({}));
+    assert!(shot.get("isError").is_none(), "{shot}");
+    assert_eq!(shot["content"][0], json!({"type": "image", "mimeType": "image/png", "data": PNG_3X2_BASE64}));
+    assert_eq!(shot["content"][1], json!({"type": "text", "text": "SuperTracker window, 3×2 px."}), "the size is read from the picture");
+    assert!(mcp.tool("screenshot", json!({"width": 640})).get("isError").is_none());
+    assert!(mcp.tool("screenshot", json!({"width": 99999})).get("isError").is_none());
+    assert!(mcp.tool("screenshot", json!({"width": 1})).get("isError").is_none());
+    assert_eq!(*widths.lock().unwrap(), [None, Some(640), Some(2560), Some(320)], "the requested width reaches the window, limited to 320–2560");
+    // What the window cannot do is the tool's error, in the window's words.
+    let failed = mcp.tool("screenshot", json!({"width": 1000}));
+    assert_eq!((failed["isError"].clone(), text(&failed)), (json!(true), "The window did not answer in time."));
+    let garbage = mcp.tool("screenshot", json!({"width": 1001}));
+    assert_eq!((garbage["isError"].clone(), text(&garbage)), (json!(true), "The window returned a picture that is not a PNG file."));
+    assert_eq!(host.calls.lock().unwrap().len(), asked_before, "screenshots never go through the page");
 
     // A page that does not answer: the call fails after the bridge's limit, and nothing is left waiting.
     host.page.set_timeout(Duration::from_millis(100));
@@ -221,6 +251,14 @@ fn the_stored_setting_gates_the_socket_and_the_command_line_works() {
     assert_eq!(ctl(&["nonsense"]).status.code(), Some(1));
     assert_eq!(ctl(&[]).status.code(), Some(64));
     assert_eq!(ctl(&["summary", "[1]"]).status.code(), Some(64));
+    // The screenshot from the command line: an error without a window, the picture as JSON with one.
+    let no_window = ctl(&["app.screenshot"]);
+    assert_eq!(no_window.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&no_window.stderr).contains("there is no window to take a screenshot of"), "{}", String::from_utf8_lossy(&no_window.stderr));
+    host.page.set_screenshot_provider(Box::new(|_| Ok(PNG_3X2.to_vec())));
+    let shot = ctl(&["app.screenshot", r#"{"width": 800}"#]);
+    assert_eq!(shot.status.code(), Some(0), "{}", String::from_utf8_lossy(&shot.stderr));
+    assert_eq!(serde_json::from_slice::<Value>(&shot.stdout).unwrap(), json!({"mimeType": "image/png", "data": PNG_3X2_BASE64, "width": 3, "height": 2}));
     host.agent.shutdown();
 
     // A setting that cannot be stored is reported, and the switch still takes effect.

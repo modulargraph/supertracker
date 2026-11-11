@@ -5,7 +5,8 @@
 //! - With `--serve` it has no window: it serves the interface over HTTP and the bridge over a
 //!   WebSocket on 127.0.0.1, for a browser (`serve.rs`).
 //!
-//! Both run the same host (`st-host`); they differ only in how messages travel.
+//! Both run the same host (`st-host`); they differ in how messages travel, and only the window
+//! can take the screenshots AI clients ask for (`screenshot.rs`).
 //!
 //! Three more modes have neither window nor host: `--mcp` (the MCP server for AI clients, a
 //! proxy to the running application's control socket), `--ctl` (one call through that socket)
@@ -22,6 +23,8 @@ mod cli;
 mod menus;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod native;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod screenshot;
 mod serve;
 #[cfg(unix)]
 mod signals;
