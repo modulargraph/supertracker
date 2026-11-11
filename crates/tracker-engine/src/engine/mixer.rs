@@ -463,6 +463,11 @@ impl<'a> Rt<'a> {
                     self.trigger_row();
                 }
             }
+            if f == 0 {
+                // What the block's first frame plays: known once this frame's commands, count-in
+                // step, song end and row start have been applied, before it advances.
+                self.e.block_song_frame = if self.e.playing { Some(self.e.transport_frames as i64) } else { None };
+            }
             if self.e.pending_input_count != 0 {
                 self.finish_input_acks(true, buses, graph_start.wrapping_add(f as u64));
             }

@@ -470,6 +470,11 @@ impl Engine {
         pull_block(self.e.render(), &mut self.block, time, frames as usize);
     }
 
+    /// See `RenderHalf::block_song_frame`.
+    pub fn block_song_frame(&mut self) -> Option<i64> {
+        self.e.render().block_song_frame()
+    }
+
     /// One track's bus of the block at a graph time, or the return bus for a negative channel.
     pub fn render_channel(&mut self, channel: i32, time: u64, left: &mut [f32], right: &mut [f32]) {
         let bus = if channel < 0 { return_bus(self.e.status().status().track_count) } else { channel };

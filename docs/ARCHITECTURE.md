@@ -30,7 +30,7 @@ workspace in `crates/plugin-host` (its own dependencies and binaries), built int
 
 | Crate | Responsibility | May depend on |
 |---|---|---|
-| `tracker-engine` | Sequencer, sampler/synth voices, clock and timing map, built-in effects and drum models. Pure DSP and timing, no I/O. | std |
+| `tracker-engine` | Sequencer, sampler/synth voices, built-in effects and drum models. Pure DSP and timing, no I/O. | std |
 | `st-project` | The project document: typed model of the JSON the interface publishes, validation, project files and their media folder, autosave and recovery files, Standard MIDI File import/export. | serde |
 | `st-samples` | Audio files: decoding to float PCM, resampling, sample edits (trim, fades, normalize, reverse, gain, time stretch), transient detection and slicing, wavetable files, waveform peaks, encoding for export. No devices, no engine. | |
 | `st-audio` | The mixer graph around the engine (strips, inserts, sends, buses, sidechains, delay compensation, automation of mix parameters, meters), audio device I/O, offline rendering and export, recording, sample preview. | `tracker-engine`, `st-project`, `st-samples`, plug-in client |
@@ -89,18 +89,18 @@ silently ignored.
 
 ## Engine
 
-`tracker-engine` is pure Rust with no dependencies and no C interface. It was translated from a C++ engine
-operation for operation (comments in the source say where an operand type or an order of evaluation matters for
-bit-identical PCM), and the tests that defined that engine's behaviour are the crate's own.
+`tracker-engine` is pure Rust with no dependencies. It holds what the host uses and nothing else: a project has
+one tempo and one meter, and the engine renders one block after another, each bus once. Comments in the source say
+where an operand type or an order of evaluation matters for bit-identical PCM; many of its tests compare recorded
+PCM hashes.
 
 - `tracker_engine::engine`: `Engine::new(sample_rate)` and its three handles (`ControlHalf` for the control thread,
   `RenderHalf` for the audio thread, the clonable `StatusHandle` for everyone). `engine/host.rs` states why they may
-  cross threads. [AUDIO_ENGINE.md](AUDIO_ENGINE.md) describes the behaviour.
-- `tracker_engine::clock`: `ClockMap` and `ClockTimeline`, the sample-accurate tempo/meter clock (plain `f64`
-  arithmetic, the same results on every platform).
+  cross threads. The audio thread calls `render_block` and reads the track buses and the return bus from `block()`,
+  the events of the block from `pop_event` and, when it records, the song frame of the block from
+  `block_song_frame`. [AUDIO_ENGINE.md](AUDIO_ENGINE.md) describes the behaviour.
 - `tracker_engine::effects`: the built-in effect catalogue, `Effect` (an instance with lock-free parameter
   mailboxes; `EffectControls` for other threads) and the drum models.
-- `tracker_engine::unit_range`: `UnitRangeCache`, the bounded render cache for one hosted unit.
 
 Run its tests from the repository root:
 

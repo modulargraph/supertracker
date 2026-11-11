@@ -159,8 +159,8 @@ impl<T: Copy + Default> Ring<T> {
 }
 
 /// Zero-initialised float storage: large blocks come from fresh zero pages (the system
-/// allocator's zeroed allocation), so buses and cache history that are never written never
-/// become resident memory. Allocated and freed on the control thread only.
+/// allocator's zeroed allocation), so buses that are never written never become resident
+/// memory. Allocated and freed on the control thread only.
 pub struct FloatBlock {
     data: NonNull<f32>,
     count: usize,

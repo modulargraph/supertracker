@@ -318,7 +318,8 @@ pub struct STInputAck {
     /// change): `distance_beats` of two acknowledgements compare only within one run.
     pub run_id: u64,
     pub render_frame: i64,
-    /// `INT64_MIN` for direct/non-bus render.
+    /// The host's frame of the edge: the `time` given to `render_block` plus the offset in the
+    /// block. `i64::MIN` when the edge was applied by a direct render or without audio.
     pub graph_frame: i64,
     /// Quarter beats played in this run up to the edge, counted through song loops.
     pub distance_beats: f64,

@@ -804,6 +804,9 @@ pub struct Render {
     pub(crate) row_remaining: f64,
     pub(crate) row_duration: f64,
     pub(crate) transport_frames: f64,
+    /// `transport_frames` (whole frames) at the first frame of the block rendered last; `None`
+    /// when the transport did not play at that frame. See `RenderHalf::block_song_frame`.
+    pub(crate) block_song_frame: Option<i64>,
     pub(crate) total_frames: f64,
     /// The musical clock of `transport_frames` as `Rt::update_clock` last derived it: the
     /// quarter beat, the bar (from 1) and the beat at which that bar starts.
@@ -907,6 +910,7 @@ impl Render {
             row_remaining: 0.0,
             row_duration: 6000.0,
             transport_frames: 0.0,
+            block_song_frame: None,
             total_frames: 0.0,
             musical_beat: 0.0,
             bar: 1,

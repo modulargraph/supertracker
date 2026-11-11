@@ -10,7 +10,7 @@
 //! be built and tested without the others.
 //!
 //! Real-time rule for the whole crate: whatever is called from an audio callback (rendering,
-//! effect processing, cache renders) does not allocate, lock, block or free.
+//! effect processing) does not allocate, lock, block or free.
 //! The integration tests enforce it with a counting allocator.
 
 #[cfg(feature = "effects")]

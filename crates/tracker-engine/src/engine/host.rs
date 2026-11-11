@@ -219,6 +219,26 @@ impl RenderHalf {
         BlockView { tables: unsafe { &*render.tb } }
     }
 
+    /// The transport frame that the first frame of the block rendered last plays, or `None`
+    /// when the transport was not playing at that frame (stopped, counting in before Play, or
+    /// past the end of a song that does not loop). Call it after [`RenderHalf::render_block`],
+    /// before the next block. `None` before the first block.
+    ///
+    /// The transport frame counts frames of playback at the engine's sample rate. In Song mode
+    /// it is the position in the song: 0 at the song's first row, set by a seek, and back at 0
+    /// (or at the section start) when the song loops. In Pattern mode it is the position Play
+    /// or the last seek started from plus the frames played since: it keeps counting through
+    /// the pattern's wraps. A tempo change rescales it, so that it stays the frame of the same
+    /// musical position. A position between two frames (a swung row) is reported as the whole
+    /// frame below it.
+    ///
+    /// Commands and a newly committed project apply at the start of a block, so the value
+    /// already reflects a Play, Stop or seek queued before the block was rendered.
+    pub fn block_song_frame(&mut self) -> Option<i64> {
+        let (render, _) = self.parts();
+        render.block_song_frame
+    }
+
     /// The next engine event of the blocks rendered so far. The render half is the event
     /// ring's single consumer.
     pub fn pop_event(&mut self) -> Option<STEvent> {
