@@ -157,7 +157,7 @@ fn decode(bytes: &[u8]) -> Decoded {
 fn project(mut value: Value) -> Project {
     value["version"] = json!(st_project::model::FORMAT_VERSION);
     if value.get("routing").is_none() {
-        value["routing"] = json!({});
+        value["routing"] = json!({ "buses": [], "outputs": {}, "sends": [], "sidechains": [] });
     }
     for (index, track) in value["tracks"].as_array_mut().into_iter().flatten().enumerate() {
         if track.get("routingID").is_none() {

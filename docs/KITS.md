@@ -32,6 +32,8 @@ To load a sample onto one pad, put the cursor on that member track and use the S
 
 ## Kits from other versions
 
+A kit is checked once, by the host, when it is read: the package's format, and the group inside it by the same rules as a project (identities, owners of effects and plug-ins, routes, ranges). A kit that fails is not loaded and the message says why; the same check runs on a Maschine group after its import and on a group before it is saved.
+
 A `.stkit` package names its format in its header. A kit written in another format than this version's is not loaded, and the browser shows the reason with the kit; nothing is converted. Save the group again to get a current package.
 
 ## Maschine compatibility

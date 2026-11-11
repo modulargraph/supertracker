@@ -138,15 +138,16 @@ test('repeated, missing, invalid and throwing ID generators terminate with globa
     assert(!ids.includes('track-copy-1')); assert(!ids.includes('track-copy-2')); assert(!ids.includes('fx-six'));
   }
 });
-test('inactive descriptors do not become active plug-ins when the authoritative array is empty or absent', () => {
+test('a track without plug-ins or routes duplicates into a complete routing table; a table that lacks a collection is refused', () => {
   for (const absent of [false, true]) {
-    const project = fixture(); project.routing = {}; project.audioPlugins = []; if (absent) delete project.audioPlugins;
+    const project = fixture(); project.routing = { buses: [], outputs: {}, sends: [], sidechains: [] }; project.audioPlugins = []; if (absent) delete project.audioPlugins;
     for (const pattern of project.patterns) pattern.automation = pattern.automation.filter(lane => !String(lane.target).startsWith('send:'));
     const result = build(project);
     assert.deepEqual(result.instanceMap, {});
     assert.equal(Object.hasOwn(result.project, 'audioPlugins'), !absent); if (!absent) assert.deepEqual(result.project.audioPlugins, []);
-    assert.deepEqual(Object.keys(result.project.routing), ['outputs'], 'collections the table left out are not invented');
+    assert.deepEqual(Object.keys(result.project.routing), ['buses', 'outputs', 'sends', 'sidechains']);
   }
+  for (const key of ['buses', 'outputs', 'sends', 'sidechains']) { const project = fixture(); delete project.routing[key]; assert.throws(() => build(project), /Routing/, key); }
 });
 test('new identity allocation cannot revive unavailable owner, send or plug-in references', () => {
   for (const candidate of ['unavailable', 'disconnected', 'missing-instance', 'missing-send', 'orphan-output', '0']) {
@@ -182,7 +183,7 @@ test('selection of a later source track appends at the end and follows authorita
 });
 test('lanes addressed by track index stay numeric, inactive metadata is kept and short columns are padded safely', () => {
   const original = { tracks: [{ routingID: 'plain', instrument: 0, name: 'Plain' }], instruments: [{ id: 0, type: 'sample', metadata: { id: 'unused' } }], patterns: [{ id: 0, length: 4, steps: [[{ note: 60, instrument: 0 }]], automation: [{ track: 0, target: 'pan', points: [] }] }],
-    routing: {} };
+    routing: { buses: [], outputs: {}, sends: [], sidechains: [] } };
   const result = build(original), project = result.project;
   assert.equal(project.tracks.length, 2); assert.equal(project.tracks[0].routingID, 'plain'); assert.equal(typeof project.tracks[1].routingID, 'string'); assert.notEqual(project.tracks[1].routingID, 'plain');
   assert.deepEqual(project.patterns[0].steps[1], [{ note: 60, instrument: 1 }, null, null, null]); assert.equal(project.patterns[0].steps[0].length, 1);

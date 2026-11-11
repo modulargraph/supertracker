@@ -151,7 +151,12 @@ fn routing_identities_and_mix_ranges() {
     // Every project has its routing table; an empty one is tracks into the master.
     assert_eq!(rejected(|p| { p.as_object_mut().unwrap().remove("routing"); }), "The project has no routing table.");
     assert_eq!(rejected(|p| p["routing"] = json!("on")), "The project's routing must be an object.");
-    accepted(|p| p["routing"] = json!({}));
+    // The table has its four collections, empty or not.
+    accepted(|p| p["routing"] = json!({ "buses": [], "outputs": {}, "sends": [], "sidechains": [] }));
+    assert_eq!(rejected(|p| p["routing"] = json!({})), "The project's routing table has no buses.");
+    for key in ["buses", "outputs", "sends", "sidechains"] {
+        assert_eq!(rejected(|p| { p["routing"].as_object_mut().unwrap().remove(key); }), format!("The project's routing table has no {key}."));
+    }
     // The routing table has no version or mix model of its own: like any key the format does
     // not know, they are kept and mean nothing.
     accepted(|p| { p["routing"]["version"] = json!(2); p["routing"]["mixModel"] = json!("future"); });
@@ -348,6 +353,9 @@ fn instrument_types() {
     }
     // Keys the format does not name are kept and ignored.
     accepted(|p| p["instruments"][0]["waveform"] = json!("sine"));
+    for zones in [json!("zones"), json!({ "path": "x" }), Value::Null] {
+        assert_eq!(rejected(|p| p["instruments"][0]["zones"] = zones), "Sample zones must be a list of zones.");
+    }
 }
 
 /// A built-in effect has one spelling, the one the plug-in catalogue lists.

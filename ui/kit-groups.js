@@ -1,8 +1,10 @@
 /* Kits are track groups (docs/KITS.md): loading a kit (kit browser, Maschine group,
    .stkit) adds a group with one member track per loaded pad and the kit's group bus; Replace kit
    swaps the members' sources pad by pad and keeps the patterns; Save kit writes the group as a
-   sixteen-pad .stkit package. The native side reads and writes kit files (kit.read returns the
-   kit as a group project, kit.save converts the group back). */
+   sixteen-pad .stkit package. The host reads and writes kit files: kit.read returns the kit as a
+   group project it has validated (tracks, instruments, audioPlugins, one group, a complete routing
+   table; st-library kit::group), so nothing here checks its shape again; kit.save takes the group
+   out of the session. */
 (() => {
   'use strict';
   const S = () => window.ST, state = () => S().state, project = () => state().project, G = () => window.STGroups;
@@ -25,12 +27,12 @@
   function sourceOwners(source, group) {
     const members = source.tracks.filter(t => t.groupID === group.id);
     const owners = new Set([busOwner(group), ...members.map(trackOwner)]);
-    const buses = new Set((source.routing?.buses || []).map(bus => `bus:${bus.id}`));
+    const buses = new Set(source.routing.buses.map(bus => `bus:${bus.id}`));
     let grew = true;
     while (grew) {
       grew = false;
       for (const owner of [...owners]) {
-        const targets = [source.routing?.outputs?.[owner], ...(source.routing?.sends || []).filter(s => s.source === owner).map(s => s.destination)];
+        const targets = [source.routing.outputs[owner], ...source.routing.sends.filter(s => s.source === owner).map(s => s.destination)];
         for (const target of targets) if (buses.has(target) && !owners.has(target)) { owners.add(target); grew = true; }
       }
     }
@@ -42,20 +44,16 @@
      plug-ins, the bus and routes, all with fresh identities. fresh(key) must return the same ID
      for the same key so the published candidate and the committed edit are identical. */
   function insertGroup(q, source, fresh, options = {}) {
-    const group = source.groups?.[0];
-    if (!group) throw new Error('The kit has no group to add.');
-    const { members, owners } = sourceOwners(source, group);
-    if (!members.length) throw new Error('The kit has no loaded pads.');
+    const group = source.groups[0], { members, owners } = sourceOwners(source, group);
     const limit = window.TRACK_SANITY_LIMIT ?? Infinity;
     if (q.tracks.length + members.length > limit) throw new Error(`This session has room for ${limit - q.tracks.length} more tracks; the kit needs ${members.length}.`);
-    G().ensureRouting(q);
     const groupID = fresh('group'), owner = new Map();
-    for (const bus of source.routing?.buses || []) if (owners.has(`bus:${bus.id}`)) owner.set(`bus:${bus.id}`, `bus:${bus.id === group.busID ? fresh('bus') : fresh('bus:' + bus.id)}`);
+    for (const bus of source.routing.buses) if (owners.has(`bus:${bus.id}`)) owner.set(`bus:${bus.id}`, `bus:${bus.id === group.busID ? fresh('bus') : fresh('bus:' + bus.id)}`);
     members.forEach((member, i) => owner.set(trackOwner(member), `track:${fresh('track' + i)}`));
     const firstTrack = q.tracks.length;
     members.forEach((member, i) => {
       const instrumentIndex = q.instruments.length,
-        instrument = clone(source.instruments[member.instrument] || defaultInstrument(instrumentIndex, member.name));
+        instrument = clone(source.instruments[member.instrument]);
       instrument.id = instrumentIndex;
       q.instruments.push(instrument);
       // The pad's instrument takes its insert chain (instrument-effects.js).
@@ -66,30 +64,30 @@
       for (const pattern of q.patterns) pattern.steps.push(Array(pattern.length).fill(null));
     });
     const instances = new Map();
-    for (const plugin of source.audioPlugins || []) {
+    for (const plugin of source.audioPlugins) {
       if (!owners.has(plugin.owner)) continue;
       const copy = { ...clone(plugin), owner: owner.get(plugin.owner), instanceID: fresh('plugin:' + plugin.instanceID) };
       instances.set(plugin.instanceID, copy.instanceID);
       q.audioPlugins.push(copy);
     }
     const r = q.routing;
-    for (const bus of source.routing?.buses || []) {
+    for (const bus of source.routing.buses) {
       const mapped = owner.get(`bus:${bus.id}`);
       if (!mapped) continue;
       const copy = { ...clone(bus), id: mapped.slice(4) };
       if (bus.id === group.busID) { copy.type = 'group'; copy.groupID = groupID; copy.name = group.name; } else delete copy.groupID;
       r.buses.push(copy);
     }
-    for (const [from, to] of Object.entries(source.routing?.outputs || {})) {
+    for (const [from, to] of Object.entries(source.routing.outputs)) {
       if (!owner.has(from)) continue;
       r.outputs[owner.get(from)] = to === null ? null : to === 'master' ? 'master' : owner.get(to) || 'master';
     }
-    (source.routing?.sends || []).forEach((send, i) => {
+    source.routing.sends.forEach((send, i) => {
       if (owner.has(send.source) && (owner.has(send.destination) || send.destination === 'master')) {
         r.sends.push({ ...clone(send), id: fresh('send' + i), source: owner.get(send.source), destination: owner.get(send.destination) || 'master' });
       }
     });
-    (source.routing?.sidechains || []).forEach((route, i) => {
+    source.routing.sidechains.forEach((route, i) => {
       if (owner.has(route.source) && instances.has(route.destination)) {
         r.sidechains.push({ ...clone(route), id: fresh('sidechain' + i), source: owner.get(route.source), destination: instances.get(route.destination) });
       }
@@ -123,8 +121,8 @@
      New pads add members at the end of the group; pads the new kit leaves empty become empty
      samplers, keeping their notes. The bus takes the new kit's inserts and mix. */
   function replaceGroup(q, groupID, source, fresh, options = {}) {
-    const group = G().byID(q, groupID), incoming = source.groups?.[0];
-    if (!group || !incoming) throw new Error('The kit to replace is unavailable.');
+    const group = G().byID(q, groupID), incoming = source.groups[0];
+    if (!group) throw new Error('The kit to replace is unavailable.');
     const { members: sourceMembers } = sourceOwners(source, incoming);
     const byPad = new Map(sourceMembers.map(member => [member.pad, member]));
     const existing = G().members(q, group);
@@ -133,13 +131,13 @@
       const track = q.tracks[index];
       removeTrackPlugins(q, track);
       const instrumentIndex = track.instrument;
-      const instrument = clone(source.instruments[member.instrument] || defaultInstrument(instrumentIndex, member.name));
+      const instrument = clone(source.instruments[member.instrument]);
       instrument.id = instrumentIndex;
       q.instruments[instrumentIndex] = instrument;
       for (const key of ['name', 'volume', 'pan', 'delaySend', 'reverbSend', 'chokeGroup', 'voiceMode', 'padNote']) {
         if (member[key] === undefined) delete track[key]; else track[key] = clone(member[key]);
       }
-      for (const plugin of source.audioPlugins || []) {
+      for (const plugin of source.audioPlugins) {
         if (plugin.owner === `instrument:${member.instrument}`) { q.audioPlugins.push({ ...clone(plugin), owner: `instrument:${instrumentIndex}`, instanceID: fresh('plugin:' + plugin.instanceID) }); continue; }
         if (plugin.owner !== trackOwner(member)) continue;
         const copy = { ...clone(plugin), owner: trackOwner(track), instanceID: fresh('plugin:' + plugin.instanceID) };
@@ -172,9 +170,9 @@
     const owner = busOwner(group), removed = new Set(q.audioPlugins.filter(p => p.owner === owner).map(p => p.instanceID));
     q.audioPlugins = q.audioPlugins.filter(p => p.owner !== owner);
     q.routing.sidechains = q.routing.sidechains.filter(route => !removed.has(route.destination));
-    for (const plugin of source.audioPlugins || []) if (plugin.owner === busOwner(incoming)) q.audioPlugins.push({ ...clone(plugin), owner, instanceID: fresh('plugin:' + plugin.instanceID) });
-    const bus = G().ensureBus(q, group), sourceBus = source.routing?.buses?.find(item => item.id === incoming.busID);
-    for (const key of ['volume', 'pan']) if (sourceBus?.[key] !== undefined) bus[key] = sourceBus[key];
+    for (const plugin of source.audioPlugins) if (plugin.owner === busOwner(incoming)) q.audioPlugins.push({ ...clone(plugin), owner, instanceID: fresh('plugin:' + plugin.instanceID) });
+    const bus = G().ensureBus(q, group), sourceBus = source.routing.buses.find(item => item.id === incoming.busID);
+    for (const key of ['volume', 'pan']) if (sourceBus[key] !== undefined) bus[key] = sourceBus[key];
     G().rename(q, groupID, incoming.name);
     if (options.libraryPath) group.libraryPath = options.libraryPath; else delete group.libraryPath;
     if (options.notes?.length) group.importNotes = options.notes; else delete group.importNotes;
@@ -196,8 +194,7 @@
       progress(`Loading ${name}… reading kit`);
       const result = await S().request('kit.read', { path });
       if (project() !== p || result?.cancelled) return false;
-      const source = result?.groupProject;
-      if (!source?.groups?.length || !Array.isArray(source.tracks)) throw new Error('The kit could not be read as a group.');
+      const source = result.groupProject;
       const notes = [...new Set([...(result.warnings || []), ...(source.groups[0].importNotes || [])].map(String))];
       const libraryPath = /\.stkit$/i.test(String(path)) ? String(path) : undefined;
       const ids = new Map(), fresh = key => { if (!ids.has(key)) ids.set(key, S().uid()); return ids.get(key); };

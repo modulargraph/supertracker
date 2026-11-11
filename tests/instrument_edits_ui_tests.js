@@ -109,7 +109,7 @@ async function run(){
   }
   {
     const h=harness();h.plugin(0);h.plugin(1,'shared');h.S.state.project.tracks[1].instrument=0;
-    h.S.state.project.routing={sidechains:[{id:'remove',destination:'old0'},{id:'keep',destination:'fx'}]};
+    h.S.state.project.routing.sidechains=[{id:'remove',destination:'old0'},{id:'keep',destination:'fx'}];
     assert.equal(await h.S.perform('instrumentType:midi'),true);assert.equal(h.S.state.project.audioPlugins.length,0);assert.deepEqual(h.calls.filter(x=>x.command==='plugin.remove').map(x=>x.payload.owner),[h.own(0),h.own(1)]);assert.equal(h.S.state.project.routing.sidechains.length,1);assert.equal(h.S.state.undo[0].project.routing.sidechains.length,2);
     console.log('PASS shared instrument conversion removes every assigned native instance and its sidechains in the same Undo');
   }

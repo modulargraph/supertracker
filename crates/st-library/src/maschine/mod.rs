@@ -611,6 +611,8 @@ pub(crate) fn read_group(path: &str, root: Option<&str>) -> Result<KitReadRespon
     }
     let imported = import_group(&path, root)?;
     let project = imported.group_project();
+    // The same check as for a kit package: the page inserts what it is handed.
+    kit::group::validate(&project)?;
     let mut metadata = serde_json::to_value(kit::metadata(&path, root)?).unwrap_or(Value::Null);
     metadata["name"] = json!(imported.name);
     metadata["soundCount"] = json!(kit::group::loaded_sound_count(&project));

@@ -41,15 +41,9 @@
   // Owners whose audio a group contains: its bus and every member channel.
   const owners = (p, group) => [busOwner(group), ...members(p, group).map(index => trackOwner(p.tracks[index]))].filter(Boolean);
 
-  // The project's routing table with its four collections (a saved table may leave empty ones out).
-  function ensureRouting(p) {
-    const r = p.routing;
-    r.buses ||= []; r.outputs ||= {}; r.sends ||= []; r.sidechains ||= [];
-    return r;
-  }
 
   function ensureBus(p, group) {
-    const r = ensureRouting(p);
+    const r = p.routing;
     let bus = r.buses.find(item => item.id === group.busID);
     if (!bus) {
       bus = { id: group.busID, name: group.name, type: 'group', volume: 1, pan: 0, mute: false, solo: false };
@@ -98,7 +92,7 @@
   function routeMember(p, index, group) {
     const owner = trackOwner(p.tracks[index]);
     if (!owner || !group) return;
-    ensureRouting(p).outputs[owner] = busOwner(group);
+    p.routing.outputs[owner] = busOwner(group);
   }
   function unrouteMember(p, index, group) {
     const owner = trackOwner(p.tracks[index]), outputs = p.routing.outputs;
@@ -255,7 +249,7 @@
     const plugins = (p.audioPlugins || []).filter(ownsPlugin), instances = new Set(plugins.map(plugin => plugin.instanceID).filter(Boolean));
     p.audioPlugins = (p.audioPlugins || []).filter(plugin => !ownsPlugin(plugin));
     for (const id of instances) if (p.pluginPages) delete p.pluginPages[id];
-    const r = ensureRouting(p);
+    const r = p.routing;
     for (const owner of owners) delete r.outputs[owner];
     for (const source of Object.keys(r.outputs)) if (owners.has(r.outputs[source])) r.outputs[source] = null;
     const removedSends = new Set(r.sends.filter(send => owners.has(send.source) || owners.has(send.destination)).map(send => `send:${send.id}`));
@@ -277,7 +271,7 @@
   function removeBus(p, group, replacement = 'master') {
     const owner = busOwner(group);
     if (!owner) return;
-    const r = ensureRouting(p);
+    const r = p.routing;
     const removed = new Set((p.audioPlugins || []).filter(plugin => plugin.owner === owner).map(plugin => plugin.instanceID));
     r.buses = r.buses.filter(bus => `bus:${bus.id}` !== owner);
     delete r.outputs[owner];
@@ -366,7 +360,7 @@
   }
 
   const api = {
-    COLORS, list, byID, ofTrack, members, span, owners, busOwner, trackOwner, groupOfBus, ensureRouting, ensureBus,
+    COLORS, list, byID, ofTrack, members, span, owners, busOwner, trackOwner, groupOfBus, ensureBus,
     reorder, contiguousOrder, create, addTrack, removeTrack, moveTrack, moveTracks, removeTracks, removeBus, dissolve, rename, normalize, columns
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

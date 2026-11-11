@@ -57,12 +57,12 @@ fn session(sample: &str, zone: &str) -> Value {
             { "instanceID": "p-return", "owner": "bus:space", "kind": "effect", "slot": 0, "component": "stfx:plate" }
         ],
         "routing": {
-            "buses": [ { "id": "kitbus", "name": "Fixture kit", "type": "group", "groupID": "g1", "volume": 0.83, "pan": -0.1 }, { "id": "space", "name": "Space", "type": "return" }, { "id": "other", "name": "Other" } ],
+            "buses": [ { "id": "kitbus", "name": "Fixture kit", "type": "group", "groupID": "g1", "volume": 0.83, "pan": -0.1 }, { "id": "space", "name": "Space", "type": "return" }, { "id": "other", "name": "Other", "type": "return" } ],
             "outputs": { "track:kick": "bus:kitbus", "track:synth": "track:lead", "bus:kitbus": "master", "track:lead": "bus:other" },
-            "sends": [ { "id": "s1", "source": "track:kick", "destination": "bus:space", "level": 0.4 }, { "id": "s2", "source": "track:empty", "destination": "track:lead", "level": 0.2 },
-                       { "id": "s3", "source": "track:lead", "destination": "bus:space", "level": 0.9 } ],
-            "sidechains": [ { "id": "c1", "source": "track:kick", "destination": "p-bus" }, { "id": "c2", "source": "track:lead", "destination": "p-bus" },
-                            { "id": "c3", "source": "track:kick", "destination": "p-lead" } ]
+            "sends": [ { "id": "s1", "source": "track:kick", "tap": "postFader", "destination": "bus:space", "gain": 0.4 }, { "id": "s2", "source": "track:empty", "tap": "postFader", "destination": "track:lead", "gain": 0.2 },
+                       { "id": "s3", "source": "track:lead", "tap": "postFader", "destination": "bus:space", "gain": 0.9 } ],
+            "sidechains": [ { "id": "c1", "source": "track:kick", "tap": "postFader", "destination": "p-bus" }, { "id": "c2", "source": "track:lead", "tap": "postFader", "destination": "p-bus" },
+                            { "id": "c3", "source": "track:kick", "tap": "postFader", "destination": "p-lead" } ]
         },
         "pluginPages": { "p-synth": { "name": "Fixture Synth", "pages": [ { "name": "Tone", "addresses": ["0", null] } ] }, "p-lead": { "name": "Chorus", "pages": [] } },
         "patterns": [ { "id": 0, "length": 4, "steps": [[null, null, null, null], [{ "note": 36 }, null, null, null], [null, null, null, null], [null, null, null, null]] } ],
@@ -142,8 +142,23 @@ fn a_group_is_taken_out_of_a_session() {
     for malformed in [json!(null), json!("zones"), json!({ "path": "x" })] {
         let mut bad = kit.clone();
         bad["instruments"][0]["zones"] = malformed.clone();
-        assert_eq!(group::validate(&bad).is_err(), !malformed.is_null(), "malformed zones");
+        assert_eq!(group::validate(&bad).unwrap_err().to_string(), "The kit cannot be used: Sample zones must be a list of zones.", "{malformed}");
     }
+    // What a project may not hold, a kit may not hold either: one validation for both.
+    let mut unrouted = kit.clone();
+    unrouted["tracks"][0].as_object_mut().unwrap().remove("routingID");
+    assert_eq!(group::validate(&unrouted).unwrap_err().to_string(), "The kit cannot be used: Track 1 routingID is missing.");
+    let mut other_version = kit.clone();
+    other_version["version"] = json!(1);
+    assert!(group::validate(&other_version).unwrap_err().to_string().contains("different version"));
+    for key in ["tracks", "instruments", "audioPlugins", "groups"] {
+        let mut partial = kit.clone();
+        partial.as_object_mut().unwrap().remove(key);
+        assert_eq!(group::validate(&partial).unwrap_err().to_string(), format!("The kit document has no {key} list."));
+    }
+    let mut song = kit.clone();
+    song["patterns"] = json!([]);
+    assert_eq!(group::validate(&song).unwrap_err().to_string(), "A kit document holds no patterns.");
 }
 
 #[test]
@@ -286,11 +301,23 @@ fn external_references_and_transactions() {
     assert_eq!(warned.warnings, [format!("Missing or unreadable sample: {zone}")]);
 }
 
+/// The smallest kit document: one pad playing `sample`, its group and the group's bus.
+fn one_pad_kit(sample: &str) -> Value {
+    json!({
+        "version": st_project::model::FORMAT_VERSION, "name": "One pad",
+        "tracks": [{ "id": 0, "name": "Pad", "routingID": "pad", "groupID": "g", "pad": 0, "instrument": 0 }],
+        "instruments": [{ "id": 0, "type": "sample", "samplePath": sample }],
+        "groups": [{ "id": "g", "name": "One pad", "busID": "bus" }],
+        "audioPlugins": [],
+        "routing": { "buses": [{ "id": "bus", "name": "One pad", "type": "group", "groupID": "g" }], "outputs": { "track:pad": "bus:bus" }, "sends": [], "sidechains": [] }
+    })
+}
+
 #[test]
 fn malformed_packages() {
     let temp = TempDir::new("kit-malformed");
     let package = temp.mkdir("Invalid.stkit");
-    let empty_project = json!({ "tracks": [] });
+    let empty_project = one_pad_kit("");
     temp.write("Invalid.stkit/project.json", empty_project.to_string().as_bytes());
     let base = json!({ "format": "supertracker-kit", "version": kit::FORMAT_VERSION, "projectFile": "project.json", "name": "Fixture" });
     let reject_manifest = |value: Value, label: &str| {
@@ -315,7 +342,7 @@ fn malformed_packages() {
         reject_manifest(with("projectFile", json!(path)), "a manifest must not read a project outside its package");
     }
     temp.write("Invalid.stkit/kit.json", base.to_string().as_bytes());
-    assert!(kit::read(&package).is_ok(), "the base manifest is valid");
+    kit::read(&package).expect("the base manifest is valid");
     temp.write("Invalid.stkit/project.json", b"[]");
     assert!(kit::read(&package).is_err(), "the project member must be a JSON object");
     temp.write("Invalid.stkit/project.json", b"{unclosed");
@@ -328,11 +355,11 @@ fn malformed_packages() {
         fs::remove_file(temp.join("Invalid.stkit/project.json")).unwrap();
         // A sample path that leaves the package through a link is refused as well.
         std::os::unix::fs::symlink(temp.path(), temp.join("Invalid.stkit/Samples")).unwrap();
-        temp.write("Invalid.stkit/project.json", json!({ "instruments": [{ "samplePath": "Samples/outside.json" }] }).to_string().as_bytes());
+        temp.write("Invalid.stkit/project.json", one_pad_kit("Samples/outside.json").to_string().as_bytes());
         assert!(kit::read(&package).unwrap_err().to_string().contains("escapes its package"));
         fs::remove_file(temp.join("Invalid.stkit/Samples")).unwrap();
     }
-    temp.write("Invalid.stkit/project.json", json!({ "instruments": [{ "samplePath": "../outside.json" }] }).to_string().as_bytes());
+    temp.write("Invalid.stkit/project.json", one_pad_kit("../outside.json").to_string().as_bytes());
     assert!(kit::read(&package).unwrap_err().to_string().contains("escapes its package"), "a relative sample path stays inside the package");
     temp.write("Invalid.stkit/project.json", empty_project.to_string().as_bytes());
     temp.write("outside.wav", &[1, 2, 3]);

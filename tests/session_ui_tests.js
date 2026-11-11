@@ -164,7 +164,7 @@ async function run(){
   }
   {
     const h=harness();let finish,pending=true;const gate=new Promise(resolve=>finish=resolve);
-    h.window.STNKSControls={get hasPendingEdits(){return pending;},async flushEdits(){await gate;h.ST.state.project.audioPlugins=[{state:'settled mapped state'}];pending=false;return true;}};
+    h.window.STNKSControls={get hasPendingEdits(){return pending;},async flushEdits(){await gate;h.ST.state.project.audioPlugins=[{owner:'master',kind:'effect',slot:0,state:'settled mapped state'}];pending=false;return true;}};
     h.ST.state.view='song';h.ST.perform('modeSong');h.ST.state.row=13;h.ST.state.sequence=1;
     const playing=h.ST.perform('play');await tick();assert(!h.calls.some(x=>x.command==='engine.project'));finish();assert.equal(await playing,true);
     const synced=h.calls.find(x=>x.command==='engine.project');assert.equal(synced.payload.project.audioPlugins[0].state,'settled mapped state');
@@ -533,7 +533,7 @@ async function run(){
     console.log('PASS Closing prompt cancels; discarded demo resets native document identity');
   }
   {
-    const h=harness();h.ST.state.dirty=false;h.ST.state.engineReady=true;h.ST.state.project.audioPlugins=[{track:0,state:'old'}];h.handlers.set('engine.snapshot',()=>({audioPlugins:[{track:0,state:'edited in native window'}]}));
+    const h=harness();h.ST.state.dirty=false;h.ST.state.engineReady=true;h.ST.state.project.audioPlugins=[{owner:'master',kind:'effect',slot:0,state:'old'}];h.handlers.set('engine.snapshot',()=>({audioPlugins:[{owner:'master',kind:'effect',slot:0,state:'edited in native window'}]}));
     const pending=h.ST.perform('new');await tick();assert.equal(h.ST.state.modal,'unsaved');await h.element('#unsaved-save').click();await pending;
     assert.equal(h.calls.find(x=>x.command==='project.save').payload.project.audioPlugins[0].state,'edited in native window');
     console.log('PASS Native plug-in edits trigger protection and are included in Save');
@@ -541,7 +541,7 @@ async function run(){
   {
     for(const malformed of [false,true]){
       const h=harness();h.ST.state.dirty=false;h.ST.state.engineReady=true;
-      h.ST.state.project.audioPlugins=[{track:0,state:'unsecured native edits'}];const original=h.ST.state.project;
+      h.ST.state.project.audioPlugins=[{owner:'master',kind:'effect',slot:0,state:'unsecured native edits'}];const original=h.ST.state.project;
       h.handlers.set('engine.snapshot',()=>{if(malformed)return {};throw Error('State capture failed');});
       assert.equal(await h.ST.projectAction('save'),false);assert.equal(await h.ST.perform('new'),false);
       assert.equal(h.ST.state.project,original);assert.equal(h.ST.state.dirty,true);

@@ -181,7 +181,6 @@
     try {
       const draft = clone(original);
       // An edit works on a routing table whose four collections exist.
-      window.STGroups.ensureRouting(draft);
       edit(draft, { owner });
       S().refresh();
       const validation = await S().request('routing.validate', { project: draft });

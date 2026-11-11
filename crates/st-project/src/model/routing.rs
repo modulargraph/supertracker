@@ -89,7 +89,8 @@ model! {
 }
 
 model! {
-    /// `project.routing`. Every project has one; its format is the project's (`project.version`).
+    /// `project.routing`. Every project has one, with its four collections (empty or not); its
+    /// format is the project's (`project.version`).
     pub struct Routing {
         /// Group and return buses.
         "buses" => buses: Vec<Bus>,

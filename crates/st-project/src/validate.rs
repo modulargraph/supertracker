@@ -157,6 +157,9 @@ pub fn validate(project: &Project) -> Result<()> {
             return fail(format!("Instrument {} has an unknown type.", index + 1));
         }
         validate_kept_plugin(project, tracks, index, instrument)?;
+        if instrument.extra.contains_key("zones") {
+            return fail("Sample zones must be a list of zones.");
+        }
         if instrument.zones.as_ref().is_some_and(|zones| zones.len() > MAX_ZONES) {
             return fail(format!("An instrument can contain up to {MAX_ZONES} sample zones."));
         }
@@ -285,6 +288,12 @@ fn validate_routing(project: &Project, tracks: &[Track]) -> Result<Owners> {
     let Some(routing) = &project.routing else {
         return fail(if project.extra.contains_key("routing") { "The project's routing must be an object." } else { "The project has no routing table." });
     };
+    // The table is complete: the page writes its four collections, empty or not.
+    for (present, key) in [(routing.buses.is_some(), "buses"), (routing.outputs.is_some(), "outputs"), (routing.sends.is_some(), "sends"), (routing.sidechains.is_some(), "sidechains")] {
+        if !present && !routing.extra.contains_key(key) {
+            return fail(format!("The project's routing table has no {key}."));
+        }
+    }
     if routing.extra.contains_key("buses") {
         return fail("Routing buses must be an array of objects.");
     }

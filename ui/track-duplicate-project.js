@@ -31,9 +31,10 @@
     const patterns = array(proposal.patterns, 'Patterns', true), clips = array(proposal.audioClips, 'Audio clips', true);
     const plugins = array(proposal.audioPlugins, 'Audio plug-ins', true), routing = proposal.routing;
     if (!object(routing)) fail('Track duplication needs the project\'s routing table.');
-    const buses = array(routing.buses, 'Routing buses', true);
-    const sends = array(routing.sends, 'Routing sends', true);
-    const sidechains = array(routing.sidechains, 'Routing sidechains', true);
+    const buses = array(routing.buses, 'Routing buses');
+    const sends = array(routing.sends, 'Routing sends');
+    const sidechains = array(routing.sidechains, 'Routing sidechains');
+    if (!object(routing.outputs)) fail('Routing outputs must be an object.');
     const owners = new Set(['master']), trackOwners = [], explicitTrackIDs = new Set();
     for (let i = 0; i < tracks.length; i++) {
       const track = tracks[i];
@@ -187,10 +188,7 @@
       for (const key of ['fx1', 'fx2']) if (step[key]?.type === 'plugin' && instanceMap.has(step[key].instanceID)) step[key].instanceID = instanceMap.get(step[key].instanceID);
     }
     if (pluginCopies.length || chainCopies.length) proposal.audioPlugins = [...plugins, ...pluginCopies, ...chainCopies];
-    routing.outputs ||= {};
     routing.outputs[newOwner] = has(routing.outputs, sourceOwner) ? routing.outputs[sourceOwner] : 'master';
-    if (sourceSends.length) routing.sends = sends;
-    if (sourceSidechains.length) routing.sidechains = sidechains;
     tracks.push(newTrack);
     return { project: proposal, trackIndex, sourceTrackIndex: index, instrumentMap: Object.fromEntries(instrumentMap), instanceMap: Object.fromEntries(instanceMap), newPluginInstanceIDs: pluginCopies.map(plugin => plugin.instanceID) };
   }
@@ -246,10 +244,9 @@
     });
     if (busPlugins.length) proposal.audioPlugins = [...plugins, ...busPlugins];
     const sendMap = new Map();
-    const sends = array(routing.sends, 'Routing sends', true);
+    const sends = routing.sends;
     for (const send of sends.filter(send => send.source === sourceOwner)) { const copied = { ...clone(send), id: fresh(), source: busOwner }; sendMap.set(send.id, copied.id); sends.push(copied); }
-    routing.sends = sends;
-    const sidechains = array(routing.sidechains, 'Routing sidechains', true);
+    const sidechains = routing.sidechains;
     const busInstances = new Set(busPlugins.length ? plugins.filter(plugin => plugin.owner === sourceOwner).map(plugin => plugin.instanceID) : []);
     for (const route of sidechains.filter(route => busInstances.has(route.destination))) {
       sidechains.push({ ...clone(route), id: fresh(), source: ownerMap.get(route.source) || route.source, destination: instanceMap.get(route.destination) });

@@ -391,6 +391,7 @@ fn groups_import_as_kits() {
     assert_eq!(long.group_plugins.iter().map(|plugin| plugin["bypass"].as_bool().unwrap()).collect::<Vec<_>>(), (0..11).map(|n| n == 2).collect::<Vec<_>>(), "bypassed inserts are kept, bypassed, in order");
     assert!(status_of(&long.report, "omitted-insert-limit").is_empty() && !long.warnings.iter().any(|warning| warning.contains("inserts; its original state")));
     let long_project = long.group_project();
+    st_library::kit::group::validate(&long_project).unwrap();
     let bus_owner = format!("bus:{}", long_project["groups"][0]["busID"].as_str().unwrap());
     assert_eq!(long_project["audioPlugins"].as_array().unwrap().iter().filter(|plugin| plugin["owner"] == bus_owner.as_str()).count(), 11);
     // Beyond sixteen: bypassed inserts are left out first, then the trailing ones.
@@ -781,6 +782,7 @@ fn hosted_plugin_state() {
     assert!(imported.warnings.iter().any(|warning| warning.contains("VST2 plug-in, which SuperTracker does not load")));
     assert_eq!(status_of(&imported.report, "external-state-retained").len(), 16);
     let project = imported.group_project();
+    st_library::kit::group::validate(&project).unwrap();
     assert_eq!(project["audioPlugins"][0]["owner"], format!("track:{}", project["tracks"][0]["routingID"].as_str().unwrap()), "a Sound's plug-in is owned by its track's channel");
 }
 

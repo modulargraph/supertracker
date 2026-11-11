@@ -308,7 +308,7 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the hand
 | Command | Payload | Result | State | Notes |
 |---|---|---|---|---|
 | `kit.detail` | `{path, availableComponents?}` | {name, sounds: [{slot, id, name, type, plugin, empty, missing}], compatibility: {summary, loadable, warnings, missingPlugins}, path, previewPath?} | implemented | Reads a .stkit package or a Maschine group. The installed plug-ins come from plugins.list (st-plugin-*) when that is registered; without it plug-in availability is not judged. |
-| `kit.read` | `{path}` | {path, metadata, groupProject, sounds, warnings, report?} | implemented | A kit as a track group to insert. |
+| `kit.read` | `{path}` | {path, metadata, groupProject, sounds, warnings, report?} | implemented | A kit as a track group to insert, from a .stkit package or a Maschine group. groupProject is complete and validated (st_library::kit::group::validate: tracks, instruments, audioPlugins, one group with its bus, the routing table, and st-project's validation of everything in it), so the page inserts it without checking its shape; a kit that fails is refused with the reason. |
 | `kit.save` | `{project, groupID, name?, path?, overwrite?, copySamples?}` | {path, name, warnings} or {exists: true, path, name} or {needsName: true, path} | implemented | The project is the one in the payload (the page publishes with plug-in state captured first), the session's file resolves relative sample paths, the kit folder is rescanned. The kit's audio preview is rendered into the package while it is written (st_audio::kit_preview on a private offline engine: the group's bus after its fader in the selected pattern, with its built-in effects and plug-ins; at most ten seconds or eight bars and a second of tail; Preview.wav, 16-bit stereo at 48 kHz). A preview that cannot be rendered (no pad plays a note in the pattern, only external MIDI instruments do, a live line input is on) is one of the warnings; a host without an audio engine saves kits without previews. |
 | `library.cancel` | `{}` | {scanning: false, count, cancelled: true, errors, rootReports} | implemented | Stops the running scan. |
 | `library.diagnostics` | `{roots?: [path]}` | [{path, readable, …}] per root | implemented | Not sent by the page. |
@@ -519,6 +519,10 @@ Behaviour worth knowing:
   to" is not consulted.
 - The page reserves room for the traffic lights (`body.native .topbar`) under every host, also where
   the window has its own title bar and in a browser.
+- A project is complete when the host gets it: the format version, a routing table with its four
+  collections, a routing identity on every track, an owner on every plug-in descriptor. The page's
+  `normalize` (`ui/app-project-model.js`) is the one place that completes a project; after it, and in
+  the host, nothing fills in a missing part.
 - One format each, named by a number. A project says its format in `version`; `st-project` reads
   `FORMAT_VERSION` and refuses every other number with one message (project files, templates and
   the recovery copy alike). `st-library` does the same for the header of a kit package. Nothing

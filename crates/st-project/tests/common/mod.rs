@@ -81,7 +81,7 @@ pub fn minimal(sample: Option<&Path>) -> st_project::Project {
     st_project::Project::from_value(serde_json::json!({
         "version": 2, "name": "Test", "bpm": 120.0, "tracks": [{ "id": 0, "routingID": "t0" }],
         "instruments": [{ "id": 0, "samplePath": sample }],
-        "patterns": [{ "id": 0, "length": 64, "steps": [[]] }], "sequence": [0], "routing": {}
+        "patterns": [{ "id": 0, "length": 64, "steps": [[]] }], "sequence": [0], "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] }
     }))
     .expect("minimal project")
 }

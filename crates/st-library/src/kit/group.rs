@@ -41,44 +41,52 @@ fn index_of(value: Option<&Value>) -> Option<usize> {
     (number.is_finite() && number >= 0.0 && number.trunc() == number && number < 1.0e9).then_some(number as usize)
 }
 
-/// Checks that `project` has the shape of a group project. The message names what is wrong.
+/// Checks a group project: the one place a kit document is validated, whether it comes from a
+/// `.stkit` package, from a Maschine group or from the session that is being saved. The page
+/// inserts what passes without checking it again.
+///
+/// A group project is complete: `tracks` (1..=128), `instruments`, `audioPlugins`, one group in
+/// `groups` with its bus, and the routing table. Every track belongs to the group and plays one
+/// of the instruments. Everything else is what [`st_project::validate::validate`] asks of a
+/// project (format version, identities, owners, routes, ranges), checked on the document with
+/// what a kit does not have put in its place: one empty pattern, and a tempo when the kit names
+/// none (a Maschine group has none).
 pub fn validate(project: &Value) -> Result<()> {
-    let Some(object) = project.as_object() else { return Err(Error::invalid("Kit project state must be a JSON object.")) };
+    let Some(object) = project.as_object() else { return Err(Error::invalid("The kit document must be a JSON object.")) };
     let array = |key: &str, limit: usize, message: &str| -> Result<&[Value]> {
         match object.get(key) {
-            None => Ok(&[]),
             Some(Value::Array(items)) if items.len() <= limit && items.iter().all(Value::is_object) => Ok(items),
-            Some(_) => Err(Error::invalid(message)),
+            Some(Value::Array(_)) => Err(Error::invalid(message)),
+            _ => Err(Error::invalid(format!("The kit document has no {key} list."))),
         }
     };
     let tracks = array("tracks", MAXIMUM_TRACKS, "A kit holds up to 128 tracks.")?;
     let instruments = array("instruments", MAXIMUM_ENTRIES, "Too many instruments in this kit document.")?;
     array("audioPlugins", MAXIMUM_ENTRIES, "Too many plug-in states in this kit document.")?;
     let groups = array("groups", 1, "A kit document holds one group.")?;
-    for instrument in instruments {
-        match instrument.get("zones") {
-            None | Some(Value::Null) => {}
-            Some(Value::Array(zones)) if zones.len() <= MAXIMUM_ZONES && zones.iter().all(Value::is_object) => {}
-            Some(_) => return Err(Error::invalid("A sound supports up to 128 sample zones.")),
+    let (Some(group), false) = (groups.first(), tracks.is_empty()) else { return Err(Error::invalid("A kit document needs its group and at least one track.")) };
+    let id = text(group, "id").filter(|id| !id.is_empty()).ok_or_else(|| Error::invalid("The kit's group needs an ID."))?;
+    let bus = text(group, "busID").filter(|bus| !bus.is_empty()).ok_or_else(|| Error::invalid("The kit's group needs its bus."))?;
+    for track in tracks {
+        if text(track, "groupID") != Some(id) {
+            return Err(Error::invalid("Every track of a kit belongs to its group."));
+        }
+        if index_of(track.get("instrument")).is_none_or(|index| index >= instruments.len()) {
+            return Err(Error::invalid("A kit track refers to an instrument that is missing."));
         }
     }
-    if let Some(group) = groups.first() {
-        let id = text(group, "id").filter(|id| !id.is_empty()).ok_or_else(|| Error::invalid("The kit's group needs an ID."))?;
-        if text(group, "busID").is_none_or(str::is_empty) {
-            return Err(Error::invalid("The kit's group needs its bus."));
-        }
-        for track in tracks {
-            if text(track, "groupID") != Some(id) {
-                return Err(Error::invalid("Every track of a kit belongs to its group."));
-            }
-            if index_of(track.get("instrument")).is_some_and(|index| index >= instruments.len().max(1)) {
-                return Err(Error::invalid("A kit track refers to an instrument that is missing."));
-            }
-        }
-    } else if !tracks.is_empty() {
-        return Err(Error::invalid("A kit document needs its group."));
+    let mut typed = st_project::Project::from_value(project.clone()).map_err(|error| Error::invalid(error.to_string()))?;
+    if !typed.routing.as_ref().and_then(|routing| routing.buses.as_ref()).is_some_and(|buses| buses.iter().any(|item| item.id.as_deref() == Some(bus))) {
+        return Err(Error::invalid("The kit's group bus is missing from its routing."));
     }
-    Ok(())
+    if typed.patterns.is_some() || object.contains_key("patterns") {
+        return Err(Error::invalid("A kit document holds no patterns."));
+    }
+    typed.patterns = Some(vec![st_project::model::Pattern { length: Some(1), steps: Some(vec![Vec::new(); tracks.len()]), ..Default::default() }]);
+    if !object.contains_key("bpm") {
+        typed.bpm = Some(120.0);
+    }
+    st_project::validate::validate(&typed).map_err(|error| Error::invalid(format!("The kit cannot be used: {error}")))
 }
 
 /// One pad of a kit, for the browser's detail view.
