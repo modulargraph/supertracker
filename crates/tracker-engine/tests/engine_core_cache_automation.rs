@@ -1,8 +1,7 @@
-//! Port of the former C++ test program `engine_tests.cpp`, part 3 of 5: unequal overlapping bus requests on the
-//! timestamped bus cache, cached event offsets, large pulls that must keep note-offs, exact
-//! stepped automation, timed mix defaults and the automation refresh (also as a concurrent
-//! mailbox), live notes across automatic playback changes, the explicit slice effect and step
-//! preview ownership.
+//! Port of the former C++ test program `engine_tests.cpp`, part 3 of 5: long renders that must
+//! keep note-offs, exact stepped automation, timed mix defaults and the automation refresh
+//! (also as a concurrent mailbox), live notes across automatic playback changes, the explicit
+//! slice effect and step preview ownership.
 //!
 //! One `#[test]` per C++ suite (`testFooBar` is `test_foo_bar`), calling the engine's safe Rust
 //! API through `engine_support_a::Engine`. Every C++ `assert` is one `assert!` here, with the
@@ -20,122 +19,6 @@ use std::f64::consts::PI;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tracker_engine::engine::*;
 
-/// C++ `configureCacheMusic`: a held tone with delay and reverb sends, playing.
-fn configure_cache_music(e: &mut Engine) {
-    configure(e, TONE);
-    e.begin_update();
-    let mut i = test_tone_instrument(TEST_SINE);
-    i.volume = 0.15;
-    i.attack = 0.0;
-    i.decay = 0.0;
-    i.sustain = 1.0;
-    e.set_instrument(0, i);
-    let mut track = default_track();
-    track.delay_send = 0.4;
-    track.reverb_send = 0.2;
-    e.set_track(0, track);
-    let mut step = default_step();
-    step.gate = 256.0;
-    e.set_step(0, 0, 0, step, &[]);
-    e.commit_update();
-    e.play(0);
-}
-
-#[test]
-fn test_unequal_overlapping_bus_requests() {
-    let (mut cached, mut reference) = (Engine::new(), Engine::new());
-    configure_cache_music(&mut cached);
-    configure_cache_music(&mut reference);
-    let mut expected = Audio::new(120000);
-    render(&mut reference, &mut expected);
-    let (mut dry, mut wet) = (Audio::new(16385), Audio::new(16384));
-    for pull in 0..4usize {
-        let start: u64 = if pull == 0 { 0 } else { 4097 + (pull as u64 - 1) * 4096 };
-        let mut d = Audio::new(if pull == 0 { 4097 } else { 4096 });
-        bus_render(&mut cached, 0, start, &mut d);
-        dry.l[start as usize..start as usize + d.l.len()].copy_from_slice(&d.l);
-        dry.r[start as usize..start as usize + d.r.len()].copy_from_slice(&d.r);
-        let mut w = Audio::new(4096);
-        bus_render(&mut cached, 16, pull as u64 * 4096, &mut w);
-        wet.l[pull * 4096..pull * 4096 + 4096].copy_from_slice(&w.l);
-        wet.r[pull * 4096..pull * 4096 + 4096].copy_from_slice(&w.r);
-    }
-    for n in 0..16384 {
-        assert!(((dry.l[n] + wet.l[n] - expected.l[n]).abs() as f64) < 1e-6);
-        assert!(((dry.r[n] + wet.r[n] - expected.r[n]).abs() as f64) < 1e-6);
-    }
-    assert!((cached.status().seconds - 16385.0 / 48000.0).abs() < 1e-10);
-    let mut reused = Audio::new(8192);
-    bus_render(&mut cached, 0, 512, &mut reused);
-    for n in 0..8192 {
-        assert!(reused.l[n] == dry.l[n + 512]);
-    }
-    assert!((cached.status().seconds - 16385.0 / 48000.0).abs() < 1e-10);
-    let mut at: u64 = 16385;
-    while at < 120000 {
-        let count = 40000u64.min(120000 - at) as usize;
-        let (mut d, mut w) = (Audio::new(count), Audio::new(count));
-        bus_render(&mut cached, 0, at, &mut d);
-        bus_render(&mut cached, 16, at, &mut w);
-        for n in 0..count {
-            assert!(((d.l[n] + w.l[n] - expected.l[at as usize + n]).abs() as f64) < 1e-6);
-        }
-        at += count as u64;
-    }
-    let mut lost = Audio::new(128);
-    bus_render(&mut cached, 0, 0, &mut lost);
-    assert!(lost.energy() == 0.0);
-    assert!((cached.status().seconds - 2.5).abs() < 1e-10);
-    cached.panic();
-    cached.seek(0, 0, 0);
-    cached.play(0);
-    cached.reset_render_cache();
-    let (mut reset_dry, mut reset_wet) = (Audio::new(4097), Audio::new(4097));
-    bus_render(&mut cached, 0, 0, &mut reset_dry);
-    bus_render(&mut cached, 16, 0, &mut reset_wet);
-    for n in 0..4097 {
-        assert!(((reset_dry.l[n] + reset_wet.l[n] - expected.l[n]).abs() as f64) < 1e-6);
-    }
-    assert_zero_render_allocations();
-}
-
-#[test]
-fn test_cached_event_offsets_and_control_boundaries() {
-    let mut e = Engine::new();
-    configure(&mut e, ST_INSTRUMENT_AU);
-    e.begin_update();
-    let mut step = default_step();
-    step.gate = 0.8;
-    e.set_step(0, 0, 1, step, &[]);
-    e.commit_update();
-    e.play(0);
-    let mut first = Audio::new(512);
-    bus_render(&mut e, 0, 0, &mut first);
-    while let Some(event) = e.pop_event() {
-        assert!(event.type_ == ST_EVENT_PARAMETER);
-    }
-    e.note_on(0, 0, 72, 100);
-    bus_render(&mut e, 16, 0, &mut first);
-    assert!(e.pop_event().is_none());
-    let mut extension = Audio::new(8192);
-    bus_render(&mut e, 0, 0, &mut extension);
-    let (mut manual, mut sequenced) = (0, 0);
-    while let Some(event) = e.pop_event() {
-        if event.type_ == ST_EVENT_NOTE_ON && event.note == 72 {
-            manual += 1;
-            assert!(event.frame_offset == 512);
-        }
-        if event.type_ == ST_EVENT_NOTE_ON && event.note == 60 {
-            sequenced += 1;
-            assert!(event.frame_offset == 6000);
-        }
-    }
-    assert!(manual == 1 && sequenced == 1);
-    bus_render(&mut e, 16, 0, &mut extension);
-    assert!(e.pop_event().is_none());
-    assert_zero_render_allocations();
-}
-
 #[test]
 fn test_large_pull_protects_note_offs() {
     let mut e = Engine::new();
@@ -150,8 +33,9 @@ fn test_large_pull_protects_note_offs() {
     }
     e.commit_update();
     e.play(0);
+    // 16 blocks whose events nobody collects.
     let mut pull = Audio::new(65536);
-    bus_render(&mut e, 0, 0, &mut pull);
+    bus_render_many(&mut e, &[0], 0, &mut [&mut pull]);
     for n in 0..600 {
         e.note_on(0, 0, 96 + n % 12, 100);
     }
@@ -172,7 +56,8 @@ fn test_large_pull_protects_note_offs() {
         if event.type_ == ST_EVENT_NOTE_OFF {
             if event.note == 60 {
                 off += 1;
-                assert!(event.frame_offset == 60000);
+                // Frame 60000, counted from the start of its block.
+                assert!(event.frame_offset == 60000 % 4096);
             } else {
                 manual_off += 1;
             }
@@ -289,11 +174,11 @@ fn test_timed_mix_defaults_and_automation_refresh() {
     assert!(e.pop_event().is_none());
     bus_render(&mut e, 16, 0, &mut first);
     assert!(e.pop_event().is_none());
-    let mut extended = Audio::new(1024);
-    bus_render(&mut e, 0, 0, &mut extended);
+    let mut extended = Audio::new(512);
+    bus_render(&mut e, 0, 512, &mut extended);
     let mut updated: Vec<Timed> = Vec::new();
     while let Some(event) = e.pop_event() {
-        updated.push(Timed { frame: event.frame_offset as u64, e: event });
+        updated.push(Timed { frame: 512 + event.frame_offset as u64, e: event });
     }
     let targets =
         [ST_TARGET_VOLUME, ST_TARGET_DELAY, ST_TARGET_REVERB, ST_TARGET_INSTRUMENT_VOLUME, ST_TARGET_INSTRUMENT_PAN];

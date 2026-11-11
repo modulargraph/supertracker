@@ -184,7 +184,7 @@ fn run(build: fn(&mut Engine), playing: bool, tracks: i32, block: usize, seconds
     while done < total {
         realtime(|| {
             let t0 = thread_cpu_seconds();
-            e.render_channel_null(0, at, block as u32); // the master preflight anchors each quantum
+            e.render_block(at, block as u32);
             for c in -1..tracks {
                 e.render_channel(c, at, &mut l, &mut r);
                 for n in 0..block {

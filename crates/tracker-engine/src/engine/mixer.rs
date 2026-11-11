@@ -11,25 +11,24 @@ use super::voice::read_stereo;
 use std::sync::atomic::Ordering;
 
 impl Render {
-    /// `process`: render `frames` frames. `cache` renders into the per-bus block buffers (bus
-    /// history) instead of only the stereo mix; `event_offset` is the frame offset of the first
-    /// frame within the caller's request; `graph_start` its graph timestamp.
+    /// Render `frames` frames. `buses` renders into the per-bus block buffers (a host's block)
+    /// instead of only the stereo mix; `graph_start` is then the host's timestamp of the first
+    /// frame. Events carry frame offsets from the first frame.
     pub(crate) fn process(
         &mut self,
         sh: &Shared,
         out_l: Option<&mut [f32]>,
         out_r: Option<&mut [f32]>,
         frames: u32,
-        cache: bool,
-        event_offset: i32,
+        buses: bool,
         graph_start: u64,
     ) {
-        self.out.frame_offset = event_offset;
+        self.out.frame_offset = 0;
         self.refresh(sh);
         // SAFETY: called on the render thread; the view ends with this call, before the next
         // refresh.
         let mut rt = unsafe { Rt::attach(self, sh) };
-        rt.process_block(out_l, out_r, frames, cache, event_offset, graph_start);
+        rt.process_block(out_l, out_r, frames, buses, graph_start);
     }
 }
 
@@ -196,7 +195,7 @@ impl<'a> Rt<'a> {
 
     /// Accumulate into a channel's per-sample input and mark it for this sample's mix.
     ///
-    /// Raw host mixing into the bus cache: a channel's bus is exactly its summed input, so voices
+    /// Raw host mixing of a block render: a channel's bus is exactly its summed input, so voices
     /// and clips add straight into the bus block (same order, same sums) instead of a per-sample
     /// channel pass; peaks and the mix are taken from the buses per block.
     #[inline(always)]
@@ -443,24 +442,22 @@ impl<'a> Rt<'a> {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn process_block(
         &mut self,
         mut out_l: Option<&mut [f32]>,
         mut out_r: Option<&mut [f32]>,
         frames: u32,
-        cache: bool,
-        event_offset: i32,
+        buses: bool,
         graph_start: u64,
     ) {
         let p = self.p;
         let return_bus = self.tb.base as usize;
-        // Bus block buffers hold MAX_BLOCK frames; cached renders never exceed that.
-        let frames = if cache { cmin(frames, MAX_BLOCK as u32) } else { frames };
+        // Bus block buffers hold MAX_BLOCK frames; block renders never exceed that.
+        let frames = if buses { cmin(frames, MAX_BLOCK as u32) } else { frames };
         let block = frames as usize;
         // Only channels that receive signal in a sample are mixed; a bus that receives nothing
-        // in this block is not written at all (render_bus records it as silent).
-        if cache {
+        // in this block is not written at all (`BlockView::track` reports it as `None`).
+        if buses {
             self.tb.bus_touched.fill(0);
             if let Some(touched) = self.tb.bus_touched.get_mut(return_bus) {
                 *touched = 1;
@@ -469,7 +466,7 @@ impl<'a> Rt<'a> {
         let (mut block_peak_l, mut block_peak_r) = (0.0f32, 0.0f32);
         self.tb.peaks.fill(0.0);
         let solo = p.any_solo;
-        let direct_bus = cache && p.host_mixing;
+        let direct_bus = buses && p.host_mixing;
         self.e.direct_bus = direct_bus;
         self.e.direct_frames = frames;
         if direct_bus {
@@ -482,7 +479,7 @@ impl<'a> Rt<'a> {
         }
         for f in 0..frames {
             let frame = f as usize;
-            self.e.out.frame_offset = event_offset.wrapping_add(f as i32);
+            self.e.out.frame_offset = f as i32;
             self.e.direct_frame = f;
             if self.e.count_in_total > 0 {
                 self.step_count_in();
@@ -503,7 +500,7 @@ impl<'a> Rt<'a> {
                 }
             }
             if self.e.pending_input_count != 0 {
-                self.finish_input_acks(true, cache, graph_start.wrapping_add(f as u64));
+                self.finish_input_acks(true, buses, graph_start.wrapping_add(f as u64));
             }
             self.automation();
             self.start_due_hits();
@@ -589,7 +586,7 @@ impl<'a> Rt<'a> {
                     }
                     mix_l += l;
                     mix_r += r;
-                    if cache {
+                    if buses {
                         let fresh = match tb.bus_touched.get_mut(t) {
                             Some(touched) => {
                                 let fresh = *touched == 0;
@@ -622,7 +619,7 @@ impl<'a> Rt<'a> {
             if self.e.count_in_total > 0 {
                 self.count_in_click_sample(&mut wet_l, &mut wet_r);
             }
-            if cache {
+            if buses {
                 let (bl, br) = self.tb.bus_pair(return_bus);
                 if let (Some(a), Some(b)) = (bl.get_mut(frame), br.get_mut(frame)) {
                     *a = wet_l;

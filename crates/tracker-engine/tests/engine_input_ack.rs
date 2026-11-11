@@ -314,25 +314,24 @@ fn opt_in_note_pcm_equals_ordinary_apis_capture_only_sustain_release_leaves_voic
     zero_render_allocations();
 }
 
+/// A block render reports the host's frame of the edge next to the engine's own frame count.
 #[test]
-fn cached_overlapping_pulls_neither_duplicate_nor_prematurely_apply_acks_reset_breaks_run() {
+fn block_renders_acknowledge_with_the_graph_frame_of_the_block() {
     let mut e = Engine::new();
     fixture(&mut e);
     e.play(1);
     assert!(edge(&mut e, 1));
-    realtime(|| e.render_bus_null(0, 0, 4097));
+    realtime(|| e.render_block(1000, 4096));
     let first = ack(&mut e);
-    assert!(first.graph_frame == 0);
+    assert!(first.graph_frame == 1000 && first.render_frame == 0);
     assert!(edge(&mut e, 2));
-    e.render_bus_null(16, 0, 4096);
+    // Reading another bus of the same block renders nothing and applies nothing.
+    let (mut left, mut right) = ([0.0f32; 4096], [0.0f32; 4096]);
+    e.render_bus(16, 1000, &mut left, &mut right);
     empty(&mut e);
-    e.render_bus_null(0, 4097, 4096);
+    e.render_block(5096, 4096);
     let second = ack(&mut e);
-    assert!(second.graph_frame == 4097 && second.render_frame == 4097 && second.run_id == first.run_id);
-    e.reset_render_cache();
-    assert!(edge(&mut e, 3));
-    e.render_bus_null(0, 0, 1);
-    assert!(ack(&mut e).run_id != first.run_id);
+    assert!(second.graph_frame == 5096 && second.render_frame == 4096 && second.run_id == first.run_id);
     zero_render_allocations();
 }
 

@@ -124,6 +124,50 @@ impl Drop for SetOnDrop<'_> {
 /// C++ `struct Engine`: an engine at 48 kHz that is destroyed with the test.
 pub struct Engine {
     engine: host::Engine,
+    /// See [`pull_block`].
+    block: Option<(u64, usize)>,
+}
+
+/// The buses of an engine as the tests pull them: one bus of a block at a time.
+///
+/// `block` is the range (start, frames) rendered last. A pull of that range reads the block
+/// again (the tests take one bus after another); any other pull renders the next block, which
+/// must follow the previous one and be at most `MAX_BLOCK` frames long. `None` after a direct
+/// render: the next block may start at any time.
+fn pull_block(render: &mut host::RenderHalf, block: &mut Option<(u64, usize)>, time: u64, frames: usize) {
+    if *block == Some((time, frames)) {
+        return;
+    }
+    assert!((1..=tracker_engine::engine::tables::MAX_BLOCK).contains(&frames), "a pull is one block of 1..=MAX_BLOCK frames");
+    if let Some((start, count)) = *block {
+        assert_eq!(time, start + count as u64, "blocks follow one another");
+    }
+    assert_eq!(render.render_block(time, frames as u32) as usize, frames);
+    *block = Some((time, frames));
+}
+
+/// Copies one bus of the block rendered last: a track's own number, or the return bus that
+/// follows the tracks (never below 16). A bus nothing played on, and one the project lacks,
+/// is silent.
+fn copy_bus(render: &mut host::RenderHalf, bus: i32, left: &mut [f32], right: &mut [f32]) {
+    let view = render.block();
+    let source = if bus == tracker_engine::engine::return_bus(view.track_count() as i32) {
+        Some(view.return_bus())
+    } else if bus >= 0 {
+        view.track(bus as usize)
+    } else {
+        None
+    };
+    match source {
+        Some((l, r)) => {
+            left.copy_from_slice(&l[..left.len()]);
+            right.copy_from_slice(&r[..right.len()]);
+        }
+        None => {
+            left.fill(0.0);
+            right.fill(0.0);
+        }
+    }
 }
 
 impl Default for Engine {
@@ -137,11 +181,11 @@ pub struct ControlHalf<'a> {
     half: &'a mut host::ControlHalf,
 }
 
-/// The render-thread half of an engine: render, bus pulls, clock queries, event consumption and
-/// the exclusive stopped-graph operations.
+/// The render-thread half of an engine: render, bus pulls, event consumption and the exclusive
+/// stopped-graph operations.
 pub struct RenderHalf<'a> {
     half: &'a mut host::RenderHalf,
-    status: &'a host::StatusHandle,
+    block: &'a mut Option<(u64, usize)>,
 }
 
 /// The part of an engine any thread may use: status, peaks and the refresh/reset mailboxes.
@@ -165,13 +209,13 @@ impl Engine {
 
     /// An engine at `rate`: `None` where the engine refuses the rate.
     pub fn create(rate: f64) -> Option<Engine> {
-        host::Engine::new(rate).map(|engine| Engine { engine })
+        host::Engine::new(rate).map(|engine| Engine { engine, block: None })
     }
 
     /// The three thread-owned parts, for tests that drive the engine from several threads.
     pub fn split(&mut self) -> (ControlHalf<'_>, RenderHalf<'_>, SharedHalf<'_>) {
         let (control, render, status) = self.engine.halves();
-        (ControlHalf { half: control }, RenderHalf { half: render, status }, SharedHalf { status })
+        (ControlHalf { half: control }, RenderHalf { half: render, block: &mut self.block }, SharedHalf { status })
     }
 
     fn control_half(&mut self) -> ControlHalf<'_> {
@@ -477,15 +521,21 @@ half_methods! { ControlHalf, control_half;
 half_methods! { RenderHalf, render_half;
     /// A direct render into two buffers of equal length, counted as a render-thread call.
     fn render_into(&mut self, left: &mut [f32], right: &mut [f32]) {
+        *self.block = None;
         realtime(|| self.half.render(left, right));
     }
     /// A render of no frames: apply queued commands without audio.
     fn render_nothing(&mut self) {
+        *self.block = None;
         realtime(|| self.half.advance(0));
     }
-    /// One output bus at a graph time, counted as a render-thread call.
+    /// One bus of the block at a graph time (see `pull_block`), counted as a render-thread call.
     fn render_bus_into(&mut self, bus: i32, sample_time: u64, left: &mut [f32], right: &mut [f32]) {
-        realtime(|| self.half.render_bus(bus, sample_time, left, right));
+        assert_eq!(left.len(), right.len());
+        realtime(|| {
+            pull_block(self.half, self.block, sample_time, left.len());
+            copy_bus(self.half, bus, left, right);
+        });
     }
     fn capture_transport(&mut self) -> STTransportState {
         realtime(|| self.half.capture_transport())
@@ -499,10 +549,6 @@ half_methods! { RenderHalf, render_half;
     /// The next event (the render thread is the serialized consumer).
     fn pop_event(&mut self) -> Option<STEvent> {
         self.half.pop_event()
-    }
-    /// A new timestamp epoch, as the audio thread asks for it between graph runs.
-    fn reset_render_cache(&mut self) {
-        self.status.reset_render_cache();
     }
 }
 

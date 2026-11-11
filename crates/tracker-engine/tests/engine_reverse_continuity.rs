@@ -85,10 +85,11 @@ fn render(
     };
     let (mut l, mut r) = (vec![0.0f32; frames], vec![0.0f32; frames]);
     let mut at = 0;
+    // The engine renders at most 4096 frames per block: a longer pull is consecutive blocks.
     while at < frames {
-        let n = block.min(frames - at);
+        let n = block.min(4096).min(frames - at);
         e.render_bus(0, at as u64, &mut l[at..at + n], &mut r[at..at + n]);
-        at += block;
+        at += n;
     }
     l
 }

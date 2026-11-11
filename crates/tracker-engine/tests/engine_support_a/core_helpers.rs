@@ -44,9 +44,25 @@ pub fn render(e: &mut Engine, a: &mut Audio) {
     e.render_into(&mut a.l, &mut a.r);
 }
 
-/// C++ `busRender(e,bus,time,a)`.
+/// One bus of the block at `time`, as long as `a` (at most 4096 frames): the block is rendered
+/// when it follows the previous one and read again when it is the previous one.
 pub fn bus_render(e: &mut Engine, bus: i32, time: u64, a: &mut Audio) {
     e.render_bus_into(bus, time, &mut a.l, &mut a.r);
+}
+
+/// Renders the length of `outs[0]` from `time` in blocks of at most 4096 frames and copies bus
+/// `buses[n]` of each block into `outs[n]`. Events stay queued; their frame offsets count from
+/// the start of their own block.
+pub fn bus_render_many(e: &mut Engine, buses: &[i32], time: u64, outs: &mut [&mut Audio]) {
+    let frames = outs[0].l.len();
+    let mut at = 0;
+    while at < frames {
+        let count = 4096.min(frames - at);
+        for (bus, out) in buses.iter().zip(outs.iter_mut()) {
+            e.render_bus_into(*bus, time + at as u64, &mut out.l[at..at + count], &mut out.r[at..at + count]);
+        }
+        at += count;
+    }
 }
 
 /// C++ `configure(e,type)`: two tracks at 120 BPM, 4 lines per beat, master 0.7. `TONE` (-1)

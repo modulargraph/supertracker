@@ -35,10 +35,25 @@ impl Pcm {
     }
 }
 
+/// One bus of the block of `n` frames (at most 4096) at `at`.
 fn bus(e: &mut Engine, b: i32, at: u64, n: usize) -> Pcm {
     let mut p = Pcm::new(n);
     realtime(|| e.render_bus(b, at, &mut p.l, &mut p.r));
     p
+}
+
+/// `n` frames from `at`, rendered block by block, of each of `buses`.
+fn buses(e: &mut Engine, buses: &[i32], at: u64, n: usize) -> Vec<Pcm> {
+    let mut out: Vec<Pcm> = buses.iter().map(|_| Pcm::new(n)).collect();
+    let mut done = 0;
+    while done < n {
+        let count = 4096.min(n - done);
+        for (b, p) in buses.iter().zip(out.iter_mut()) {
+            realtime(|| e.render_bus(*b, at + done as u64, &mut p.l[done..done + count], &mut p.r[done..done + count]));
+        }
+        done += count;
+    }
+    out
 }
 
 fn commit(e: &mut Engine) {
@@ -107,8 +122,8 @@ fn mixing_solo_mute() {
             }
         }
         // The return bus follows the tracks; buses beyond it render silence, not garbage.
-        assert!(bus(&mut e, return_bus(count), 0, 512).energy(0, 0) == 0.0);
-        assert!(bus(&mut e, output_bus_count(count) + 3, 0, 512).energy(0, 0) == 0.0);
+        assert!(bus(&mut e, return_bus(count), 0, 2048).energy(0, 0) == 0.0);
+        assert!(bus(&mut e, output_bus_count(count) + 3, 0, 2048).energy(0, 0) == 0.0);
     }
     {
         let mut e = Engine::new();
@@ -272,8 +287,8 @@ fn copy_on_write_commits() {
     commit(&mut e);
     // Pattern 3 is now empty, pattern 5 kept its steps on every track.
     e.play(0);
-    for t in [0, 31, 63] {
-        assert!(bus(&mut e, t, 0, 40000).energy(0, 0) == 0.0);
+    for audio in buses(&mut e, &[0, 31, 63], 0, 40000) {
+        assert!(audio.energy(0, 0) == 0.0);
     }
     e.stop();
     e.begin_update();
@@ -282,8 +297,7 @@ fn copy_on_write_commits() {
     e.seek(5, 0, 0);
     e.play(0);
     // Row 5 starts at 5*6000 frames; every track's note arrives there.
-    for t in [0, 31, 63] {
-        let audio = bus(&mut e, t, 40000, 40000);
+    for audio in buses(&mut e, &[0, 31, 63], 40000, 40000) {
         assert!(audio.energy(0, 29000) == 0.0 && audio.energy(31000, 40000) > 0.0);
     }
     println!("Copy-on-write: reused patterns keep their steps, edited ones are independent.");

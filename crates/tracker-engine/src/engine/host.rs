@@ -8,8 +8,8 @@
 //!
 //! * [`ControlHalf`]: project edits, commit, transport and note commands. One per engine, not
 //!   clonable, every operation needs `&mut self`: whoever holds it is the control thread.
-//! * [`RenderHalf`]: rendering, bus history, events. One per engine, not
-//!   clonable, `&mut self`: whoever holds it is the audio thread.
+//! * [`RenderHalf`]: rendering and events. One per engine, not clonable, `&mut self`: whoever
+//!   holds it is the audio thread.
 //! * [`StatusHandle`]: status, peaks, the voice playhead snapshot and the request mailboxes.
 //!   Clonable; any thread.
 //!
@@ -66,7 +66,6 @@ use super::control::Control;
 use super::state::{Render, EngineCore, Shared};
 use super::tables::{TablesState, MAX_BLOCK};
 use super::util::cmin;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 // SAFETY: see "Why the handles may cross threads" in this module's documentation. In short:
@@ -186,8 +185,8 @@ impl RenderHalf {
         (render, &self.engine.shared)
     }
 
-    /// Direct stereo render of the whole mix, `left.len()` frames (the shorter length when the
-    /// buffers differ). Standalone and offline use; invalidates the bus history.
+    /// Direct stereo render of the engine's own mix, `left.len()` frames (the shorter length
+    /// when the buffers differ): for use without a host mixer.
     pub fn render(&mut self, left: &mut [f32], right: &mut [f32]) {
         let frames = cmin(left.len(), right.len());
         let (render, shared) = self.parts();
@@ -201,32 +200,17 @@ impl RenderHalf {
         render.render(shared, None, None, frames);
     }
 
-    /// See [`Render::render_bus`].
-    pub fn render_bus(&mut self, bus: i32, time: u64, left: &mut [f32], right: &mut [f32]) {
-        let (render, shared) = self.parts();
-        render.render_bus(shared, bus, time, left, right);
-    }
-
-    /// See [`Render::render_channel`].
-    pub fn render_channel(&mut self, channel: i32, time: u64, left: &mut [f32], right: &mut [f32]) {
-        let (render, shared) = self.parts();
-        render.render_channel(shared, channel, time, left, right);
-    }
-
-    /// See [`Render::prepare_history`].
-    pub fn prepare_history(&mut self, time: u64, frames: u32) {
-        let (render, shared) = self.parts();
-        render.prepare_history(shared, time, frames);
-    }
-
-    /// Renders the next `frames` frames (at most [`MAX_BLOCK`]; more is cut) at graph time `time`
-    /// into the per-bus block buffers and returns the frames rendered. Read the buses with
-    /// [`RenderHalf::block`] before the next call. Events of the block ([`RenderHalf::pop_event`])
-    /// carry frame offsets from the block's first frame.
+    /// Renders the next `frames` frames (at most [`MAX_BLOCK`]; more is cut) into the per-bus
+    /// block buffers and returns the frames rendered. Read the buses with [`RenderHalf::block`]
+    /// before the next call. Events of the block ([`RenderHalf::pop_event`]) carry frame offsets
+    /// from the block's first frame.
+    ///
+    /// `time` is the host's own count of the block's first frame. The engine does not interpret
+    /// it: blocks follow one another whatever it is. An input edge acknowledged in the block
+    /// reports it (plus the offset in the block) as `STInputAck::graph_frame`.
     ///
     /// With host mixing on (`Control::set_host_mixing_tracks`) a track bus holds the track's raw
-    /// instrument and clip signal and the return bus holds the metronome. Bus history for
-    /// [`RenderHalf::render_bus`] is not kept by this call.
+    /// instrument and clip signal and the return bus holds the metronome.
     pub fn render_block(&mut self, time: u64, frames: u32) -> u32 {
         let (render, shared) = self.parts();
         render.render_block(shared, time, frames)
@@ -312,12 +296,6 @@ impl StatusHandle {
         self.engine.shared.refresh_automation();
     }
 
-    /// Start a fresh timestamp epoch for the bus history: the next pull at any time starts a
-    /// new timeline. For a host whose graph stopped and restarts at another time.
-    pub fn reset_render_cache(&self) {
-        self.engine.shared.reset_render_cache();
-    }
-
     pub fn watch_voice_positions(&self, instrument: i32) {
         self.engine.shared.watch_voice_positions(instrument);
     }
@@ -337,27 +315,11 @@ impl Render {
         if !self.owns(sh) {
             return 0;
         }
-        let epoch = sh.cache_epoch.load(Ordering::Acquire);
-        if self.observed_cache_epoch != epoch {
-            self.cache_valid = false;
-            self.observed_cache_epoch = epoch;
-            self.reset_input_run();
-        }
-        // The host renders contiguous blocks; any other timestamp starts a new timeline, as an
-        // explicit cache reset would.
-        if !self.cache_valid || time != self.cache_end {
-            self.cache_generation = self.cache_generation.wrapping_add(1);
-            self.cache_end = time;
-            self.cache_valid = true;
-        }
         let count = cmin(frames, MAX_BLOCK as u32);
         if count == 0 {
             return 0;
         }
-        self.process(sh, None, None, count, true, 0, time);
-        self.cache_end += count as u64;
-        // No bus history is written here: nothing before `cache_end` can be read back.
-        self.cache_begin = self.cache_end;
+        self.process(sh, None, None, count, true, time);
         count
     }
 }
@@ -413,7 +375,7 @@ mod tests {
             assert!(block.track(1).is_none(), "nothing played on the second track");
             assert!(block.track(2).is_none());
             assert!(block.return_bus().0[..MAX_BLOCK].iter().all(|sample| *sample == 0.0), "no metronome: a silent return bus");
-            // Contiguous blocks continue the song; another timestamp starts a new timeline without failing.
+            // Blocks follow one another whatever their timestamps.
             assert_eq!(render.render_block(MAX_BLOCK as u64, 256), 256);
             assert_eq!(render.render_block(1_000_000, 64), 64);
             (peak, mix_events)

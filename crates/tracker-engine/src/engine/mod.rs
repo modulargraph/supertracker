@@ -25,13 +25,12 @@
 //! | [`abi`] | the plain data and constants of the API (`STStep`, `STEvent`, `STStatus`, `ST_*`), bus arithmetic |
 //! | [`edits`] | the control thread's operations: project setters and command producers (methods of `Control`) |
 //! | [`control`] | draft/commit/collect, the render tables of a project, engine construction and destruction |
-//! | [`render_cache`] | bus history (`render_bus`, `render_channel`) |
 //! | [`transport`] | project adoption, Play/Stop/Seek, the musical clock, loops, queued jumps, input acks, checkpoints |
 //! | [`sequencer`] | row and step triggering, step effects, ratchets, plug-in locks, automation lanes |
 //! | [`voice`] | note start and end, and all voice DSP |
 //! | [`mixer`] | the block renderer: channel mix, sends (delay/reverb), metronome, timeline clips |
 //! | [`project`] | samples, zones, instruments, steps, lanes, patterns, the project |
-//! | [`tables`] | per-channel render tables, bus rings, peak store |
+//! | [`tables`] | per-channel render tables with the per-bus block buffers, peak store |
 //! | [`state`] | the data of the two halves and of what they share; `Voice`, `Scheduled`, `Command` |
 //! | [`util`] | `clamp`/`cmin`/`cmax`, `Ring`, `FloatBlock`, the random generator |
 //!
@@ -63,7 +62,6 @@ pub mod edits;
 pub mod host;
 pub mod mixer;
 pub mod project;
-pub mod render_cache;
 pub mod sequencer;
 pub mod state;
 pub mod tables;

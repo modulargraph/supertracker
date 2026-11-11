@@ -464,9 +464,9 @@ fn mailbox_refresh_reemits_effective_lock_without_queueing() {
     assert!(render_allocations() == 0);
 }
 
-/// "cached bus overlap and refresh have no duplicate events"
+/// A refresh replays the active lock once; reading further buses of a block replays nothing.
 #[test]
-fn cached_bus_overlaps_do_not_replay_events() {
+fn a_refresh_replays_the_active_lock_once() {
     for host in [-1, 31] {
         let mut engine = fixture();
         let destination = destination(0, -1, host, u64::MAX);
@@ -481,16 +481,16 @@ fn cached_bus_overlaps_do_not_replay_events() {
         let before = engine.status().seconds;
         assert!(render_bus(&mut engine, return_bus(ST_MIN_RETURN_BUS), 0, 150).is_empty());
         assert!(engine.status().seconds == before);
-        assert!(select(&render_bus(&mut engine, 1, 50, 125), destination).is_empty());
+        assert!(select(&render_bus(&mut engine, 1, 150, 25), destination).is_empty());
         engine.refresh_automation();
-        assert!(render_bus(&mut engine, 2, 50, 125).is_empty()); // Entirely cached: mailbox stays pending.
-        events = select(&render_bus(&mut engine, 0, 125, 101), destination);
+        assert!(render_bus(&mut engine, 2, 150, 25).is_empty()); // The same block: the mailbox stays pending.
+        events = select(&render_bus(&mut engine, 0, 175, 51), destination);
         assert!(events.len() == 1);
         at(&events[0], 175, 0.75);
-        events = select(&render_bus(&mut engine, 1, 200, 151), destination);
+        events = select(&render_bus(&mut engine, 1, 226, 125), destination);
         assert!(events.len() == 1);
         at(&events[0], 300, 0.25);
-        assert!(render_bus(&mut engine, return_bus(ST_MIN_RETURN_BUS), 200, 151).is_empty());
+        assert!(render_bus(&mut engine, return_bus(ST_MIN_RETURN_BUS), 226, 125).is_empty());
     }
     assert!(render_allocations() == 0);
 }

@@ -1,6 +1,5 @@
-//! Per-channel render tables and retained bus history: C++ `TrackState`, `RatchetState`,
-//! `LaneEventState`, `PluginRowLock`, `BusRing`, `PeakStore` and `ChannelTables`
-//! from `TrackerEngine.cpp`.
+//! Per-channel render tables: `TrackState`, `RatchetState`, `LaneEventState`, `PluginRowLock`,
+//! `PeakStore` and `ChannelTables` with the per-bus block buffers.
 //!
 //! Everything here is allocated on the control thread (at commit or engine creation) and then
 //! used by the render thread, which never allocates or frees it.
@@ -10,10 +9,8 @@ use super::project::PluginStepFX;
 use super::util::FloatBlock;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
 
 pub const MAX_BLOCK: usize = 4096;
-pub const CACHE_CAPACITY: usize = 65536;
 /// `ST_TARGET_LAST_INSTRUMENT - ST_TARGET_ATTACK + 1`
 pub const INSTRUMENT_TARGETS: usize = (ST_TARGET_LAST_INSTRUMENT - ST_TARGET_ATTACK + 1) as usize;
 
@@ -107,55 +104,6 @@ pub struct PluginRowLock {
     pub delivery: LaneEventState,
 }
 
-/// `BusRing::silentFrom` value of a bus whose ring holds real audio up to the cache end.
-pub const AUDIBLE: u64 = u64::MAX;
-
-pub struct BusRingState {
-    pub l: FloatBlock,
-    pub r: FloatBlock,
-    /// Graph frames >= it read as zeros (the ring is not written while silent).
-    pub silent_from: u64,
-    /// The cache epoch the ring belongs to; any other epoch reads as silence.
-    pub generation: u64,
-}
-
-/// Retained render_bus history for one logical bus (a track or the return). Identity follows the
-/// logical bus, not its number, so history survives renumbering.
-pub struct BusRing {
-    state: UnsafeCell<BusRingState>,
-}
-
-// SAFETY: the control thread only creates rings, clones and drops their `Arc`s; the contents
-// (`state`) are read and written by the render thread alone (see `state_mut`).
-unsafe impl Send for BusRing {}
-unsafe impl Sync for BusRing {}
-
-impl BusRing {
-    /// Control thread. `None` when memory is exhausted (C++ `std::bad_alloc`).
-    pub fn new() -> Option<BusRing> {
-        Some(BusRing {
-            state: UnsafeCell::new(BusRingState {
-                l: FloatBlock::new(CACHE_CAPACITY)?,
-                r: FloatBlock::new(CACHE_CAPACITY)?,
-                silent_from: 0,
-                generation: 0,
-            }),
-        })
-    }
-
-    /// Render thread only.
-    ///
-    /// # Safety
-    /// The caller must be the render thread (or an exclusive stopped-graph operation) and must
-    /// not hold another reference to this ring's state.
-    #[allow(clippy::mut_from_ref)]
-    #[inline(always)]
-    pub unsafe fn state_mut(&self) -> &mut BusRingState {
-        // SAFETY: per this function's contract there is exactly one accessor.
-        unsafe { &mut *self.state.get() }
-    }
-}
-
 /// Peak meters are read from any thread. Storage only grows and old stores live until the engine
 /// is destroyed, so a reader holding an old pointer stays valid. Values are `f32` bit patterns.
 pub struct PeakStore {
@@ -203,7 +151,6 @@ pub struct TablesState {
     pub bus_l: FloatBlock,
     pub bus_r: FloatBlock,
     pub bus_touched: Vec<u8>,
-    pub rings: Vec<Option<Arc<BusRing>>>,
 }
 
 impl TablesState {
@@ -244,9 +191,8 @@ unsafe impl Send for ChannelTables {}
 unsafe impl Sync for ChannelTables {}
 
 impl ChannelTables {
-    /// Control thread. `rings[bus]` is the history ring of each logical bus that has one.
-    /// `None` when memory is exhausted (C++ `std::bad_alloc`).
-    pub fn new(tracks: i32, rings: Vec<Option<Arc<BusRing>>>) -> Option<ChannelTables> {
+    /// Control thread. `None` when memory is exhausted.
+    pub fn new(tracks: i32) -> Option<ChannelTables> {
         let base = return_bus(tracks);
         let channels = channel_count(tracks);
         let buses = output_bus_count(tracks);
@@ -273,7 +219,6 @@ impl ChannelTables {
                 bus_l: FloatBlock::new(bus_count * BUS_STRIDE)?,
                 bus_r: FloatBlock::new(bus_count * BUS_STRIDE)?,
                 bus_touched: vec![0; bus_count],
-                rings,
             }),
         })
     }

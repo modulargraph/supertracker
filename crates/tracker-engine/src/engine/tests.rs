@@ -97,9 +97,6 @@ fn rejects_invalid_engines_and_foreign_shared_state() {
     let mut second = [1.0f32; 8];
     render_state.render(foreign, Some(&mut buffer), Some(&mut second), 8);
     assert_eq!((buffer, second), ([0.0; 8], [0.0; 8]));
-    buffer = [1.0; 8];
-    render_state.render_bus(foreign, 0, 0, &mut buffer, &mut second);
-    assert_eq!(buffer, [0.0; 8]);
     assert_eq!(render_state.render_block(foreign, 0, 64), 0);
     assert_eq!(render_state.forget_external_voices(foreign, 0), 0);
     // Both engines still work with their own.
@@ -187,43 +184,6 @@ fn queued_transport_is_reported_until_rendered() {
     render(audio, 16, 16);
     let counting = status.status();
     assert!(counting.count_in > 0 && counting.count_in_shown() == counting.count_in);
-}
-
-#[test]
-fn bus_history_is_not_rendered_twice() {
-    let mut engine = engine();
-    let (control, audio, _) = engine.halves();
-    begin_project(control, default_instrument());
-    load_sine(control, 0);
-    set_note(control, 0, 60);
-    commit(control);
-    play(control);
-    let (mut first, mut again, mut tail) = (vec![0.0f32; 512], vec![9.0f32; 512], vec![0.0f32; 300]);
-    let mut right = vec![0.0f32; 512];
-    audio.render_bus(0, 1000, &mut first, &mut right);
-    assert!(first.iter().any(|&x| x != 0.0));
-    // The same range again, and an overlapping pull of another size: copies, not new audio.
-    audio.render_bus(0, 1000, &mut again, &mut right);
-    assert_eq!(first, again);
-    audio.render_channel(0, 1300, &mut tail, &mut right[..300]);
-    assert_eq!(&first[300..], &tail[..212]);
-    // The return bus of an 1-track project is bus 16; buses beyond it are silent.
-    let mut beyond = vec![5.0f32; 64];
-    audio.render_bus(17, 1000, &mut beyond, &mut right[..64]);
-    assert!(beyond.iter().all(|&x| x == 0.0));
-    // The argument rules: silence and no rendering for what the history cannot hold.
-    let mut refused = vec![5.0f32; 64];
-    audio.render_bus(-1, 1000, &mut refused, &mut right[..64]);
-    assert!(refused.iter().all(|&x| x == 0.0), "a negative bus is silent");
-    refused.fill(5.0);
-    audio.render_bus(0, u64::MAX - 10, &mut refused, &mut right[..64]);
-    assert!(refused.iter().all(|&x| x == 0.0), "a range past the last timestamp is silent");
-    let mut oversized = vec![5.0f32; tables::CACHE_CAPACITY + 1];
-    let mut oversized_right = vec![5.0f32; tables::CACHE_CAPACITY + 1];
-    audio.render_bus(0, 1000, &mut oversized, &mut oversized_right);
-    assert!(oversized.iter().chain(&oversized_right).all(|&x| x == 0.0), "more than the history holds is silent");
-    audio.render_bus(0, 1600, &mut [], &mut []);
-    audio.prepare_history(1600, 100);
 }
 
 #[test]

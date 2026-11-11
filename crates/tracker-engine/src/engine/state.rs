@@ -4,7 +4,7 @@
 //! * [`Shared`]: atomics and lock-free rings both threads touch.
 //! * `Control` (see `control.rs`): the draft/published projects and everything the control
 //!   thread allocates.
-//! * [`Render`]: voices, transport, effects and cache state, touched only by the render thread
+//! * [`Render`]: voices, transport and effects, touched only by the render thread
 //!   (or by an "exclusive stopped-graph operation" standing in for it).
 //!
 //! The render thread works through [`Rt`], a view that pairs `Render` with the project and the
@@ -501,7 +501,6 @@ pub struct Shared {
     pub(crate) input_outstanding: AtomicU32,
     pub(crate) automation_refresh_requested: AtomicBool,
     pub(crate) peak_store: AtomicPtr<PeakStore>,
-    pub(crate) cache_epoch: AtomicU64,
     pub(crate) status_playing: AtomicI32,
     pub(crate) status_recording: AtomicI32,
     pub(crate) status_pattern: AtomicI32,
@@ -557,7 +556,6 @@ impl Shared {
             input_outstanding: AtomicU32::new(0),
             automation_refresh_requested: AtomicBool::new(false),
             peak_store: AtomicPtr::new(std::ptr::null_mut()),
-            cache_epoch: AtomicU64::new(1),
             status_playing: AtomicI32::new(0),
             status_recording: AtomicI32::new(0),
             status_pattern: AtomicI32::new(0),
@@ -720,11 +718,6 @@ impl Shared {
         self.automation_refresh_requested.store(true, Ordering::Release);
     }
 
-    /// Start a fresh timestamp epoch (graph stopped).
-    pub fn reset_render_cache(&self) {
-        self.cache_epoch.fetch_add(1, Ordering::Release);
-    }
-
     /// The next input acknowledgement. The ring has one consumer, the control half
     /// (`ControlHalf::pop_input_ack`), which is why this is not public.
     pub(crate) fn pop_input_ack(&self) -> Option<STInputAck> {
@@ -815,11 +808,6 @@ pub struct Render {
     pub(crate) comb_r: [Comb; 8],
     pub(crate) ap_l: [Allpass; 4],
     pub(crate) ap_r: [Allpass; 4],
-    pub(crate) cache_generation: u64,
-    pub(crate) observed_cache_epoch: u64,
-    pub(crate) cache_begin: u64,
-    pub(crate) cache_end: u64,
-    pub(crate) cache_valid: bool,
     pub(crate) playing: bool,
     pub(crate) recording: bool,
     pub(crate) song_mode: bool,
@@ -872,7 +860,7 @@ pub struct Render {
     pub(crate) voice_stage: [STVoicePosition; ST_VOICE_POSITION_CAPACITY],
     pub(crate) transport_applied: u32,
     pub(crate) seek_revision: u64,
-    /// Raw host mixing into the bus cache: a channel's bus is exactly its summed input, so voices
+    /// Raw host mixing of a block render: a channel's bus is exactly its summed input, so voices
     /// and clips add straight into the bus block (same order, same sums) instead of a per-sample
     /// channel pass; peaks and the mix are taken from the buses per block.
     pub(crate) direct_bus: bool,
@@ -931,11 +919,6 @@ impl Render {
             comb_r: COMB_SIZES.map(|size| comb(size + 23)),
             ap_l: ALLPASS_SIZES.map(allpass),
             ap_r: ALLPASS_SIZES.map(|size| allpass(size + 23)),
-            cache_generation: 1,
-            observed_cache_epoch: 0,
-            cache_begin: 0,
-            cache_end: 0,
-            cache_valid: false,
             playing: false,
             recording: false,
             song_mode: false,
@@ -991,8 +974,8 @@ impl Render {
 
 /// The render thread at work: `Render` together with the project and channel tables in use.
 ///
-/// Most of `EngineCore`'s member functions are methods of this view (in `transport.rs`,
-/// `sequencer.rs`, `voice.rs`, `mixer.rs` and `render_cache.rs`).
+/// The render thread's work is written as methods of this view (in `transport.rs`,
+/// `sequencer.rs`, `voice.rs` and `mixer.rs`).
 pub struct Rt<'a> {
     pub(crate) e: &'a mut Render,
     pub(crate) p: &'a Project,

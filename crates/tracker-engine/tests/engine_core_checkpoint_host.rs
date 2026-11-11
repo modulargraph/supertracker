@@ -251,9 +251,8 @@ fn test_raw_host_mixing() {
         configure_host_mix_voice(&mut raw, true);
         configure_host_mix_voice(&mut reference, false);
         let (mut actual, mut expected, mut returns) = (Audio::new(8192), Audio::new(8192), Audio::new(8192));
-        bus_render(&mut raw, 0, 0, &mut actual);
-        bus_render(&mut reference, 0, 0, &mut expected);
-        bus_render(&mut raw, 16, 0, &mut returns);
+        bus_render_many(&mut raw, &[0, 16], 0, &mut [&mut actual, &mut returns]);
+        bus_render_many(&mut reference, &[0], 0, &mut [&mut expected]);
         assert!(actual.l == expected.l && actual.r == expected.r && actual.energy() > 0.001 && returns.energy() == 0.0);
     }
     // Explicitly disabled host mixing ignores its mask and keeps legacy PCM exact.
@@ -604,7 +603,7 @@ fn test_host_automation_bounds_and_note_offs() {
         e.commit_update();
         e.play(0);
         let mut pull = Audio::new(65536);
-        bus_render(&mut e, 0, 0, &mut pull);
+        bus_render_many(&mut e, &[0], 0, &mut [&mut pull]);
         let (mut on, mut off, mut controls) = (0, 0, 0);
         while let Some(event) = e.pop_event() {
             if event.type_ == ST_EVENT_NOTE_ON {
@@ -613,7 +612,8 @@ fn test_host_automation_bounds_and_note_offs() {
             }
             if event.type_ == ST_EVENT_NOTE_OFF {
                 off += 1;
-                assert!(event.frame_offset == 60000);
+                // Frame 60000, counted from the start of its block.
+                assert!(event.frame_offset == 60000 % 4096);
             }
             controls += (event.type_ == ST_EVENT_HOST_PARAMETER) as i32;
         }

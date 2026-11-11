@@ -8,7 +8,7 @@
 
 use super::project::{Project, Sample};
 use super::state::{Command, Render, Rt, EngineCore, Shared};
-use super::tables::{BusRing, ChannelTables, PeakStore};
+use super::tables::{ChannelTables, PeakStore};
 use super::abi::default_track;
 use super::util::cmax;
 use std::cell::UnsafeCell;
@@ -34,9 +34,6 @@ pub struct Control {
     pub(crate) control: Box<Project>,
     pub(crate) updating: bool,
     pub(crate) samples: Vec<Box<Sample>>,
-    /// Control-owned bus history, keyed by logical bus so renumbering keeps it.
-    pub(crate) track_rings: Vec<Option<Arc<BusRing>>>,
-    pub(crate) return_ring: Option<Arc<BusRing>>,
     pub(crate) peak_stores: Vec<Box<PeakStore>>,
     pub(crate) last_input_request_id: u64,
 }
@@ -114,30 +111,15 @@ impl Control {
     }
 
     /// Control thread: give the project per-channel render tables. The latest published tables
-    /// are reused while the track count is unchanged; otherwise new tables (and history rings for
-    /// new buses) are allocated here, never on render.
+    /// are reused while the track count is unchanged; otherwise new tables are allocated here,
+    /// never on render.
     fn build_tables(&mut self, sh: &Shared, p: &mut Project) -> Result<(), String> {
         let reusable = p.tables.as_ref().is_some_and(|tables| tables.same_shape(p.track_count));
         if !reusable {
             match &self.control.tables {
                 Some(tables) if tables.same_shape(p.track_count) => p.tables = Some(tables.clone()),
                 _ => {
-                    self.track_rings.resize(p.track_count as usize, None);
-                    for ring in &mut self.track_rings {
-                        if ring.is_none() {
-                            *ring = Some(Arc::new(BusRing::new().ok_or(BAD_ALLOC)?));
-                        }
-                    }
-                    if self.return_ring.is_none() {
-                        self.return_ring = Some(Arc::new(BusRing::new().ok_or(BAD_ALLOC)?));
-                    }
-                    let base = p.return_bus() as usize;
-                    let mut rings: Vec<Option<Arc<BusRing>>> = vec![None; base + 1];
-                    for (slot, ring) in rings.iter_mut().zip(&self.track_rings) {
-                        *slot = ring.clone();
-                    }
-                    rings[base] = self.return_ring.clone();
-                    p.tables = Some(Arc::new(ChannelTables::new(p.track_count, rings).ok_or(BAD_ALLOC)?));
+                    p.tables = Some(Arc::new(ChannelTables::new(p.track_count).ok_or(BAD_ALLOC)?));
                 }
             }
         }
@@ -220,8 +202,6 @@ impl EngineCore {
             control: Box::new(Project::new()),
             updating: false,
             samples: Vec::new(),
-            track_rings: Vec::new(),
-            return_ring: None,
             peak_stores: Vec::new(),
             last_input_request_id: 0,
         };
@@ -267,6 +247,6 @@ impl Drop for EngineCore {
             drop(unsafe { Box::from_raw(current) });
         }
         control.get_mut().collect(shared);
-        // The draft and control projects, then the samples and rings, drop with `Control`.
+        // The draft and control projects, then the samples, drop with `Control`.
     }
 }

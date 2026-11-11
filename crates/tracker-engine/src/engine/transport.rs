@@ -47,10 +47,10 @@ impl Render {
         sh.engine_id == self.engine_id
     }
 
-    /// Direct stereo render of the whole mix (standalone and offline use): `frames` frames
-    /// into whichever of the two buffers are given (a buffer shorter than `frames` receives
-    /// what fits). Without buffers the engine still advances, so `render(sh, None, None, 0)`
-    /// applies queued commands and a new project. Invalidates the bus history.
+    /// Direct stereo render of the engine's own mix: `frames` frames into whichever of the two
+    /// buffers are given (a buffer shorter than `frames` receives what fits). Without buffers
+    /// the engine still advances, so `render(sh, None, None, 0)` applies queued commands and a
+    /// new project.
     pub fn render(&mut self, sh: &Shared, mut left: Option<&mut [f32]>, mut right: Option<&mut [f32]>, frames: u32) {
         if !self.owns(sh) {
             for out in [left.as_deref_mut(), right.as_deref_mut()].into_iter().flatten() {
@@ -58,8 +58,7 @@ impl Render {
             }
             return;
         }
-        self.cache_valid = false;
-        self.process(sh, left, right, frames, false, 0, 0);
+        self.process(sh, left, right, frames, false, 0);
     }
 
     /// Exclusive stopped-graph operation.
@@ -263,8 +262,8 @@ impl Render {
         sh.status_tracks.store(rt.p.track_count, Ordering::Relaxed);
     }
 
-    /// `flushQuiescent`: adopt pending project/control changes at zero audio time (transport
-    /// capture/restore). Discards queued events and invalidates cached audio.
+    /// Adopt pending project/control changes at zero audio time (transport capture/restore).
+    /// Discards queued events.
     pub(crate) fn flush_quiescent(&mut self, sh: &Shared) {
         self.out.suppress_events = true;
         self.out.frame_offset = 0;
@@ -277,7 +276,6 @@ impl Render {
             while sh.events.pop().is_some() {}
             rt.publish_transport();
         }
-        self.cache_valid = false;
         self.out.suppress_events = false;
         sh.automation_refresh_requested.store(true, Ordering::Release);
     }
@@ -547,7 +545,7 @@ impl<'a> Rt<'a> {
         self.p.sequence.get(index as u32 as usize).copied().unwrap_or(0)
     }
 
-    pub fn finish_input_acks(&mut self, audio_frame: bool, cached: bool, graph_frame: u64) {
+    pub fn finish_input_acks(&mut self, audio_frame: bool, in_block: bool, graph_frame: u64) {
         if audio_frame {
             self.update_clock();
         }
@@ -556,7 +554,7 @@ impl<'a> Rt<'a> {
         for n in 0..count {
             let mut ack = e.pending_input_acks[n];
             ack.render_frame = e.total_frames as i64;
-            ack.graph_frame = if cached && graph_frame <= (1u64 << 52) { graph_frame as i64 } else { i64::MIN };
+            ack.graph_frame = if in_block && graph_frame <= (1u64 << 52) { graph_frame as i64 } else { i64::MIN };
             // An early note keeps its placed row while that row is the one now playing or still
             // ahead.
             if ack.early == 0 || ack.pattern != e.pattern || ack.sequence != e.sequence || e.row > ack.row {
@@ -1097,7 +1095,6 @@ impl<'a> Rt<'a> {
         self.reset_track_state(false);
         self.e.out.suppress_events = false;
         self.sh.automation_refresh_requested.store(true, Ordering::Release);
-        self.e.cache_valid = false;
         self.publish_transport();
         self.sh.peak_l.store(0.0, Ordering::Relaxed);
         self.sh.peak_r.store(0.0, Ordering::Relaxed);

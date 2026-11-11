@@ -10,6 +10,50 @@ use tracker_engine::engine::*;
 
 pub struct Engine {
     e: host::Engine,
+    /// See [`pull_block`].
+    block: Option<(u64, usize)>,
+}
+
+/// The buses of an engine as the tests pull them: one bus of a block at a time.
+///
+/// `block` is the range (start, frames) rendered last. A pull of that range reads the block
+/// again (the tests take one bus after another); any other pull renders the next block, which
+/// must follow the previous one and be at most `MAX_BLOCK` frames long. `None` after a direct
+/// render: the next block may start at any time.
+fn pull_block(render: &mut host::RenderHalf, block: &mut Option<(u64, usize)>, time: u64, frames: usize) {
+    if *block == Some((time, frames)) {
+        return;
+    }
+    assert!((1..=tracker_engine::engine::tables::MAX_BLOCK).contains(&frames), "a pull is one block of 1..=MAX_BLOCK frames");
+    if let Some((start, count)) = *block {
+        assert_eq!(time, start + count as u64, "blocks follow one another");
+    }
+    assert_eq!(render.render_block(time, frames as u32) as usize, frames);
+    *block = Some((time, frames));
+}
+
+/// Copies one bus of the block rendered last: a track's own number, or the return bus that
+/// follows the tracks (never below 16). A bus nothing played on, and one the project lacks,
+/// is silent.
+fn copy_bus(render: &mut host::RenderHalf, bus: i32, left: &mut [f32], right: &mut [f32]) {
+    let view = render.block();
+    let source = if bus == tracker_engine::engine::return_bus(view.track_count() as i32) {
+        Some(view.return_bus())
+    } else if bus >= 0 {
+        view.track(bus as usize)
+    } else {
+        None
+    };
+    match source {
+        Some((l, r)) => {
+            left.copy_from_slice(&l[..left.len()]);
+            right.copy_from_slice(&r[..right.len()]);
+        }
+        None => {
+            left.fill(0.0);
+            right.fill(0.0);
+        }
+    }
 }
 
 impl Default for Engine {
@@ -31,7 +75,7 @@ impl Engine {
 
     /// An engine at `rate`; the C++ fixtures assert that it exists.
     pub fn with_rate(rate: f64) -> Engine {
-        Engine { e: host::Engine::new(rate).expect("an engine at a supported rate") }
+        Engine { e: host::Engine::new(rate).expect("an engine at a supported rate"), block: None }
     }
 
     /// The control state, the shared state its methods take and the engine's sample rate.
@@ -403,41 +447,32 @@ impl Engine {
     /// A direct stereo render of `left.len()` frames.
     pub fn render(&mut self, left: &mut [f32], right: &mut [f32]) {
         assert_eq!(left.len(), right.len());
+        self.block = None;
         self.e.render().render(left, right);
     }
 
     /// Advance by `frames` frames without output buffers.
     pub fn render_null(&mut self, frames: u32) {
+        self.block = None;
         self.e.render().advance(frames);
     }
 
-    /// One output bus at a graph time, `left.len()` frames.
+    /// One bus of the block at a graph time, `left.len()` frames (see `pull_block`).
     pub fn render_bus(&mut self, bus: i32, time: u64, left: &mut [f32], right: &mut [f32]) {
         assert_eq!(left.len(), right.len());
-        self.e.render().render_bus(bus, time, left, right);
+        pull_block(self.e.render(), &mut self.block, time, left.len());
+        copy_bus(self.e.render(), bus, left, right);
     }
 
-    /// A bus pull without output buffers: only the history is extended (nothing for a
-    /// negative bus, as for a pull with buffers).
-    pub fn render_bus_null(&mut self, bus: i32, time: u64, frames: u32) {
-        if bus >= 0 {
-            self.e.render().prepare_history(time, frames);
-        }
+    /// The block at a graph time without reading a bus.
+    pub fn render_block(&mut self, time: u64, frames: u32) {
+        pull_block(self.e.render(), &mut self.block, time, frames as usize);
     }
 
-    /// One logical channel at a graph time, `left.len()` frames.
+    /// One track's bus of the block at a graph time, or the return bus for a negative channel.
     pub fn render_channel(&mut self, channel: i32, time: u64, left: &mut [f32], right: &mut [f32]) {
-        assert_eq!(left.len(), right.len());
-        self.e.render().render_channel(channel, time, left, right);
-    }
-
-    /// A channel pull without output buffers: only the history is extended.
-    pub fn render_channel_null(&mut self, _channel: i32, time: u64, frames: u32) {
-        self.e.render().prepare_history(time, frames);
-    }
-
-    pub fn reset_render_cache(&self) {
-        self.e.status().reset_render_cache();
+        let bus = if channel < 0 { return_bus(self.e.status().status().track_count) } else { channel };
+        self.render_bus(bus, time, left, right);
     }
 
     pub fn capture_transport(&mut self) -> STTransportState {
