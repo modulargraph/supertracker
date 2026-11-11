@@ -155,6 +155,9 @@ pub const fn output_bus_count(track_count: i32) -> i32 {
     return_bus(track_count) + 1
 }
 
+/// A track: its instrument and its mixer values. The host mixes; the engine reports volume, pan
+/// and the two sends (with what lanes and step effects make of them) as `ST_EVENT_PARAMETER`
+/// events and applies none of them. Mute and solo gate the notes of hardware MIDI instruments.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct STTrack {
     pub volume: f32,
@@ -292,8 +295,16 @@ pub struct STStep {
     pub fx2: STStepFX,
 }
 
-/// hostMap: on `ST_EVENT_HOST_PARAMETER`, the host destination map of the project that emitted
-/// it; 0 on every other event.
+/// An event of a block, `frame_offset` frames after the block's first frame.
+///
+/// * `ST_EVENT_NOTE_ON` / `ST_EVENT_NOTE_OFF`: a note of a plug-in or
+///   MIDI instrument (`track`, `instrument`, `note`, `velocity`); `slot` is 1 for a note of the
+///   sequencer and 0 for a live one.
+/// * `ST_EVENT_PARAMETER`: a mixer value of `track`; `target` is `ST_TARGET_VOLUME`, `_PAN`,
+///   `_DELAY` or `_REVERB`.
+/// * `ST_EVENT_HOST_PARAMETER`: the value of a host lane or step lock; `target` is the host
+///   destination, `address` its parameter, `track` -1, and `host_map` the destination map of the
+///   project that emitted it (0 on every other event).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct STEvent {
     pub type_: i32,
