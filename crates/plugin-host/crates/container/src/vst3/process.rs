@@ -816,10 +816,14 @@ impl Vst3Processor {
                 if data1 == 120 || data1 == 123 {
                     // All sound off / all notes off: not every plug-in maps these, so the
                     // notes it holds are released explicitly, and the sustain pedal with them.
-                    self.release_held(self.after_controllers(event.offset), Some(channel));
+                    // (At the message's own offset, whatever was played around it: the pedal
+                    // comes up and the notes end at that sample.)
+                    self.release_held(event.offset, Some(channel));
                     let sustain = self.shared.mapped_parameter(channel, 64);
-                    let offset = self.after_notes(event.offset);
-                    self.add_parameter(sustain, offset, 0.0, FROM_MIDI);
+                    self.add_parameter(sustain, event.offset, 0.0, FROM_MIDI);
+                    let parameter = self.shared.mapped_parameter(channel, data1 as usize);
+                    self.add_parameter(parameter, event.offset, data2 as f64 / 127.0, FROM_MIDI);
+                    return;
                 }
                 let parameter = self.shared.mapped_parameter(channel, data1 as usize);
                 let offset = self.after_notes(event.offset);

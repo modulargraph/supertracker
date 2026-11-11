@@ -734,9 +734,13 @@ fn crash_and_hang_inside_a_vst3_plugin_are_contained_and_the_state_restored() {
     });
     victim.set_deadline(Some(LONG));
     victim.restore().unwrap();
+    // The event the plug-in hung on went out with the block it never finished. No block went
+    // by between the loss and the restore, so it was still on the client's books: it is given
+    // up with the restored plug-in's first block (which says so), not sent to it.
     let block = run(&victim, &input, 2, 128, &[]);
-    assert_eq!(block.outcome.flags, PROCESS_OK);
+    assert_eq!(block.outcome.flags, PROCESS_OK | PROCESS_EVENTS_LOST);
     assert_bits_eq(&block.outputs[0], &scaled(&input[0], 0.25), "restored after the hang");
+    assert_eq!(run(&victim, &input, 2, 128, &[]).outcome.flags, PROCESS_OK);
 
     // A plug-in that hangs on its main thread: requests time out, audio continues.
     let hanger = active(env.sup(), InstanceConfig { name: "hanger".into(), ..gain_config(&bundle) });

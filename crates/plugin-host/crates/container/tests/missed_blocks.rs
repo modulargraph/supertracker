@@ -205,6 +205,23 @@ fn a_plugin_that_stays_away_past_the_bound_loses_everything_that_waited_together
     crashing.restore().expect("restore");
     assert_eq!(block(&crashing, &[]).flags, PROCESS_OK);
     assert!(log(&crashing).is_empty());
+    // The same when no block went by between the loss and the restore: what waited is given
+    // up with the restored plug-in's first block (the caller is told), and that block's own
+    // events arrive.
+    crashing.hold_blocks(1);
+    assert_eq!(block(&crashing, &phrase(0)).flags, PROCESS_BUSY | PROCESS_FALLBACK);
+    let pid = env.live_pids().into_iter().find(|live| *live != pid).expect("the restarted container");
+    // SAFETY: a signal to a process this test started.
+    unsafe { libc::kill(pid as i32, libc::SIGKILL) };
+    let started = Instant::now();
+    while crashing.status() != InstanceStatus::Lost {
+        assert!(started.elapsed() < LONG);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    crashing.restore().expect("restore");
+    let own = [Event::note_on(3, 0, 70, 9)];
+    assert_eq!(block(&crashing, &own).flags, PROCESS_OK | PROCESS_EVENTS_LOST);
+    assert_eq!(log(&crashing), entries(&own, None));
     drop(instance);
     drop(crashing);
     env.finish();

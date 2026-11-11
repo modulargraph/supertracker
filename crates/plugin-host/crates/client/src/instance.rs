@@ -382,6 +382,8 @@ pub(crate) struct Waiting {
     in_flight: usize,
     /// The attachment `in_flight` belongs to ([`RtState::epoch`]).
     epoch: u32,
+    /// The container generation of the plug-in the events are for.
+    generation: u64,
     /// Frames of the blocks that went by while events were waiting.
     waited_frames: u64,
     /// Events were given up since the last outcome.
@@ -390,7 +392,7 @@ pub(crate) struct Waiting {
 
 impl Waiting {
     pub fn new(capacity: usize) -> Waiting {
-        Waiting { events: Vec::with_capacity(capacity), in_flight: 0, epoch: 0, waited_frames: 0, lost: false }
+        Waiting { events: Vec::with_capacity(capacity), in_flight: 0, epoch: 0, generation: 0, waited_frames: 0, lost: false }
     }
 
     /// Gives up everything that waits; the next outcome says so.
@@ -910,7 +912,9 @@ impl Instance {
     /// [`PROCESS_EVENTS_LOST`]. Never only some of it: a note-off is not dropped while its
     /// note-on is delivered. The caller then tells the plug-in what it needs to know afresh.
     /// Nothing waits for a plug-in whose container is lost ([`PROCESS_LOST`]: a restored
-    /// plug-in starts afresh) or that the client bypasses ([`PROCESS_BYPASSED`]).
+    /// plug-in starts afresh; what still waited when it was restored without a block in
+    /// between is given up with the restored plug-in's first block, and flagged) or that
+    /// the client bypasses ([`PROCESS_BYPASSED`]).
     pub fn process(&self, io: &mut ProcessBuffers<'_, '_>) -> ProcessOutcome {
         let frames = io.frames;
         let mut inputs = [std::ptr::null::<f32>(); MAX_CHANNELS];
@@ -966,6 +970,16 @@ impl Instance {
         let shared = &*self.shared;
         // SAFETY: `waiting` belongs to the caller of `process`, of which there is one at a time.
         let waiting = &mut *shared.waiting.get();
+        let generation = shared.generation.load(Ordering::Acquire);
+        if waiting.generation != generation {
+            // Another container: the plug-in was made anew (restored after a loss this thread
+            // may never have seen). What waits was for the one that is gone, and must not
+            // reach this one (it may be what the other one died of).
+            if waiting.generation != 0 {
+                waiting.give_up();
+            }
+            waiting.generation = generation;
+        }
         let rate = f64::from_bits(shared.sample_rate_bits.load(Ordering::Relaxed)).max(1.0);
         let (carried, admitted) = waiting.admit(block, (rate * EVENT_PATIENCE_SECONDS) as u64);
         let held = shared.held_blocks.load(Ordering::Relaxed) > 0;
