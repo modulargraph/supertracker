@@ -78,7 +78,7 @@
       key: 'master',
       label: 'Master',
       name: 'Master volume',
-      read: p => Number(p.masterVolume ?? .7),
+      read: p => Number(p.masterVolume),
       write: (p, v) => {
         p.masterVolume = v;
       },

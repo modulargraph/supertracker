@@ -55,7 +55,7 @@
         + `</label><label class="field"><span>Beat unit</span><select id="signature-denominator">${[2, 4, 8, 16].map(x => `<option value="${x}" ${x === p.timeSignature.denominator ? 'selected' : ''}>1/${x}</option>`).join('')}</select>`
         + `</label></div><label class="row"><input id="song-metronome" type="checkbox" ${p.metronome ? 'checked' : ''}>Metronome</label>`
         + `<label class="field"><span>Click level</span><input id="metronome-volume" type="range" min="0"`
-        + ` max="1" step=".01" value="${p.metronomeVolume ?? .4}"></label><label class="field">`
+        + ` max="1" step=".01" value="${p.metronomeVolume}"></label><label class="field">`
         + `<span>Lines per quarter note</span><select id="lines-per-beat">${[1, 2, 3, 4, 6, 8, 12, 16].map(x => `<option ${p.linesPerBeat === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`
         + `</label><label class="field"><span>Swing · ${Math.round((p.swing || 0) * 100)}%</span>`
         + `<input type="range" id="swing" min="0" max=".75" step=".01" value="${p.swing || 0}">`

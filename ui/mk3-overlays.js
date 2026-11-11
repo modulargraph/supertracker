@@ -73,7 +73,7 @@
       case 'volume': case 'master': {
         const master = id === 'master', track = p.tracks[st().track];
         const value = master
-            ? fmt.db(burstValue('master', q => Number(q.masterVolume ?? .7)))
+            ? fmt.db(burstValue('master', q => Number(q.masterVolume)))
             : fmt.db(burstValue(`mix:${st().track}:volume`, q => Number(q.tracks[st().track]?.volume ?? .8)));
         return encoderMode(id, master ? 'Master volume' : 'Volume', { title: master ? 'MASTER' : 'VOLUME', target: master
             ? 'Master'

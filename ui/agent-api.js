@@ -1864,7 +1864,7 @@
   function describeChannel(p, ch) {
     const entity = channelEntity(p, ch), out = { channel: ch.owner, name: ch.name, type: ch.type };
     if (ch.type === 'track') out.index = ch.track;
-    if (ch.type === 'master') out.volume = formatValue('db', p.masterVolume ?? .7);
+    if (ch.type === 'master') out.volume = formatValue('db', p.masterVolume);
     else {
       Object.assign(out, { volume: formatValue('db', entity.volume ?? (ch.type === 'track' ? .8 : 1)), pan: formatValue('pan', entity.pan ?? 0), mute: !!entity.mute, solo: !!entity.solo });
       const output = outputOf(p, ch.owner);

@@ -72,7 +72,7 @@
     const index = p.instruments.length;
     p.instruments.push(renderedInstrument(helpers.instrument(index, result.name), result.name, result.path));
     if (!opts.replace) return { instrument: index, track: null };
-    const pat = p.patterns.find((item, position) => (item.id ?? position) === sel.pattern);
+    const pat = p.patterns.find(item => item.id === sel.pattern);
     if (!pat) throw new Error('The rendered pattern no longer exists.');
     if (opts.originals === 'mute') for (const t of sel.tracks) p.tracks[t].mute = true;
     else for (const t of sel.tracks) for (let r = sel.firstRow; r <= sel.lastRow; r++) pat.steps[t][r] = null;
@@ -203,7 +203,7 @@
     const owner = project();
     // Edits change the project in place: a bounce in place belongs to these track and pattern objects, not to
     // whatever has moved to their indices by the time the render returns.
-    const rendered = sel.tracks.map(t => owner.tracks[t]), renderedPattern = owner.patterns.find((item, position) => (item.id ?? position) === sel.pattern);
+    const rendered = sel.tracks.map(t => owner.tracks[t]), renderedPattern = owner.patterns.find(item => item.id === sel.pattern);
     const placed = () => owner.patterns.includes(renderedPattern) && rendered.every((track, i) => track && owner.tracks[sel.tracks[i]] === track);
     job = { cancelled: false, phase: 'capturing', progress: 0 };
     paint();

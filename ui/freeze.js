@@ -30,7 +30,7 @@
     const owner = ownerOf(track), instruments = new Set([track.instrument]);
     const sequenced = new Set(p.sequence);
     const patterns = p.patterns.map((pattern, position) => {
-      const id = pattern.id ?? position;
+      const id = pattern.id;
       const rows = {};
       pattern.steps[index].forEach((step, row) => {
         if (!step) return;
@@ -109,7 +109,7 @@
     return track?.audioInput?.enabled === true || p?.instruments[track?.instrument || 0]?.type === 'midi';
   }
   const songSeconds = p => p.sequence.reduce((sum, id) => {
-    const pattern = p.patterns.find((item, position) => (item.id ?? position) === id);
+    const pattern = p.patterns.find(item => item.id === id);
     return sum + (pattern?.length || 64) / p.linesPerBeat * 60 / p.bpm;
   }, 0);
   const minutes = seconds => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
@@ -122,7 +122,7 @@
     if (isFrozen(index)) return unfreeze(index);
     const name = trackName(index), hardware = hardwareTrack(index);
     const songTime = songSeconds(p), patterns = patternCount(index), usedPatterns = parseInt(patterns, 10) || 0;
-    const patternTime = p.patterns.reduce((sum, item) => sum + 3 * (item.length || 64) / p.linesPerBeat * 60 / p.bpm, 0)
+    const patternTime = p.patterns.reduce((sum, item) => sum + 3 * item.length / p.linesPerBeat * 60 / p.bpm, 0)
         * (usedPatterns / Math.max(1, p.patterns.length));
     a.openModal(`Freeze ${name}`, `<div class="stack st-freeze-dialog">
       <p class="st-freeze-copy">Prints this track’s song performance and each pattern it plays, with its inserts, so it keeps sounding in Song `

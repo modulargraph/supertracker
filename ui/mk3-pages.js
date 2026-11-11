@@ -240,7 +240,7 @@
         buttons: mk.withLevels([button('Mixer', () => mk.setScreen('mixer')), button('Plug-in', () => mk.setScreen('plugin')),
             button('Sends FX', () => perform('sendEffects')), null, null]),
         knobs: [mk.masterKnob(), mk.swingKnob(), mk.tempoKnob(), null, null, null, null, null],
-        data: { kind: 'levels', level, levels: mk.levelList(), title: 'Master', subtitle: 'Master output', color: C_MASTER, lines: [`Volume ${fmt.db(burstValue('master', q => Number(q.masterVolume ?? .7)))}`,
+        data: { kind: 'levels', level, levels: mk.levelList(), title: 'Master', subtitle: 'Master output', color: C_MASTER, lines: [`Volume ${fmt.db(burstValue('master', q => Number(q.masterVolume)))}`,
             `Swing ${fmt.pct(Number(p.swing || 0))} · ${Number(p.bpm).toFixed(1)} BPM`, 'Master inserts: PLUG-IN · Master'] } };
     }
     return { id: 'channel', title: 'Channel', pages: ['Levels'], page: 0, main: { turn(delta) { mk.mixKnob(track, 'volume')?.turn(delta / 40); }, push() {}, tilt(direction) { if (direction === 'left'

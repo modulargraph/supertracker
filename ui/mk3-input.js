@@ -27,7 +27,7 @@
       const inst = draft.instruments[index];
       if (inst) inst.cutoff = clamp((inst.cutoff || 18000) * Math.pow(2, (value - 1) * 7), 20, 20000);
     }
-    if (mk.stripPreview.kind === 'fade') draft.masterVolume = (draft.masterVolume ?? .7) * value;
+    if (mk.stripPreview.kind === 'fade') draft.masterVolume = draft.masterVolume * value;
     if (mk.stripPreview.kind === 'echo') for (const t of draft.tracks) t.delaySend = Math.max(t.delaySend || 0, value);
     return draft;
   }

@@ -179,7 +179,7 @@
             { ...style, shift: button(name, toggle(entry, 'mute'), style) }); }),
       knobs: Array.from({ length: 8 }, (_, i) => knob(bank[i], i)),
       data: { kind: 'mixer', param: kind, strips: bank.map(strip), master: burstValue('master',
-          q => Number(q.masterVolume ?? .7)), bank: M.bank } };
+          q => Number(q.masterVolume)), bank: M.bank } };
   }
 
   /* Browser columns: every list filter (Source, Expansion, Product, Bank, Type, …) and the results. The left
