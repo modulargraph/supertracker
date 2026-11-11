@@ -333,7 +333,7 @@ fn malformed_packages() {
         bad
     };
     reject_manifest(with("format", json!("some-other-format")), "foreign manifest format");
-    for version in [json!(0), json!(1), json!(2), json!(4), json!(-1), json!(1.5), json!(true), json!("3"), Value::Null] {
+    for version in [json!(0), json!(1), json!(kit::FORMAT_VERSION - 1), json!(kit::FORMAT_VERSION + 1), json!(-1), json!(1.5), json!(true), json!(kit::FORMAT_VERSION.to_string()), Value::Null] {
         temp.write("Invalid.stkit/kit.json", with("version", version.clone()).to_string().as_bytes());
         assert_eq!(kit::read(&package).unwrap_err().to_string(), "This kit was made by a different version of SuperTracker and cannot be opened by this one.", "version {version}");
     }
