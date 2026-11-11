@@ -10,7 +10,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 fn demo() -> Value {
-    serde_json::from_str(include_str!("fixtures/demo_project.json")).expect("the demo project fixture")
+    serde_json::from_str(include_str!("../../st-project/tests/fixtures/demo.json")).expect("the demo project fixture")
 }
 
 fn play_song(engine: &AudioEngine) {
@@ -88,7 +88,7 @@ fn editing_a_note_re_sends_one_pattern_and_keeps_the_mixer() {
     project["tracks"][0]["volume"] = json!(0.5);
     let mix = engine.publish(&parse(&project)).unwrap();
     assert_eq!((mix.patterns_sent, mix.patterns_reused), (0, 2));
-    project["tracks"].as_array_mut().unwrap().push(json!({ "id": 8, "name": "New", "instrument": 0 }));
+    project["tracks"].as_array_mut().unwrap().push(json!({ "id": 8, "name": "New", "routingID": "new", "instrument": 0 }));
     for pattern in project["patterns"].as_array_mut().unwrap() {
         pattern["steps"].as_array_mut().unwrap().push(json!(vec![Value::Null; 64]));
     }

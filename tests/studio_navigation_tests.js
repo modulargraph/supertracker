@@ -126,7 +126,7 @@ test('persistent mixer identity follows Pan/send arrows and Master without alter
 
 test('focus-only mixer identity distinguishes routed groups, returns and Master', () => {
   const h = harness(), workspace = h.nodes.get('mixer-workspace'), label = h.nodes.get('mixer-current-channel');
-  h.state.project.routing = {mixModel:'standard',buses:[{id:'drums',name:'Drums',type:'group'},{id:'space',name:'Space',type:'return'}]};
+  h.state.project.routing = {buses:[{id:'drums',name:'Drums',type:'group'},{id:'space',name:'Space',type:'return'}]};
   const before = copy(h.state.project), track = h.state.track;
   for (const [owner, text] of [['bus:drums','Group · Drums'],['bus:space','Return · Space'],['master','Master']]) {
     const control = h.node('control-' + owner), strip = h.node('strip-' + owner, {mixerChannel:owner,mixerOwner:owner}); control.channel = strip;
@@ -245,7 +245,7 @@ test('deleting an automation lane selects and focuses a surviving lane at its ne
 
 test('deleting a lane selects surviving bus or Master owners without assigning them as note tracks', () => {
   for (const [removedOwner, remainingOwner] of [['track:0', 'bus:group'], ['bus:group', 'bus:return'], ['bus:return', 'master'], ['master', 'track:2']]) {
-    const h = harness(); h.state.project.routing = { version: 1, mixModel: 'standard', buses: [{ id: 'group', type: 'group', name: 'Drums', volume: 1, pan: 0 }, { id: 'return', type: 'return', name: 'Reverb', volume: 1, pan: 0 }], outputs: {}, sends: [], sidechains: [] };
+    const h = harness(); h.state.project.routing = { buses: [{ id: 'group', type: 'group', name: 'Drums', volume: 1, pan: 0 }, { id: 'return', type: 'return', name: 'Reverb', volume: 1, pan: 0 }], outputs: {}, sends: [], sidechains: [] };
     h.state.project.patterns[0].automation = [removedOwner, remainingOwner].map(owner => ({ owner, target: 'volume', name: owner, points: [{ row: 0, value: .5 }] }));
     h.state.track = 1; h.state.instrument = 1; h.studio.selectOwner(removedOwner);
     const previousTrack = h.state.track, previousInstrument = h.state.instrument, beforeTracks = copy(h.state.project.tracks); mountAutomation(h);
@@ -258,7 +258,7 @@ test('deleting a lane selects surviving bus or Master owners without assigning t
 });
 
 test('deleting the last bus lane retains its owner and note destination while returning to search', () => {
-  const h = harness(); h.state.project.routing = { version: 1, mixModel: 'standard', buses: [{ id: 'group', type: 'group', name: 'Drums', volume: 1, pan: 0 }], sends: [] };
+  const h = harness(); h.state.project.routing = { buses: [{ id: 'group', type: 'group', name: 'Drums', volume: 1, pan: 0 }], sends: [] };
   h.state.project.patterns[0].automation = [{ owner: 'bus:group', target: 'volume', points: [{ row: 0, value: .5 }] }]; h.state.track = 2; h.state.instrument = 2; h.studio.selectOwner('bus:group'); mountAutomation(h);
   h.nodes.get('automation-delete-lane').fire('click');
   assert.equal(h.document.activeElement.id, 'automation-search'); assert.equal(h.studio.selectedOwner(), 'bus:group'); assert.equal(h.state.track, 2); assert.equal(h.state.instrument, 2); assert.equal(h.changes.length, 1);

@@ -17,7 +17,7 @@ function project(count = 6) {
       automation: tracks.map((_, i) => ({ id: `a${i}`, track: i, target: 'volume', points: [] })) }],
     audioClips: [{ id: 'c', track: 4 }],
     audioPlugins: [{ instanceID: 'p', owner: 'track:r5', track: 5, kind: 'effect', slot: 0 }],
-    routing: { version: 1, mixModel: 'standard', buses: [], outputs, sends: [], sidechains: [] }
+    routing: { buses: [], outputs, sends: [], sidechains: [] }
   };
 }
 const names = p => p.tracks.map(t => t.name).join(' ');

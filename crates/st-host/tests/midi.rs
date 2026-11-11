@@ -38,7 +38,8 @@ fn project(bpm: f64) -> Value {
             { "id": 1, "type": "sample", "name": "Sine", "samplePath": "builtin:wavetables/Basic/Sine.wav", "mode": "forward", "volume": 1, "attack": 0, "decay": 0.01, "sustain": 1, "release": 0.05 }
         ],
         "patterns": [{ "id": 0, "length": 16, "steps": [rows, vec![Value::Null; 16]], "automation": [] }],
-        "sequence": [0], "loopSong": true
+        "sequence": [0], "loopSong": true,
+        "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] }
     })
 }
 

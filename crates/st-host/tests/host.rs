@@ -70,10 +70,10 @@ impl Fixture {
 fn project(name: &str) -> Value {
     json!({
         "version": 1, "name": name, "bpm": 120,
-        "tracks": [{"name": "Track 01", "instrument": 0}],
+        "tracks": [{"name": "Track 01", "routingID": "track-1", "instrument": 0}],
         "instruments": [{"name": "Instrument 01", "type": "sample", "samplePath": ""}],
         "patterns": [{"id": 0, "length": 64, "steps": [[{"note": 60, "instrument": 0}]]}],
-        "sequence": [0], "audioPlugins": []
+        "sequence": [0], "audioPlugins": [], "routing": {"buses": [], "outputs": {}, "sends": [], "sidechains": []}
     })
 }
 
@@ -472,15 +472,20 @@ fn a_project_in_a_retired_layout_is_refused_with_st_projects_own_words() {
 }
 
 #[test]
-fn a_project_without_routing_is_accepted_like_one_with_standard_routing() {
+fn a_project_without_its_routing_table_or_a_track_identity_is_refused() {
     let fixture = Fixture::new();
     let mut plain = project("Plain");
     plain.as_object_mut().unwrap().remove("routing");
-    assert_eq!(fixture.host.request("engine.project", json!({"project": plain})), Ok(json!({"audio": false})));
-    let mut standard = project("Standard");
-    standard["tracks"][0]["routingID"] = json!("track-1");
-    standard["routing"] = json!({"version": 1, "mixModel": "standard", "buses": [], "outputs": {}, "sends": [], "sidechains": []});
-    assert_eq!(fixture.host.request("engine.project", json!({"project": standard})), Ok(json!({"audio": false})));
+    assert_eq!(fixture.host.request("engine.project", json!({"project": plain})), Err("The project has no routing table.".to_string()));
+    let mut anonymous = project("Anonymous");
+    anonymous["tracks"][0].as_object_mut().unwrap().remove("routingID");
+    assert_eq!(fixture.host.request("engine.project", json!({"project": anonymous})), Err("Track 1 routingID is missing.".to_string()));
+    assert!(fixture.services.session.project().is_none(), "a refused project does not become the session");
+    // A routing table from a version that wrote its own version and mix model is a table with two unknown keys.
+    let mut tagged = project("Tagged");
+    tagged["routing"]["version"] = json!(1);
+    tagged["routing"]["mixModel"] = json!("standard");
+    assert_eq!(fixture.host.request("engine.project", json!({"project": tagged})), Ok(json!({"audio": false})));
 }
 
 #[test]

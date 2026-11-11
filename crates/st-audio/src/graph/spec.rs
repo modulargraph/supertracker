@@ -3,10 +3,10 @@
 //!
 //! [`GraphSpec::from_project`] is the only reader of the project for the graph. Two specs that
 //! compare equal render the same, so a publication that changes no mixer value (a note edit)
-//! compiles nothing. One mix model exists, the standard one: every track, group bus, return bus
-//! and the master is a strip; a project without `routing` is the same thing with no buses.
+//! compiles nothing. Every track, group bus, return bus and the master is a strip; a routing
+//! table without buses is tracks into the master.
 
-use st_project::model::{AutomationTarget, BusKind, InstrumentKind, Owner, PluginKind, Project, StepEffectKind, Tap};
+use st_project::model::{AutomationTarget, BusKind, InstrumentKind, Owner, PluginKind, Project, Routing, StepEffectKind, Tap};
 use std::collections::HashMap;
 
 /// Insert slots per channel (`st_project::model::plugin::INSERT_SLOTS`).
@@ -176,9 +176,9 @@ pub struct GraphSpec {
     chain_owners: HashMap<String, String>,
 }
 
-/// The owner name of track `index`.
+/// The owner name of track `index`, `track:<routingID>`; empty when the project has no such track.
 pub fn track_owner(project: &Project, index: usize) -> String {
-    project.track_list().get(index).and_then(|track| track.owner()).unwrap_or_else(|| format!("track:#{index}"))
+    project.track_list().get(index).and_then(|track| track.owner()).unwrap_or_default()
 }
 
 fn clamp(value: f64, low: f64, high: f64, fallback: f64) -> f32 {
@@ -188,13 +188,22 @@ fn clamp(value: f64, low: f64, high: f64, fallback: f64) -> f32 {
 impl GraphSpec {
     /// An empty mixer: just the master.
     pub fn empty() -> GraphSpec {
-        GraphSpec::from_project(&Project::default())
+        GraphSpec::build(&Project::default(), &Routing::empty())
     }
 
-    pub fn from_project(project: &Project) -> GraphSpec {
+    /// The mixer `project` describes. A project without its routing table, or with a track
+    /// that has no `routingID`, describes none (`st_project::validate` refuses both).
+    pub fn from_project(project: &Project) -> Result<GraphSpec, String> {
+        let Some(routing) = project.routing.as_ref() else { return Err("The project has no routing table.".to_string()) };
+        if let Some(index) = project.track_list().iter().position(|track| track.owner().is_none()) {
+            return Err(format!("Track {} has no routingID.", index + 1));
+        }
+        Ok(GraphSpec::build(project, routing))
+    }
+
+    fn build(project: &Project, routing: &Routing) -> GraphSpec {
         let tracks = project.track_list();
-        let routing = project.routing.as_ref();
-        let outputs = routing.and_then(|routing| routing.outputs.as_ref());
+        let outputs = routing.outputs.as_ref();
         let output_of = |owner: &str| -> Option<String> {
             match outputs.and_then(|outputs| outputs.get(owner)) {
                 Some(Some(destination)) => Some(destination.clone()),
@@ -284,7 +293,7 @@ impl GraphSpec {
                 id,
             });
         }
-        for bus in routing.and_then(|routing| routing.buses.as_deref()).unwrap_or(&[]) {
+        for bus in routing.buses.as_deref().unwrap_or(&[]) {
             let Some(bus_id) = bus.id.as_deref().filter(|id| !id.is_empty()) else { continue };
             let id = format!("bus:{bus_id}");
             strips.push(StripSpec {
@@ -318,7 +327,7 @@ impl GraphSpec {
         });
 
         let mut sends = Vec::new();
-        for send in routing.and_then(|routing| routing.sends.as_deref()).unwrap_or(&[]) {
+        for send in routing.sends.as_deref().unwrap_or(&[]) {
             let (Some(id), Some(source), Some(destination)) = (send.id.clone(), send.source.clone(), send.destination.clone()) else { continue };
             sends.push(RouteSpec {
                 id,
@@ -330,7 +339,7 @@ impl GraphSpec {
             });
         }
         let mut sidechains = Vec::new();
-        for sidechain in routing.and_then(|routing| routing.sidechains.as_deref()).unwrap_or(&[]) {
+        for sidechain in routing.sidechains.as_deref().unwrap_or(&[]) {
             let (Some(id), Some(source)) = (sidechain.id.clone(), sidechain.source.clone()) else { continue };
             let Some(instance) = sidechain.destination.as_ref().and_then(|destination| destination.instance_id.clone()) else { continue };
             sidechains.push(RouteSpec {
@@ -500,7 +509,7 @@ mod tests {
     use serde_json::{json, Value};
 
     fn spec(project: Value) -> GraphSpec {
-        GraphSpec::from_project(&Project::from_value(project).expect("a project"))
+        GraphSpec::from_project(&Project::from_value(project).expect("a project")).expect("a mixer")
     }
 
     fn effect(owner: &str, slot: i64, instance: &str) -> Value {
@@ -514,7 +523,7 @@ mod tests {
         let spec = spec(json!({
             "tracks": [{ "routingID": "a", "instrument": 1 }, { "routingID": "b", "instrument": 1 }, { "routingID": "c", "instrument": 0 }],
             "instruments": [{}, {}],
-            "routing": { "version": 1, "mixModel": "standard" },
+            "routing": {},
             "audioPlugins": [
                 effect("track:a", 3, "own3"), effect("track:a", 0, "own0"), effect("instrument:1", 5, "chain5"), effect("instrument:1", 1, "chain1"),
                 effect("master", 0, "m"), effect("track:a", 16, "beyond"), { "owner": "track:a", "kind": "instrument", "slot": 0, "instanceID": "synth" },
@@ -542,7 +551,6 @@ mod tests {
             "masterVolume": 0.75,
             "tracks": [{ "routingID": "a", "name": "Drums", "volume": 0.8, "pan": -0.25, "solo": true, "delaySend": 0.3 }, { "routingID": "b", "volume": 1.2 }],
             "routing": {
-                "version": 1, "mixModel": "standard",
                 "buses": [{ "id": "drums", "name": "Drums", "type": "group", "volume": 1.1, "pan": 0.2 }, { "id": "space", "name": "Space", "type": "return" }],
                 "outputs": { "track:a": "bus:drums", "track:b": null },
                 "sends": [{ "id": "s", "source": "track:a", "tap": "preFader", "destination": "bus:space", "gain": 0.5 }, { "id": "off", "source": "track:b", "tap": "postFader", "destination": "bus:space", "enabled": false }],
@@ -569,13 +577,20 @@ mod tests {
     }
 
     #[test]
-    fn a_project_without_routing_is_the_same_mixer_without_buses() {
-        let plain = spec(json!({ "tracks": [{ "name": "One" }, { "name": "Two", "mute": true }] }));
+    fn a_routing_table_without_buses_is_tracks_into_the_master() {
+        let plain = spec(json!({ "tracks": [{ "routingID": "one", "name": "One" }, { "routingID": "two", "name": "Two", "mute": true }], "routing": {} }));
         let ids: Vec<&str> = plain.strips.iter().map(|strip| strip.id.as_str()).collect();
-        assert_eq!(ids, ["track:#0", "track:#1", "master"]);
+        assert_eq!(ids, ["track:one", "track:two", "master"]);
         assert!(plain.strips[..2].iter().all(|strip| strip.output.as_deref() == Some("master")));
         assert_eq!((plain.strips[0].volume, plain.strips[1].mute, plain.strip("master").unwrap().volume), (0.8, true, 0.7));
         assert_eq!(GraphSpec::empty().strips.len(), 1);
+    }
+
+    #[test]
+    fn a_project_without_its_routing_table_or_a_track_identity_describes_no_mixer() {
+        let project = |value: Value| GraphSpec::from_project(&Project::from_value(value).expect("a project"));
+        assert_eq!(project(json!({ "tracks": [{ "routingID": "a" }] })).unwrap_err(), "The project has no routing table.");
+        assert_eq!(project(json!({ "tracks": [{ "routingID": "a" }, { "name": "Two" }], "routing": {} })).unwrap_err(), "Track 2 has no routingID.");
     }
 
     #[test]
@@ -583,7 +598,7 @@ mod tests {
         let project = |lanes: Value| {
             json!({
                 "tracks": [{ "routingID": "a" }],
-                "routing": { "version": 1, "mixModel": "standard", "buses": [{ "id": "g", "name": "G", "type": "group" }], "sends": [{ "id": "s", "source": "track:a", "tap": "postFader", "destination": "bus:g" }] },
+                "routing": { "buses": [{ "id": "g", "name": "G", "type": "group" }], "sends": [{ "id": "s", "source": "track:a", "tap": "postFader", "destination": "bus:g" }] },
                 "audioPlugins": [effect("track:a", 0, "fx")],
                 "patterns": [{ "length": 16, "steps": [[{ "fx1": { "type": "plugin", "instanceID": "fx", "address": "3", "value": 0.5 } }]], "automation": lanes }],
             })

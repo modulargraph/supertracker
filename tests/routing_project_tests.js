@@ -55,7 +55,7 @@ function harness() {
   web.load(context, 'app.js');
   const ST = window.ST;
   ST.state.project = ST.normalize(ST.demoProject());
-  ST.state.project.routing = { version: 1, mixModel: 'standard', buses: [{ id: 'group', name: 'Drums' }], outputs: {}, sends: [{ id: 'echo', source: 'bus:group', gain: .35 }], sidechains: [] };
+  ST.state.project.routing = { buses: [{ id: 'group', name: 'Drums' }], outputs: {}, sends: [{ id: 'echo', source: 'bus:group', gain: .35 }], sidechains: [] };
   window.STStudio = { target: (owner, target) => ({ value: target === 'send:echo' ? .35 : .8, available: true }), renderAutomation: () => '', bindAutomation() {}, event() {} };
   return { ST, window, calls, timers };
 }

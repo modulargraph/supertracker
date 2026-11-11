@@ -14,19 +14,17 @@
    "routingID": "fx0001"
   }
  ],
- "routing": {
-  "version": 1,
-  "mixModel": "standard",
-  "buses": [],
-  "outputs": {},
-  "sends": [],
-  "sidechains": []
- },
  "version": 1,
  "linesPerBeat": 4,
  "timeSignature": {
   "numerator": 4,
   "denominator": 4
+ },
+ "routing": {
+  "buses": [],
+  "outputs": {},
+  "sends": [],
+  "sidechains": []
  },
  "metronome": false,
  "metronomeVolume": 0.4,

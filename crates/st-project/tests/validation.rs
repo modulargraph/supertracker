@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use st_project::validate::*;
 use st_project::Project;
 
-/// A valid project on the standard mixer: two tracks, a group bus and a return bus.
+/// A valid project: two tracks, a group bus and a return bus.
 fn base() -> Value {
     json!({
         "version": 1, "name": "Valid", "bpm": 120, "masterVolume": 0.7,
@@ -17,8 +17,7 @@ fn base() -> Value {
         "instruments": [{ "id": 0, "type": "sample" }],
         "patterns": [{ "id": 0, "length": 16, "steps": [[], []], "automation": [] }],
         "sequence": [0],
-        "routing": { "version": 1, "mixModel": "standard",
-            "buses": [{ "id": "g", "name": "Group", "type": "group" }, { "id": "r", "name": "Return", "type": "return" }],
+        "routing": { "buses": [{ "id": "g", "name": "Group", "type": "group" }, { "id": "r", "name": "Return", "type": "return" }],
             "outputs": { "track:t0": "bus:g", "track:t1": null }, "sends": [], "sidechains": [] },
         "audioPlugins": []
     })
@@ -50,7 +49,6 @@ fn insert(owner: &str, slot: i64) -> Value {
 #[test]
 fn the_base_project_is_valid() {
     accepted(|_| {});
-    // The minimal project of the Swift store tests: no routing at all (the flat mixer).
     common::minimal(None).validate().unwrap();
 }
 
@@ -135,7 +133,7 @@ fn numbers_set_in_code_must_be_finite() {
 
 #[test]
 fn routing_identities_and_mix_ranges() {
-    assert_eq!(rejected(|p| { p["tracks"][1].as_object_mut().unwrap().remove("routingID"); }), "Track 2 has no stable routingID.");
+    assert_eq!(rejected(|p| { p["tracks"][1].as_object_mut().unwrap().remove("routingID"); }), "Track 2 routingID is missing.");
     assert_eq!(rejected(|p| p["tracks"][1]["routingID"] = json!("t0")), "Duplicate track routingID: t0.");
     assert_eq!(rejected(|p| p["tracks"][1]["routingID"] = json!("has space")), "Track 2 routingID must contain 1–128 letters, digits, hyphens, underscores, or periods.");
     assert_eq!(rejected(|p| p["tracks"][1]["routingID"] = json!(7)), "Track 2 routingID must be text.");
@@ -144,15 +142,13 @@ fn routing_identities_and_mix_ranges() {
     assert_eq!(rejected(|p| p["tracks"][0]["pan"] = json!(-1.01)), "Track 1 pan must be between -1 and 1.");
     assert_eq!(rejected(|p| p["tracks"][0]["mute"] = json!(1)), "Track 1 mute must be true or false.");
     assert_eq!(rejected(|p| p["masterVolume"] = json!(3)), "Master volume must be between 0 and 2.");
-    let version = "Routing requires version 1 and the standard mixModel.";
-    assert_eq!(rejected(|p| p["routing"]["version"] = json!(2)), version);
-    assert_eq!(rejected(|p| p["routing"]["mixModel"] = json!("future")), version);
-    assert_eq!(rejected(|p| p["routing"] = json!("on")), version);
-    // Without `routing` (the flat mixer) tracks need no identity.
-    accepted(|p| {
-        p.as_object_mut().unwrap().remove("routing");
-        p["tracks"] = json!([{}, {}]);
-    });
+    // Every project has its routing table; an empty one is tracks into the master.
+    assert_eq!(rejected(|p| { p.as_object_mut().unwrap().remove("routing"); }), "The project has no routing table.");
+    assert_eq!(rejected(|p| p["routing"] = json!("on")), "The project's routing must be an object.");
+    accepted(|p| p["routing"] = json!({}));
+    // The routing table has no version or mix model of its own: like any key the format does
+    // not know, they are kept and mean nothing.
+    accepted(|p| { p["routing"]["version"] = json!(2); p["routing"]["mixModel"] = json!("future"); });
 }
 
 #[test]
@@ -190,7 +186,7 @@ fn buses_outputs_sends_and_sidechains() {
 }
 
 #[test]
-fn feedback_and_the_legacy_mix_model() {
+fn feedback() {
     let send = |id: &str, source: &str, destination: &str, enabled: bool| json!({ "id": id, "source": source, "tap": "preFader", "destination": destination, "enabled": enabled });
     let message = rejected(|p| p["routing"]["outputs"] = json!({ "bus:g": "bus:r", "bus:r": "bus:g" }));
     assert_eq!(message, "Routing feedback is unsupported. Cycle includes: bus:g, bus:r.");
@@ -201,9 +197,6 @@ fn feedback_and_the_legacy_mix_model() {
     assert!(rejected(|p| { p["routing"]["outputs"]["bus:r"] = json!("bus:g"); p["routing"]["sends"] = json!([send("s", "bus:g", "bus:r", true)]); }).contains("Cycle"));
     // A disabled send is not a connection.
     accepted(|p| { p["routing"]["outputs"]["bus:r"] = json!("bus:g"); p["routing"]["sends"] = json!([send("s", "bus:g", "bus:r", false)]); });
-
-    // There is one mix model: the retired "legacy" mix is refused like any unknown one.
-    assert_eq!(rejected(|p| p["routing"]["mixModel"] = json!("legacy")), "Routing requires version 1 and the standard mixModel.");
 }
 
 #[test]

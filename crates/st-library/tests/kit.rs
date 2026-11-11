@@ -59,7 +59,6 @@ fn session(sample: &str, zone: &str) -> Value {
             { "instanceID": "p-return", "owner": "bus:space", "kind": "effect", "slot": 0, "component": "stfx:plate" }
         ],
         "routing": {
-            "version": 1, "mixModel": "standard",
             "buses": [ { "id": "kitbus", "name": "Fixture kit", "type": "group", "groupID": "g1", "volume": 0.83, "pan": -0.1 }, { "id": "space", "name": "Space", "type": "return" }, { "id": "other", "name": "Other" } ],
             "outputs": { "track:kick": "bus:kitbus", "track:synth": "track:lead", "bus:kitbus": "master", "track:lead": "bus:other" },
             "sends": [ { "id": "s1", "source": "track:kick", "destination": "bus:space", "level": 0.4 }, { "id": "s2", "source": "track:empty", "destination": "track:lead", "level": 0.2 },

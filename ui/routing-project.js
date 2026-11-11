@@ -14,8 +14,8 @@
       while (occupied.has(id)) id = `${base}-${suffix++}`;
       track.routingID = id; occupied.add(id);
     }
-    // Explicit duplicate identities and unknown routing versions remain intact.
-    // The native validator must explain them rather than silently rerouting audio.
+    // Explicit duplicate identities remain intact: the host's validation
+    // explains them rather than the page silently rerouting audio.
     return project;
   }
 

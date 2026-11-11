@@ -560,7 +560,7 @@ pub fn import(bytes: &[u8], name: &str, source: &str) -> Result<Project> {
     let pattern_length: usize = if highest_row < 16384 { 64 } else { 256 };
     let pattern_count = ((highest_row + pattern_length) / pattern_length).clamp(1, 256);
     let colors = ["#76d7cb", "#e8b86f", "#ab99ed", "#ee8997"];
-    let mut routing = Routing::standard();
+    let mut routing = Routing::empty();
     let tracks: Vec<Track> = lanes
         .iter()
         .enumerate()

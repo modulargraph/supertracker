@@ -634,7 +634,7 @@ pub fn freeze_track(context: &RenderContext<'_>, request: &FreezeRequest, direct
         return Err(reason);
     }
     let track = &canonical["tracks"][index];
-    let owner = owner_of(track).unwrap_or_else(|| format!("track:#{index}"));
+    let owner = owner_of(track).ok_or_else(|| format!("Track {} has no routingID.", index + 1))?;
     let name = track["name"].as_str().map(str::to_string).unwrap_or_else(|| format!("Track {}", index + 1));
     let id = format!("{}{}", st_samples::paths::unique_suffix(), st_samples::paths::unique_suffix()).to_lowercase();
     std::fs::create_dir_all(directory).map_err(|error| format!("The folder for frozen audio could not be created: {error}"))?;

@@ -37,7 +37,7 @@ fn project(sample: &str) -> Value {
         "instruments": [{ "id": 0, "type": "sample", "samplePath": sample, "mode": "oneshot", "volume": 1, "attack": 0, "sustain": 1, "release": 0.05 }],
         "patterns": [{ "id": 0, "length": 16, "steps": [rows], "automation": [] }],
         "sequence": [0], "loopSong": true,
-        "routing": { "version": 1, "mixModel": "standard", "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
+        "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
         "audioPlugins": [],
     })
 }

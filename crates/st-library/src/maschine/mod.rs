@@ -599,7 +599,7 @@ impl ImportedGroup {
             "version": 1, "name": self.name, "tracks": tracks, "instruments": instruments,
             "groups": [{ "id": group_id, "name": self.name, "collapsed": false, "mixerCollapsed": false, "busID": bus_id, "importNotes": self.warnings }],
             "audioPlugins": plugins,
-            "routing": { "version": 1, "mixModel": "standard", "buses": [{ "id": bus_id, "name": self.name, "type": "group", "groupID": group_id, "volume": 1.0, "pan": 0.0, "mute": false, "solo": false }],
+            "routing": { "buses": [{ "id": bus_id, "name": self.name, "type": "group", "groupID": group_id, "volume": 1.0, "pan": 0.0, "mute": false, "solo": false }],
                          "outputs": outputs, "sends": [], "sidechains": [] },
         })
     }

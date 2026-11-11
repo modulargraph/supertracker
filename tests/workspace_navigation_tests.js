@@ -94,7 +94,7 @@ function harness(){
 }
 {
  for(const shiftKey of [false,true]){
-  const h=harness();h.state.view='mixer';h.state.track=2;h.state.project.patterns[0].automation=[];h.state.project.routing={version:1,mixModel:'standard',buses:[{id:'bus',name:'Group'}]};
+  const h=harness();h.state.view='mixer';h.state.track=2;h.state.project.patterns[0].automation=[];h.state.project.routing={buses:[{id:'bus',name:'Group'}]};
   h.window.STStudio={target:()=>({available:true,value:.6}),renderAutomation:()=>'',bindAutomation(){}};
   const input=h.node('bus-parameter',{automate:'volume',owner:'bus:bus',track:'0',name:'Bus level'},'INPUT');input.type='range';input.value='.8';
   h.key(input,shiftKey?'Å':'å',{code:'KeyA',altKey:true,shiftKey});const lane=h.state.project.patterns[0].automation[0];

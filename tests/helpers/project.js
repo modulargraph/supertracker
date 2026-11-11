@@ -2,7 +2,7 @@
 // Hand-written project fixtures.
 
 // The empty routing table every project has.
-const routingTable = (extra = {}) => ({ version: 1, mixModel: 'standard', buses: [], outputs: {}, sends: [], sidechains: [], ...extra });
+const routingTable = (extra = {}) => ({ buses: [], outputs: {}, sends: [], sidechains: [], ...extra });
 
 /* Gives a hand-written project the shape every project in the page has (normalize in
    ui/app-project-model.js, descriptors as the host answers them): a routing table, a routing

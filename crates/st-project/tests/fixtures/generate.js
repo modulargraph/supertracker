@@ -39,7 +39,7 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
       automation: tracks.map((_, i) => ({ id: `a${i}`, track: i, target: 'volume', points: [] })) }],
     audioClips: [{ id: 'c', track: 4, path: '/Audio/c.wav', startBeat: 0, durationBeats: 4 }],
     audioPlugins: [{ instanceID: 'p', owner: 'track:r5', track: 5, kind: 'effect', slot: 0, component: 'builtin:eq' }],
-    routing: { version: 1, mixModel: 'standard', buses: [], outputs: Object.fromEntries(tracks.map(t => [`track:${t.routingID}`, 'master'])), sends: [], sidechains: [] }
+    routing: { buses: [], outputs: Object.fromEntries(tracks.map(t => [`track:${t.routingID}`, 'master'])), sends: [], sidechains: [] }
   };
   G.create(p, [1, 3, 4], { makeID: uid, name: 'Drums' });
   write('groups.json', app.normalize(p));
@@ -50,7 +50,7 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
 {
   const p = clone(demo);
   p.name = 'Everything';
-  p.routing = { version: 1, mixModel: 'standard', buses: [], outputs: {}, sends: [], sidechains: [] };
+  p.routing = { buses: [], outputs: {}, sends: [], sidechains: [] };
   for (const track of p.tracks) p.routing.outputs[`track:${track.routingID}`] = 'master';
   G.create(p, [3, 4, 5, 6], { makeID: uid, name: 'Kit', libraryPath: '/Library/Kits/Night.stkit', importNotes: ['Pad 9 was empty.'] });
   p.tracks[3].pad = 0; p.tracks[3].padNote = 36; p.tracks[5].chokeGroup = 1; p.tracks[6].chokeGroup = 1; p.tracks[4].voiceMode = 'mono';

@@ -29,7 +29,7 @@ fn start(folder: TempDir) -> Fixture {
 }
 
 fn demo() -> Value {
-    serde_json::from_str(include_str!("../../st-audio/tests/fixtures/demo_project.json")).unwrap()
+    serde_json::from_str(include_str!("../../st-project/tests/fixtures/demo.json")).unwrap()
 }
 
 fn status_where(host: &TestHost, what: &str, wanted: impl Fn(&Value) -> bool) -> Value {

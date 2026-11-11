@@ -60,7 +60,7 @@ pub fn project(tracks: usize) -> Value {
         "patterns": [{ "id": 0, "length": 16, "steps": steps, "automation": [] }],
         "sequence": [0], "loopSong": false,
         "delay": { "mix": 1 }, "reverb": { "mix": 1 },
-        "routing": { "version": 1, "mixModel": "standard", "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
+        "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
         "audioPlugins": [],
     })
 }

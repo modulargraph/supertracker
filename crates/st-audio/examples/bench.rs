@@ -40,7 +40,7 @@ fn samples() -> Arc<MemorySamples> {
 }
 
 fn demo() -> Value {
-    serde_json::from_str(include_str!("../tests/fixtures/demo_project.json")).expect("the demo fixture")
+    serde_json::from_str(include_str!("../../st-project/tests/fixtures/demo.json")).expect("the demo fixture")
 }
 
 /// The demo's eight parts eight times over, with a full mixer.
@@ -80,7 +80,7 @@ fn sixty_four_tracks() -> Value {
         pattern["steps"] = json!((0..8).flat_map(|_| steps.clone()).collect::<Vec<_>>());
         pattern["automation"] = json!([{ "id": "a", "owner": "bus:g0", "target": "volume", "interpolation": "linear", "points": [{ "row": 0, "value": 0.3 }, { "row": 63, "value": 0.6 }] }]);
     }
-    project["routing"] = json!({ "version": 1, "mixModel": "standard", "buses": buses, "outputs": outputs, "sends": sends, "sidechains": [] });
+    project["routing"] = json!({ "buses": buses, "outputs": outputs, "sends": sends, "sidechains": [] });
     project["audioPlugins"] = json!(plugins);
     project["masterVolume"] = json!(0.5);
     project
@@ -130,7 +130,7 @@ fn main() {
             engine_only["tracks"][index]["reverbSend"] = json!(0);
             outputs.insert(format!("track:{id}"), Value::Null);
         }
-        engine_only["routing"] = json!({ "version": 1, "mixModel": "standard", "buses": [], "outputs": outputs, "sends": [], "sidechains": [] });
+        engine_only["routing"] = json!({ "buses": [], "outputs": outputs, "sends": [], "sidechains": [] });
         engine_only["audioPlugins"] = json!([]);
         for pattern in engine_only["patterns"].as_array_mut().unwrap() {
             pattern["automation"].as_array_mut().unwrap().retain(|lane| lane.get("owner").is_none());

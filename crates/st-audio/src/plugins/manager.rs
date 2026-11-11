@@ -1005,7 +1005,8 @@ impl PluginManager {
     /// Returns the keys whose processor the mixer must make anew: instances created or
     /// replaced, and those whose latency changed with their state.
     pub fn reconcile(&self, project: &Project, sample_rate: f64, max_frames: usize, force_states: bool) -> Vec<String> {
-        let spec = GraphSpec::from_project(project);
+        // A project that describes no mixer is refused by the publication this is part of.
+        let Ok(spec) = GraphSpec::from_project(project) else { return Vec::new() };
         let descriptors = project.plugin_list();
         let mut desired: Vec<Desired<'_>> = Vec::new();
         for strip in &spec.strips {

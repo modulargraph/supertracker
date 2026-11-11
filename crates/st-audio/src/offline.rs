@@ -82,7 +82,7 @@ impl OfflineRender {
     /// carry) before this returns.
     pub fn publish(&mut self, project: &Project) -> Result<ApplyReport, String> {
         let report = self.engine.publish_with(project, true)?;
-        self.spec = GraphSpec::from_project(project);
+        self.spec = GraphSpec::from_project(project)?;
         Ok(report)
     }
 

@@ -20,7 +20,7 @@ function harness({ withMK3 = false } = {}) {
     tracks: [{ routingID: 'keys', name: 'Keys', instrument: 0, volume: .8, pan: 0 }, { routingID: 'pad', name: 'Pad', instrument: 0, volume: .8, pan: 0 },
       { routingID: 'bass', name: 'Bass', instrument: 1, volume: .8, pan: 0 }],
     instruments: [{ id: 0, name: 'Keys sampler', type: 'sample' }, { id: 1, name: 'Bass sampler', type: 'sample' }, { id: 2, name: 'Spare', type: 'sample' }],
-    routing: { version: 1, mixModel: 'standard', buses: [], outputs: { 'track:keys': 'master', 'track:pad': 'master', 'track:bass': 'master' }, sends: [], sidechains: [] },
+    routing: { buses: [], outputs: { 'track:keys': 'master', 'track:pad': 'master', 'track:bass': 'master' }, sends: [], sidechains: [] },
     audioPlugins: [],
     patterns: [{ id: 0, name: 'A', length: 16, automation: [] }]
   };
@@ -151,7 +151,7 @@ test('a kit inserted from a kit file brings each pad instrument chain to its new
     tracks: [{ id: 0, name: 'Kick', routingID: 'kick', instrument: 0, groupID: 'kit', pad: 0 }, { id: 1, name: 'Snare', routingID: 'snare', instrument: 1, groupID: 'kit', pad: 1 }],
     instruments: [{ id: 0, name: 'Kick', type: 'sample' }, { id: 1, name: 'Snare', type: 'sample' }],
     groups: [{ id: 'kit', name: 'Kit', busID: 'kitbus' }],
-    routing: { mixModel: 'standard', buses: [{ id: 'kitbus', name: 'Kit', type: 'group', groupID: 'kit' }], outputs: { 'track:kick': 'bus:kitbus', 'track:snare': 'bus:kitbus', 'bus:kitbus': 'master' }, sends: [], sidechains: [] },
+    routing: { buses: [{ id: 'kitbus', name: 'Kit', type: 'group', groupID: 'kit' }], outputs: { 'track:kick': 'bus:kitbus', 'track:snare': 'bus:kitbus', 'bus:kitbus': 'master' }, sends: [], sidechains: [] },
     audioPlugins: [{ owner: 'instrument:1', kind: 'effect', slot: 0, component: 'stfx:transient', instanceID: 'snare-shaper', state: 's' }],
     patterns: [{ id: 0, length: 16, steps: [[], []], automation: [] }]
   };

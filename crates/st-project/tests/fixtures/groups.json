@@ -519,8 +519,6 @@
   }
  ],
  "routing": {
-  "version": 1,
-  "mixModel": "standard",
   "buses": [
    {
     "id": "fx000d",

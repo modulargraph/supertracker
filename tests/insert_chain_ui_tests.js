@@ -85,7 +85,7 @@ function harness() {
     name: 'Chain', activePattern: 0, masterVolume: .7,
     tracks: [{ routingID: 'keys', name: 'Keys', instrument: 0, volume: .8, pan: 0 }],
     instruments: [{ type: 'synth' }],
-    routing: { mixModel: 'standard', buses: [], outputs: { 'track:keys': 'master' }, sends: [], sidechains: [] },
+    routing: { buses: [], outputs: { 'track:keys': 'master' }, sends: [], sidechains: [] },
     audioPlugins: [],
     patterns: [{ id: 0, name: 'A', length: 16, automation: [] }]
   };

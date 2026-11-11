@@ -6,14 +6,6 @@ use crate::json::{model, string_enum};
 use std::collections::BTreeMap;
 
 string_enum! {
-    /// How the project is mixed. There is one model.
-    pub enum MixModel {
-        /// Every channel is a mixer strip in the host.
-        Standard = "standard",
-    }
-}
-
-string_enum! {
     /// What a bus is for.
     pub enum BusKind {
         /// The bus of a track group.
@@ -117,12 +109,8 @@ model! {
 }
 
 model! {
-    /// `project.routing`.
+    /// `project.routing`. Every project has one; its format is the project's (`project.version`).
     pub struct Routing {
-        /// Routing schema version; only 1 exists.
-        "version" => version: i64,
-        /// The mix model.
-        "mixModel" => mix_model: MixModel,
         /// Group and return buses.
         "buses" => buses: Vec<Bus>,
         /// Output of each track and bus by owner name: another owner, or `null` for disconnected.
@@ -136,11 +124,9 @@ model! {
 }
 
 impl Routing {
-    /// The routing of a new project: version 1, standard mix model, nothing else.
-    pub fn standard() -> Routing {
+    /// The routing of a new project: no buses, sends or sidechains, every track to the master.
+    pub fn empty() -> Routing {
         Routing {
-            version: Some(1),
-            mix_model: Some(MixModel::Standard),
             buses: Some(Vec::new()),
             outputs: Some(BTreeMap::new()),
             sends: Some(Vec::new()),

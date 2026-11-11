@@ -61,7 +61,7 @@ fn read(path: impl AsRef<Path>) -> SamplePcm {
 }
 
 fn demo() -> Value {
-    serde_json::from_str(include_str!("fixtures/demo_project.json")).unwrap()
+    serde_json::from_str(include_str!("../../st-project/tests/fixtures/demo.json")).unwrap()
 }
 
 #[test]
@@ -256,7 +256,7 @@ fn a_pattern_a_track_and_other_formats() {
     let mut bounce = ExportRequest { path: fixture.path("bounce.wav"), mode: "track".to_string(), track: Some(3), tail: Some(0.5), ..ExportRequest::default() };
     bounce.format = serde_json::from_value(json!({ "encoding": "pcm16", "sampleRate": 44_100 })).unwrap();
     let result = fixture.export(&bounce, &none, &|_, _| {}).unwrap();
-    assert_eq!((result["encoding"].clone(), result["sampleRate"].clone(), result["stems"][0]["owner"].clone()), (json!("float32"), json!(48_000), json!("track:#3")));
+    assert_eq!((result["encoding"].clone(), result["sampleRate"].clone(), result["stems"][0]["owner"].clone()), (json!("float32"), json!(48_000), json!(format!("track:{}", demo()["tracks"][3]["routingID"].as_str().unwrap()))));
     assert!(peak(&read(fixture.path("bounce.wav")).left) > 0.01);
     bounce.track = Some(40);
     assert!(fixture.export(&bounce, &none, &|_, _| {}).unwrap_err().contains("bounce track does not exist"));

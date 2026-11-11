@@ -191,7 +191,7 @@ fn running_status_and_zero_velocity() {
     assert!(near(low.gate, 2.0) && near(high.gate, 2.0), "running-status note-offs keep two-row gates");
     assert_eq!((project.bpm(), project.lines_per_beat()), (120.0, 4), "a file without a tempo event uses MIDI's 120 BPM default");
     assert_eq!(project.display_name(), "Fixture");
-    assert!(project.uses_standard_routing() && project.track_list()[0].routing_id.is_some(), "an import is a project in the current layout");
+    assert!(project.routing.is_some() && project.track_list()[0].routing_id.is_some(), "an import is a project in the current layout");
 }
 
 #[test]
@@ -283,7 +283,7 @@ fn controllers_carry_across_patterns() {
 }
 
 /// Gate 0 (no gate): a note lasts until the next note on its track, an OFF/CUT or the song end.
-/// A missing gate is the legacy 0.8 rows.
+/// A missing gate is the default 0.8 rows.
 #[test]
 fn gateless_notes_export() {
     let steps = rows(8, &[
@@ -299,7 +299,7 @@ fn gateless_notes_export() {
     assert_eq!((decoded.division, decoded.format), (usize::from(EXPORT_PPQN), 1));
     assert!(span(&decoded, 60) == [0, 2 * row + row / 2] && span(&decoded, 64) == [0, 2 * row + row / 2], "a gateless chord lasts until the next (microtimed) note starts");
     assert_eq!(span(&decoded, 62), [2 * row + row / 2, 4 * row], "a dropped probability note leaves the gateless note sounding until OFF");
-    assert_eq!(span(&decoded, 65), [5 * row, 5 * row + row * 4 / 5], "a step without a gate keeps the legacy 0.8-row gate");
+    assert_eq!(span(&decoded, 65), [5 * row, 5 * row + row * 4 / 5], "a step without a gate has the default 0.8-row gate");
     assert_eq!(span(&decoded, 67), [6 * row, 8 * row], "a gateless note at the end lasts until the song end");
 }
 

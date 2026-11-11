@@ -44,7 +44,7 @@ function fixture() {
     ],
     audioClips: [{ id: 'clip-source', track: 0, path: '/takes/synth.wav', startBeat: 4, durationBeats: 8, gain: .4, fadeIn: .2, muted: true }, { id: 'clip-other', track: 1, path: '/takes/other.wav' }],
     routing: {
-      version: 1, mixModel: 'standard', buses: [{ id: 'group', type: 'group', name: 'Synths' }, { id: 'return', type: 'return', name: 'Room' }],
+      buses: [{ id: 'group', type: 'group', name: 'Synths' }, { id: 'return', type: 'return', name: 'Room' }],
       outputs: { 'track:source': 'bus:group', 'track:other': 'track:source', 'bus:group': 'master', 'bus:return': 'master' },
       sends: [{ id: 'send-source', source: 'track:source', destination: 'bus:return', tap: 'preFader', gain: .6, enabled: true }, { id: 'send-other', source: 'track:other', destination: 'track:source', gain: .8 }],
       sidechains: [
@@ -138,12 +138,12 @@ test('repeated, missing, invalid and throwing ID generators terminate with globa
 });
 test('inactive descriptors do not become active plug-ins when the authoritative array is empty or absent', () => {
   for (const absent of [false, true]) {
-    const project = fixture(); project.routing = { version: 1, mixModel: 'standard' }; project.audioPlugins = []; if (absent) delete project.audioPlugins;
+    const project = fixture(); project.routing = {}; project.audioPlugins = []; if (absent) delete project.audioPlugins;
     for (const pattern of project.patterns) pattern.automation = pattern.automation.filter(lane => !String(lane.target).startsWith('send:'));
     const result = build(project);
     assert.deepEqual(result.instanceMap, {}); assert.deepEqual(result.project.instruments[3].plugin, project.instruments[0].plugin); assert.deepEqual(result.project.tracks[2].plugins, project.tracks[0].plugins);
     assert.equal(Object.hasOwn(result.project, 'audioPlugins'), !absent); if (!absent) assert.deepEqual(result.project.audioPlugins, []);
-    assert.deepEqual(Object.keys(result.project.routing), ['version', 'mixModel', 'outputs'], 'collections the table left out are not invented');
+    assert.deepEqual(Object.keys(result.project.routing), ['outputs'], 'collections the table left out are not invented');
   }
 });
 test('new identity allocation cannot revive unavailable owner, send or plug-in references', () => {
@@ -180,7 +180,7 @@ test('selection of a later source track appends at the end and follows authorita
 });
 test('lanes addressed by track index stay numeric, inactive metadata is kept and short columns are padded safely', () => {
   const original = { tracks: [{ routingID: 'plain', instrument: 0, name: 'Plain' }], instruments: [{ id: 0, type: 'sample', metadata: { id: 'unused' } }], patterns: [{ id: 0, length: 4, steps: [[{ note: 60, instrument: 0 }]], automation: [{ track: 0, target: 'pan', points: [] }] }],
-    routing: { version: 1, mixModel: 'standard' } };
+    routing: {} };
   const result = build(original), project = result.project;
   assert.equal(project.tracks.length, 2); assert.equal(project.tracks[0].routingID, 'plain'); assert.equal(typeof project.tracks[1].routingID, 'string'); assert.notEqual(project.tracks[1].routingID, 'plain');
   assert.deepEqual(project.patterns[0].steps[1], [{ note: 60, instrument: 1 }, null, null, null]); assert.equal(project.patterns[0].steps[0].length, 1);
@@ -211,7 +211,7 @@ test('exact capacities are accepted when all copied content fits', () => {
 test('malformed sources, unsupported routing and ambiguous active identities fail without modification', () => {
   const changes = [
     p => { p.tracks[0].instrument = 99; }, p => { p.tracks[0].instrument = -1; }, p => { p.tracks[0] = null; },
-    p => { p.routing.version = 2; }, p => { p.routing.outputs = []; }, p => { p.tracks[1].routingID = 'source'; },
+    p => { p.routing.outputs = []; }, p => { p.tracks[1].routingID = 'source'; },
     p => { p.audioPlugins[1].instanceID = 'instrument'; }, p => { p.audioPlugins[1].owner = 'bus:absent'; }, p => { p.audioPlugins[1].owner = ''; },
     p => { p.audioPlugins[2].slot = 6; }, p => { p.audioPlugins[1].track = undefined; }, p => { p.routing.sends[1].id = 'self-key'; },
     p => { p.patterns[0].steps[0][0] = 42; }, p => { p.patterns[0].length = 0; }, p => { p.patterns[0].steps[0] = {}; }

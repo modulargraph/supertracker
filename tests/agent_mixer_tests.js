@@ -29,7 +29,7 @@ function fixture() {
     tracks: [{ routingID: 'kick', name: 'Kick', instrument: 0, volume: .8, pan: 0 }, { routingID: 'hat', name: 'ClosedHH Avenue 1', instrument: 0, volume: .8, pan: 0 },
       { routingID: 'keys', name: 'Keys', instrument: 0, volume: .8, pan: 0 }],
     instruments: [{ type: 'sample', name: 'Kit', samplePath: '/fixture/kick.wav' }],
-    routing: { version: 1, mixModel: 'standard', buses: [{ id: 'kit', name: 'Avenue Kit', type: 'group', volume: 1, pan: 0, mute: false, solo: false }],
+    routing: { buses: [{ id: 'kit', name: 'Avenue Kit', type: 'group', volume: 1, pan: 0, mute: false, solo: false }],
       outputs: { 'track:kick': 'bus:kit', 'track:hat': 'bus:kit', 'track:keys': 'master', 'bus:kit': 'master' }, sends: [], sidechains: [] },
     audioPlugins: [
       { owner: 'bus:kit', kind: 'effect', slot: 0, component: 'stfx:filter', name: 'Multimode Filter', format: 'Builtin', instanceID: 'kit-filter', state: 'f', bypass: false },
@@ -158,7 +158,6 @@ const tests = [], test = (name, fn) => tests.push({ name, fn });
 test('mixer describes master, buses and tracks; channels resolve by name, "bus:<id>" and "master"', async () => {
   const h = harness();
   const mixer = await h.ok('mixer');
-  assert.equal(mixer.mixModel, undefined, 'there is one mix model: it is not reported');
   assert.deepEqual(mixer.master.inserts.map(x => x.name), ['Peak Limiter']);
   const kit = mixer.buses[0];
   assert.equal(kit.channel, 'bus:kit'); assert.equal(kit.type, 'group'); assert.equal(kit.output, 'master');
@@ -269,7 +268,7 @@ test('buses and custom sends: create with inputs, send, edit, remove, remove bus
 
   const bare = fixture(); delete bare.routing; bare.audioPlugins = [];
   const l = harness(bare);
-  await l.ok('createBus', { name: 'Drums', inputs: [0, 1] }); assert.equal(l.ST.state.project.routing.mixModel, 'standard'); assert.equal(l.ST.state.project.routing.buses[0].name, 'Drums');
+  await l.ok('createBus', { name: 'Drums', inputs: [0, 1] }); assert.equal(l.ST.state.project.routing.buses[0].name, 'Drums');
 });
 
 test('bus and master automation are owner lanes in units; track send lanes are owner lanes too', async () => {

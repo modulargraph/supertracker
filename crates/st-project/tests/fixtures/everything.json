@@ -3039,8 +3039,6 @@
   "denominator": 8
  },
  "routing": {
-  "version": 1,
-  "mixModel": "standard",
   "buses": [
    {
     "id": "fx000f",

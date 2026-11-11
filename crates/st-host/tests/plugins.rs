@@ -51,7 +51,7 @@ fn project() -> Value {
         ],
         "patterns": [{ "id": 0, "length": 16, "steps": [rows, vec![Value::Null; 16]], "automation": [] }],
         "sequence": [0], "loopSong": true,
-        "routing": { "version": 1, "mixModel": "standard", "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
+        "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
         "audioPlugins": [],
     })
 }

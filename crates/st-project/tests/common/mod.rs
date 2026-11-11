@@ -74,14 +74,14 @@ impl Drop for TempDir {
     }
 }
 
-/// The smallest project the host accepts, as the Swift store tests used: one track, one
-/// instrument with `sample`, one empty pattern.
+/// The smallest project the host accepts: one track, one instrument with `sample`, one empty
+/// pattern and an empty routing table.
 pub fn minimal(sample: Option<&Path>) -> st_project::Project {
     let sample = sample.map(|path| path.to_string_lossy().into_owned()).unwrap_or_default();
     st_project::Project::from_value(serde_json::json!({
-        "version": 1, "name": "Test", "bpm": 120.0, "tracks": [{ "id": 0 }],
+        "version": 1, "name": "Test", "bpm": 120.0, "tracks": [{ "id": 0, "routingID": "t0" }],
         "instruments": [{ "id": 0, "samplePath": sample }],
-        "patterns": [{ "id": 0, "length": 64, "steps": [[]] }], "sequence": [0]
+        "patterns": [{ "id": 0, "length": 64, "steps": [[]] }], "sequence": [0], "routing": {}
     }))
     .expect("minimal project")
 }

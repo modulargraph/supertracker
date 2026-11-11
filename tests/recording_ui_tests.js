@@ -308,7 +308,7 @@ test('hardware input and root are remembered in a separate undoable edit before 
 });
 test('hardware capture adds a fresh sampler track and empty pattern columns while preserving the MIDI source and routes', async () => {
   const h = hardware(), project = h.state.project, originalTrack = project.tracks[0], originalInstrument = project.instruments[0];
-  project.routing = { version: 1, mixModel: 'standard', outputs: { 'track:midi-track': 'bus:group' }, buses: [{ id: 'group', type: 'group' }], sends: [{ id: 'original-send', source: 'track:midi-track', destination: 'bus:return', gain: .3 }], sidechains: [] };
+  project.routing = { outputs: { 'track:midi-track': 'bus:group' }, buses: [{ id: 'group', type: 'group' }], sends: [{ id: 'original-send', source: 'track:midi-track', destination: 'bus:return', gain: .3 }], sidechains: [] };
   project.audioPlugins = [{ track: 0, kind: 'effect', slot: 0, state: 'source effect preserved' }];
   const before = copy(project); await h.open({ hardwareSample: true }); h.get('record-name').value = 'Hardware C sharp';
   await h.startStop(); const rememberedSource = copy(originalInstrument); await h.startStop();

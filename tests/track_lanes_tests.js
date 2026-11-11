@@ -42,7 +42,7 @@ function model(count = 6) {
     audioPlugins: [{ instanceID: 'p5', owner: 'track:r5', track: 5, kind: 'effect', slot: 0 },
       { instanceID: 'p2', owner: 'track:r2', track: 2, kind: 'effect', slot: 0 }],
     pluginPages: { p2: {}, p5: {} },
-    routing: { version: 1, mixModel: 'standard', buses: [], outputs: Object.fromEntries(tracks.map(t => [`track:${t.routingID}`, 'master'])),
+    routing: { buses: [], outputs: Object.fromEntries(tracks.map(t => [`track:${t.routingID}`, 'master'])),
       sends: [], sidechains: [] }
   };
 }

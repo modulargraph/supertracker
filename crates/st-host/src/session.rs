@@ -22,9 +22,6 @@ use crate::{Commands, Error, NoPayload, Result};
 
 /// The audio side of a project publication. `st-audio` implements this and attaches itself with
 /// [`Session::attach_audio`]; until then publications only update the session.
-///
-/// There is one mix model: a project without `routing` is mixed with standard routing, exactly like
-/// one that says `mixModel: "standard"`.
 pub trait ProjectAudio: Send + Sync + 'static {
     /// Builds the audio graph for `project`. The returned value is the result of `engine.project`.
     /// Called before the session accepts the project: an error leaves the session as it was.

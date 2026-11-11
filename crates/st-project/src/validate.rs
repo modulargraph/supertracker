@@ -262,32 +262,21 @@ enum Channel {
 }
 
 struct Owners {
-    /// False when the project has no `routing`: the flat mixer, addressed by track index.
-    routed: bool,
-    standard: bool,
     channels: BTreeMap<String, Channel>,
     /// Route id -> source owner, for sends and sidechains.
     routes: BTreeMap<String, String>,
 }
 
-/// `AudioRouting.parse`.
+/// The mixer channels and the routes between them: every track has its identity, the routing
+/// table is there, and what it names exists.
 fn validate_routing(project: &Project, tracks: &[Track]) -> Result<Owners> {
-    let routed = project.routing.is_some() || project.extra.contains_key("routing");
     let mut channels = BTreeMap::new();
     for (index, track) in tracks.iter().enumerate() {
         let name = format!("Track {}", index + 1);
-        let id = if track.routing_id.is_some() || track.extra.contains_key("routingID") {
-            let id = identifier(track.routing_id.as_deref(), &track.extra, "routingID", &format!("{name} routingID"))?;
-            if channels.contains_key(&format!("track:{id}")) {
-                return fail(format!("Duplicate track routingID: {id}."));
-            }
-            id
-        } else if routed {
-            return fail(format!("{name} has no stable routingID."));
-        } else {
-            // Not a valid identifier of a saved track, so it cannot collide with one.
-            format!("legacy-{index}")
-        };
+        let id = identifier(track.routing_id.as_deref(), &track.extra, "routingID", &format!("{name} routingID"))?;
+        if channels.contains_key(&format!("track:{id}")) {
+            return fail(format!("Duplicate track routingID: {id}."));
+        }
         if track.extra.contains_key("name") {
             return fail(format!("{name}: the name must be text."));
         }
@@ -302,12 +291,9 @@ fn validate_routing(project: &Project, tracks: &[Track]) -> Result<Owners> {
     }
     ranged(project.master_volume, &project.extra, "masterVolume", "Master volume", (0.0, 2.0))?;
     channels.insert("master".to_string(), Channel::Master);
-    if !routed {
-        return Ok(Owners { routed: false, standard: false, channels, routes: BTreeMap::new() });
-    }
-    let version_message = "Routing requires version 1 and the standard mixModel.";
-    let Some(routing) = &project.routing else { return fail(version_message) };
-    let (Some(1), Some(model)) = (routing.version, routing.mix_model) else { return fail(version_message) };
+    let Some(routing) = &project.routing else {
+        return fail(if project.extra.contains_key("routing") { "The project's routing must be an object." } else { "The project has no routing table." });
+    };
     if routing.extra.contains_key("buses") {
         return fail("Routing buses must be an array of objects.");
     }
@@ -418,7 +404,7 @@ fn validate_routing(project: &Project, tracks: &[Track]) -> Result<Owners> {
     if let Some(cycle) = find_cycle(&edges) {
         return fail(format!("Routing feedback is unsupported. Cycle includes: {}.", cycle.join(", ")));
     }
-    Ok(Owners { routed: true, standard: model == MixModel::Standard, channels, routes })
+    Ok(Owners { channels, routes })
 }
 
 /// The owners on a loop of outputs and sends, or `None` when there is none: what is left after
@@ -441,9 +427,6 @@ fn find_cycle(edges: &[(String, String)]) -> Option<Vec<String>> {
 fn validate_plugins(project: &Project, tracks: &[Track], owners: &Owners) -> Result<()> {
     if project.extra.contains_key("audioPlugins") {
         return fail("Project plug-ins must be an array of objects.");
-    }
-    if !owners.routed {
-        return Ok(());
     }
     let mut instance_ids = BTreeSet::new();
     let mut slots = BTreeSet::new();
@@ -478,9 +461,6 @@ fn validate_plugins(project: &Project, tracks: &[Track], owners: &Owners) -> Res
             }
             tracks[index as usize].owner().unwrap_or_default()
         };
-        if !owners.standard && owner == "master" {
-            return fail("Enable standard routing to use master inserts.");
-        }
         if let Some(id) = &plugin.instance_id {
             if !is_identifier(id) {
                 return fail("Plug-in instance ID must contain 1–128 letters, digits, hyphens, underscores, or periods.");
@@ -548,9 +528,6 @@ fn validate_patterns(project: &Project, patterns: &[Pattern], owners: &Owners) -
         if pattern.extra.contains_key("automation") {
             return fail("Automation lanes must be an array of objects.");
         }
-        if !owners.routed {
-            continue;
-        }
         let length = pattern.length();
         let mut destinations = BTreeSet::new();
         for lane in pattern.automation.iter().flatten() {
@@ -575,9 +552,6 @@ fn validate_patterns(project: &Project, patterns: &[Pattern], owners: &Owners) -
                 return fail("Host automation requires an existing owner and a target.");
             };
             let is_track = matches!(channel, Channel::Track(_));
-            if !owners.standard && (target == "volume" || target == "pan") && *channel != Channel::Bus {
-                return fail("Legacy routing does not support owner-based track or master mix automation. Use existing track lanes or Standard routing.");
-            }
             let range = match AutomationTarget::parse(target) {
                 Some(AutomationTarget::Native(name)) if name == "volume" => (0.0, 2.0),
                 Some(AutomationTarget::Native(name)) if name == "pan" => {
@@ -586,7 +560,7 @@ fn validate_patterns(project: &Project, patterns: &[Pattern], owners: &Owners) -
                     }
                     (-1.0, 1.0)
                 }
-                Some(AutomationTarget::Native(name)) if owners.standard && is_track && native_automation_range(&name).is_some() => {
+                Some(AutomationTarget::Native(name)) if is_track && native_automation_range(&name).is_some() => {
                     native_automation_range(&name).unwrap_or((0.0, 1.0))
                 }
                 Some(AutomationTarget::Send(route)) => {

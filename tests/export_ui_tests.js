@@ -25,7 +25,7 @@ function capabilities() {
 }
 function harness(overrides = {}) {
   const nodes = new Map(), calls = [], mutations = [], toasts = [];
-  const state = { native: true, engineReady: true, modal: null, view: 'song', project: { name: 'Export fixture', activePattern: 4, tracks: [{ routingID: 'keys', name: 'Keys', instrument: 0 }, { routingID: 'bass', name: 'Bass', instrument: 1 }], instruments: [{}, {}], patterns: [{ id: 4, length: 64, automation: [] }], audioPlugins: [], routing: { mixModel: 'standard', buses: [{ id: 'drums', type: 'group', name: 'Drum group' }, { id: 'hall', type: 'return', name: 'Hall return' }], sends: [], sidechains: [] } } };
+  const state = { native: true, engineReady: true, modal: null, view: 'song', project: { name: 'Export fixture', activePattern: 4, tracks: [{ routingID: 'keys', name: 'Keys', instrument: 0 }, { routingID: 'bass', name: 'Bass', instrument: 1 }], instruments: [{}, {}], patterns: [{ id: 4, length: 64, automation: [] }], audioPlugins: [], routing: { buses: [{ id: 'drums', type: 'group', name: 'Drum group' }, { id: 'hall', type: 'return', name: 'Hall return' }], sends: [], sidechains: [] } } };
   let roots = [], ui, modalHTML = '';
   const all = () => roots.flatMap(root => [root, ...descendants(root)]);
   function descendants(element) { return element.children.flatMap(child => [child, ...descendants(child)]); }
@@ -550,7 +550,7 @@ test('the dither is captured before a graph wait or chooser and the host must co
 
 test('headless stems without chosen channels expect one file per track, group members included, like the host default', async () => {
   const h=harness({'audio.export':payload=>({path:payload.path,paths:['keys','bass','kick'].map(name=>`/exports/stems/${name}.wav`),...delivered(payload)})});
-  h.state.project.routing={version:1,mixModel:'standard',buses:[{id:'g0',type:'group',groupID:'k0'}]};
+  h.state.project.routing={buses:[{id:'g0',type:'group',groupID:'k0'}]};
   h.state.project.tracks.push({routingID:'kick',name:'Kick',groupID:'k0',instrument:0});
   h.state.project.groups=[{id:'k0',name:'Kit',busID:'g0'}];
   const result=await h.ui.exportTo({mode:'stems',path:'/exports/stems'});

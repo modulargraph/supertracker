@@ -510,8 +510,8 @@ Behaviour worth knowing:
   window's event loop for at most ten seconds; while a native menu or dialog is open the loop does
   not serve it, and the client gets an error saying so. A host without a window (`--serve`) answers
   that it has none.
-- Audio: one mix model (every project is mixed as "standard" routing; a project without `routing` is
-  the same mixer without buses). The delay and reverb returns are the engine's own DSP run as mixer
+- Audio: one mix model. Every project has a `routing` table and every track a `routingID`; a table
+  without buses is tracks into the master. A project without either is refused. The delay and reverb returns are the engine's own DSP run as mixer
   returns. Built-in effect state is base64 JSON (`SuperTracker.BuiltinFX`); a state in any other
   encoding is refused per effect and the effect starts from its defaults. Play does not wait for
   samples (they are loaded when the project is published). See `cargo doc -p st-audio` for the

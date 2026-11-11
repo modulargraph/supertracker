@@ -2727,8 +2727,6 @@
   "denominator": 4
  },
  "routing": {
-  "version": 1,
-  "mixModel": "standard",
   "buses": [],
   "outputs": {},
   "sends": [],

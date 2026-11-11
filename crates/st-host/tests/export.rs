@@ -35,7 +35,7 @@ fn long_request(host: &TestHost, command: &str, payload: Value) -> Result<Value,
 }
 
 fn demo() -> Value {
-    serde_json::from_str(include_str!("../../st-audio/tests/fixtures/demo_project.json")).unwrap()
+    serde_json::from_str(include_str!("../../st-project/tests/fixtures/demo.json")).unwrap()
 }
 
 fn read(path: &str) -> st_audio::SamplePcm {
@@ -105,7 +105,7 @@ fn stems_a_bounce_and_a_selection_render() {
     let paths = result["paths"].as_array().unwrap();
     assert_eq!(paths.len(), 8, "one stem per track");
     assert!(paths.iter().all(|path| path.as_str().unwrap().starts_with(&stems) && std::path::Path::new(path.as_str().unwrap()).is_file()));
-    assert_eq!((result["stems"][0]["owner"].clone(), result["stems"][0]["boundary"].clone()), (json!("track:#0"), json!("postFaderPreParent")));
+    assert_eq!((result["stems"][0]["owner"].clone(), result["stems"][0]["boundary"].clone()), (json!(format!("track:{}", demo()["tracks"][0]["routingID"].as_str().unwrap())), json!("postFaderPreParent")));
 
     // A bounce goes to the support folder's Renders and comes back as a clip for the timeline.
     let bounce = long_request(host, "audio.bounceTrack", json!({ "track": 3, "tail": 0.5 })).unwrap();
@@ -153,7 +153,8 @@ fn a_track_is_frozen_reported_and_unfrozen() {
     let host = &fixture.host;
     let mut project = demo();
     project["sequence"] = json!([0]);
-    project["audioPlugins"] = json!([{ "owner": "track:#1", "kind": "effect", "slot": 0, "instanceID": "comp", "component": "stfx:compressor", "name": "Compressor" }]);
+    let owner = format!("track:{}", project["tracks"][1]["routingID"].as_str().unwrap());
+    project["audioPlugins"] = json!([{ "owner": owner, "kind": "effect", "slot": 0, "instanceID": "comp", "component": "stfx:compressor", "name": "Compressor" }]);
     host.request("engine.project", json!({ "project": project.clone() })).unwrap();
     assert_eq!(host.request("freeze.status", json!({})).unwrap(), json!({ "tracks": [], "busy": false }));
     let result = long_request(host, "freeze.track", json!({ "track": 1, "maxTail": 2 })).unwrap();

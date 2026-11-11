@@ -339,7 +339,7 @@ impl AudioEngine {
     fn publish_locked(state: &mut State, project: &Project) -> Result<ApplyReport, String> {
         // Frozen tracks play their prints (`crate::freeze`).
         let project = &*crate::freeze::playback_project(project);
-        let mut spec = GraphSpec::from_project(project);
+        let mut spec = GraphSpec::from_project(project)?;
         lines::apply(&mut spec, &state.lines);
         let core = &mut state.core;
         // Compile first: routing that cannot be rendered must not reach the engine either.

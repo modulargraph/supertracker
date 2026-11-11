@@ -30,7 +30,7 @@
     if (!Number.isInteger(source.instrument) || source.instrument < 0 || source.instrument >= instruments.length || !object(instruments[source.instrument])) fail('The source track has an invalid assigned instrument.');
     const patterns = array(proposal.patterns, 'Patterns', true), clips = array(proposal.audioClips, 'Audio clips', true);
     const plugins = array(proposal.audioPlugins, 'Audio plug-ins', true), routing = proposal.routing;
-    if (!object(routing) || routing.version !== 1) fail('Track duplication needs the project\'s routing table (version 1).');
+    if (!object(routing)) fail('Track duplication needs the project\'s routing table.');
     const buses = array(routing.buses, 'Routing buses', true);
     const sends = array(routing.sends, 'Routing sends', true);
     const sidechains = array(routing.sidechains, 'Routing sidechains', true);

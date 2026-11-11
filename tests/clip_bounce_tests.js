@@ -16,8 +16,8 @@ function harness({standard=false}={}) {
     tracks:[{id:0,routingID:'source',name:'Source',instrument:0,volume:.65,pan:.25,mute:false,solo:true,delaySend:.35,reverbSend:.4}],
     instruments:[{id:0,type:'synth'}],audioPlugins:[{owner:'track:source',track:0,kind:'effect',slot:0,state:'original patch'}],
     patterns:[{id:0,length:4,steps:[[{note:60},null,null,null]],automation:[{track:0,target:'volume',points:[{row:0,value:.65}]}]}],sequence:[0],audioClips:[],
-    routing:{version:1,mixModel:'standard',buses:[],outputs:{'track:source':'master'},sends:[],sidechains:[]}}};
-  if(standard)state.project.routing={version:1,mixModel:'standard',buses:[{id:'group',name:'Group',type:'group',volume:.8,pan:0,mute:false,solo:false}],outputs:{'track:source':'bus:group','bus:group':'master'},sends:[{id:'send',source:'track:source',destination:'bus:group',tap:'preFader',gain:.2,enabled:true}],sidechains:[]};
+    routing:{buses:[],outputs:{'track:source':'master'},sends:[],sidechains:[]}}};
+  if(standard)state.project.routing={buses:[{id:'group',name:'Group',type:'group',volume:.8,pan:0,mute:false,solo:false}],outputs:{'track:source':'bus:group','bus:group':'master'},sends:[{id:'send',source:'track:source',destination:'bus:group',tap:'preFader',gain:.2,enabled:true}],sidechains:[]};
   const ST={state,escapeHTML:String,uid:()=>`bounce-track-${++serial}`,refresh(){},toast:(message,type)=>messages.push({message,type}),
     openModal(name,html,foot,options={}){title=name;body=html;footer=foot;state.modal=options.kind||'dialog';nodes.clear();for(const id of ['clips-bounce-tail','clips-bounce-render','clips-bounce-cancel','clips-bounce-status'])nodes.set(id,{id,value:id==='clips-bounce-tail'?'3':'',disabled:false,textContent:'',focus(){document.activeElement=this;}});},
     closeModal(){state.modal=null;nodes.clear();document.activeElement=null;},

@@ -32,7 +32,7 @@ fn start(folder: TempDir) -> Fixture {
 /// The demo project's tracks and instruments with a song of one second: one pattern of eight
 /// rows at 240 BPM, twice, in which only the first track (a saw bass) plays.
 fn project() -> Value {
-    let mut project: Value = serde_json::from_str(include_str!("../../st-audio/tests/fixtures/demo_project.json")).unwrap();
+    let mut project: Value = serde_json::from_str(include_str!("../../st-project/tests/fixtures/demo.json")).unwrap();
     let tracks = project["tracks"].as_array().unwrap().len();
     let mut steps = vec![json!(vec![Value::Null; 8]); tracks];
     steps[0][0] = json!({ "note": 48, "instrument": 0, "velocity": 110, "gate": 2 });

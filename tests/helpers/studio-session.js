@@ -19,7 +19,7 @@ function harness() {
   for (const file of ['routing-project.js', 'kit-groups.js', 'studio.js', 'routing.js']) web.load(h.context, file);
   h.G = h.window.STGroups;
   h.KG = h.window.STKitGroups;
-  h.S.state.project.routing = { version: 1, mixModel: 'standard', buses: [], outputs: {}, sends: [], sidechains: [] };
+  h.S.state.project.routing = { buses: [], outputs: {}, sends: [], sidechains: [] };
   h.S.state.view = 'pattern';
   h.context.queueMicrotask = queueMicrotask;
   return h;

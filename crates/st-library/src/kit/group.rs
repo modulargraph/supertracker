@@ -10,7 +10,7 @@
 //!   "instruments": [ { "id": 0, "type": "sample", "samplePath": "…", … } ],
 //!   "groups": [ { "id": "g", "name": "My kit", "busID": "b", … } ],
 //!   "audioPlugins": [ { "owner": "track:…" | "bus:…" | "instrument:0", … } ],
-//!   "routing": { "version": 1, "mixModel": "standard", "buses": [ … ], "outputs": { … }, "sends": [ … ], "sidechains": [ … ] },
+//!   "routing": { "buses": [ … ], "outputs": { … }, "sends": [ … ], "sidechains": [ … ] },
 //!   "pluginPages": { "<instanceID>": { … } } }
 //! ```
 //!
@@ -330,8 +330,6 @@ pub fn extract_group(project: &Value, group_id: &str) -> Result<ExtractedGroup> 
         "groups": [record],
         "audioPlugins": plugins,
         "routing": {
-            "version": 1,
-            "mixModel": routing.get("mixModel").cloned().filter(Value::is_string).unwrap_or(json!("standard")),
             "buses": kept_buses,
             "outputs": mapped_outputs,
             "sends": kept_sends,

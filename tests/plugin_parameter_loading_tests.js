@@ -22,7 +22,7 @@ function pagesHarness() {
     { owner: group, kind: 'effect', slot: 2, instanceID: 'group-grain', component: 'stfx:graindelay', name: 'Grain Delay', format: 'Builtin' },
     { owner: 'master', kind: 'effect', slot: 0, instanceID: 'master-limit', component: 'stfx:limiter', name: 'Peak Limiter', format: 'Builtin' }];
   const project = { tracks: [{ instrument: 0, plugins: [], routingID: 'lane' }], instruments: [{ type: 'synth' }], audioPlugins: plugins,
-    groups: [{ id: 'kit-a', name: 'Kit', busID: 'kit-a-group' }], routing: { mixModel: 'standard', buses: [{ id: 'drums' }, { id: 'kit-a-group' }] } };
+    groups: [{ id: 'kit-a', name: 'Kit', busID: 'kit-a-group' }], routing: { buses: [{ id: 'drums' }, { id: 'kit-a-group' }] } };
   const state = { project, track: 0, instrument: 0, view: 'instrument' }, calls = [], timers = new Map(); let serial = 0, refreshes = 0, now = 1_000_000;
   // Per-instance native behaviour: an array answer, a rejection, or a promise that never settles.
   const behaviour = new Map();

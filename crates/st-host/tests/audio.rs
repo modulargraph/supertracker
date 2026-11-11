@@ -30,7 +30,7 @@ fn start(folder: TempDir) -> Fixture {
 
 /// The web model's demo song (the fixture st-audio's tests use too).
 fn demo() -> Value {
-    serde_json::from_str(include_str!("../../st-audio/tests/fixtures/demo_project.json")).unwrap()
+    serde_json::from_str(include_str!("../../st-project/tests/fixtures/demo.json")).unwrap()
 }
 
 /// Waits until a `status` event satisfies `wanted`, and returns it.
@@ -185,7 +185,7 @@ fn the_snapshot_and_the_mixer_report_follow_the_project() {
     for (index, track) in project["tracks"].as_array_mut().unwrap().iter_mut().enumerate() {
         track["routingID"] = json!(format!("t{index}"));
     }
-    project["routing"] = json!({ "version": 1, "mixModel": "standard", "buses": [], "outputs": {}, "sends": [], "sidechains": [] });
+    project["routing"] = json!({ "buses": [], "outputs": {}, "sends": [], "sidechains": [] });
     project["audioPlugins"] = json!([
         { "owner": "track:t0", "kind": "effect", "slot": 0, "instanceID": "comp", "component": "stfx:compressor", "name": "Compressor" },
         { "owner": "master", "kind": "effect", "slot": 0, "instanceID": "vendor", "component": "com.vendor.eq", "name": "Vendor EQ", "state": "b3BhcXVl" },
@@ -240,7 +240,7 @@ fn routing_changes_are_validated_applied_and_reported() {
     for (index, track) in project["tracks"].as_array_mut().unwrap().iter_mut().enumerate() {
         track["routingID"] = json!(format!("t{index}"));
     }
-    project["routing"] = json!({ "version": 1, "mixModel": "standard", "buses": [], "outputs": {}, "sends": [], "sidechains": [] });
+    project["routing"] = json!({ "buses": [], "outputs": {}, "sends": [], "sidechains": [] });
     project["audioPlugins"] = json!([{ "owner": "track:t0", "kind": "effect", "slot": 0, "instanceID": "comp", "component": "stfx:compressor", "name": "Compressor" }]);
     host.request("engine.project", json!({ "project": project })).unwrap();
 

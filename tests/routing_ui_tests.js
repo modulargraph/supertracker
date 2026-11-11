@@ -24,7 +24,7 @@ class Element {
   querySelectorAll(selector){if(selector==='[data-routing-choice]')return this.children;return [];}
 }
 
-function fixture(){return {name:'Routing test',masterVolume:.7,tracks:[{routingID:'a',name:'Bass',volume:.8},{routingID:'b',name:'Keys',volume:.6}],patterns:[{id:0,automation:[]}],audioPlugins:[{instanceID:'plug-b',owner:'track:b',track:1,kind:'effect',slot:0,name:'Detector'}],routing:{version:1,mixModel:'standard',buses:[{id:'g',name:'Group',type:'group',volume:1,pan:0,mute:false,solo:false},{id:'r',name:'Return',type:'return',volume:1,pan:0,mute:false,solo:false}],outputs:{'track:a':'master','track:b':'master','bus:g':'master','bus:r':'master'},sends:[],sidechains:[]}};}
+function fixture(){return {name:'Routing test',masterVolume:.7,tracks:[{routingID:'a',name:'Bass',volume:.8},{routingID:'b',name:'Keys',volume:.6}],patterns:[{id:0,automation:[]}],audioPlugins:[{instanceID:'plug-b',owner:'track:b',track:1,kind:'effect',slot:0,name:'Detector'}],routing:{buses:[{id:'g',name:'Group',type:'group',volume:1,pan:0,mute:false,solo:false},{id:'r',name:'Return',type:'return',volume:1,pan:0,mute:false,solo:false}],outputs:{'track:a':'master','track:b':'master','bus:g':'master','bus:r':'master'},sends:[],sidechains:[]}};}
 function capabilities(){return {supported:true,mixModels:['standard'],outputs:true,buses:{group:true,return:true,max:16},sends:{enabled:true,taps:['preFader','postFader'],max:128},sidechains:{enabled:true,taps:['preInserts','preFader','postFader'],inputs:[{instanceID:'plug-b',owner:'track:b',pluginName:'Detector',inputBus:2,layoutSignature:{name:'External detector',channels:2},available:true}]}};}
 
 function harness(p=fixture()){

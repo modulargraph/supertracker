@@ -111,7 +111,7 @@ fn demo_project_reads_as_the_interface_wrote_it() {
 #[test]
 fn everything_fixture_reads_every_part_of_the_schema() {
     let project = Project::from_json(&fixture("everything.json")).unwrap();
-    assert!(project.uses_standard_routing());
+    assert!(project.routing.is_some());
     assert_eq!(project.meter(), (7, 8));
     let routing = project.routing.as_ref().unwrap();
     let buses = routing.buses.as_ref().unwrap();
@@ -145,7 +145,7 @@ fn everything_fixture_reads_every_part_of_the_schema() {
 
     let pattern = &project.pattern_list()[0];
     let columns = pattern.step(1, 0).unwrap();
-    assert_eq!(columns.gate(), 0.0, "a stored gate of 0 is no gate, not the legacy default");
+    assert_eq!(columns.gate(), 0.0, "a stored gate of 0 is no gate, not the default of a missing one");
     assert_eq!(columns.columns.as_ref().unwrap()[0].as_ref().unwrap().note(), 64);
     assert!(columns.columns.as_ref().unwrap()[1].is_none());
     assert!(columns.extra.contains_key("fx2"), "fx2: null is kept as written");

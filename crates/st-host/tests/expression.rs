@@ -67,7 +67,7 @@ fn start(label: &str) -> Fixture {
         ],
         "patterns": [{ "id": 0, "length": 16, "steps": [vec![Value::Null; 16], vec![Value::Null; 16], vec![Value::Null; 16], vec![Value::Null; 16]], "automation": [] }],
         "sequence": [0], "loopSong": true,
-        "routing": { "version": 1, "mixModel": "standard", "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
+        "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
         "audioPlugins": [plugin("clap", format!("clap:{CLAP_SINE}"), "CLAP", &installed.clap), plugin("vst3", format!("vst3:{VST3_SINE}"), "VST3", &installed.vst3)],
     });
     let published = host.reply_within(host.send("engine.project", json!({ "project": project })), Duration::from_secs(120));

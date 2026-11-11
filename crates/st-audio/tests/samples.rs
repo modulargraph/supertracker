@@ -77,7 +77,7 @@ fn the_demo_song_plays_from_the_built_in_tables_of_st_samples() {
     let mut options = EngineOptions::offline();
     options.samples = samples.clone();
     let engine = AudioEngine::new(options).unwrap();
-    let demo: serde_json::Value = serde_json::from_str(include_str!("fixtures/demo_project.json")).unwrap();
+    let demo: serde_json::Value = serde_json::from_str(include_str!("../../st-project/tests/fixtures/demo.json")).unwrap();
     // Built-in tables are generated on a worker within the lookup's short wait: the very first
     // publication installs them.
     let report = engine.publish(&parse(&demo)).unwrap();

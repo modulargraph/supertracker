@@ -26,7 +26,7 @@ pub use clip::{AudioClip, FreezeRecord, PatternPrint, PrintLoop, Take, TakeSet};
 pub use instrument::{FilterType, Instrument, InstrumentKind, LfoShape, LfoTarget, SamplerMode, VoiceMode, Zone};
 pub use pattern::{AutomationLane, AutomationPoint, AutomationTarget, ColumnCell, Interpolation, Pattern, Step, StepEffect, StepEffectKind};
 pub use plugin::{Owner, ParameterPage, PluginDescriptor, PluginKind, PluginPages};
-pub use routing::{Bus, BusKind, LayoutSignature, MixModel, Routing, Send, Sidechain, SidechainDestination, Tap};
+pub use routing::{Bus, BusKind, LayoutSignature, Routing, Send, Sidechain, SidechainDestination, Tap};
 
 use crate::error::{Error, Result};
 use crate::json::{model, Json};
@@ -78,6 +78,7 @@ model! {
         /// Send to the shared reverb, 0..1.
         "reverbSend" => reverb_send: f64 = 0.0,
         /// Stable identity of the track's mixer channel: its owner name is `track:<routingID>`.
+        /// Required.
         "routingID" => routing_id: String,
         /// The track group the track belongs to (`project.groups[].id`). Members are contiguous.
         "groupID" => group_id: String,
@@ -369,7 +370,7 @@ model! {
         "delay" => delay: Delay,
         /// The shared reverb.
         "reverb" => reverb: Reverb,
-        /// Mixer routing. Absent in projects that never used the mixer's routing: the flat mixer.
+        /// Mixer routing: buses, outputs, sends and sidechains. Required.
         "routing" => routing: Routing,
         /// Plug-ins and built-in effects, by owner and slot. Authoritative for what is loaded.
         "audioPlugins" => audio_plugins: Vec<PluginDescriptor>,
@@ -494,10 +495,5 @@ impl Project {
             Some(signature) => (signature.numerator(), signature.denominator()),
             None => (4, 4),
         }
-    }
-
-    /// Whether the project uses the standard mix model (routing version 1, `mixModel: standard`).
-    pub fn uses_standard_routing(&self) -> bool {
-        self.routing.as_ref().is_some_and(|routing| routing.version == Some(1) && routing.mix_model == Some(MixModel::Standard))
     }
 }

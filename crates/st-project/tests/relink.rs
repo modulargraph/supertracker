@@ -27,7 +27,7 @@ fn fixture(sample: &str, zone: Option<&str>, clip: Option<&str>) -> Project {
         instrument["zones"] = json!([{ "samplePath": zone, "rootNote": 42, "keyLow": 20, "keyHigh": 80, "volume": 0.7 }, { "path": sample, "rootNote": 64 }]);
     }
     let mut project = json!({
-        "version": 1, "name": "Relink fixture", "bpm": 120.0, "linesPerBeat": 4, "tracks": [{ "id": 0 }],
+        "version": 1, "name": "Relink fixture", "bpm": 120.0, "linesPerBeat": 4, "tracks": [{ "id": 0, "routingID": "t0" }], "routing": {},
         "instruments": [instrument], "patterns": [{ "id": 0, "length": 64, "steps": [[]] }], "sequence": [0],
         "audioPlugins": [{ "opaqueVendorState": { "path": "/keep/opaque/plugin.wav" } }]
     });
@@ -261,7 +261,7 @@ fn linked_aliases_move_together() {
     put(&[1, 2, 3], &replacement);
     put(&[3, 2, 1], &other);
     let project = Project::from_value(json!({
-        "version": 1, "bpm": 120.0, "tracks": [{ "id": 0 }],
+        "version": 1, "bpm": 120.0, "tracks": [{ "id": 0, "routingID": "t0" }], "routing": {},
         "instruments": [{ "id": 0, "zones": [{ "path": missing, "samplePath": missing, "rootNote": 60 }] }],
         "patterns": [{ "id": 0, "length": 4, "steps": [[]] }], "sequence": [0],
         "audioClips": [{ "id": "clip", "track": 0, "startBeat": 0.0, "durationBeats": 4.0, "path": missing, "samplePath": missing }]
@@ -289,7 +289,7 @@ fn takes_follow_the_clip() {
     let (first, second, found) = (text(&root.join("gone/take1.wav")), text(&root.join("gone/take2.wav")), root.join("found.wav"));
     put(b"take", &found);
     let project = Project::from_value(json!({
-        "version": 1, "bpm": 120, "tracks": [{}], "instruments": [], "patterns": [{ "length": 4, "steps": [[]] }],
+        "version": 1, "bpm": 120, "tracks": [{ "routingID": "t0" }], "routing": {}, "instruments": [], "patterns": [{ "length": 4, "steps": [[]] }],
         "audioClips": [{ "id": "c", "track": 0, "startBeat": 0, "durationBeats": 4, "path": second,
             "takeSet": { "version": 1, "activeID": "b", "takes": [{ "id": "a", "path": first, "sourceOffset": 0 }, { "id": "b", "path": second, "sourceOffset": 0 }] } }]
     }))
@@ -349,7 +349,7 @@ fn frozen_prints_require_their_exact_content() {
     put(b"printed audio", &moved);
     put(b"another render", &changed);
     let mut value = common::minimal(None).to_value();
-    value["tracks"][0] = json!({ "id": 0, "name": "Pad", "frozen": { "version": 1, "id": "f1", "path": text(&print), "sha256": sha256_hex(b"printed audio"),
+    value["tracks"][0] = json!({ "id": 0, "routingID": "t0", "name": "Pad", "frozen": { "version": 1, "id": "f1", "path": text(&print), "sha256": sha256_hex(b"printed audio"),
         "sampleRate": 48000, "frames": 100, "musicalFrames": 90, "tailFrames": 10, "musicalEndBeat": 16,
         "patternPrints": [{ "pattern": 0, "path": text(&print), "sha256": sha256_hex(b"printed audio"), "frames": 10, "passFrames": 8, "loop": { "path": text(&root.join("prints/loop.wav")), "sha256": "ab".repeat(32), "frames": 8 } }] } });
     let project = Project::from_value(value).unwrap();

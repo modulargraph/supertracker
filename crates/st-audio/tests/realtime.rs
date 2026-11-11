@@ -92,7 +92,7 @@ fn line_inputs_and_a_strip_tap_do_not_allocate_on_the_input_or_the_render_thread
     let (mut left, mut right) = (vec![0.0f32; 512], vec![0.0f32; 512]);
     let engine = engine();
     engine.live().inputs().configure(&st_audio::inputs::InputRequest { uid: Some(st_audio::inputs::NULL_MANUAL_INPUT.to_string()), ..Default::default() }).unwrap();
-    let mut project: serde_json::Value = serde_json::from_str(include_str!("fixtures/demo_project.json")).unwrap();
+    let mut project: serde_json::Value = serde_json::from_str(include_str!("../../st-project/tests/fixtures/demo.json")).unwrap();
     for (index, track) in project["tracks"].as_array_mut().unwrap().iter_mut().enumerate() {
         track["routingID"] = json!(format!("t{index}"));
     }
@@ -156,13 +156,13 @@ fn rendering_never_allocates_or_frees_even_across_project_and_plan_changes() {
 
     let (mut left, mut right) = (vec![0.0f32; 4096], vec![0.0f32; 4096]);
     let engine = engine();
-    let mut project: serde_json::Value = serde_json::from_str(include_str!("fixtures/demo_project.json")).unwrap();
+    let mut project: serde_json::Value = serde_json::from_str(include_str!("../../st-project/tests/fixtures/demo.json")).unwrap();
     // The demo song with a mixer that uses every kind of stage.
     for (index, track) in project["tracks"].as_array_mut().unwrap().iter_mut().enumerate() {
         track["routingID"] = json!(format!("t{index}"));
     }
     project["routing"] = json!({
-        "version": 1, "mixModel": "standard", "buses": [bus("drums", "group", 0.9), bus("space", "return", 0.8)],
+        "buses": [bus("drums", "group", 0.9), bus("space", "return", 0.8)],
         "outputs": { "track:t3": "bus:drums", "track:t4": "bus:drums" },
         "sends": [{ "id": "s", "source": "track:t1", "tap": "preFader", "destination": "bus:space", "gain": 0.5 }],
         "sidechains": [{ "id": "k", "source": "track:t3", "tap": "postFader", "gain": 1,

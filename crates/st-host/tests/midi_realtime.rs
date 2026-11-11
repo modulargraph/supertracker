@@ -64,7 +64,8 @@ fn project() -> Value {
         "tracks": [{ "id": 0, "name": "Synth", "routingID": "synth", "volume": 1, "pan": 0, "instrument": 0 }],
         "instruments": [{ "id": 0, "type": "midi", "name": "Synth", "midiOutput": SYNTH, "midiChannel": 1 }],
         "patterns": [{ "id": 0, "length": 16, "steps": [rows], "automation": [] }],
-        "sequence": [0], "loopSong": true
+        "sequence": [0], "loopSong": true,
+        "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] }
     })
 }
 

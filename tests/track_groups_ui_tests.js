@@ -23,7 +23,6 @@ test('grouping the selected tracks routes them to a new group bus as one Undo st
   const { h, group, p } = grouped();
   assert.equal(group.name, 'Group 1');
   same(h.win.STGroups.members(p(), group), [3, 4, 5, 6]);
-  assert.equal(p().routing.mixModel, 'standard');
   for (const i of [3, 4, 5, 6]) assert.equal(p().routing.outputs[`track:${p().tracks[i].routingID}`], `bus:${group.busID}`);
   assert.equal(h.state.undo.at(-1).label, 'group tracks');
   const page = html(h);

@@ -21,7 +21,6 @@ function fixture() {
     ],
     instruments: [{ type: 'synth' }, { type: 'sample' }],
     routing: {
-      mixModel: 'standard',
       // Deliberately not in display order: tracks, groups, returns, Master.
       buses: [{ id: 'verb', name: 'Hall', type: 'return', volume: .5, pan: .25 }, { id: 'drums', name: 'Drum group', type: 'group', volume: 1.1, pan: -.2 }],
       outputs: { 'track:keys': 'bus:drums', 'track:bass': null, 'bus:drums': 'master', 'bus:verb': 'master' },
