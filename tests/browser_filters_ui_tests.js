@@ -153,9 +153,9 @@ const facet = (h, field, value) => h.node(`${field}-${value}`, { browserFacet: f
   // Generic plug-in catalog distinguishes duplicate names by format and loads the selected VST3 ID.
   const p = harness();
   p.state.plugins = [
-    { id: 'au:echo', name: 'Echo', manufacturer: 'Maker', type: 'effect', format: 'AU' },
-    { id: 'vst3:echo', name: 'Echo', manufacturer: 'Maker', type: 'effect', format: 'VST3', bundlePath: '/Users/test/Library/Audio/Plug-Ins/VST3/Echo.vst3' },
-    { id: 'au:keys', name: 'Keys', manufacturer: 'Maker', type: 'instrument', format: 'AU' }
+    { component: 'au:aufx:echo:makr', name: 'Echo', manufacturer: 'Maker', kind: 'effect', category: 'Effect', format: 'AU' },
+    { component: 'vst3:EC400000000000000000000000000001', name: 'Echo', manufacturer: 'Maker', version: '1.2', kind: 'effect', category: 'Fx|Delay', format: 'VST3', bundlePath: '/Users/test/Library/Audio/Plug-Ins/VST3/Echo.vst3' },
+    { component: 'au:aumu:keys:makr', name: 'Keys', manufacturer: 'Maker', kind: 'instrument', category: 'Instrument', format: 'AU' }
   ];
   const vst = p.node('format-vst', { browserPluginFormat: 'VST3' }, '[data-browser-plugin-format]');
   const all = p.node('format-all', { browserPluginFormat: 'all' }, '[data-browser-plugin-format]');
@@ -166,7 +166,7 @@ const facet = (h, field, value) => h.node(`${field}-${value}`, { browserFacet: f
   assert(html.includes('browser-format-badge">AU') && !html.includes('browser-format-badge">VST3'), 'AU is preferred over VST3');
   vst.fire('click'); html = p.browser.render(); assert(html.includes('1 effects')); assert(!html.includes('browser-format-badge">AU'));
   await load.fire('click');
-  assert.equal(p.calls.find(call => call.command === 'plugin.load').payload.component, 'vst3:echo');
+  assert.equal(p.calls.find(call => call.command === 'plugin.load').payload.component, 'vst3:EC400000000000000000000000000001');
   assert.equal(p.calls.find(call => call.command === 'plugin.load').payload.bundlePath, '/Users/test/Library/Audio/Plug-Ins/VST3/Echo.vst3');
   all.fire('click'); assert(p.browser.render().includes('1 effects'));
   p.browser.showPlugins('instrument'); html = p.browser.render();
@@ -176,7 +176,7 @@ const facet = (h, field, value) => h.node(`${field}-${value}`, { browserFacet: f
   for (const outcome of ['latest', 'replaced-again', 'failed']) {
     const b = harness(); let finishLoad, finishSync, enterSync;
     const syncing = new Promise(resolve => { enterSync = resolve; }), gate = new Promise(resolve => { finishSync = resolve; });
-    b.state.plugins = [{ id: 'au:fixture', name: 'Fixture keys', type: 'instrument', format: 'AU' }];
+    b.state.plugins = [{ component: 'au:aumu:fixt:makr', name: 'Fixture keys', manufacturer: 'Maker', kind: 'instrument', category: 'Instrument', format: 'AU' }];
     const button = b.node('browser-plugin-load');
     b.window.ST.beforeEngineSync = () => { enterSync(); return gate; };
     b.reply = command => command === 'plugin.load' ? new Promise(resolve => { finishLoad = resolve; }) : command === 'engine.project' && outcome === 'failed' ? Promise.reject(new Error('Stale plug-in restoration failed')) : {};

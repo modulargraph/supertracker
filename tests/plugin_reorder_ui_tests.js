@@ -15,7 +15,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 function fixture(slots = [0, 3, 7]) {
   return complete({ activePattern: 0, tracks: [{ name: 'Keys', instrument: 0 }, { name: 'Bass', instrument: 1 }], instruments: [{ type: 'synth' }, { type: 'synth' }],
-    audioPlugins: [...slots.map((slot, i) => ({ track: 0, kind: 'effect', slot, instanceID: `instance-${i}`, component: `fx:${i}`, name: ['Equalizer', 'Compressor', 'Echo'][i], state: `saved-${i}`, bypass: i === 1, parameters: [{ address: 42, name: 'Amount', normalized: .2 + i / 10 }] })), { track: 0, kind: 'instrument', slot: 0, instanceID: 'keys', component: 'instrument', state: 'preset' }, { track: 1, kind: 'effect', slot: 0, instanceID: 'bass-fx', component: 'bassfx', state: 'bass' }],
+    audioPlugins: [...slots.map((slot, i) => ({ track: 0, kind: 'effect', slot, instanceID: `instance-${i}`, component: `clap:fx.${i}`, format: 'CLAP', name: ['Equalizer', 'Compressor', 'Echo'][i], state: `saved-${i}`, bypass: i === 1, parameters: [{ address: 42, name: 'Amount', normalized: .2 + i / 10 }] })), { track: 0, kind: 'instrument', slot: 0, instanceID: 'keys', component: 'clap:com.example.instrument', format: 'CLAP', state: 'preset' }, { track: 1, kind: 'effect', slot: 0, instanceID: 'bass-fx', component: 'clap:com.example.bassfx', format: 'CLAP', state: 'bass' }],
     patterns: [{ id: 0, length: 64, automation: [{ owner: 'track:0', target: `plugin:effect:${slots[0]}:42`, points: [{ row: 0, value: .25 }] }, { owner: 'track:0', target: `plugin:effect:${slots[1]}:42`, points: [{ row: 4, value: .75 }] }, { owner: 'track:0', target: 'plugin:instrument:0:42', points: [{ row: 0, value: .5 }] }, { owner: 'track:1', target: 'plugin:effect:0:42', points: [] }] }, { id: 1, length: 32, automation: [{ owner: 'track:0', target: `plugin:effect:${slots[2]}:99:part`, points: [{ row: 20, value: .6 }] }, { track: 0, target: 'volume', points: [] }] }] });
 }
 function response(owner, track, fromSlot, toSlot) {
@@ -93,14 +93,14 @@ test('sparse reorder preserves slots, native states and bypass; all pattern effe
   const h = harness(); await tick(); const original = clone(h.state.project), event = h.key(7, 'ArrowUp');
   assert(event.handled && event.defaultPrevented); await h.finish();
   const effects = h.state.project.audioPlugins.filter(p => p.owner === 'track:0' && p.kind === 'effect');
-  assert.deepEqual(clone(effects.map(p => [p.slot, p.component, p.bypass, p.instanceID, p.state])), [[0,'fx:0',false,'instance-0','live-0'],[3,'fx:2',false,'instance-2','live-2'],[7,'fx:1',true,'instance-1','live-1']]);
+  assert.deepEqual(clone(effects.map(p => [p.slot, p.component, p.bypass, p.instanceID, p.state])), [[0,'clap:fx.0',false,'instance-0','live-0'],[3,'clap:fx.2',false,'instance-2','live-2'],[7,'clap:fx.1',true,'instance-1','live-1']]);
   assert.deepEqual(h.state.project.patterns.map(p => p.automation.map(l => l.target)), [['plugin:effect:0:42','plugin:effect:7:42','plugin:instrument:0:42','plugin:effect:0:42'],['plugin:effect:3:99:part','volume']]);
   assert.deepEqual(h.state.project.patterns.map(p => p.automation.map(l => l.points)), original.patterns.map(p => p.automation.map(l => l.points)));
   assert.deepEqual(clone(h.state.project.audioPlugins.filter(p => p.kind === 'instrument' || p.owner === 'track:1')), original.audioPlugins.filter(p => p.kind === 'instrument' || p.owner === 'track:1'));
   assert.equal(h.mutations.length, 1); assert.equal(h.mutations[0].label, 'Reorder insert effect'); assert.equal(h.document.activeElement.id, 'plugin-header-3'); assert(h.document.activeElement.scrolled); assert.equal(h.state.track, 0);
   const order = h.calls.filter(x => ['capture','engine.project','plugin.move'].includes(x.command)).map(x => x.command); assert.deepEqual(order, ['capture','engine.project','plugin.move']);
   await h.undo(); assert.deepEqual(h.state.project.patterns, original.patterns);
-  assert.deepEqual(h.state.project.audioPlugins.filter(p => p.kind === 'effect' && p.owner === 'track:0').map(p => [p.slot,p.component,p.state,p.instanceID]), [[0,'fx:0','live-0','instance-0'],[3,'fx:1','live-1','instance-1'],[7,'fx:2','live-2','instance-2']]);
+  assert.deepEqual(h.state.project.audioPlugins.filter(p => p.kind === 'effect' && p.owner === 'track:0').map(p => [p.slot,p.component,p.state,p.instanceID]), [[0,'clap:fx.0','live-0','instance-0'],[3,'clap:fx.1','live-1','instance-1'],[7,'clap:fx.2','live-2','instance-2']]);
   assert.equal(h.calls.findLast(x => x.command === 'engine.project').payload.replace, true);
 });
 
@@ -113,7 +113,7 @@ test('fresh opaque plug-in state arriving during the pre-move sync does not canc
   };
   h.key(7, 'ArrowUp'); await h.finish();
   assert.deepEqual(h.errors.map(e => e.message), []); assert.equal(h.mutations.length, 1);
-  assert.deepEqual(clone(h.state.project.audioPlugins.filter(p => p.owner === 'track:0' && p.kind === 'effect').map(p => [p.slot, p.component])), [[0,'fx:0'],[3,'fx:2'],[7,'fx:1']]);
+  assert.deepEqual(clone(h.state.project.audioPlugins.filter(p => p.owner === 'track:0' && p.kind === 'effect').map(p => [p.slot, p.component])), [[0,'clap:fx.0'],[3,'clap:fx.2'],[7,'clap:fx.1']]);
 });
 
 test('Move down button uses adjacent occupied slot and follows the moved header', async () => {
@@ -140,7 +140,7 @@ test('new mixer previews wait for the remapped chain and superseded previews nev
     if(supersede){input.value='.72';await input.fire('change');}
     wait.resolve(result);await h.finish();await pending;
     const previews=h.calls.filter(x=>x.command==='engine.project'&&x.payload.project.tracks[0].volume===.61);assert.equal(previews.length,supersede?0:1);
-    if(!supersede){assert.equal(previews[0].payload.project.tracks[0].volume,.61);assert.equal(previews[0].payload.project.audioPlugins.find(p=>p.owner === 'track:0'&&p.kind==='effect'&&p.slot===0).component,'fx:1');}
+    if(!supersede){assert.equal(previews[0].payload.project.tracks[0].volume,.61);assert.equal(previews[0].payload.project.audioPlugins.find(p=>p.owner === 'track:0'&&p.kind==='effect'&&p.slot===0).component,'clap:fx.1');}
   }
 });
 
@@ -191,7 +191,7 @@ test('actual app waits for the module move before sync/save and Undo/Redo restor
   assert.equal(h.calls.filter(x=>x.command==='engine.project').length,initialSyncs);assert.equal(h.calls.filter(x=>x.command==='project.save').length,0);
   gate.resolve();await tick();assert.equal(await saving,true);await tick();
   assert.equal(h.ST.state.undo.length,2);assert.equal(h.ST.state.project.name,'Parallel edit');assert.equal(h.ST.state.project.patterns[0].automation[0].target,'plugin:effect:3:42');
-  const saved=h.calls.find(x=>x.command==='project.save').payload.project;assert.equal(saved.name,'Parallel edit');assert.equal(saved.audioPlugins.find(p=>p.owner === 'track:0'&&p.kind==='effect'&&p.slot===0).component,'fx:1');
+  const saved=h.calls.find(x=>x.command==='project.save').payload.project;assert.equal(saved.name,'Parallel edit');assert.equal(saved.audioPlugins.find(p=>p.owner === 'track:0'&&p.kind==='effect'&&p.slot===0).component,'clap:fx.1');
   const after=clone(h.ST.state.project);await h.ST.perform('undo');await h.ST.syncEngine(true,true);
   assert.equal(h.ST.state.project.name,'Parallel edit');assert.deepEqual(clone(h.ST.state.project.patterns),original.patterns);assert.equal(h.ST.state.project.audioPlugins.find(p=>p.owner === 'track:0'&&p.kind==='effect'&&p.slot===0).instanceID,'instance-0');
   await h.ST.perform('redo');assert.deepEqual(clone(h.ST.state.project),after);assert.equal(h.ST.state.undo.length,2);

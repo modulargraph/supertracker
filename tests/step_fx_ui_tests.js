@@ -11,7 +11,7 @@ const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':
 const decode = value => value.replace(/&(amp|lt|gt|quot|#39);/g, (_, c) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" }[c]));
 const ID = '00000000-0000-0000-0000-000000000017', OTHER = '00000000-0000-0000-0000-000000000018', MAX = '18446744073709551615';
 const parameter = (address = MAX, extra = {}) => ({ address, name: 'Native frequency', writable: true, automatable: true, normalized: .27, ...extra });
-const plugin = extra => ({ instanceID: ID, owner: 'track:keys', kind: 'effect', slot: 2, component: 'AU:fixture:one', name: 'Fixture Echo', ...extra });
+const plugin = extra => ({ instanceID: ID, owner: 'track:keys', kind: 'effect', slot: 2, component: 'au:aufx:fixture-one:demo', format: 'AU', name: 'Fixture Echo', ...extra });
 const saved = extra => ({ type: 'plugin', instanceID: ID, address: MAX, name: 'Saved frequency', value: .4, ...extra });
 function fixture() {
   const pattern = id => ({ id, name: `Pattern ${id}`, length: 8, steps: [Array(8).fill(null), Array(8).fill(null)], automation: [] });
@@ -190,7 +190,7 @@ test('project, pattern, track, row and cell changes during reads cannot attach a
 });
 
 test('moved, replaced, duplicated or reassigned plug-ins during a read never receive a stale attachment', async () => {
-  const changes = { slot: h => { h.state.project.audioPlugins[0].slot++; }, kind: h => { h.state.project.audioPlugins[0].kind = 'instrument'; }, id: h => { h.state.project.audioPlugins[0].instanceID = OTHER; }, track: h => { h.state.project.audioPlugins[0].owner = 'track:bass'; }, duplicate: h => { h.state.project.audioPlugins.push(plugin({ slot: 5 })); }, component: h => { h.state.project.audioPlugins[0] = plugin({ component: 'AU:replacement:two' }); } };
+  const changes = { slot: h => { h.state.project.audioPlugins[0].slot++; }, kind: h => { h.state.project.audioPlugins[0].kind = 'instrument'; }, id: h => { h.state.project.audioPlugins[0].instanceID = OTHER; }, track: h => { h.state.project.audioPlugins[0].owner = 'track:bass'; }, duplicate: h => { h.state.project.audioPlugins.push(plugin({ slot: 5 })); }, component: h => { h.state.project.audioPlugins[0] = plugin({ component: 'au:aufx:replacement-two:demo' }); } };
   for (const phase of ['load', 'apply']) for (const [name, change] of Object.entries(changes)) {
     const h = harness(), gate = deferred(); let pending;
     if (phase === 'load') { h.read(() => gate.promise); pending = h.ui.show(); } else { await h.ui.show(); await h.choose('native frequency'); h.read(() => gate.promise); pending = h.apply('.8'); }

@@ -7,9 +7,9 @@ const routing = require('../ui/routing-project.js');
 
 {
   // A plug-in instrument's descriptor is on the tracks that play it. The instrument keeps it only while none does.
-  const descriptor = (owner, instanceID) => ({ owner, kind: 'instrument', slot: 0, instanceID, component: 'vst3:synth', name: 'Synth', state: 'settings' });
+  const descriptor = (owner, instanceID) => ({ owner, kind: 'instrument', slot: 0, instanceID, component: 'vst3:73796E74680000000000000000000000', format: 'VST3', name: 'Synth', state: 'settings' });
   const project = { tracks: [{ routingID: 'a', instrument: 1 }, { routingID: 'b', instrument: 1 }, { routingID: 'c', instrument: 0 }],
-    instruments: [{ type: 'sample' }, { type: 'plugin' }], audioPlugins: [descriptor('track:a', 'one'), descriptor('track:b', 'two'), { owner: 'track:a', kind: 'effect', slot: 0, instanceID: 'fx' }] };
+    instruments: [{ type: 'sample' }, { type: 'plugin' }], audioPlugins: [descriptor('track:a', 'one'), descriptor('track:b', 'two'), { owner: 'track:a', kind: 'effect', slot: 0, instanceID: 'fx', component: 'clap:com.example.plugin', format: 'CLAP' }] };
   assert.equal(routing.instrumentPlugin(project, 1), project.audioPlugins[0]); assert.equal(routing.instrumentPlugin(project, 0), null);
   // One of two tracks leaves: the other still plays it, nothing is kept.
   routing.keepInstrumentPlugins(project, [project.tracks[0]]); assert.equal(Object.hasOwn(project.instruments[1], 'plugin'), false);
@@ -17,7 +17,7 @@ const routing = require('../ui/routing-project.js');
   assert.equal(routing.instrumentPlugin(project, 1).instanceID, 'two');
   // The last one leaves: the instrument keeps the descriptor, without the channel and the instance it had.
   routing.keepInstrumentPlugins(project, [project.tracks[1]]);
-  assert.deepEqual(project.instruments[1].plugin, { kind: 'instrument', slot: 0, component: 'vst3:synth', name: 'Synth', state: 'settings' });
+  assert.deepEqual(project.instruments[1].plugin, { kind: 'instrument', slot: 0, component: 'vst3:73796E74680000000000000000000000', format: 'VST3', name: 'Synth', state: 'settings' });
   project.tracks[1].instrument = 0; project.audioPlugins.splice(0, 1);
   assert.equal(routing.instrumentPlugin(project, 1), project.instruments[1].plugin);
   // A sampler track and an instrument that is no plug-in keep nothing.
@@ -112,7 +112,7 @@ function harness() {
   {
     const { ST } = harness(), project = ST.state.project;
     const owner = routing.trackOwner(project.tracks[0]), nextID = project.tracks[1].routingID;
-    project.audioPlugins = [{ owner, kind: 'effect', slot: 0, instanceID: 'remove' }, { owner: `track:${nextID}`, kind: 'effect', slot: 0, instanceID: 'next' }, { owner: 'bus:group', kind: 'effect', slot: 0, instanceID: 'bus' }];
+    project.audioPlugins = [{ owner, kind: 'effect', slot: 0, instanceID: 'remove', component: 'clap:com.example.plugin', format: 'CLAP' }, { owner: `track:${nextID}`, kind: 'effect', slot: 0, instanceID: 'next', component: 'clap:com.example.plugin', format: 'CLAP' }, { owner: 'bus:group', kind: 'effect', slot: 0, instanceID: 'bus', component: 'clap:com.example.plugin', format: 'CLAP' }];
     project.routing.outputs[owner] = 'bus:group';
     project.routing.sidechains = [{ id: 'key', source: routing.trackOwner(project.tracks[1]), destination: 'remove' }];
     const before = JSON.stringify(project);

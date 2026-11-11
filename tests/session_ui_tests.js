@@ -174,11 +174,11 @@ async function run(){
   {
     function assignment(){
       const h=harness(),p=h.ST.state.project;p.instruments[1].type='plugin';p.tracks[0].instrument=0;p.tracks[1].instrument=1;
-      p.audioPlugins=[{owner:'track:t0',kind:'instrument',slot:0,component:'old',state:'old target'},{owner:'track:t1',kind:'instrument',slot:0,component:'fixture',state:'old source'}];
+      p.audioPlugins=[{owner:'track:t0',kind:'instrument',slot:0,component:'clap:com.example.old',format:'CLAP',state:'old target'},{owner:'track:t1',kind:'instrument',slot:0,component:'clap:com.example.fixture',format:'CLAP',state:'old source'}];
       p.instruments[1].plugin={...p.audioPlugins[1]};h.ST.state.instrument=1;h.ST.state.track=0;h.ST.setView('instrument');
       // Assignment captures the retiring target before loading its replacement.
       let loaded=false;
-      h.handlers.set('plugin.state',payload=>payload.owner==='track:t1'?{...p.audioPlugins[1]}:loaded?{owner:'track:t0',kind:'instrument',slot:0,component:'fixture',state:'new target'}:{...p.audioPlugins[0]});
+      h.handlers.set('plugin.state',payload=>payload.owner==='track:t1'?{...p.audioPlugins[1]}:loaded?{owner:'track:t0',kind:'instrument',slot:0,component:'clap:com.example.fixture',format:'CLAP',state:'new target'}:{...p.audioPlugins[0]});
       h.handlers.set('plugin.load',payload=>{loaded=true;return {...payload};});return h;
     }
     for(const failure of ['mapped','native']){
@@ -195,10 +195,10 @@ async function run(){
       const s=assignment();if(operation==='remove')s.ST.state.project.instruments[1].type='synth';
       let finishNative;const gateNative=new Promise(resolve=>finishNative=resolve);s.handlers.set('plugin.'+operation,()=>gateNative);
       const assigning=s.element('#assign-instrument').click();await new Promise(resolve=>setImmediate(resolve));assert(s.calls.some(x=>x.command==='plugin.'+operation));
-      const replacement=s.ST.normalize({name:'Different owner',tracks:[{id:0,name:'Track 01',routingID:'t0',instrument:0}],audioPlugins:[{owner:'track:t0',kind:'instrument',slot:0,component:'keep',state:'replacement state'}]});s.ST.state.project=replacement;
-      finishNative({component:'fixture'});await assigning;
+      const replacement=s.ST.normalize({name:'Different owner',tracks:[{id:0,name:'Track 01',routingID:'t0',instrument:0}],audioPlugins:[{owner:'track:t0',kind:'instrument',slot:0,component:'clap:com.example.keep',format:'CLAP',state:'replacement state'}]});s.ST.state.project=replacement;
+      finishNative({component:'clap:com.example.fixture'});await assigning;
       const restored=s.calls.filter(x=>x.command==='engine.project').at(-1);assert.equal(restored.payload.project.name,'Different owner');assert.equal(restored.payload.replace,true);
-      assert.equal(replacement.audioPlugins[0].state,'replacement state');assert.equal(replacement.audioPlugins[0].component,'keep');
+      assert.equal(replacement.audioPlugins[0].state,'replacement state');assert.equal(replacement.audioPlugins[0].component,'clap:com.example.keep');
     }
     console.log('PASS late plug-in assignment and removal restore the current owner without filtering its retained descriptors');
   }
@@ -449,7 +449,7 @@ async function run(){
     const pending=h.ST.syncEngine(true);h.ST.mutate('parallel pattern edit',p=>p.name='Edit during move');
     h.advance(2000);await tick();
     assert.equal(h.calls.filter(x=>['engine.project','project.autosave'].includes(x.command)).length,0);
-    h.ST.state.project.audioPlugins=[{owner:'track:t0',kind:'effect',slot:1,instanceID:'moved'}];complete();await pending;await tick();
+    h.ST.state.project.audioPlugins=[{owner:'track:t0',kind:'effect',slot:1,instanceID:'moved', component: 'clap:com.example.plugin', format: 'CLAP'}];complete();await pending;await tick();
     const sends=h.calls.filter(x=>['engine.project','project.autosave'].includes(x.command));
     assert.ok(sends.some(x=>x.command==='project.autosave'));assert.ok(sends.some(x=>x.command==='engine.project'));
     for(const send of sends){assert.equal(send.payload.project.name,'Edit during move');assert.equal(send.payload.project.audioPlugins[0].slot,1);}

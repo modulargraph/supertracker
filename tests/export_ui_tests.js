@@ -293,7 +293,7 @@ test('invalid mode or tail values stop before any destination or native preparat
 
 test('strict synchronization includes freshly captured native state and a late render cannot report success for a replacement project', async () => {
   const gate = deferred(), h = harness({ 'audio.export': () => gate.promise });
-  h.state.project.audioPlugins = [{ owner: 'master', kind: 'effect', slot: 0, component: 'fixture', state: 'previous' }];
+  h.state.project.audioPlugins = [{ owner: 'master', kind: 'effect', slot: 0, component: 'clap:com.example.fixture', format: 'CLAP', state: 'previous' }];
   h.ST.captureNativeEdits = async () => { h.calls.push({ command: 'captureNativeEdits' }); h.state.project.audioPlugins[0].state = 'fresh editor state'; return true; };
   await h.open(); const rendering = h.start(); await h.settle();
   assert.equal(h.calls.find(call => call.command === 'engine.project').payload.project.audioPlugins[0].state, 'fresh editor state');

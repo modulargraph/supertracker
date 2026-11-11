@@ -9,8 +9,8 @@ const source = web.source('plugin-pages.js');
 const tick = async () => { for (let n = 0; n < 30; n++) await Promise.resolve(); };
 function harness() {
   const parameters = Array.from({ length: 11 }, (_, index) => ({ address: String(index), name: `P${index}`, normalized: index / 10, display: `d${index}`, writable: index !== 9, automatable: true }));
-  const instrument = { owner: 'track:t0', kind: 'instrument', slot: 0, instanceID: 'inst', name: 'Synth', parameters };
-  const nksEffect = { owner: 'track:t0', kind: 'effect', slot: 1, instanceID: 'fx', name: 'Delay', nks: { name: 'Echo', pages: [{ name: 'Main', parameters: [{ slot: 0, name: 'Mix', parameterID: 4, mapped: true }, { slot: 1, name: 'Gone', parameterID: 7, mapped: false }] }] } };
+  const instrument = { owner: 'track:t0', kind: 'instrument', slot: 0, instanceID: 'inst', component: 'clap:com.example.plugin', format: 'CLAP', name: 'Synth', parameters };
+  const nksEffect = { owner: 'track:t0', kind: 'effect', slot: 1, instanceID: 'fx', component: 'clap:com.example.plugin', format: 'CLAP', name: 'Delay', nks: { name: 'Echo', pages: [{ name: 'Main', parameters: [{ slot: 0, name: 'Mix', parameterID: 4, mapped: true }, { slot: 1, name: 'Gone', parameterID: 7, mapped: false }] }] } };
   const project = complete({ tracks: [{ instrument: 0, routingID: 't0' }], instruments: [{ type: 'plugin' }], audioPlugins: [instrument, nksEffect] });
   const state = { project, track: 0, instrument: 0 }, calls = [], undo = [], timers = new Map(); let serial = 0;
   const ST = { state, escapeHTML: String, markDirty() {}, toast() {}, refresh() {},

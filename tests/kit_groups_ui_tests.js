@@ -9,7 +9,7 @@ const copy = value => JSON.parse(JSON.stringify(value));
 const same = (a, b, m) => assert.equal(JSON.stringify(a), JSON.stringify(b), m);
 const tests = [], test = (name, run) => tests.push([name, run]);
 
-function session(source = groupProject({ name: '1988 Kit', pads: [0, 1, 3], plugins: [{ pad: 1 }, { pad: 3, kind: 'instrument', component: 'vst3:drum' }], busInserts: 2, choke: { 3: 1 } })) {
+function session(source = groupProject({ name: '1988 Kit', pads: [0, 1, 3], plugins: [{ pad: 1 }, { pad: 3, kind: 'instrument', component: 'vst3:6472756D000000000000000000000000', format: 'VST3' }], busInserts: 2, choke: { 3: 1 } })) {
   const h = harness();
   h.handlers.set('kit.read', () => ({ groupProject: copy(source), warnings: ['Flanger is unavailable.'] }));
   return h;

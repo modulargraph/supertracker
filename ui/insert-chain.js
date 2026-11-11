@@ -71,11 +71,11 @@
   function addPanel(owner, prefix) {
     const query = local.query.trim().toLowerCase(), match = name => !query || String(name).toLowerCase().includes(query);
     const groups = (FX()?.categories(S().state.plugins) || []).map(group => ({ ...group, effects: group.effects.filter(effect => match(effect.name)) })).filter(group => group.effects.length);
-    const others = (local.plugins || []).filter(item => !FX()?.isBuiltin(item.id) && (item.type || item.kind) === 'effect' && match(`${item.name} ${item.manufacturer || ''}`)).slice(0, 60);
+    const others = (local.plugins || []).filter(item => !FX()?.isBuiltin(item) && item.kind === 'effect' && match(`${item.name} ${item.manufacturer}`)).slice(0, 60);
     const column = (name, items) => `<div class="fx-add-column" role="group" aria-label="${esc(name)}"><h5>${esc(name)}</h5>${items.join('')}</div>`;
-    const choice = (id, name, detail, bundle = '') => `<button type="button" class="fx-add-choice" data-fx-choose="${esc(id)}" data-fx-bundle="${esc(bundle)}"><span>${esc(name)}</span>${detail ? `<small>${esc(detail)}</small>` : ''}</button>`;
-    const columns = groups.map(group => column(group.name, group.effects.map(effect => choice(effect.id, effect.name, ''))));
-    columns.push(column('Plug-ins', local.plugins ? others.length ? others.map(item => choice(item.id, item.name, item.manufacturer || item.format, item.bundlePath || '')) : ['<p class="muted fx-add-note">No matching plug-in effects.</p>']
+    const choice = (component, name, detail, bundle = '') => `<button type="button" class="fx-add-choice" data-fx-choose="${esc(component)}" data-fx-bundle="${esc(bundle)}"><span>${esc(name)}</span>${detail ? `<small>${esc(detail)}</small>` : ''}</button>`;
+    const columns = groups.map(group => column(group.name, group.effects.map(effect => choice(effect.component, effect.name, ''))));
+    columns.push(column('Plug-ins', local.plugins ? others.length ? others.map(item => choice(item.component, item.name, item.manufacturer || item.format, item.bundlePath || '')) : ['<p class="muted fx-add-note">No matching plug-in effects.</p>']
       : [`<p class="muted fx-add-note">${local.pluginsLoading ? 'Reading installed plug-ins…' : 'Installed plug-in effects'}</p>`]));
     return `<div class="fx-add-panel" id="${prefix}-add-panel" role="dialog" aria-label="Add an insert effect"><div class="fx-add-head"><input type="search" id="${prefix}-add-search" class="field" placeholder="Search effects…" value="${esc(local.query)}" aria-label="Search effects" autocomplete="off" spellcheck="false">`
       + `<span class="muted">↑ ↓ ← → choose · Return adds · Esc closes</span><button type="button" data-fx-action="close-add">Close</button></div><div class="fx-add-columns">${columns.join('')}</div></div>`;

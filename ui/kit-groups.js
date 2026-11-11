@@ -115,7 +115,6 @@
     const removed = new Set(q.audioPlugins.filter(p => p.owner === ownerID || p.owner === chainID).map(p => p.instanceID));
     q.audioPlugins = q.audioPlugins.filter(p => p.owner !== ownerID && p.owner !== chainID);
     q.routing.sidechains = q.routing.sidechains.filter(route => !removed.has(route.destination));
-    for (const id of removed) delete q.pluginPages[id];
   }
 
   /* Replace kit: the target group's members take the new kit's sources pad by pad (instrument,

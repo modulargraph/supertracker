@@ -20,13 +20,13 @@ function fixture() {
       { id: 2, name: 'Unused', type: 'midi', midiChannel: 7 }
     ],
     audioPlugins: [
-      { instanceID: 'instrument', owner: 'track:source', kind: 'instrument', slot: 0, component: 'AU:synth', state: 'opaque:instrument:track:source', nks: { instanceID: 'instrument', source: 'track:source' } },
-      { instanceID: 'fx-six', owner: 'track:source', kind: 'effect', slot: 6, component: 'AU:echo', state: { instanceID: 'fx-six', nested: { owner: 'track:source' } }, bypass: true },
-      { instanceID: 'fx-two', owner: 'track:source', kind: 'effect', slot: 2, component: 'VST3:filter', state: 'opaque-filter' },
-      { instanceID: 'master', owner: 'master', kind: 'effect', slot: 0, component: 'AU:master' },
-      { instanceID: 'other-fx', owner: 'track:other', kind: 'effect', slot: 0, component: 'AU:other' },
-      { instanceID: 'bus-fx', owner: 'bus:group', kind: 'effect', slot: 0, component: 'AU:group' },
-      { instanceID: 'master-two', owner: 'master', kind: 'effect', slot: 3, component: 'AU:master-two' }
+      { instanceID: 'instrument', owner: 'track:source', kind: 'instrument', slot: 0, component: 'au:aufx:synth:demo', format: 'AU', state: 'opaque:instrument:track:source', nks: { instanceID: 'instrument', source: 'track:source' } },
+      { instanceID: 'fx-six', owner: 'track:source', kind: 'effect', slot: 6, component: 'au:aufx:echo:demo', format: 'AU', state: { instanceID: 'fx-six', nested: { owner: 'track:source' } }, bypass: true },
+      { instanceID: 'fx-two', owner: 'track:source', kind: 'effect', slot: 2, component: 'vst3:66696C74657200000000000000000000', format: 'VST3', state: 'opaque-filter' },
+      { instanceID: 'master', owner: 'master', kind: 'effect', slot: 0, component: 'au:aufx:master:demo', format: 'AU' },
+      { instanceID: 'other-fx', owner: 'track:other', kind: 'effect', slot: 0, component: 'au:aufx:other:demo', format: 'AU' },
+      { instanceID: 'bus-fx', owner: 'bus:group', kind: 'effect', slot: 0, component: 'au:aufx:group:demo', format: 'AU' },
+      { instanceID: 'master-two', owner: 'master', kind: 'effect', slot: 3, component: 'au:aufx:master-two:demo', format: 'AU' }
     ],
     patterns: [
       { id: 0, length: 2, steps: [
@@ -242,7 +242,7 @@ test('a whole group duplicates its members and a new bus with inserts, sends, si
   for (const i of result.trackIndices) { assert.equal(q.tracks[i].groupID, result.groupID); assert.equal(q.routing.outputs[`track:${q.tracks[i].routingID}`], `bus:${result.busID}`); }
   assert.equal(q.routing.outputs[`bus:${result.busID}`], q.routing.outputs['bus:group'] ?? 'master');
   const insert = q.audioPlugins.find(plugin => plugin.owner === `bus:${result.busID}`);
-  assert.equal(insert.component, 'AU:group'); assert.notEqual(insert.instanceID, 'bus-fx'); assert.ok(result.newPluginInstanceIDs.includes(insert.instanceID));
+  assert.equal(insert.component, 'au:aufx:group:demo'); assert.notEqual(insert.instanceID, 'bus-fx'); assert.ok(result.newPluginInstanceIDs.includes(insert.instanceID));
   const send = q.routing.sends.find(item => item.source === `bus:${result.busID}`);
   assert.equal(send.level, .4); assert.notEqual(send.id, 'bus-send');
   const key = q.routing.sidechains.find(route => route.destination === insert.instanceID);

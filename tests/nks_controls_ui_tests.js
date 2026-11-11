@@ -32,12 +32,12 @@ class Root extends Element {
 }
 function harness() {
   const pages=[{index:0,name:'Sound <one>',parameters:[{slot:0,name:'Cutoff <bright>',section:'Filter',parameterID:0,mapped:true,mappingStatus:'mapped'},{slot:1,name:'Read only',parameterID:91,mapped:true},{slot:2,name:'Unmapped',parameterID:999,mapped:false,mappingStatus:'parameterUnavailable'},{slot:3,name:'No automation',parameterID:17,mapped:true}]},{index:1,name:'Movement',parameters:[{slot:0,name:'Amount',parameterID:123,mapped:true},{slot:7,name:'Unknown',mapped:false}]}];
-  const plugin={owner:'track:t0',kind:'instrument',slot:0,instanceID:'synth-1',component:'vst3:ABCD',format:'VST3',bundlePath:'/Plugin.vst3',name:'Synth',state:'baseline',custom:'preserved',nks:{name:'Preset',path:'/Preset.nksf',identity:{format:'vst3',vst3ClassID:'ABCD'},pages}};
+  const plugin={owner:'track:t0',kind:'instrument',slot:0,instanceID:'synth-1',component:'vst3:41424344000000000000000000000000',format:'VST3',bundlePath:'/Plugin.vst3',name:'Synth',state:'baseline',custom:'preserved',nks:{name:'Preset',path:'/Preset.nksf',identity:{format:'vst3',vst3ClassID:'ABCD'},pages}};
   const inst={id:0,type:'vst3',name:'Synth',plugin:copy(plugin)},project={tracks:[{instrument:0,routingID:'t0'}],instruments:[inst],audioPlugins:[plugin]},state={project,track:0,instrument:0,view:'instrument'};
   const parameters=[{address:'0',name:'Filter',normalized:.25,display:'1.2 kHz',writable:true,automatable:true},{address:'91',normalized:.3,display:'read',writable:false},{address:'17',normalized:.5,automatable:false},{address:'123',normalized:.75,display:'75%'}];
   const requests=[],mutations=[],notices=[],timers=new Map(),handlers=new Map(); let sequence=0,root=null,refreshes=0,restoreFocus=true;
   const document={activeElement:null,querySelectorAll:selector=>selector==='[data-nks-root]'&&root?[root]:[],getElementById:id=>root?.nodes.find(node=>node.id===id)};
-  const ST={state,escapeHTML,request:async(command,payload)=>{requests.push({command,payload:copy(payload)});if(handlers.has(command))return handlers.get(command)(payload);if(command==='plugin.parameters')return copy(parameters);if(command==='plugin.parameter'){const p=parameters.find(p=>p.address===payload.address);if(p)p.normalized=payload.value;return {display:`value ${payload.value}`};}if(command==='plugin.state')return {component:'vst3:ABCD',instanceID:plugin.instanceID,state:`saved:${parameters[0].normalized}`};throw Error(command);},mutate(label,fn,options){mutations.push({label,before:copy(state.project),options});fn(state.project);},toast(message,type){notices.push({message,type});},refresh(){refreshes++;mount();}};
+  const ST={state,escapeHTML,request:async(command,payload)=>{requests.push({command,payload:copy(payload)});if(handlers.has(command))return handlers.get(command)(payload);if(command==='plugin.parameters')return copy(parameters);if(command==='plugin.parameter'){const p=parameters.find(p=>p.address===payload.address);if(p)p.normalized=payload.value;return {display:`value ${payload.value}`};}if(command==='plugin.state')return {component:'vst3:41424344000000000000000000000000',format:'VST3',instanceID:plugin.instanceID,state:`saved:${parameters[0].normalized}`};throw Error(command);},mutate(label,fn,options){mutations.push({label,before:copy(state.project),options});fn(state.project);},toast(message,type){notices.push({message,type});},refresh(){refreshes++;mount();}};
   const context={window:{ST},document,Date,setTimeout:(fn,delay)=>{timers.set(++sequence,{fn,delay});return sequence;},clearTimeout:id=>timers.delete(id)};
   web.runText('nks-controls.js', source, context,{filename:'nks-controls.js'}); const api=context.window.STNKSControls;
   function mount(){const focused=document.activeElement?.id;if(root)root.isConnected=false;root=new Root(api.render(inst,state.project.audioPlugins[0]),document);api.bind();if(focused&&restoreFocus){const next=root.nodes.find(n=>n.id===focused);if(next)document.activeElement=next;}return root;}
@@ -73,10 +73,10 @@ function harness() {
     const h=harness();h.mount();await tick();h.input().focus();const e=h.root.fire('keydown',{key:'PageDown',ctrlKey:true,metaKey:false,altKey:false});await tick();assert(e.prevented&&e.stopped);assert.equal(h.refreshes,1);assert.equal(h.document.activeElement.id,'nks-0-0-number');assert.equal(h.input().dataset.nksAddress,'123');assert.equal(h.input().value,'0.75');assert.equal(h.mutations.length,0);
   }
   {
-    const h=harness();h.mount();await tick();h.input().value='.8';h.input().fire('input');h.state.project.audioPlugins[0]={...h.plugin,component:'vst3:REPLACEMENT'};h.flush(35);await tick();assert.equal(h.requests.filter(r=>r.command==='plugin.parameter').length,0);assert.equal(h.mutations.length,0);
+    const h=harness();h.mount();await tick();h.input().value='.8';h.input().fire('input');h.state.project.audioPlugins[0]={...h.plugin,component:'vst3:5245504C4143454D454E540000000000',format:'VST3'};h.flush(35);await tick();assert.equal(h.requests.filter(r=>r.command==='plugin.parameter').length,0);assert.equal(h.mutations.length,0);
   }
   {
-    const h=harness();h.mount();await tick();const snapshot=deferred();h.handlers.set('plugin.state',()=>snapshot.promise);h.change(.8);await tick();h.state.project=copy(h.project);snapshot.resolve({component:'vst3:ABCD',instanceID:'synth-1',state:'stale'});await tick();assert.equal(h.mutations.length,0);assert.equal(h.state.project.audioPlugins[0].state,'baseline');
+    const h=harness();h.mount();await tick();const snapshot=deferred();h.handlers.set('plugin.state',()=>snapshot.promise);h.change(.8);await tick();h.state.project=copy(h.project);snapshot.resolve({component:'vst3:41424344000000000000000000000000',format:'VST3',instanceID:'synth-1',state:'stale'});await tick();assert.equal(h.mutations.length,0);assert.equal(h.state.project.audioPlugins[0].state,'baseline');
   }
   {
     const h=harness();h.mount();await tick();const write=deferred(),seen=[];h.handlers.set('plugin.parameter',payload=>{seen.push(payload.value);if(seen.length===1)return write.promise;h.parameters[0].normalized=payload.value;return {display:String(payload.value)};});
@@ -90,7 +90,7 @@ function harness() {
     h.input().value='.6';h.input().fire('input');h.parameters[0].normalized=.2;h.flush(750);await tick();assert.equal(h.input().value,'0.6');h.api.event('project.loaded');h.flush(35);await tick();assert.equal(h.requests.filter(r=>r.command==='plugin.parameter').length,0);
   }
   {
-    const h=harness();h.mount();await tick();h.handlers.set('plugin.state',()=>({component:'vst3:DIFFERENT',instanceID:'synth-1',state:'wrong'}));h.change(.7);await tick();assert.equal(h.mutations.length,0);assert.equal(h.state.project.audioPlugins[0].state,'baseline');
+    const h=harness();h.mount();await tick();h.handlers.set('plugin.state',()=>({component:'vst3:444946464552454E5400000000000000',format:'VST3',instanceID:'synth-1',state:'wrong'}));h.change(.7);await tick();assert.equal(h.mutations.length,0);assert.equal(h.state.project.audioPlugins[0].state,'baseline');
   }
   {
     const h=harness();h.mount();await tick();h.input().focus();h.input().value='.42';h.input().fire('input');
@@ -171,7 +171,7 @@ function harness() {
   }
   {
     const h=harness();h.mount();await tick();const saved=copy(h.state.project);
-    h.handlers.set('plugin.state',()=>({component:'vst3:ABCD',instanceID:'synth-1',state:'stale-fallback-blob',stateError:'The plug-in failed to capture its edited state.'}));
+    h.handlers.set('plugin.state',()=>({component:'vst3:41424344000000000000000000000000',format:'VST3',instanceID:'synth-1',state:'stale-fallback-blob',stateError:'The plug-in failed to capture its edited state.'}));
     h.change(.8);await tick();assert.equal(h.mutations.length,0,'stateError must reject a fallback even when its component and opaque state look valid');
     assert.deepEqual(h.state.project,saved);assert(h.notices.some(notice=>notice.message==='The plug-in failed to capture its edited state.'));
     h.handlers.delete('plugin.state');h.change(.6);await tick();assert.equal(h.mutations.length,1,'snapshot failure must not block a later successful edit');assert.equal(h.state.project.audioPlugins[0].state,'saved:0.6');
@@ -210,13 +210,13 @@ function harness() {
     const input=h.input(0,'range');input.value='.67';input.fire('input');input.focus();
     const key=h.root.fire('keydown',{target:input,key:'å',code:'KeyA',altKey:true});await tick();
     assert(key.prevented&&key.stopped);assert.equal(calls.length,0,'the global action must not outrun final native state capture');
-    waiting.resolve({component:'vst3:ABCD',instanceID:'synth-1',state:'saved:0.67'});await tick();
+    waiting.resolve({component:'vst3:41424344000000000000000000000000',format:'VST3',instanceID:'synth-1',state:'saved:0.67'});await tick();
     assert.deepEqual(calls,[['track:t0','plugin:instrument:0:0','Cutoff &lt;bright&gt;',.67]]);assert.equal(h.state.project.audioPlugins[0].state,'saved:0.67');
   }
   {
     const h=harness();h.mount();await tick();const calls=[],waiting=deferred();h.ST.automate=(...args)=>calls.push(args);h.handlers.set('plugin.state',()=>waiting.promise);
     const input=h.input();input.value='.68';input.fire('input');h.root.fire('keydown',{target:input,key:'å',code:'KeyA',altKey:true});await tick();
-    h.state.view='mixer';waiting.resolve({component:'vst3:ABCD',instanceID:'synth-1',state:'saved:0.68'});await tick();
+    h.state.view='mixer';waiting.resolve({component:'vst3:41424344000000000000000000000000',format:'VST3',instanceID:'synth-1',state:'saved:0.68'});await tick();
     assert.equal(calls.length,0,'completed capture must not undo navigation made while waiting');assert.equal(h.state.project.audioPlugins[0].state,'saved:0.68');
   }
   {
@@ -227,7 +227,7 @@ function harness() {
   }
   {
     const h=harness(),calls=[];h.plugin.instanceID='exact-nks-instance';h.window.STStepFX={show:async options=>calls.push(copy(options))};
-    h.handlers.set('plugin.state',()=>({component:'vst3:ABCD',instanceID:'exact-nks-instance',state:`saved:${h.parameters[0].normalized}`}));
+    h.handlers.set('plugin.state',()=>({component:'vst3:41424344000000000000000000000000',format:'VST3',instanceID:'exact-nks-instance',state:`saved:${h.parameters[0].normalized}`}));
     h.mount();await tick();const button=h.root.querySelector('[data-nks-step="0"]');assert.equal(button.disabled,false);
     assert.equal(h.root.querySelector('[data-nks-step="91"]').disabled,true);assert.equal(h.root.querySelector('[data-nks-step="17"]').disabled,true);
     const input=h.input();input.value='.72';input.fire('input');button.fire('click');await tick();

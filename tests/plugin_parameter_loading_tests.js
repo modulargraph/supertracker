@@ -16,8 +16,8 @@ const grain = Array.from({ length: 9 }, (_, index) => ({ address: String(index),
 function pagesHarness() {
   const group = 'bus:kit-a-group';
   const plugins = [
-    { owner: 'track:lane', kind: 'effect', slot: 0, instanceID: 'track-fx', component: 'aufx:dely:appl', name: 'AUDelay', format: 'AU' },
-    { owner: 'bus:drums', kind: 'effect', slot: 1, instanceID: 'bus-vst3', component: 'vst3:abc', name: 'VST3 Comp', format: 'VST3' },
+    { owner: 'track:lane', kind: 'effect', slot: 0, instanceID: 'track-fx', component: 'au:aufx:dely:appl', name: 'AUDelay', format: 'AU' },
+    { owner: 'bus:drums', kind: 'effect', slot: 1, instanceID: 'bus-vst3', component: 'vst3:61626300000000000000000000000000', name: 'VST3 Comp', format: 'VST3' },
     { owner: group, kind: 'effect', slot: 0, instanceID: 'group-eq', component: 'stfx:eq', name: 'Four-band EQ', format: 'Builtin' },
     { owner: group, kind: 'effect', slot: 2, instanceID: 'group-grain', component: 'stfx:graindelay', name: 'Grain Delay', format: 'Builtin' },
     { owner: 'master', kind: 'effect', slot: 0, instanceID: 'master-limit', component: 'stfx:limiter', name: 'Peak Limiter', format: 'Builtin' }];
@@ -96,7 +96,7 @@ function studioHarness(fail) {
   {
     // A native refusal ends in an error with Retry, then recovers on its own once the slot loads.
     const h = pagesHarness();
-    Object.assign(h.plugins[0], { owner: 'track:lane', component: 'stfx:graindelay', name: 'Grain Delay' });
+    Object.assign(h.plugins[0], { owner: 'track:lane', component: 'stfx:graindelay', format: 'Builtin', name: 'Grain Delay' });
     h.behaviour.set('track-fx', new Error('Grain Delay is not loaded in the audio engine, so its parameters are unavailable.'));
     const ctl = h.api.controller.forOwner('track:lane', 'track-fx');
     ctl.view(); await tick();

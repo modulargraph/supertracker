@@ -39,7 +39,9 @@ function harness() {
     tracks: [{ id: 0, routingID: 'kick', name: 'Kick', instrument: 0, groupID: 'kit' }, { id: 1, routingID: 'snare', name: 'Snare', instrument: 1, groupID: 'kit' },
       { id: 2, routingID: 'bass', name: 'Bass', instrument: 2 }],
     instruments: [{ id: 0, name: 'Kick', type: 'sample' }, { id: 1, name: 'Snare', type: 'sample' }, { id: 2, name: 'Bass', type: 'sample' }],
-    patterns: [{ id: 3, name: 'Verse', length: 8, steps }], sequence: [3], activePattern: 3 });
+    patterns: [{ id: 3, name: 'Verse', length: 8, steps }], sequence: [3], activePattern: 3,
+    routing: { buses: [{ id: 'kitbus', name: 'Kit', type: 'group', groupID: 'kit', volume: 1, pan: 0, mute: false, solo: false }],
+      outputs: { 'track:kick': 'bus:kitbus', 'track:snare': 'bus:kitbus', 'bus:kitbus': 'master' }, sends: [], sidechains: [] } });
   ST.state.engineReady = true; ST.state.native = true; ST.state.view = 'pattern';
   ST.state.selection = { track: 0, row: 4 }; ST.state.track = 1; ST.state.row = 7;
   handlers.set('engine.project', () => ({}));

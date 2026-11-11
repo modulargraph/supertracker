@@ -17,7 +17,7 @@ function project(count = 6) {
     patterns: [{ id: 0, length: 4, steps: tracks.map((_, i) => [{ note: 60 + i, instrument: i }, null, null, null]),
       automation: tracks.map((_, i) => ({ id: `a${i}`, track: i, target: 'volume', points: [] })) }],
     audioClips: [{ id: 'c', track: 4 }],
-    audioPlugins: [{ instanceID: 'p', owner: 'track:r5', kind: 'effect', slot: 0 }],
+    audioPlugins: [{ instanceID: 'p', component: 'clap:com.example.plugin', format: 'CLAP', owner: 'track:r5', kind: 'effect', slot: 0 }],
     routing: { buses: [], outputs, sends: [], sidechains: [] }
   });
 }
@@ -81,7 +81,7 @@ test('the last member leaving removes the group and its bus, inserts and sends',
   const p = project(3);
   const { group } = G.create(p, [2], { name: 'Solo', makeID });
   const bus = `bus:${group.busID}`;
-  p.audioPlugins.push({ instanceID: 'busfx', owner: bus, kind: 'effect', slot: 0 });
+  p.audioPlugins.push({ instanceID: 'busfx', component: 'clap:com.example.plugin', format: 'CLAP', owner: bus, kind: 'effect', slot: 0 });
   p.routing.sends.push({ id: 's1', source: bus, destination: 'master' });
   G.removeTrack(p, 2);
   assert.equal(G.list(p).length, 0);
@@ -97,18 +97,6 @@ test('dissolving a group routes its members to Master and keeps them in place', 
   assert(p.tracks.every(t => t.groupID === undefined));
   assert.equal(p.routing.outputs['track:r1'], 'master');
   assert.equal(p.routing.buses.length, 0);
-});
-
-test('normalize repairs loaded groups: unknown members, gaps, missing buses, empty groups', () => {
-  const p = project(5);
-  p.groups = [{ id: 'g', name: 'Kit', busID: 'b' }, { id: 'empty', name: 'E', busID: 'eb' }];
-  p.tracks[0].groupID = 'g'; p.tracks[3].groupID = 'g'; p.tracks[4].groupID = 'missing';
-  assert.equal(G.normalize(p), true);
-  assert.equal(names(p), 'T1 T4 T2 T3 T5');
-  assert.equal(p.tracks[4].groupID, undefined);
-  assert.deepEqual(G.list(p).map(g => g.id), ['g']);
-  assert(p.routing.buses.some(b => b.id === 'b' && b.type === 'group'));
-  assert.equal(G.normalize(p), false, 'normalize is idempotent');
 });
 
 test('collapsed groups show one overview column; expanded groups show their members', () => {

@@ -115,7 +115,7 @@ function harness() {
     'engine.project': p => { const wanted = new Set((p.project.audioPlugins || []).map(x => x.instanceID)); nativePlugins = nativePlugins.filter(x => wanted.has(x.instanceID)); for (const x of p.project.audioPlugins || []) { const n = nativePlugins.find(y => y.instanceID === x.instanceID); if (n) { n.slot = x.slot; n.bypass = !!x.bypass; } else nativePlugins.push({ ...clone(x), parameters: parameterList(x.component) }); } return {}; },
     'engine.snapshot': () => ({ audioPlugins: nativePlugins.map(x => { const { parameters, ...rest } = x; return clone(rest); }) }),
     'builtin.effects': () => metadata(),
-    'plugins.list': () => metadata().map(e => ({ id: e.id, name: e.name, type: 'effect', category: e.category, format: 'Builtin' })).concat([{ id: 'aufx:dely:appl', name: 'AUDelay', manufacturer: 'Apple', type: 'effect', format: 'AU' }])
+    'plugins.list': () => metadata().map(e => ({ component: e.id, name: e.name, manufacturer: 'SuperTracker', kind: 'effect', category: e.category, format: 'Builtin' })).concat([{ component: 'au:aufx:dely:appl', name: 'AUDelay', manufacturer: 'Apple', kind: 'effect', category: 'Effect', format: 'AU' }])
   };
   const window = { addEventListener() {}, removeEventListener() {}, localStorage: { getItem() { return null; }, setItem() {} }, location: { search: '' }, STHostTransport: hostStub({ post(message) {
     const request = clone(message); calls.push(request);
@@ -150,7 +150,7 @@ test('empty chain offers + with the categorized built-in list; choosing adds the
   await h.el('fx-add').click(); await h.settle();
   const columns = h.document.querySelectorAll('.fx-add-column').map(column => column.querySelector('h5').textContent);
   same(columns, ['Dynamics', 'Filter & EQ', 'Modulation', 'Reverb & Space', 'Delay', 'Distortion', 'Perform', 'Plug-ins']);
-  assert(h.document.querySelector('[data-fx-choose="aufx:dely:appl"]'), 'installed plug-in effects are listed too');
+  assert(h.document.querySelector('[data-fx-choose="au:aufx:dely:appl"]'), 'installed plug-in effects are listed too');
   // Search narrows; Return adds the first match.
   const search = h.el('fx-add-search'); search.value = 'filt'; await search.fire('input');
   same(h.document.querySelectorAll('[data-fx-choose]').map(node => node.dataset.fxChoose), ['stfx:filter', 'stfx:performfilter']);

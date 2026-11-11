@@ -37,7 +37,7 @@ function fixture() {
 }
 
 function effect(owner, slot, suffix = String(slot)) {
-  return { owner, kind: 'effect', slot, name: `Effect ${suffix}`, component: `vst3:fx-${suffix}`, bundlePath: '/Library/Audio/Plug-Ins/VST3/Fixture.vst3', instanceID: `${owner}-${suffix}`, state: `state-${suffix}`, bypass: slot === 3, parameters: [{ address: 42, name: `Amount ${suffix}`, normalized: .35 }] };
+  return { owner, kind: 'effect', slot, name: `Effect ${suffix}`, component: `clap:fx.${suffix}`, format: 'CLAP', bundlePath: '/Library/Audio/Plug-Ins/CLAP/Fixture.clap', instanceID: `${owner}-${suffix}`, state: `state-${suffix}`, bypass: slot === 3, parameters: [{ address: 42, name: `Amount ${suffix}`, normalized: .35 }] };
 }
 
 function moveResponse(project, owner, fromSlot, toSlot) {
@@ -95,7 +95,7 @@ function harness(setup = () => {}) {
     if (command === 'plugin.state') return clone(plugin || {});
     if (command === 'plugin.parameter') { const result = { ...plugin, ...(payload.bypass !== undefined ? { bypass: payload.bypass } : {}) }; loaded.set(key, result); return result; }
     if (command === 'plugin.move') return moveResponse(state.project, payload.owner, payload.fromSlot, payload.toSlot);
-    if (command === 'plugins.list') return [{ id: 'vst3:fixture', name: 'Fixture effect', type: 'effect', format: 'VST3', bundlePath: '/Library/Audio/Plug-Ins/VST3/Fixture.vst3' }];
+    if (command === 'plugins.list') return [{ component: 'vst3:F1C00000000000000000000000000001', name: 'Fixture effect', manufacturer: 'Maker', version: '1.0', kind: 'effect', category: 'Fx', format: 'VST3', bundlePath: '/Library/Audio/Plug-Ins/VST3/Fixture.vst3' }];
     return {};
   }
   native = defaultNative;
@@ -307,7 +307,7 @@ test('bus reorder sends owner, preserves other chains and remaps only that owner
   h.select('bus:drums'); await h.settle(); const before = clone(h.state.project); h.nodes.get('plugin-header-3').focus();
   const event = h.key('plugin-header-3', 'ArrowUp', { altKey: true }); assert(event.handled && event.defaultPrevented); await h.settle();
   const move = h.calls.find(c => c.command === 'plugin.move'); assert.deepEqual(move.payload, { owner: 'bus:drums', fromSlot: 3, toSlot: 0 }); assert.equal(h.changes.length, 1);
-  assert.deepEqual(clone(h.state.project.audioPlugins.filter(p => p.owner === 'bus:drums').map(p => [p.slot, p.component, p.state, p.bypass])), [[0, 'vst3:fx-comp', 'state-comp', true], [3, 'vst3:fx-eq', 'state-eq', false]]);
+  assert.deepEqual(clone(h.state.project.audioPlugins.filter(p => p.owner === 'bus:drums').map(p => [p.slot, p.component, p.state, p.bypass])), [[0, 'clap:fx.comp', 'state-comp', true], [3, 'clap:fx.eq', 'state-eq', false]]);
   assert.deepEqual(clone(h.state.project.audioPlugins.filter(p => p.owner !== 'bus:drums')), before.audioPlugins.filter(p => p.owner !== 'bus:drums'));
   assert.equal(h.state.project.patterns[0].automation[3].target, 'plugin:effect:3:42'); assert.equal(h.state.project.patterns[1].automation[0].target, 'plugin:effect:0:42');
   assert.equal(h.state.project.patterns[0].automation[4].target, 'plugin:effect:0:42'); assert.equal(h.state.project.patterns[1].automation[1].target, 'plugin:effect:0:42');

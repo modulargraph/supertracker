@@ -39,25 +39,16 @@
     routing.sidechains = routing.sidechains.filter(route => route.source !== owner && !instances.has(route.destination));
   }
 
-  /* Drops the plug-in descriptors that belong to nothing: the owner is a deleted track or bus, an instrument
-     index past the end, or no owner at all. The host refuses a project with such a descriptor, so one of them
-     would block every later change. Returns how many were dropped. */
-  function pruneOrphanPlugins(project) {
-    const tracks = new Set(project.tracks.map(trackOwner)),
-      buses = new Set(project.routing.buses.map(bus => 'bus:' + bus.id)),
-      instruments = project.instruments.length;
-    const live = item => {
-      const owner = String(item.owner);
-      if (owner === 'master') return true;
-      if (owner.startsWith('track:')) return tracks.has(owner);
-      if (owner.startsWith('bus:')) return buses.has(owner);
-      const instrument = owner.match(/^instrument:(\d+)$/);
-      return !!instrument && Number(instrument[1]) < instruments;
-    };
-    const before = project.audioPlugins.length;
-    if (project.audioPlugins.every(live)) return 0;
-    project.audioPlugins = project.audioPlugins.filter(live);
-    return before - project.audioPlugins.length;
+  /* The parameter pages the user arranged for a plug-in (project.pluginPages, by instanceID) belong to that
+     instance and go with it. Every edit ends with this (mutate in app-history.js), so whichever edit removes or
+     replaces a plug-in, with its track, bus or instrument or alone, leaves no pages behind: the host refuses a
+     project that keeps pages for a plug-in it does not have. Not a repair: a project that enters the page is
+     not touched. */
+  function dropPagesOfRemovedPlugins(project) {
+    const pages = Object.keys(project.pluginPages);
+    if (!pages.length) return;
+    const instances = new Set(project.audioPlugins.map(plugin => plugin.instanceID));
+    for (const id of pages) if (!instances.has(id)) delete project.pluginPages[id];
   }
 
   /* The plug-in of a plug-in instrument (type 'plugin'). It is in one place: the `audioPlugins` entry of kind
@@ -85,7 +76,7 @@
     }
   }
 
-  const api = { ensureTrackIDs, trackOwner, appendTrack, removeTrackReferences, pruneOrphanPlugins, instrumentPlugin, keepInstrumentPlugins };
+  const api = { ensureTrackIDs, trackOwner, appendTrack, removeTrackReferences, dropPagesOfRemovedPlugins, instrumentPlugin, keepInstrumentPlugins };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.STRoutingProject = api;
 })();

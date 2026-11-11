@@ -306,7 +306,6 @@
   function persistableState() {
     const lib = library();
     return {
-      version: 1,
       query: lib.query,
       kind: lib.kind,
       filters: filterPayload(),
@@ -817,24 +816,23 @@
     (state.project?.audioPlugins || []).filter(value => value.owner === owner && value.kind === 'effect').forEach(value => { effects[value.slot] = value; });
     return effects;
   }
-  const pluginFormat = plugin => plugin.format.toUpperCase();
   function filteredPlugins() {
     const query = local.pluginQuery.toLocaleLowerCase().trim();
-    const matches = (app().state.plugins || []).filter(plugin => plugin.type === local.pluginKind
-        && (local.pluginFormat === 'all' || pluginFormat(plugin) === local.pluginFormat)
+    const matches = (app().state.plugins || []).filter(plugin => plugin.kind === local.pluginKind
+        && (local.pluginFormat === 'all' || plugin.format === local.pluginFormat)
         && (!query || `${plugin.name} ${plugin.manufacturer}`.toLocaleLowerCase().includes(query)));
     return (local.pluginFormat === 'all' ? preferredFormats(matches) : matches).sort((a, b) => a.name.localeCompare(b.name));
   }
   // One entry per plug-in when showing all formats: Audio Unit, else VST3, else CLAP.
   // The format buttons still list every installed version.
   const formatRank = { AU: 0, VST3: 1, CLAP: 2 };
-  const pluginKey = plugin => `${String(plugin.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '')}|${String(plugin.manufacturer || '').toLowerCase().replace(/[^a-z0-9 ]+/g, '').trim().split(/\s+/)[0]
-      || ''}|${plugin.type}`;
+  const pluginKey = plugin => `${plugin.name.toLowerCase().replace(/[^a-z0-9]+/g, '')}|${plugin.manufacturer.toLowerCase().replace(/[^a-z0-9 ]+/g, '').trim().split(/\s+/)[0]
+      || ''}|${plugin.kind}`;
   function preferredFormats(list) {
     const best = new Map();
     for (const plugin of list) {
       const key = pluginKey(plugin), current = best.get(key);
-      if (!current || (formatRank[pluginFormat(plugin)] ?? 9) < (formatRank[pluginFormat(current)] ?? 9)) best.set(key, plugin);
+      if (!current || (formatRank[plugin.format] ?? 9) < (formatRank[current.format] ?? 9)) best.set(key, plugin);
     }
     return [...best.values()];
   }
@@ -866,11 +864,10 @@
           + `<span>${local.pluginFormat==='all'?'AU + VST3 + CLAP':local.pluginFormat} · native host</span></div><div class="browser-plugin-list"`
           + ` id="browser-plugin-list" role="listbox" aria-label="Plug-ins" tabindex="0" ${plugin ? `aria-activedescendant="browser-plugin-${local.pluginSelected}"` : ''}>${plugins.length ? plugins.map((value, index) => `<div id="browser-plugin-${index}" class="browser-plugin-row ${index === local.pluginSelected ? 'selected' : ''}" data-browser-plugin="${index}"`
           + ` role="option" aria-selected="${index === local.pluginSelected}"><span class="browser-plugin-symbol">${local.pluginKind === 'instrument' ? '◈' : '≋'}</span>`
-          + `<div><strong>${html(value.name)}</strong><small>${html(value.manufacturer)}</small></div><span class="browser-format-badge">${html(pluginFormat(value))}</span>`
-          + `<span class="browser-plugin-type">${value.hasCustomView ? 'Custom editor' : 'Parameters'}</span></div>`).join('') : '<div class="browser-empty"><span class="browser-empty-symbol">◈</span><h3>No matching plug-ins</h3><p>Try another search, or refresh the '
+          + `<div><strong>${html(value.name)}</strong><small>${html(value.manufacturer)}</small></div><span class="browser-format-badge">${html(value.format)}</span></div>`).join('') : '<div class="browser-empty"><span class="browser-empty-symbol">◈</span><h3>No matching plug-ins</h3><p>Try another search, or refresh the '
           + 'list after installing a plug-in.</p></div>'}</div></section>
       <aside class="browser-detail panel">${plugin ? `<div class="browser-detail-top"><div class="browser-artwork nks" aria-hidden="true">${local.pluginKind === 'instrument' ? '◈' : '≋'}</div>`
-          + `<span class="eyebrow">${html(pluginFormat(plugin))} ${html(local.pluginKind)}</span><h2>${html(plugin.name)}</h2>`
+          + `<span class="eyebrow">${html(plugin.format)} ${html(local.pluginKind)}</span><h2>${html(plugin.name)}</h2>`
           + `<p>${html(plugin.manufacturer)}</p></div><div class="browser-detail-actions"><p class="browser-small muted">Destination: ${html(ownerName)}${local.pluginKind === 'instrument' ? ` · ${html('New track (existing sounds kept)')}` : ''}</p>${local.pluginKind === 'effect' ? `<label class="browser-slot-label">Effect slot<select id="browser-plugin-slot" class="field">${Array.from({ length: slots },
               (_, index) => `<option value="${index}" ${local.slot === index ? 'selected' : ''}>${index + 1} · ${html(effects[index]?.name || 'New effect')}</option>`).join('')}</select>`
           + `</label>` : ''}<button `
@@ -887,9 +884,8 @@
           + `class="browser-small muted">${local.pluginKind === 'instrument'
               ? 'Adds and selects a new linked track. Option-Return replaces the selected instrument on this track.'
               : 'The effect processes the selected track. Its parameters are available for automation.'}</p>`
-          + `</div><dl class="browser-properties"><div><dt>Format</dt><dd>${html(pluginFormat(plugin))}</dd></div><div>`
-          + `<dt>Version</dt><dd>${html(plugin.version ?? '—')}</dd></div><div><dt>Interface</dt><dd>${plugin.hasCustomView ? 'Custom editor' : 'Parameter controls'}</dd>`
-          + `</div></dl>` : '<div class="browser-empty"><h3>Pick your instrument</h3><p>Use the arrows to browse and Return to load on the selected track.</p></div>'}</aside>
+          + `</div><dl class="browser-properties"><div><dt>Format</dt><dd>${html(plugin.format)}</dd></div><div>`
+          + `<dt>Version</dt><dd>${html(plugin.version ?? '—')}</dd></div></dl>` : '<div class="browser-empty"><h3>Pick your instrument</h3><p>Use the arrows to browse and Return to load on the selected track.</p></div>'}</aside>
     </div>`;
   }
   async function search() {
@@ -1115,7 +1111,7 @@
   async function refreshPlugins(scan = true) {
     if (scan && app().state.native) { try { await call('plugins.scan', {}); } catch {} }
     const result = await call('plugins.list', {});
-    if (result) app().state.plugins = Array.isArray(result) ? result : result.plugins || [];
+    if (result) app().state.plugins = result;
     local.pluginsLoaded = true; paint();
   }
   async function loadPlugin(asNew) {
@@ -1132,7 +1128,7 @@
       owner: `track:${destinationTrack.routingID}`,
       kind: local.pluginKind,
       slot: local.pluginKind === 'instrument' ? 0 : local.slot,
-      component: plugin.id
+      component: plugin.component
     };
     if (plugin.bundlePath) target.bundlePath = plugin.bundlePath;
     const stillValid = () => state.project === destinationProject
@@ -1701,7 +1697,7 @@
             : 'Load effect', key: '↩', enabled: !local.busy, action: () => {
           const selected = filteredPlugins()[local.pluginSelected];
           if (activeTab() !== 'plugins'
-              || selected?.id !== plugin.id
+              || selected?.component !== plugin.component
               || selected?.bundlePath !== plugin.bundlePath
               || app().state.project !== project
               || app().state.track !== track
@@ -1824,7 +1820,7 @@
       if (kitBrowser()) return kitBrowser().controller.list();
       if (activeTab() === 'plugins') {
         const items = filteredPlugins();
-        return { tab: 'plugins', items: items.map(plugin => ({ name: plugin.name, detail: `${plugin.manufacturer || ''} · ${pluginFormat(plugin)}` })), selected: local.pluginSelected, total: items.length, offset: 0, busy: local.busy };
+        return { tab: 'plugins', items: items.map(plugin => ({ name: plugin.name, detail: `${plugin.manufacturer} · ${plugin.format}` })), selected: local.pluginSelected, total: items.length, offset: 0, busy: local.busy };
       }
       const lib = library(), current = resultsCurrent();
       return { tab: 'samples', items: current

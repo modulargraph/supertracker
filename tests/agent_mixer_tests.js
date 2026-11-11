@@ -51,7 +51,7 @@ function harness(project = fixture(), { duringLoad, dropWrite, queueWrites, appl
   const descriptorFor = payload => native.find(p => p.owner === ownerOf(payload) && p.kind === (payload.kind || 'effect') && (p.slot ?? 0) === (payload.slot ?? 0));
   let omitFromSnapshot = false;
   const handlers = {
-    'plugins.list': () => metadata().map(e => ({ id: e.id, name: e.name, manufacturer: 'SuperTracker', type: 'effect', format: 'Builtin' })),
+    'plugins.list': () => metadata().map(e => ({ component: e.id, name: e.name, manufacturer: 'SuperTracker', kind: 'effect', category: e.category, format: 'Builtin' })),
     'builtin.effects': () => metadata(),
     'plugin.load': p => {
       const meta = metadata().find(effect => effect.id === p.component), owner = ownerOf(p);
@@ -171,6 +171,20 @@ test('mixer describes master, buses and tracks; channels resolve by name, "bus:<
   const summary = await h.ok('summary');
   assert.deepEqual(summary.mixer.buses, [{ channel: 'bus:kit', name: 'Avenue Kit', type: 'group', effects: ['Multimode Filter', 'Saturator'] }]);
   assert.deepEqual(summary.mixer.masterEffects, ['Peak Limiter']);
+});
+
+test('listPlugins and loadPlugin name a plug-in as the host\'s list does: component, kind, manufacturer', async () => {
+  const h = harness();
+  const listed = await h.ok('listPlugins', { kind: 'effect', query: 'phaser', refresh: true });
+  assert.equal(listed.total, 1);
+  assert.deepEqual(Object.keys(listed.plugins[0]).filter(key => listed.plugins[0][key] !== undefined).sort(), ['component', 'format', 'kind', 'manufacturer', 'name']);
+  assert.deepEqual([listed.plugins[0].component, listed.plugins[0].kind, listed.plugins[0].manufacturer, listed.plugins[0].format], ['stfx:phaser', 'effect', 'SuperTracker', 'Builtin']);
+  assert.equal((await h.ok('listPlugins', { kind: 'instrument' })).total, 0);
+  await h.rejects('listPlugins', { kind: 'synth' }, /kind must be "instrument" or "effect"/);
+  // A plug-in is chosen by its name or by its component.
+  const loaded = await h.ok('loadPlugin', { channel: 'master', plugin: 'stfx:phaser' });
+  assert.deepEqual(loaded.plugin, { name: 'Phaser', format: 'Builtin', component: 'stfx:phaser' });
+  assert.equal(h.calls.find(c => c.command === 'plugin.load').payload.component, 'stfx:phaser');
 });
 
 test('bus inserts: load, read and set parameters, each one "AI:" undo step; Undo restores', async () => {

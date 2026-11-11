@@ -264,14 +264,13 @@
     const matches = plugin => plugin.kind === target.kind
         && (plugin.slot ?? 0) === (target.slot ?? 0)
         && plugin.owner === target.owner;
-    const initial = owner.audioPlugins.find(matches),
-      instanceID = initial?.instanceID;
+    const initial = owner.audioPlugins.find(matches);
     try {
-      if (!instanceID) throw new Error('The plug-in instance is not ready. Wait for it to finish loading, then reopen its parameters.');
+      if (!initial) throw new Error(target.kind === 'instrument' ? 'This track has no instrument plug-in.' : `Insert slot ${(target.slot ?? 0) + 1} of this channel holds no plug-in.`);
       const edit = {
         project: owner,
         trackObject: trackOf(owner, target.owner),
-        target: { ...target, instanceID },
+        target: { ...target, instanceID: initial.instanceID },
         component: initial.component,
         revision: 0,
         committed: 0,
@@ -297,7 +296,7 @@
       const list = Array.isArray(result) ? result : result?.parameters || [],
         presets = result?.presets || pluginParameterCurrent(edit).presets || [];
       openModal('Plug-in parameters', `<div class="stack"><div class="row"><input id="plugin-param-search" class="grow" placeholder="Search parameters…">${presets.length
-          ? `<select id="plugin-preset"><option value="">Factory preset…</option>${presets.map(p => `<option value="${p.number ?? p.id}">${esc(p.name)}</option>`).join('')}</select>`
+          ? `<select id="plugin-preset"><option value="">Factory preset…</option>${presets.map(p => `<option value="${p.number}">${esc(p.name)}</option>`).join('')}</select>`
           : ''}</div>`
           + `<div id="plugin-param-list" class="plugin-parameters">${list.map((param, index) => `<label class="parameter plugin-param-item" data-search="${esc(String(param.name || '').toLowerCase())}">`
           + `<span class="parameter-top"><span class="parameter-label">${esc(param.name)}</span>`

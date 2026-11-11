@@ -205,11 +205,11 @@ test('effect picker forwards the exact selected installation for duplicate VST3 
   const h = harness(), firstPath = '/Users/test/Library/Audio/Plug-Ins/VST3/Echo.vst3', secondPath = '/Library/Audio/Plug-Ins/VST3/Echo.vst3';
   const add = h.node('add-effect', { studioAction: 'add-plugin' });
   h.groups.set('[data-studio-action]', [add]);
-  const choices = [firstPath, secondPath].map((bundlePath, i) => h.node(`version-${i}`, { addPlugin: 'vst3:echo', pluginBundlePath: bundlePath }));
+  const choices = [firstPath, secondPath].map((bundlePath, i) => h.node(`version-${i}`, { addPlugin: 'vst3:EC400000000000000000000000000001', pluginBundlePath: bundlePath }));
   h.groups.set('[data-add-plugin]', choices);
   h.context.window.ST.request = async (command, payload) => {
     h.requests.push({ command, payload });
-    if (command === 'plugins.list') return [firstPath, secondPath].map(bundlePath => ({ id: 'vst3:echo', name: 'Echo', type: 'effect', format: 'VST3', bundlePath }));
+    if (command === 'plugins.list') return [firstPath, secondPath].map(bundlePath => ({ component: 'vst3:EC400000000000000000000000000001', name: 'Echo', manufacturer: 'Maker', version: '1.0', kind: 'effect', category: 'Fx|Delay', format: 'VST3', bundlePath }));
     return { ...payload, name: 'Echo', parameters: [] };
   };
   h.studio.bindMixer();
@@ -218,7 +218,7 @@ test('effect picker forwards the exact selected installation for duplicate VST3 
   assert(html.includes(`data-plugin-bundle-path="${firstPath}"`) && html.includes(`data-plugin-bundle-path="${secondPath}"`));
   await choices[1].handlers.click[0]();
   const request = h.requests.find(item => item.command === 'plugin.load');
-  assert.equal(request.payload.component, 'vst3:echo');
+  assert.equal(request.payload.component, 'vst3:EC400000000000000000000000000001');
   assert.equal(request.payload.bundlePath, secondPath);
   assert.equal(h.state.project.audioPlugins[0].bundlePath, secondPath);
 });
@@ -304,7 +304,7 @@ test('late plug-in catalogue completion and selected-channel focus respect a new
   h.context.window.ST.request = (command, payload) => { h.requests.push({ command, payload }); return command === 'plugins.list' ? catalogue : Promise.resolve([]); };
   h.studio.bindMixer(); const pending = add.handlers.click[0](); assert.equal(h.document.activeElement.id, 'studio-plugin-search');
   h.state.modal = 'export'; const modalField = h.node('export-tail', {}, 'number', 'INPUT'); modalField.focus();
-  resolve([{ id: 'fixture', name: 'Fixture', type: 'effect' }]); await pending; assert.equal(h.document.activeElement, modalField);
+  resolve([{ component: 'clap:com.maker.fixture', name: 'Fixture', manufacturer: 'Maker', version: '1.0', kind: 'effect', category: 'audio-effect', format: 'CLAP', bundlePath: '/Library/Audio/Plug-Ins/CLAP/Fixture.clap' }]); await pending; assert.equal(h.document.activeElement, modalField);
   h.studio.focusSelectedChannel(); assert.equal(h.document.activeElement, modalField); assert.equal(h.changes.length, 0);
   h.state.modal = null; h.studio.focusSelectedChannel(); assert.equal(h.document.activeElement.id, 'mix-track-0');
 });

@@ -44,9 +44,7 @@
   function reindexAfterRemoval(p, removed) {
     const shift = value => { const i = indexOf(value); return i > removed ? owner(i - 1) : value; };
     const gone = owner(removed);
-    const ids = new Set(p.audioPlugins.filter(item => item.owner === gone).map(item => item.instanceID).filter(Boolean));
     p.audioPlugins = p.audioPlugins.filter(item => item.owner !== gone).map(item => isOwner(item.owner) ? { ...item, owner: shift(item.owner) } : item);
-    for (const id of ids) delete p.pluginPages[id];
     for (const pattern of p.patterns) {
       pattern.automation = pattern.automation.filter(lane => lane.owner !== gone);
       for (const lane of pattern.automation) if (isOwner(lane.owner)) lane.owner = shift(lane.owner);

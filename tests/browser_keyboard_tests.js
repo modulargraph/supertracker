@@ -11,9 +11,9 @@ function harness() {
   const nodes = new Map(), specs = [], calls = [], timers = new Map();
   let serial = 0, now = 0, browser, markup = '', deferredPreview, deferredSearch;
   const state = { view: 'browser', track: 0, instrument: 0, plugins: [
-    { id: 'au:synth', name: 'Alpha', type: 'instrument', format: 'AU' },
-    { id: 'vst:synth', name: 'Beta', type: 'instrument', format: 'VST3' },
-    { id: 'au:effect', name: 'Echo', type: 'effect', format: 'AU' }
+    { component: 'au:aumu:alph:makr', name: 'Alpha', manufacturer: 'Maker', kind: 'instrument', category: 'Instrument', format: 'AU' },
+    { component: 'vst3:BE7A0000000000000000000000000001', name: 'Beta', manufacturer: 'Maker', version: '2.0', kind: 'instrument', category: 'Instrument|Synth', format: 'VST3', bundlePath: '/Library/Audio/Plug-Ins/VST3/Beta.vst3' },
+    { component: 'au:aufx:echo:makr', name: 'Echo', manufacturer: 'Maker', kind: 'effect', category: 'Effect', format: 'AU' }
   ], project: { tracks: [{}], instruments: [{}] }, library: { items: [0, 1, 2].map(index => ({ path: `/fixture/${index}.wav`, name: `Sound ${index}`, kind: 'sample' })), selected: 1 } };
   const document = { activeElement: null, getElementById: id => nodes.get(id) || null,
     querySelector(selector) { return selector === '.browser-workspace' ? ['browser','plugins'].includes(state.view) ? {} : null : this.querySelectorAll(selector)[0] || null; },

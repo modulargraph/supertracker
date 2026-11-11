@@ -50,7 +50,7 @@ function harness({ withMK3 = false } = {}) {
     'engine.project': p => { const wanted = new Set((p.project.audioPlugins || []).map(x => x.instanceID)); nativePlugins = nativePlugins.filter(x => wanted.has(x.instanceID)); for (const x of p.project.audioPlugins || []) { const n = nativePlugins.find(y => y.instanceID === x.instanceID); if (n) { n.slot = x.slot; n.owner = x.owner; n.bypass = !!x.bypass; } else nativePlugins.push({ ...clone(x), parameters: parameterList(x.component) }); } return {}; },
     'engine.snapshot': () => ({ audioPlugins: nativePlugins.map(x => { const { parameters, ...rest } = x; return clone(rest); }) }),
     'builtin.effects': () => metadata(),
-    'plugins.list': () => metadata().map(e => ({ id: e.id, name: e.name, type: 'effect', category: e.category, format: 'Builtin' }))
+    'plugins.list': () => metadata().map(e => ({ component: e.id, name: e.name, manufacturer: 'SuperTracker', kind: 'effect', category: e.category, format: 'Builtin' }))
   };
   const window = { addEventListener() {}, removeEventListener() {}, localStorage: { getItem() { return null; }, setItem() {} }, location: { search: '' }, STHostTransport: hostStub({ post(message) {
     const request = clone(message); calls.push(request);
@@ -152,7 +152,7 @@ test('a kit inserted from a kit file brings each pad instrument chain to its new
     instruments: [{ id: 0, name: 'Kick', type: 'sample' }, { id: 1, name: 'Snare', type: 'sample' }],
     groups: [{ id: 'kit', name: 'Kit', busID: 'kitbus' }],
     routing: { buses: [{ id: 'kitbus', name: 'Kit', type: 'group', groupID: 'kit' }], outputs: { 'track:kick': 'bus:kitbus', 'track:snare': 'bus:kitbus', 'bus:kitbus': 'master' }, sends: [], sidechains: [] },
-    audioPlugins: [{ owner: 'instrument:1', kind: 'effect', slot: 0, component: 'stfx:transient', instanceID: 'snare-shaper', state: 's' }],
+    audioPlugins: [{ owner: 'instrument:1', kind: 'effect', slot: 0, component: 'stfx:transient', format: 'Builtin', instanceID: 'snare-shaper', state: 's' }],
     patterns: [{ id: 0, length: 16, steps: [[], []], automation: [] }]
   };
   let n = 0;

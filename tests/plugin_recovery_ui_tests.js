@@ -9,11 +9,11 @@ const copy = value => JSON.parse(JSON.stringify(value));
 const esc = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const decode = value => value.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
-const suspect = (key, options = {}) => ({ identity: { key, componentID: key, name: `Synth ${key}`, format: 'VST3', bundlePath: `/Library/${key}.vst3` }, reasons: ['Active near the interrupted session'], requiresReview: true, acknowledged: false, retryAuthorized: false, attribution: 'suspected, not proven', ...options });
+const suspect = (key, options = {}) => ({ identity: { key, component: key, name: `Synth ${key}`, format: 'VST3', bundlePath: `/Library/${key}.vst3` }, reasons: ['Active near the interrupted session'], requiresReview: true, acknowledged: false, retryAuthorized: false, attribution: 'suspected, not proven', ...options });
 const report = () => ({ suspects: [suspect('A'), suspect('B')], warnings: [] });
 function harness(respond = () => report()) {
   const calls = [], toasts = [], timers = [], nodes = new Map();
-  const state = { project: { name: 'Recovered session', audioPlugins: [{ component: 'A', state: 'saved-state' }] }, modal: null };
+  const state = { project: { name: 'Recovered session', audioPlugins: [{ component: 'clap:com.example.a', format: 'CLAP', state: 'saved-state' }] }, modal: null };
   const document = { activeElement: null, modal: null, html: '', getElementById: id => nodes.get(id), querySelector: selector => selector === '.plugin-recovery-modal' ? document.modal : null, querySelectorAll: selector => [...nodes.values()].filter(node => (selector.includes('[data-plugin-recovery-key]') && node.dataset.pluginRecoveryKey) || (selector.includes('[data-plugin-recovery-enable]') && node.dataset.pluginRecoveryEnable)) };
   function node(attrs = {}) {
     return { id: attrs.id, dataset: { pluginRecoveryKey: attrs['data-plugin-recovery-key'], pluginRecoveryEnable: attrs['data-plugin-recovery-enable'] }, disabled: 'disabled' in attrs, checked: 'checked' in attrs, handlers: {}, textContent: '', classList: { toggle() {} }, focus() { document.activeElement = this; }, setAttribute() {}, addEventListener(type, fn) { this.handlers[type] = fn; }, fire(type, extra = {}) { if ((type === 'click' || type === 'change') && this.disabled) return; return this.handlers[type]?.({ target: this, preventDefault() {}, stopPropagation() {}, ...extra }); } };

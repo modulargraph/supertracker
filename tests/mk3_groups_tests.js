@@ -200,7 +200,7 @@ test('Home: an expanded group is ordinary columns; a collapsed group is one colu
 
 test('PLUG-IN · Group: bus inserts then Levels (volume, pan); one Undo step per gesture', async () => {
   const { h, bus, owner } = grouped();
-  h.state.project.audioPlugins = [...(h.state.project.audioPlugins || []), { owner, instanceID: 'drum-comp', name: 'Drum Comp', kind: 'effect', slot: 0, parameters: [] }];
+  h.state.project.audioPlugins = [...(h.state.project.audioPlugins || []), { owner, instanceID: 'drum-comp', component: 'clap:com.example.plugin', format: 'CLAP', name: 'Drum Comp', kind: 'effect', slot: 0, parameters: [] }];
   h.state.track = 0; h.press('plugin');
   same(labels(h).slice(0, 3), ['Master', 'Track', 'Instr.'], 'no Group level outside a group');
   h.state.track = 4; h.MK3.frame();
@@ -279,8 +279,8 @@ test('DUPLICATE + group duplicates the whole group: members, bus and its inserts
   h.load('track-duplicate-project.js'); h.load('track-duplicate.js');
   const memberOwner = `track:${h.state.project.tracks[3].routingID}`;
   h.ST.mutate('inserts', p => {
-    p.audioPlugins = [...(p.audioPlugins || []), { owner, kind: 'effect', slot: 0, name: 'Glue', component: 'stfx:compressor', instanceID: 'drum-glue', state: 'glue-state' },
-      { owner: memberOwner, kind: 'effect', slot: 0, name: 'Kick EQ', component: 'stfx:eq', instanceID: 'kick-eq', state: 'eq-state' }];
+    p.audioPlugins = [...(p.audioPlugins || []), { owner, kind: 'effect', slot: 0, name: 'Glue', component: 'stfx:compressor', format: 'Builtin', instanceID: 'drum-glue', state: 'glue-state' },
+      { owner: memberOwner, kind: 'effect', slot: 0, name: 'Kick EQ', component: 'stfx:eq', format: 'Builtin', instanceID: 'kick-eq', state: 'eq-state' }];
     p.routing.buses.find(bus => bus.id === group().busID).volume = .7;
   });
   const before = JSON.stringify(h.state.project), undo = h.state.undo.length, notes = cols => cols.map(c => JSON.stringify(c.map(step => step && [step.note, step.velocity, step.gate]))), steps = notes(h.ST.pattern().steps.slice(3, 7));

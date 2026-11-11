@@ -262,17 +262,30 @@
        patterns [1..]      each with id, name, length, steps[track][row] (a step or null) for every track and
                            row, and automation [], whose lanes each have points []
        sequence [1..]      pattern ids
-       groups [], audioClips []
-       audioPlugins []     each with owner, instanceID and format, as the host wrote them when it loaded the
-                           plug-in (the page never makes a descriptor itself; a copy gets a new instanceID)
-       pluginPages {}      the user's parameter pages, by plug-in instanceID
+       audioClips []
+       groups []           each with id, name, busID (a group bus of the routing table that names the group
+                           with its groupID) and at least one member; the members (the tracks whose groupID
+                           is the group's id) are next to each other
+       audioPlugins []     each with owner (a track, bus or instrument of the project, or master),
+                           instanceID, component (<format>:<id>, as the plug-in list names it) and the
+                           format the component names, as the host wrote them when it loaded the plug-in
+                           (the page never makes a descriptor itself; a copy gets a new instanceID)
+       pluginPages {}      the user's parameter pages, by the instanceID of a plug-in in audioPlugins
        routing { buses [], outputs {}, sends [], sidechains [] }
+
+     normalize() adds the parts a project may leave out. It does not repair what is there: a plug-in, an
+     automation lane or parameter pages that belong to nothing, and groups that are not as above, are
+     refused by the host when the project is published or opened, and every edit of the page keeps them
+     consistent (the edit that removes a track, bus or instrument removes its plug-ins and lanes;
+     STRoutingProject.setPlugins drops the pages of plug-ins that are gone).
 
      Optional by design, so whoever reads them asks: songLoop (there only while a loop section is set); a
      track's groupID, pad, padNote, chokeGroup, voiceMode, noteColumns, audioInput and frozen, and its name,
-     colour and mixer values (absent is the default); an instrument's plugin, zones and slicePoints; every
-     field of a step but its note; a lane's owner or track; a clip's take set; and what only the host reads
-     and writes (mediaManifest, mediaRelinkHistory, midiImport).
+     colour and mixer values (absent is the default); a group's colour, collapsed and mixerCollapsed; an
+     instrument's zones and slicePoints and its plugin (kept only while no track plays the instrument: the
+     descriptor a track would play it with, kind instrument, without owner and instanceID); every field of a
+     step but its note; a lane's owner or track; a clip's take set; and what only the host reads and writes
+     (mediaManifest, mediaRelinkHistory, midiImport).
 
      Each of these has one name, and the host refuses a project that uses another: the sample of an
      instrument and of a zone is its samplePath, the file of a clip and of a take is its path, slice markers
@@ -324,8 +337,6 @@
     p.performance = completePerformance(p.performance || {});
     app.normalizeNoteColumns(p);
     window.STRoutingProject.ensureTrackIDs(p, uid);
-    window.STGroups.normalize(p);
-    window.STRoutingProject.pruneOrphanPlugins(p);
     return p;
   }
 

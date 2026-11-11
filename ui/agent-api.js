@@ -1269,36 +1269,34 @@
     if (all) return list;
     const rank = { AU: 0, VST3: 1, CLAP: 2 }, best = new Map();
     for (const plugin of list) {
-      const key = `${String(plugin.manufacturer || '').toLowerCase()}|${String(plugin.name || '').toLowerCase()}|${plugin.type}`,
+      const key = `${plugin.manufacturer.toLowerCase()}|${plugin.name.toLowerCase()}|${plugin.kind}`,
         current = best.get(key);
       if (!current || (rank[plugin.format] ?? 9) < (rank[current.format] ?? 9)) best.set(key, plugin);
     }
     return [...best.values()];
   }
-  method('listPlugins', 'List installed plug-ins (one per plug-in: AU, else VST3, else CLAP unless allFormats). type: "instrument" or "effect".', ['query',
-      'type', 'format', 'limit', 'allFormats', 'refresh'], async params => {
-    if (params.refresh || !(st().plugins || []).length) { try { const result = await S().request('plugins.list'); st().plugins = Array.isArray(result)
-        ? result
-        : result?.plugins || []; } catch (error) { fail(`Could not list plug-ins: ${error.message}`); } }
-    if (params.type !== undefined && !['instrument', 'effect'].includes(params.type)) fail('type must be "instrument" or "effect".');
+  method('listPlugins', 'List installed plug-ins (one per plug-in: AU, else VST3, else CLAP unless allFormats). kind: "instrument" or "effect".', ['query',
+      'kind', 'format', 'limit', 'allFormats', 'refresh'], async params => {
+    if (params.refresh || !(st().plugins || []).length) { try { st().plugins = await S().request('plugins.list'); } catch (error) { fail(`Could not list plug-ins: ${error.message}`); } }
+    if (params.kind !== undefined && !['instrument', 'effect'].includes(params.kind)) fail('kind must be "instrument" or "effect".');
     const words = String(params.query || '').toLowerCase().split(/\s+/).filter(Boolean), limit = params.limit === undefined ? 50 : params.limit;
     if (!isInt(limit) || limit < 1 || limit > 500) fail('limit must be 1–500.');
-    const hits = pluginCatalogue(!!params.allFormats).filter(plugin => (!params.type || plugin.type === params.type)
-        && (!params.format || String(plugin.format).toLowerCase() === String(params.format).toLowerCase())
+    const hits = pluginCatalogue(!!params.allFormats).filter(plugin => (!params.kind || plugin.kind === params.kind)
+        && (!params.format || plugin.format.toLowerCase() === String(params.format).toLowerCase())
         && words.every(word => `${plugin.name} ${plugin.manufacturer} ${plugin.format}`.toLowerCase().includes(word)));
-    return { total: hits.length, plugins: hits.slice(0, limit).map(plugin => ({ id: plugin.id, name: plugin.name, manufacturer: plugin.manufacturer, format: plugin.format, type: plugin.type, version: plugin.version })) };
+    return { total: hits.length, plugins: hits.slice(0, limit).map(plugin => ({ component: plugin.component, name: plugin.name, manufacturer: plugin.manufacturer, format: plugin.format, kind: plugin.kind, version: plugin.version })) };
   });
   function resolvePlugin(ref, kind) {
-    if (typeof ref !== 'string' || !ref.trim()) fail('plugin must be a plug-in name or id from listPlugins.');
+    if (typeof ref !== 'string' || !ref.trim()) fail('plugin must be a plug-in name or component from listPlugins.');
     const list = Array.isArray(st().plugins) ? st().plugins : [], text = ref.trim().toLowerCase();
-    const byId = list.find(plugin => plugin.id === ref); if (byId) return byId;
-    const preferred = pluginCatalogue(false).filter(plugin => !kind || plugin.type === kind);
-    const exact = preferred.filter(plugin => String(plugin.name).toLowerCase() === text
+    const named = list.find(plugin => plugin.component === ref); if (named) return named;
+    const preferred = pluginCatalogue(false).filter(plugin => !kind || plugin.kind === kind);
+    const exact = preferred.filter(plugin => plugin.name.toLowerCase() === text
         || `${plugin.manufacturer} ${plugin.name}`.toLowerCase() === text);
     if (exact.length === 1) return exact[0];
     const partial = preferred.filter(plugin => `${plugin.manufacturer} ${plugin.name}`.toLowerCase().includes(text));
     if (partial.length === 1) return partial[0];
-    if (exact.length > 1 || partial.length > 1) fail(`"${ref}" matches several plug-ins: ${(exact.length > 1 ? exact : partial).slice(0, 12).map(plugin => `${plugin.manufacturer} ${plugin.name} (${plugin.format}, id ${plugin.id})`).join('; ')}. Use the id.`);
+    if (exact.length > 1 || partial.length > 1) fail(`"${ref}" matches several plug-ins: ${(exact.length > 1 ? exact : partial).slice(0, 12).map(plugin => `${plugin.manufacturer} ${plugin.name} (${plugin.format}, component ${plugin.component})`).join('; ')}. Use the component.`);
     fail(`No ${kind || ''} plug-in matches "${ref}". Use listPlugins to see what is installed.`);
   }
   function blockedByBusyUI() {
@@ -1341,7 +1339,7 @@
     }
     const owner = p,
       trackObject = p.tracks[track],
-      target = { owner: trackChannel(p, track).owner, kind, slot, component: plugin.id, ...(plugin.bundlePath ? { bundlePath: plugin.bundlePath } : {}) };
+      target = { owner: trackChannel(p, track).owner, kind, slot, component: plugin.component, ...(plugin.bundlePath ? { bundlePath: plugin.bundlePath } : {}) };
     const stillValid = () => st().project === owner && owner.tracks[track] === trackObject;
     // The slot holds this load's instance.
     const attached = list => (Array.isArray(list) ? list : []).find(item => item.owner === target.owner
@@ -1382,7 +1380,7 @@
       }
       return {};
     });
-    return { ...out, plugin: { name: plugin.name, format: plugin.format, id: plugin.id }, track, kind, slot, ...(instrumentIndex !== null
+    return { ...out, plugin: { name: plugin.name, format: plugin.format, component: plugin.component }, track, kind, slot, ...(instrumentIndex !== null
         ? { instrument: instrumentIndex }
         : {}) };
   });
@@ -1399,10 +1397,10 @@
     if (busy) fail(`Cannot load a plug-in while ${busy}.`);
     const label = `load ${plugin.name} on ${channel.name}`, before = st().undo[st().undo.length - 1];
     let added;
-    try { added = await inserts.add(channel.owner, plugin.id, { bundlePath: plugin.bundlePath || '', label: `AI: ${label}`, ...(slot !== undefined ? { slot } : {}) }); }
+    try { added = await inserts.add(channel.owner, plugin.component, { bundlePath: plugin.bundlePath || '', label: `AI: ${label}`, ...(slot !== undefined ? { slot } : {}) }); }
     catch (error) { fail(`Could not load ${plugin.name}: ${error.message || error}`); }
     if (!added || st().undo[st().undo.length - 1] === before) fail(`${plugin.name} was not loaded${toastText() ? ': ' + toastText() : '.'}`);
-    return { changed: true, undoLabel: `AI: ${label}`, plugin: { name: plugin.name, format: plugin.format, id: plugin.id }, channel: channel.owner, channelName: channel.name,
+    return { changed: true, undoLabel: `AI: ${label}`, plugin: { name: plugin.name, format: plugin.format, component: plugin.component }, channel: channel.owner, channelName: channel.name,
       kind: 'effect', slot: added.slot ?? slot, inserts: channelEffects(project(), channel).map(insertOut) };
   }
   async function fetchParameters(p, ref) {

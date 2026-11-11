@@ -10,7 +10,7 @@
   const active = session => owns(session) && app().state.project === session.project;
   // A dialog whose project was replaced (undo, reload) is stale: close it rather than leave it inert.
   const settle = session => { if (active(session)) render(session); else if (owns(session)) app().closeModal(); };
-  const name = item => item.identity.name || item.identity.componentID || 'Unknown plug-in';
+  const name = item => item.identity.name || item.identity.component || 'Unknown plug-in';
   const notes = values => (Array.isArray(values) ? values : []).map(value => typeof value === 'string' ? value : value?.message || '').filter(Boolean);
   function setStatus(session, text, error = false) {
     session.message = text; session.error = error;

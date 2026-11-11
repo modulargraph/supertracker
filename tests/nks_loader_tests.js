@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = web.source('nks-loader.js');
 const copy = value => JSON.parse(JSON.stringify(value));
-const descriptor = { component: 'vst3:TEST', owner: 'track:t0', kind: 'instrument', slot: 0,
+const descriptor = { component: 'vst3:54455354000000000000000000000000', owner: 'track:t0', kind: 'instrument', slot: 0,
   state: 'restorable-state', name: 'Test synth', format: 'VST3', nks: { name: 'Mapped patch', pages: [] } };
 function environment() {
   const project = { tracks: [{ instrument: 0, routingID: 't0' }], instruments: [{ id: 0, name: 'Previous', type: 'synth' }],
@@ -61,13 +61,13 @@ async function main() {
     e.app.request = async (command, payload) => {
       e.calls.push({ command, payload });
       if (command === 'plugin.loadNKS') {
-        e.project.audioPlugins.push({ owner: 'track:t0', kind: 'instrument', component: 'Changed while loading' });
+        e.project.audioPlugins.push({ owner: 'track:t0', kind: 'instrument', component: 'clap:com.example.changed-while-loading', format: 'CLAP' });
         return copy(descriptor);
       }
       return {};
     };
     assert.equal(await e.loader.load('/Library/Fixture.nksf'), false);
-    assert.equal(e.project.audioPlugins[0].component, 'Changed while loading'); assert.equal(e.undo.length, 0);
+    assert.equal(e.project.audioPlugins[0].component, 'clap:com.example.changed-while-loading'); assert.equal(e.undo.length, 0);
     console.log('PASS replacement of the same slot during loading is preserved');
   }
   for (const fails of [true, false]) {

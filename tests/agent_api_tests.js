@@ -197,9 +197,9 @@ test('plug-in parameters resolve by name, change natively and commit captured st
     'engine.snapshot': () => ({ audioPlugins: copy(h.state.project.audioPlugins) }),
     'plugin.parameters': () => parameters,
     'plugin.parameter': payload => { set.push(payload); const item = parameters.find(p => p.address === payload.address); Object.assign(item, { normalized: payload.value, value: item.min + payload.value * (item.max - item.min), display: String(payload.value) }); return { ...item }; },
-    'plugin.state': payload => ({ ...payload, component: 'aufx:test', name: 'Test FX', state: 'NEWSTATE' })
+    'plugin.state': payload => ({ ...payload, component: 'au:aufx:test:demo', format: 'AU', name: 'Test FX', state: 'NEWSTATE' })
   });
-  h.state.project.audioPlugins = [{ track: 1, kind: 'effect', slot: 0, instanceID: 'fx-1', component: 'aufx:test', name: 'Test FX', state: 'OLD' }]; owned(h.state.project);
+  h.state.project.audioPlugins = [{ track: 1, kind: 'effect', slot: 0, instanceID: 'fx-1', component: 'au:aufx:test:demo', format: 'AU', name: 'Test FX', state: 'OLD' }]; owned(h.state.project);
   const list = await h.ok('pluginParameters', { track: 1, kind: 'effect', slot: 0, query: 'cut' });
   assert.deepEqual(list.parameters.map(p => p.name), ['Cutoff']);
   const undo = h.state.undo.length;
@@ -315,7 +315,7 @@ test('setAutomation keeps one point per row, needs real values and refuses unkno
   // A plug-in target names a plug-in the track holds.
   await h.rejects('setAutomation', { track: 0, target: 'plugin:garbage', points: [{ row: 0, value: .5 }] }, /has no plug-in for "plugin:garbage"/);
   await h.rejects('setAutomation', { track: 0, target: 'plugin:effect:3:7', points: [{ row: 0, value: .5 }] }, /has no plug-in/);
-  h.state.project.audioPlugins = [{ track: 0, kind: 'effect', slot: 3, instanceID: 'fx-3', component: 'aufx:test', name: 'Test FX' }]; owned(h.state.project);
+  h.state.project.audioPlugins = [{ track: 0, kind: 'effect', slot: 3, instanceID: 'fx-3', component: 'au:aufx:test:demo', format: 'AU', name: 'Test FX' }]; owned(h.state.project);
   assert.equal((await h.ok('setAutomation', { track: 0, target: 'plugin:effect:3:7', points: [{ row: 0, value: '50%' }] })).lane.points, 1);
 });
 
@@ -335,7 +335,7 @@ test('show validates the whole request before it moves the pattern, cursor or se
 test('editInstrument validates its parameters before it retires a plug-in instrument', async () => {
   const setup = () => {
     const h = harness(), ran = [], perform = h.ST.perform;
-    h.state.project.instruments[2].type = 'plugin'; h.state.project.instruments[2].plugin = { name: 'Synth', component: 'aumu:x' };
+    h.state.project.instruments[2].type = 'plugin'; h.state.project.instruments[2].plugin = { kind: 'instrument', slot: 0, name: 'Synth', component: 'au:aumu:x:demo', format: 'AU' };
     // The app's own command removes the hosted plug-in (it needs the native host; here it simply succeeds).
     h.ST.perform = command => { if (!/^instrumentType:/.test(command)) return perform(command); ran.push(command);
       return h.ST.mutate('instrument type', p => { p.instruments[2].type = command.split(':')[1]; p.instruments[2].plugin = null; }); };

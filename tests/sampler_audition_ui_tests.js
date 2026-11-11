@@ -83,7 +83,7 @@ test('Space and Return never repeat; numeric change commits without automaticall
 });
 test('rapid requests wait for the graph and clone its latest finished rack; only newest slice sounds',async()=>{
  const h=harness(),gate=deferred();h.gate(gate);const first=h.click('sampler-audition-0'),second=h.click('sampler-audition-2');assert.equal(h.requests.length,0);
- h.state.project.audioPlugins=[{track:0,slot:1,instanceID:'reordered'}];gate.resolve();await Promise.all([first,second]);
+ h.state.project.audioPlugins=[{owner:'track:'+h.state.project.tracks[0].routingID,kind:'effect',slot:1,instanceID:'reordered',component:'clap:com.example.plugin',format:'CLAP'}];gate.resolve();await Promise.all([first,second]);
  assert.equal(h.requests.filter(x=>x.command==='engine.project').length,1);assert.equal(h.requests[0].payload.project.audioPlugins[0].instanceID,'reordered');assert.equal(h.previews()[0].payload.step.fx1.value,3);assert.equal(h.stops().length,0);
 });
 test('superseded sync and preview replies cannot start late sound or cancel the replacement',async()=>{

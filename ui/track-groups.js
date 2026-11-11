@@ -13,10 +13,14 @@
      track.voiceMode   = optional 'poly' | 'mono' | 'legato' (absent = poly): how many notes of
                          the member sound at once
    The group bus is routing.buses[] { id: busID, type: 'group', groupID } and every member
-   outputs to it: routing.outputs['track:<routingID>'] = 'bus:<busID>'. */
+   outputs to it: routing.outputs['track:<routingID>'] = 'bus:<busID>'.
+
+   Every edit here leaves the groups as the host accepts them (validate_groups in
+   crates/st-project/src/validate.rs): a group has its id, a name, at least one member, its
+   members next to each other and its own group bus; a track's groupID names a group. A project
+   that enters the page is not repaired: the host has checked it. */
 (() => {
   'use strict';
-  const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const COLORS = ['#e2a44f', '#7fb7d9', '#9fc97a', '#d98a9e', '#b39ddb', '#80cbc4', '#e6d36f', '#ef8a5b'];
   const fallbackID = () => globalThis.crypto?.randomUUID?.() || `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
@@ -248,7 +252,6 @@
     const ownsLane = lane => lane.owner ? owners.has(lane.owner) : chosen.has(lane.track);
     const plugins = p.audioPlugins.filter(ownsPlugin), instances = new Set(plugins.map(plugin => plugin.instanceID).filter(Boolean));
     p.audioPlugins = p.audioPlugins.filter(plugin => !ownsPlugin(plugin));
-    for (const id of instances) delete p.pluginPages[id];
     const r = p.routing;
     for (const owner of owners) delete r.outputs[owner];
     for (const source of Object.keys(r.outputs)) if (owners.has(r.outputs[source])) r.outputs[source] = null;
@@ -280,7 +283,6 @@
     r.sends = r.sends.filter(send => send.source !== owner && send.destination !== owner);
     r.sidechains = r.sidechains.filter(route => route.source !== owner && !removed.has(route.destination));
     p.audioPlugins = p.audioPlugins.filter(plugin => plugin.owner !== owner);
-    for (const id of removed) delete p.pluginPages[id];
     for (const pattern of p.patterns) pattern.automation = pattern.automation.filter(lane => lane.owner !== owner && !removedSends.has(lane.target));
   }
 
@@ -310,39 +312,6 @@
     return true;
   }
 
-  /* The groups' part of normalize (app-project-model.js), which has made tracks, patterns, groups and the
-     routing table before it calls this: memberships of groups that do not exist are dropped, empty groups
-     removed, members made contiguous and every group gets its bus. Returns true when something changed. */
-  function normalize(p) {
-    let changed = false;
-    const seen = new Set();
-    p.groups = p.groups.filter(group => {
-      const valid = object(group) && typeof group.id === 'string' && group.id && !seen.has(group.id);
-      if (valid) seen.add(group.id); else changed = true;
-      return valid;
-    });
-    for (const track of p.tracks) if (track.groupID !== undefined && !seen.has(track.groupID)) { delete track.groupID; changed = true; }
-    for (const group of list(p)) {
-      if (typeof group.name !== 'string' || !group.name) { group.name = 'Group'; changed = true; }
-      if (typeof group.color !== 'string') { group.color = nextColor(p); changed = true; }
-      if (typeof group.busID !== 'string' || !group.busID) { group.busID = `${group.id}-bus`; changed = true; }
-      group.collapsed = group.collapsed === true;
-      group.mixerCollapsed = group.mixerCollapsed === true;
-    }
-    const before = list(p).length;
-    dropEmpty(p);
-    if (list(p).length !== before) changed = true;
-    if (!list(p).length) return changed;
-    const order = contiguousOrder(p);
-    if (order.some((old, next) => old !== next)) { reorder(p, order); changed = true; }
-    for (const group of list(p)) {
-      const had = p.routing.buses.some(bus => bus.id === group.busID && bus.type === 'group' && bus.groupID === group.id);
-      ensureBus(p, group);
-      if (!had) changed = true;
-    }
-    return changed;
-  }
-
   /* Visible columns of the pattern grid: ordinary tracks, expanded members, and one overview
      column per collapsed group (index = its first member). */
   function columns(p) {
@@ -358,7 +327,7 @@
 
   const api = {
     COLORS, list, byID, ofTrack, members, span, owners, busOwner, trackOwner, groupOfBus, ensureBus,
-    reorder, contiguousOrder, create, addTrack, removeTrack, moveTrack, moveTracks, removeTracks, removeBus, dissolve, rename, normalize, columns
+    reorder, contiguousOrder, create, addTrack, removeTrack, moveTrack, moveTracks, removeTracks, removeBus, dissolve, rename, columns
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.STGroups = api;

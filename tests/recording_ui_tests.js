@@ -59,7 +59,7 @@ test('recording source selected on the main page initializes master resampling w
 test('sampling a live input lane restores its source and creates a separate playable sampler track', async () => {
   const h=harness(), source=h.state.project.tracks[0];
   source.audioInput={enabled:true,deviceUID:'interface-stable-uid',channels:[4,5],gain:.7};
-  h.state.project.audioPlugins=[{owner:'track:midi-track',kind:'instrument',instanceID:'source-instrument',slot:0}];
+  h.state.project.audioPlugins=[{owner:'track:midi-track',kind:'instrument',instanceID:'source-instrument', component: 'clap:com.example.plugin', format: 'CLAP',slot:0}];
   const before=copy(source), sourceInstrument=copy(h.state.project.instruments[0]);
   await h.open(); assert.equal(h.get('record-destination').value,'newTrack');
   assert.equal(h.get('record-input-device').value,'22'); assert.equal(h.get('record-input-left').value,'4'); assert.equal(h.get('record-input-right').value,'5');
@@ -90,7 +90,7 @@ test('new sampler track capacity is checked before recording and again before sa
 test('sampler recording removes only sidechains belonging to the replaced instrument plug-in', async () => {
   for (const destination of ['current']) {
     const h = harness();
-    h.state.project.audioPlugins = [{owner:'track:midi-track',kind:'instrument',instanceID:'old-instrument',slot:0},{owner:'track:midi-track',kind:'effect',instanceID:'keep-effect',slot:1}];
+    h.state.project.audioPlugins = [{owner:'track:midi-track',kind:'instrument',instanceID:'old-instrument', component: 'clap:com.example.plugin', format: 'CLAP',slot:0},{owner:'track:midi-track',kind:'effect',instanceID:'keep-effect', component: 'clap:com.example.plugin', format: 'CLAP',slot:1}];
     h.state.project.routing = {version:1,outputs:{'track:midi-track':'master'},sidechains:[{destination:'old-instrument'},{destination:'keep-effect'}]};
     await h.open(); h.change('record-destination',destination); await h.startStop(); await h.startStop();
     assert.equal(h.state.modal,null);

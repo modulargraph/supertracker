@@ -94,7 +94,7 @@ test('add list is grouped in Maschine categories', () => {
   const groups = FX.categories();
   same(groups.map(group => group.name), ['Dynamics', 'Filter & EQ', 'Modulation', 'Reverb & Space', 'Delay', 'Distortion', 'Perform']);
   assert.equal(groups.reduce((n, group) => n + group.effects.length, 0), metadata().length);
-  assert(groups.find(group => group.name === 'Reverb & Space').effects.some(effect => effect.id === 'stfx:plate'));
+  assert(groups.find(group => group.name === 'Reverb & Space').effects.some(effect => effect.component === 'stfx:plate'));
   assert.equal(FX.categoryOf('stfx:compressor'), 'Dynamics');
 });
 
@@ -113,7 +113,7 @@ function console_() {
   const calls = [], undo = [];
   const project = complete({ tracks: [{ name: 'Drums', instrument: 0, routingID: 'drums' }], instruments: [{ type: 'synth' }], patterns: [{ id: 0, length: 16, steps: [[]], automation: [] }],
     audioPlugins: [{ owner: 'track:drums', kind: 'effect', slot: 0, component: 'stfx:filter', name: 'Multimode Filter', format: 'Builtin', instanceID: 'fx-filter' },
-      { owner: 'track:drums', kind: 'effect', slot: 1, component: 'aufx:dly', name: 'Some Delay', instanceID: 'fx-other' }] });
+      { owner: 'track:drums', kind: 'effect', slot: 1, component: 'au:aufx:dly:demo', format: 'AU', name: 'Some Delay', instanceID: 'fx-other' }] });
   const values = new Map();
   const ST = { state: { project, track: 0, instrument: 0, view: 'pattern' }, escapeHTML: value => String(value), toast() {}, refresh() {}, markDirty() {},
     request(command, payload) {

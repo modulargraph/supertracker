@@ -403,8 +403,8 @@ async function main() {
     const plugin = installTestPlugin(bin, folder);
     const scanned = await request(page, 'plugins.scan', { folders: [plugin.plugins], wait: true });
     assert.equal(scanned.error, undefined, 'plugins.scan failed: ' + scanned.error);
-    const listed = (await request(page, 'plugins.list')).ok.find(item => item.id === GAIN);
-    assert.deepEqual([listed.name, listed.format, listed.type, listed.bundlePath], ['ST Test Gain', 'CLAP', 'effect', plugin.file]);
+    const listed = (await request(page, 'plugins.list')).ok.find(item => item.component === GAIN);
+    assert.deepEqual([listed.name, listed.format, listed.kind, listed.manufacturer, listed.bundlePath], ['ST Test Gain', 'CLAP', 'effect', 'SuperTracker Tests', plugin.file]);
     assert.ok((await request(page, 'plugins.list')).ok.some(item => item.format === 'Builtin'), 'built-in effects are listed with the plug-ins');
     if (process.platform === 'linux') assert.doesNotMatch(fs.readFileSync(`/proc/${host.pid}/maps`, 'utf8'), /ST Test\.clap|stpc_clap_test_plugin/, 'listing must not load a plug-in into the host');
     pass('a folder of plug-ins is scanned by container processes and listed with the built-in effects, without loading a plug-in into the host');

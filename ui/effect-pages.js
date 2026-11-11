@@ -77,7 +77,7 @@
   let loading = null;
   const listeners = new Set();
   const dspID = component => String(component || '').startsWith('stfx:') ? String(component).slice(5) : null;
-  const isBuiltin = plugin => !!dspID(typeof plugin === 'string' ? plugin : plugin?.component || plugin?.id);
+  const isBuiltin = plugin => !!dspID(typeof plugin === 'string' ? plugin : plugin?.component);
 
   /** Accepts the native `builtin.effects` list (or a test fixture of the same shape). */
   function setMetadata(list) {
@@ -203,11 +203,12 @@
     const effect = metadata.get(id);
     return { id: 'stfx:' + id, name: effect?.name || id, category: effect?.category || '', pages: pages(component), parameters: effect?.parameters || [] };
   }
-  /** Built-in effects grouped for the add list, from a plug-in catalogue (state.plugins) or the metadata. */
+  /** Built-in effects grouped for the add list, from a plug-in list (state.plugins) or the metadata: each with the
+      component that loads it. */
   function categories(catalogue = null) {
-    const list = (Array.isArray(catalogue) && catalogue.some(isBuiltin) ? catalogue.filter(isBuiltin) : [...metadata.values()].map(e => ({ id: e.id, name: e.name, category: e.category })))
-      .filter(item => LAYOUTS[dspID(item.id)]);
-    return CATEGORIES.map(([name, sources]) => ({ name, effects: list.filter(item => sources.includes(item.category)).map(item => ({ id: item.id, name: item.name, category: name })) }))
+    const list = (Array.isArray(catalogue) && catalogue.some(isBuiltin) ? catalogue.filter(isBuiltin) : [...metadata.values()].map(e => ({ component: e.id, name: e.name, category: e.category })))
+      .filter(item => LAYOUTS[dspID(item.component)]);
+    return CATEGORIES.map(([name, sources]) => ({ name, effects: list.filter(item => sources.includes(item.category)).map(item => ({ component: item.component, name: item.name, category: name })) }))
       .filter(group => group.effects.length);
   }
   const categoryOf = component => { const c = metadata.get(dspID(component))?.category; return CATEGORIES.find(([, sources]) => sources.includes(c))?.[0] || ''; };

@@ -19,7 +19,7 @@ function faithfulReads(h){
   if(command==='plugin.parameter'&&payload?.address!==undefined&&Number.isFinite(result?.normalized))live.set(String(payload.address),result.normalized);
   return command==='plugin.parameters'&&Array.isArray(result)?result.map(item=>live.has(String(item.address))?{...item,normalized:live.get(String(item.address))}:item):result;};}});
 }
-function effect(h){const descriptor={owner:'track:'+h.state.project.tracks[1].routingID,kind:'effect',slot:0,instanceID:'fx-1',component:'aufx:test',name:'Test FX',state:'ORIGINAL'};h.state.project.audioPlugins=[descriptor];h.state.project.tracks[1].plugins=[{name:'Test FX'}];h.state.dirty=false;return descriptor;}
+function effect(h){const descriptor={owner:'track:'+h.state.project.tracks[1].routingID,kind:'effect',slot:0,instanceID:'fx-1',component:'au:aufx:test:demo',format:'AU',name:'Test FX',state:'ORIGINAL'};h.state.project.audioPlugins=[descriptor];h.state.project.tracks[1].plugins=[{name:'Test FX'}];h.state.dirty=false;return descriptor;}
 const tests=[],test=(name,run)=>tests.push({name,run});
 
 test('export pins the original project at each preparation await',async()=>{
@@ -71,7 +71,7 @@ test('failed capture stays pending and retries capture only, without resending p
  assert.equal(await h.agent.flushEdits(),true);assert.equal(h.agent.hasPendingEdits,false);assert.equal(writes,1);assert.equal(captures,3);assert.equal(h.state.undo.length,1);assert.equal(h.state.project.audioPlugins[0].state,'ACTUAL');
 });
 test('opaque fallback with stateError and wrong instance are not accepted as fresh captures',async()=>{
- for(const bad of [{stateError:'capture failed'},{instanceID:'other'},{slot:3},{component:'different'},{state:''}]){
+ for(const bad of [{stateError:'capture failed'},{instanceID:'other'},{slot:3},{component:'clap:com.example.different'},{state:''}]){
   const h=harness(),plugin=effect(h);let correct=false;h.ST.request=async(command,payload)=>command==='plugin.parameters'?parameters:command==='plugin.parameter'?{normalized:payload.value}:{...plugin,state:'FRESH',...(correct?{}:bad)};
   assert.equal((await h.call('setPluginParameters',{track:1,kind:'effect',values:{Cutoff:50}})).ok,false);assert.equal(h.state.project.audioPlugins[0].state,'ORIGINAL');assert.equal(h.state.undo.length,0);assert.equal(h.agent.hasPendingEdits,true);correct=true;assert.equal(await h.agent.flushEdits(),true);assert.equal(h.state.project.audioPlugins[0].state,'FRESH');
  }
@@ -88,15 +88,15 @@ test('a preflight capture may settle an equivalent descriptor, but not a new ins
 });
 test('default effect load fills a free sparse slot; a full rack requires explicit replacement',async()=>{
  for(const full of [false,true]){
-  const h=harness();h.state.plugins=[{id:'aufx:new',name:'New FX',type:'effect',format:'AU'}];const old=(full?Array.from({length:16},(_,i)=>i):[0,2,8,15]).map(slot=>({owner:'track:'+h.state.project.tracks[0].routingID,kind:'effect',slot,instanceID:'old'+slot,name:'Old'+slot,state:'KEEP'}));h.state.project.audioPlugins=clone(old);let loaded;
+  const h=harness();h.state.plugins=[{component:'au:aufx:newf:makr',name:'New FX',manufacturer:'Maker',kind:'effect',category:'Effect',format:'AU'}];const old=(full?Array.from({length:16},(_,i)=>i):[0,2,8,15]).map(slot=>({owner:'track:'+h.state.project.tracks[0].routingID,kind:'effect',slot,instanceID:'old'+slot,name:'Old'+slot,state:'KEEP'}));h.state.project.audioPlugins=clone(old);let loaded;
   h.ST.request=async(command,payload)=>{if(command==='plugin.load'){loaded={...payload,name:'New FX',instanceID:'new',state:'NEW'};return loaded}if(command==='plugin.state')return[...old,loaded];throw Error(command)};
   const reply=await h.call('loadPlugin',{plugin:'New FX',track:0,kind:'effect'});assert.equal(reply.ok,!full);if(full){assert.equal(loaded,undefined);assert.match(reply.error,/occupied/);assert.equal(h.state.undo.length,0)}else{assert.equal(loaded.slot,1);assert.equal(h.state.project.audioPlugins.find(x=>x.slot===2).state,'KEEP')}
  }
 });
 test('default NKS effect load fills a free sparse slot; a full rack requires explicit replacement',async()=>{
  for(const full of [false,true]){
-  const h=harness();web.load(h.context,'nks-loader.js');const old=(full?Array.from({length:16},(_,i)=>i):[0,2]).map(slot=>({owner:'track:'+h.state.project.tracks[0].routingID,kind:'effect',slot,instanceID:'old'+slot,name:'Old'+slot,state:'KEEP'}));h.state.project.audioPlugins=clone(old);const loads=[];
-  h.ST.syncEngineProject=async make=>{make();return true};h.ST.request=async(command,payload)=>{if(command==='plugin.loadNKS'){loads.push(payload);return{component:'aufx:verb',name:'Verb',instanceID:'new',nks:{name:'Verb',path:payload.path},state:'NEW'}}throw Error(command)};
+  const h=harness();web.load(h.context,'nks-loader.js');const old=(full?Array.from({length:16},(_,i)=>i):[0,2]).map(slot=>({owner:'track:'+h.state.project.tracks[0].routingID,kind:'effect',slot,instanceID:'old'+slot,component:'clap:com.example.old',format:'CLAP',name:'Old'+slot,state:'KEEP'}));h.state.project.audioPlugins=clone(old);const loads=[];
+  h.ST.syncEngineProject=async make=>{make();return true};h.ST.request=async(command,payload)=>{if(command==='plugin.loadNKS'){loads.push(payload);return{component:'au:aufx:verb:demo',format:'AU',name:'Verb',instanceID:'new',nks:{name:'Verb',path:payload.path},state:'NEW'}}throw Error(command)};
   const reply=await h.call('loadNKS',{path:'/presets/Verb.nksfx',track:0,kind:'effect'});assert.equal(reply.ok,!full,reply.error);
   if(full){assert.deepEqual(loads,[]);assert.match(reply.error,/occupied/);assert.equal(h.state.undo.length,0);assert.deepEqual(clone(h.state.project.audioPlugins),old)}
   else{assert.equal(loads[0].slot,1);assert.equal(reply.result.slot,1);assert.equal(h.state.project.audioPlugins.find(x=>x.slot===2).state,'KEEP');assert.equal(h.state.project.audioPlugins.find(x=>x.slot===1).name,'Verb')}

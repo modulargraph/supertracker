@@ -4,6 +4,7 @@
 // groups, with Undo / Redo for each.
 const assert = require('node:assert/strict');
 const G = require('../ui/track-groups.js');
+const R = require('../ui/routing-project.js');
 const { session } = require('./helpers/mk3-session');
 const { complete } = require('./helpers/project');
 const tests = [], test = (name, run) => tests.push([name, run]);
@@ -40,8 +41,8 @@ function model(count = 6) {
     patterns: [{ id: 0, length: 2, steps: tracks.map((_, i) => [{ note: 60 + i }, null]),
       automation: tracks.map((_, i) => ({ id: `a${i}`, track: i, target: 'volume', points: [] })) }],
     audioClips: [{ id: 'c4', track: 4 }, { id: 'c1', track: 1 }],
-    audioPlugins: [{ instanceID: 'p5', owner: 'track:r5', kind: 'effect', slot: 0 },
-      { instanceID: 'p2', owner: 'track:r2', kind: 'effect', slot: 0 }],
+    audioPlugins: [{ instanceID: 'p5', owner: 'track:r5', kind: 'effect', slot: 0, component: 'stfx:eq', format: 'Builtin' },
+      { instanceID: 'p2', owner: 'track:r2', kind: 'effect', slot: 0, component: 'stfx:eq', format: 'Builtin' }],
     pluginPages: { p2: {}, p5: {} },
     routing: { buses: [], outputs: Object.fromEntries(tracks.map(t => [`track:${t.routingID}`, 'master'])),
       sends: [], sidechains: [] }
@@ -95,7 +96,10 @@ test('removeTracks deletes tracks with their steps, automation, clips, plug-ins,
   same(p.patterns[0].automation.map(l => l.track), [0, 1, 2, 3]);
   same(p.audioClips.map(c => c.id), ['c1']);
   same(p.audioPlugins.map(x => [x.instanceID, x.owner]), [['p5', `track:${p.tracks[3].routingID}`]]);
-  assert.equal(p.pluginPages.p2, undefined);
+  // The pages of the removed plug-in go at the end of the edit (mutate), whichever edit it is.
+  same(Object.keys(p.pluginPages), ['p2', 'p5']);
+  R.dropPagesOfRemovedPlugins(p);
+  same(Object.keys(p.pluginPages), ['p5']);
   same(p.routing.sends.map(s => s.id), ['s2']);
   same(p.routing.sidechains, [], 'sidechains from a removed track or into its plug-ins go');
   assert.equal(p.routing.outputs['track:r2'], undefined);
@@ -106,16 +110,29 @@ test('removeTracks deletes tracks with their steps, automation, clips, plug-ins,
 
 /* ---------- hide empty tracks ---------- */
 
-test('orphaned plug-in descriptors (owner deleted) are dropped on load and before every audio publish', async () => {
+test('a project that enters the page is not repaired, and a plug-in\'s parameter pages go with it in the edit that removes it', async () => {
   const { h, app, p } = lanes();
-  const keep = { owner: `track:${p().tracks[1].routingID}`, kind: 'effect', slot: 0, instanceID: 'keep' }, bus = { owner: 'bus:nope', kind: 'effect', slot: 0, instanceID: 'bus' },
-    gone = { owner: 'track:deleted', kind: 'effect', slot: 0, instanceID: 'gone' }, inst = { owner: 'instrument:999', kind: 'effect', slot: 0, instanceID: 'inst' };
-  const loaded = app.normalize({ ...JSON.parse(JSON.stringify(p())), audioPlugins: [keep, gone, bus, inst] });
-  same(loaded.audioPlugins.map(x => x.instanceID), ['keep']);
+  const insert = (owner, instanceID, slot = 0) => ({ owner, kind: 'effect', slot, instanceID, component: 'stfx:eq', format: 'Builtin' });
+  const keep = insert(`track:${p().tracks[1].routingID}`, 'keep'), other = insert(`track:${p().tracks[1].routingID}`, 'other', 1),
+    gone = insert('track:deleted', 'gone'), inst = insert('instrument:999', 'inst');
+  // What belongs to nothing is the host's to refuse (crates/st-project/src/validate.rs): the page hands it on as it is.
+  const loaded = app.normalize({ ...JSON.parse(JSON.stringify(p())), audioPlugins: [keep, gone, inst], pluginPages: { nobody: { pages: [] } },
+    groups: [{ id: 'empty', name: 'Empty', busID: 'none' }] });
+  same(loaded.audioPlugins.map(x => x.instanceID), ['keep', 'gone', 'inst']);
+  same([Object.keys(loaded.pluginPages), loaded.groups.map(group => group.id), loaded.routing.buses.length], [['nobody'], ['empty'], 0]);
   p().audioPlugins = [keep, gone];
   await app.syncEngineProject(() => JSON.parse(JSON.stringify(p())), { replace: true });
   const sent = h.calls.filter(c => c.command === 'engine.project').at(-1);
-  same(sent.payload.project.audioPlugins.map(x => x.instanceID), ['keep']);
+  same(sent.payload.project.audioPlugins.map(x => x.instanceID), ['keep', 'gone']);
+  // An edit that removes or replaces a plug-in takes its pages along; Undo brings both back.
+  p().audioPlugins = [keep, other];
+  p().pluginPages = { keep: { pages: [{ name: 'A', addresses: ['1'] }] }, other: { pages: [{ name: 'B', addresses: ['2'] }] } };
+  h.ST.mutate('remove insert', q => { q.audioPlugins = q.audioPlugins.filter(x => x.instanceID !== 'other'); });
+  same(Object.keys(p().pluginPages), ['keep']);
+  h.ST.mutate('replace insert', q => { q.audioPlugins = [{ ...keep, instanceID: 'next' }]; });
+  same(Object.keys(p().pluginPages), []);
+  h.ST.perform('undo'); h.ST.perform('undo');
+  same([p().audioPlugins.map(x => x.instanceID), Object.keys(p().pluginPages)], [['keep', 'other'], ['keep', 'other']]);
 });
 test('Hide empty tracks hides tracks without steps (this pattern or the whole song); a view setting, not an Undo step', () => {
   const { h, app, p, visible } = lanes();

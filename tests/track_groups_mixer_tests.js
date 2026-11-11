@@ -37,7 +37,7 @@ test('the group bus is an insert-chain owner and a mixer selection target', () =
   const { h, S, group } = grouped();
   S.state.view = 'mixer';
   assert.equal(h.window.STStudio.selectOwner(`bus:${group.busID}`), true);
-  S.state.project.audioPlugins.push({ owner: `bus:${group.busID}`, kind: 'effect', slot: 0, instanceID: 'busfx', name: 'Glue' });
+  S.state.project.audioPlugins.push({ owner: `bus:${group.busID}`, kind: 'effect', slot: 0, instanceID: 'busfx', component: 'clap:com.example.plugin', format: 'CLAP', name: 'Glue' });
   const html = h.window.STStudio.renderMixer();
   assert.match(html, /1 insert effect/);
 });

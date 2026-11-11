@@ -25,7 +25,7 @@ function harness(){
   const own=track=>`track:${S.state.project.tracks[track].routingID}`;
   function plugin(track=0,component='old'){
     S.state.project.instruments[track].type='plugin';S.state.project.tracks[track].instrument=track;
-    const plugin={owner:own(track),kind:'instrument',slot:0,instanceID:component+track,component,state:'saved state'};
+    const plugin={owner:own(track),kind:'instrument',slot:0,instanceID:component+track,component:'clap:'+component,format:'CLAP',state:'saved state'};
     S.state.project.audioPlugins.push(plugin);native=copy(S.state.project);return plugin;
   }
   return {S,window,calls,handlers,element,plugin,own,get native(){return native;},set native(v){native=v;},get toast(){return element('#toast-region').innerHTML;},failPublish:()=>failPublish=true};
@@ -74,7 +74,7 @@ async function run(){
       if(operation==='assign')h.S.state.instrument=1;
       h.window.STFreeze={checkMutation:()=> 'locked',explain(){}};
       const action=operation==='load'?h.S.loadSample('/new.wav').catch(e=>e):operation==='edit'?h.S.editSample('reverse'):h.S.perform(operation==='type'?'instrumentType:midi':'assignInstrument');
-      await action;assert.equal(h.S.state.undo.length,0,operation);assert.equal(h.S.state.project.audioPlugins[0].component,'old',operation);assert.equal(h.native.audioPlugins[0].component,'old',operation);assert.equal(h.native.instruments[0].type,'plugin',operation);
+      await action;assert.equal(h.S.state.undo.length,0,operation);assert.equal(h.S.state.project.audioPlugins[0].component,'clap:old',operation);assert.equal(h.native.audioPlugins[0].component,'clap:old',operation);assert.equal(h.native.instruments[0].type,'plugin',operation);
       assert(h.calls.some(x=>x.command==='engine.project'&&x.payload.replace===true),operation);assert.doesNotMatch(h.toast,/Loaded|complete\./,operation);
       if(operation==='edit')assert.equal(h.S.state.samples[0].path,'/old.wav');
     }
@@ -100,7 +100,7 @@ async function run(){
   }
   {
     const h=harness();h.plugin();let n=0;const sync=h.handlers.get('engine.project');h.handlers.set('engine.project',p=>{n++;return n===2?false:sync(p);});
-    await assert.rejects(h.S.loadSample('/new.wav'),/not accepted/);assert.equal(h.S.state.project.audioPlugins[0].component,'old');assert.equal(h.S.state.undo.length,0);assert.equal(h.native.audioPlugins[0].component,'old');
+    await assert.rejects(h.S.loadSample('/new.wav'),/not accepted/);assert.equal(h.S.state.project.audioPlugins[0].component,'clap:old');assert.equal(h.S.state.undo.length,0);assert.equal(h.native.audioPlugins[0].component,'clap:old');
     console.log('PASS false native candidate acknowledgement cannot commit or claim success');
   }
   {
@@ -116,14 +116,14 @@ async function run(){
   }
   {
     const h=harness(),target=h.plugin(0,'target');h.plugin(1,'source');h.S.state.instrument=1;
-    const capture=h.handlers.get('plugin.state');h.handlers.set('plugin.state',p=>{const v=capture(p);return {...v,state:p.owner===h.own(0)&&v.component==='target'?'live target':v.state};});
-    assert.equal(await h.S.perform('assignInstrument'),true);assert.equal(h.S.state.project.tracks[0].instrument,1);assert.equal(h.S.state.project.audioPlugins.find(x=>x.owner===h.own(0)).component,'source');assert.equal(h.S.state.undo[0].project.audioPlugins.find(x=>x.owner===h.own(0)).state,'live target');assert.equal(h.S.state.undo[0].project.tracks[0].instrument,0);
+    const capture=h.handlers.get('plugin.state');h.handlers.set('plugin.state',p=>{const v=capture(p);return {...v,state:p.owner===h.own(0)&&v.component==='clap:target'?'live target':v.state};});
+    assert.equal(await h.S.perform('assignInstrument'),true);assert.equal(h.S.state.project.tracks[0].instrument,1);assert.equal(h.S.state.project.audioPlugins.find(x=>x.owner===h.own(0)).component,'clap:source');assert.equal(h.S.state.undo[0].project.audioPlugins.find(x=>x.owner===h.own(0)).state,'live target');assert.equal(h.S.state.undo[0].project.tracks[0].instrument,0);
     // No track plays the retired instrument now: it keeps its plug-in, as captured, without a channel or an instance.
-    const kept=h.S.state.project.instruments[0].plugin;assert.equal(kept.component,'target');assert.equal(kept.state,'live target');assert.equal(kept.owner,undefined);assert.equal(kept.instanceID,undefined);
+    const kept=h.S.state.project.instruments[0].plugin;assert.equal(kept.component,'clap:target');assert.equal(kept.state,'live target');assert.equal(kept.owner,undefined);assert.equal(kept.instanceID,undefined);
     assert.equal(Object.hasOwn(h.S.state.project.instruments[1],'plugin'),false,'an instrument a track plays keeps no copy');
     // Assigned again, it is loaded from what it kept, and stops keeping it.
     h.S.state.instrument=0;assert.equal(await h.S.perform('assignInstrument'),true);const back=h.S.state.project.audioPlugins.find(x=>x.owner===h.own(0));
-    assert.equal(back.component,'target');assert.equal(h.S.state.project.tracks[0].instrument,0);assert.equal(Object.hasOwn(h.S.state.project.instruments[0],'plugin'),false);
+    assert.equal(back.component,'clap:target');assert.equal(h.S.state.project.tracks[0].instrument,0);assert.equal(Object.hasOwn(h.S.state.project.instruments[0],'plugin'),false);
     console.log('PASS assigning a plug-in captures the retiring target and commits the replacement with correct Undo; the retired instrument keeps its plug-in until it is assigned again');
   }
   {
@@ -138,15 +138,15 @@ async function run(){
     console.log('PASS canonical edits during candidate publication invalidate the commit and restore their current values');
   }
   {
-    for(const kind of ['throw','false']){const h=harness();h.plugin();const remove=h.handlers.get('plugin.remove');h.handlers.set('plugin.remove',p=>{remove(p);if(kind==='throw')throw Error('Partial failure');return false;});assert.equal(await h.S.perform('instrumentType:sample'),false);assert.equal(h.native.audioPlugins[0].component,'old');assert.equal(h.S.state.undo.length,0);}
+    for(const kind of ['throw','false']){const h=harness();h.plugin();const remove=h.handlers.get('plugin.remove');h.handlers.set('plugin.remove',p=>{remove(p);if(kind==='throw')throw Error('Partial failure');return false;});assert.equal(await h.S.perform('instrumentType:sample'),false);assert.equal(h.native.audioPlugins[0].component,'clap:old');assert.equal(h.S.state.undo.length,0);}
     console.log('PASS partial native removal failure and false acknowledgement both restore captured opaque state');
   }
   {
     const h=harness();h.plugin(0,'target');h.plugin(1,'source');h.S.state.instrument=1;
     h.window.STFreeze={checkMutation:()=> 'locked',explain(){}};
-    assert.equal(await h.S.perform('assignInstrument'),false);assert.equal(h.S.state.undo.length,0);assert.equal(h.S.state.project.tracks[0].instrument,0);assert.equal(h.native.audioPlugins.find(x=>x.owner===h.own(0)).component,'target');
-    const read=h.handlers.get('plugin.state');h.window.STFreeze=null;h.handlers.set('plugin.state',p=>{const result=read(p);if(p.owner===h.own(0)&&result.component==='source')throw Error('Replacement state unavailable');return result;});
-    assert.equal(await h.S.perform('assignInstrument'),false);assert.equal(h.S.state.undo.length,0);assert.equal(h.native.audioPlugins.find(x=>x.owner===h.own(0)).component,'target');
+    assert.equal(await h.S.perform('assignInstrument'),false);assert.equal(h.S.state.undo.length,0);assert.equal(h.S.state.project.tracks[0].instrument,0);assert.equal(h.native.audioPlugins.find(x=>x.owner===h.own(0)).component,'clap:target');
+    const read=h.handlers.get('plugin.state');h.window.STFreeze=null;h.handlers.set('plugin.state',p=>{const result=read(p);if(p.owner===h.own(0)&&result.component==='clap:source')throw Error('Replacement state unavailable');return result;});
+    assert.equal(await h.S.perform('assignInstrument'),false);assert.equal(h.S.state.undo.length,0);assert.equal(h.native.audioPlugins.find(x=>x.owner===h.own(0)).component,'clap:target');
     console.log('PASS plug-in replacement refusal and failed post-load state capture restore the retired instance without committing');
   }
   {
