@@ -154,7 +154,7 @@ fn devices_are_listed_configured_and_remembered() {
     let devices = host.request("audio.devices", json!({})).unwrap();
     assert_eq!((devices["outputDevice"].clone(), devices["outputUid"].clone(), devices["running"].clone(), devices["fallback"].clone()), (json!(0), json!("null"), json!(true), json!(false)));
     assert_eq!((devices["sampleRate"].clone(), devices["bufferSize"].clone(), devices["bufferSizes"].clone()), (json!(48000.0), json!(512), json!([64, 128, 256, 512, 1024, 2048])));
-    assert_eq!((devices["lineInputs"].clone(), devices["inputAcknowledgements"]["supported"].clone()), (json!([]), json!(true)));
+    assert_eq!(devices["lineInputs"], json!([]));
     let null = devices["outputs"].as_array().unwrap().iter().find(|device| device["uid"] == "null").unwrap();
     assert_eq!((null["id"].clone(), null["outputChannels"].clone()), (json!(0), json!(2)));
 

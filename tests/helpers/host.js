@@ -31,4 +31,26 @@ function exportDelivery(payload = {}) {
   return { container: 'wav', encoding, sampleRate: payload.sampleRate ?? 48000, dither: encoding === 'float32' ? 'none' : payload.dither ?? 'tpdf' };
 }
 
-module.exports = { hostStub, audioExport, exportDelivery };
+/* What the host answers to note recording, for tests whose subject is something else. The returned function
+   takes a request and gives the result, or undefined when the request is none of these:
+   - transport.recordArm confirms the arm;
+   - a captured note edge (note.on / note.off with captureInput) is acknowledged as the audio thread does:
+     stopped, or while `state.playing` at the pattern and row of `state.status` with a recording clock.
+   `clock()` gives the engine clock of the next acknowledgement in beats (default: a beat per edge). */
+function noteRecordingHost(window, { clock } = {}) {
+  let requestID = 0, beats = 0;
+  return ({ command, payload = {} }) => {
+    if (command === 'transport.recordArm') return { armed: payload.armed === true };
+    if ((command !== 'note.on' && command !== 'note.off') || !payload.captureInput) return undefined;
+    const state = window.ST.state, playing = !!state.playing, status = state.status || {};
+    const acknowledgement = { inputOwner: payload.inputOwner, requestID: String(++requestID), status: 'applied', applied: true, playing,
+      recording: true, on: command === 'note.on', pattern: status.pattern ?? window.ST.pattern().id, row: status.row ?? 0,
+      sequence: status.sequence ?? 0, track: payload.track, instrument: payload.instrument, note: payload.note,
+      velocity: payload.velocity ?? 0, applyNote: payload.applyNote !== false,
+      recordingContext: window.STInputCapture.recordingContext() };
+    if (playing) acknowledgement.recordingClock = { distanceBeats: clock ? clock() : beats++, runID: '1' };
+    return { inputAcknowledgement: acknowledgement };
+  };
+}
+
+module.exports = { hostStub, audioExport, exportDelivery, noteRecordingHost };

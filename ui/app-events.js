@@ -7,7 +7,7 @@
   const {
     $, state, receiveSampleMetadata, toast, refresh, receiveNoteRecordingStatus,
     updateTransport, receiveCountInStatus, updatePlayhead, pianoHighlight, projectAction,
-    perform, receiveAcknowledgedMIDI, endRecordTake, liveRecordGroups, recordIncomingMIDI
+    perform, receiveAcknowledgedMIDI, endRecordTake
   } = app;
   // Native menu items arrive here only when the web keyboard handler left the key alone (or from a mouse pick).
   const MODAL_MENU_COMMANDS = new Set(['undo', 'redo', 'selectAll', 'stop', 'save', 'saveAs']);
@@ -30,13 +30,6 @@
     window.STNKSControls?.event(type, payload);
     if (type === 'sampler.playheads') { window.STSamplerPlayheads?.receive(payload); return; }
     if (type === 'status') {
-      if (state.playing
-          && payload.playing
-          && Number.isFinite(payload.seconds)
-          && Number.isFinite(state.status.seconds)
-          && payload.seconds + 0.01 < state.status.seconds) {
-        for (const group of liveRecordGroups.values()) if (group.active.size) group.clockWrapped = true;
-      }
       state.status = payload;
       if (!payload.playing) endRecordTake();
       receiveNoteRecordingStatus(payload);
@@ -60,9 +53,9 @@
     } else if (type === 'error') {
       toast(payload.message || payload.error || 'Native operation failed', 'error');
     } else if (type === 'midi.note') {
-      if (payload.recordingPending === true || payload.recordingOnly === true) {
-        receiveAcknowledgedMIDI(payload);
-      } else if (state.recording || payload.on === false) recordIncomingMIDI(payload);
+      // A key the host records comes twice: when it is pressed (recordingPending) and when the audio thread has
+      // placed it (recordingOnly, with the acknowledgement). Any other note is only shown on the keyboard.
+      if (payload.recordingPending === true || payload.recordingOnly === true) receiveAcknowledgedMIDI(payload);
       if (payload.recordingOnly !== true) pianoHighlight(payload.note, payload.on !== false);
     } else if (type === 'command') {
       const name = payload.name || payload.command || payload.action;

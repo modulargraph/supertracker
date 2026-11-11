@@ -173,7 +173,7 @@
       const value=await app().request('audio.devices',{});if(!active(session))throw new Error('The recording workspace changed.');
       if (value) {
         session.initialMetering = !!value.inputMetering;
-        session.initialMonitor = !!(value.monitoring || value.monitor);
+        session.initialMonitor = !!value.monitoring;
         session.initialMonitorVolume = value.monitorVolume ?? .7;
         session.initialInputDevice = value.inputDevice || value.defaultInput;
         session.initialInputChannels = studioInputChannels(value);
@@ -535,8 +535,8 @@
       rootNote: instrument?.rootNote ?? 60,
       inputDevice: audio.inputDevice || audio.defaultInput,
       inputChannels: channels,
-      monitor: !hardwareSample && !!(audio.monitoring || audio.monitor),
-      initialMonitor: !!(audio.monitoring || audio.monitor),
+      monitor: !hardwareSample && !!audio.monitoring,
+      initialMonitor: !!audio.monitoring,
       initialMonitorVolume: audio.monitorVolume ?? .7,
       initialMetering: !!audio.inputMetering,
       initialInputDevice: audio.inputDevice || audio.defaultInput,
@@ -594,7 +594,7 @@
         { kind: 'recording', className: 'recording-modal' });
     bindSession(session);
     setTimeout(() => { if (active(session) && !session.inline) { get('record-name')?.focus(); get('record-name')?.select(); } }, 0);
-    try { const value = await app().request('audio.devices', {}); if (active(session) && value) { session.audio = value; session.initialMetering = session.metering = !!value.inputMetering; session.initialMonitor = !!(value.monitoring || value.monitor); session.initialMonitorVolume = value.monitorVolume ?? .7; session.initialInputDevice = value.inputDevice || value.defaultInput; session.initialInputChannels = studioInputChannels(value); app().state.audio = value; resolveSavedInput(session); fillDevices(session); window.STLineInputs?.updateRecordingSummary?.(); } }
+    try { const value = await app().request('audio.devices', {}); if (active(session) && value) { session.audio = value; session.initialMetering = session.metering = !!value.inputMetering; session.initialMonitor = !!value.monitoring; session.initialMonitorVolume = value.monitorVolume ?? .7; session.initialInputDevice = value.inputDevice || value.defaultInput; session.initialInputChannels = studioInputChannels(value); app().state.audio = value; resolveSavedInput(session); fillDevices(session); window.STLineInputs?.updateRecordingSummary?.(); } }
     catch (error) { status(session, error.message || String(error), true); }
     finally { session.loading = false; controls(session); }
     return true;

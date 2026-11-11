@@ -1,6 +1,6 @@
 // Keyboard performance (scale/chord/note repeat) and pattern tool regressions, without a browser.
 const fs = require('node:fs');
-const { hostStub } = require('./helpers/host');
+const { hostStub, noteRecordingHost } = require('./helpers/host');
 const web = require('./helpers/web');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
@@ -13,7 +13,8 @@ function element(id) {
 const doc = { body: element('body'), activeElement: null, querySelector: q => element(q), querySelectorAll: () => [], getElementById: element, addEventListener() {}, createElement: tag => element(tag) };
 const calls = [], timers = [];
 let context;
-const win = { addEventListener() {}, STHostTransport: hostStub({ post(message) { calls.push(message); context.window.STHostTransport.deliver({ id: message.id, ok: true, result: message.command === 'plugin.parameters' ? [] : {} }); } }) };
+const win = { addEventListener() {}, STHostTransport: hostStub({ post(message) { calls.push(message); context.window.STHostTransport.deliver({ id: message.id, ok: true, result: message.command === 'plugin.parameters' ? [] : recording(message) ?? {} }); } }) };
+const recording = noteRecordingHost(win);
 context = vm.createContext({ console, window: win, document: doc, performance: { now: () => 0 }, requestAnimationFrame: fn => fn(), setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout() {}, Date, Map, Set, Math, JSON, Number, String, Object, Array, Promise, BigInt, innerWidth: 1280, innerHeight: 800 });
 for (const file of ['app.js', 'note-repeat.js', 'pattern-tools.js']) web.load(context, file);
 const ST = win.ST, state = ST.state, tools = win.STPatternTools, repeat = win.STNoteRepeat;
@@ -32,10 +33,10 @@ const steps = track => ST.pattern().steps[track];
   ST.mutate('reset', () => { for (let r = 0; r < 8; r++) steps(1)[r] = null; });
   const keyboard = (key, code) => { const event = { key, code, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, repeat: false, target: element('tracker'), preventDefault() {}, defaultPrevented: false }; ST.keyboard(event); ST.noteOff(code); };
   state.keyboardPlay = true;
-  keyboard('z', 'KeyZ'); keyboard('x', 'KeyX'); keyboard('b', 'KeyB');
+  keyboard('z', 'KeyZ'); keyboard('x', 'KeyX'); keyboard('b', 'KeyB'); await flush();
   same([0, 1, 2].map(r => [steps(1)[r].note, steps(1)[r].chord, steps(1)[r].velocity]), [[60, [0, 3, 7], 80], [63, [0, 4, 7], 80], [72, [0, 3, 7], 80]]);
   ST.setPerformance({ scaleMode: 'snap', chord: 'min7' }, false);
-  keyboard('s', 'KeyS');
+  keyboard('s', 'KeyS'); await flush();
   same([steps(1)[3].note, steps(1)[3].chord], [62, [0, 3, 7, 10]]);
   console.log('PASS scale degrees, snap-to-key, scale chords and keyboard velocity reach recorded steps');
   await ST.setNoteRecording(false);
@@ -52,6 +53,7 @@ const steps = track => ST.pattern().steps[track];
   // Note repeat retriggers held notes on its own clock and releases them on key up.
   ST.setPerformance({ scale: 'chromatic', chord: 'major' }, false);
   repeat.set({ enabled: true, mode: 'up', rate: '1/16' }, false);
+  await flush(); // the new session's disarm has been sent and answered
   calls.length = 0; timers.length = 0;
   state.track = 0; state.instrument = 0;
   ST.noteOn(60, 'KeyZ');

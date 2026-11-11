@@ -6,7 +6,7 @@
 // Stop is still being confirmed, Stop during count-in, Stop while Play waits for assets or a project
 // sync, failed Stops, and status events that are stale or arrive mid-request.
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
-const { hostStub } = require('./helpers/host');
+const { hostStub, noteRecordingHost } = require('./helpers/host');
 const web = require('./helpers/web');
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return{promise,resolve,reject};};
 const tick=async()=>{for(let i=0;i<40;i++)await Promise.resolve();};
@@ -34,7 +34,7 @@ function harness({stale=false}={}){
  handlers.set('transport.play',payload=>{engine.rendering=true;engine.queue.push({type:'play',countIn:payload.countIn||0});return engine.status();});
  handlers.set('transport.stop',()=>{engine.queue.push({type:'stop'});return engine.status();});
  handlers.set('engine.panic',()=>engine.status());
- const window={addEventListener(){},STHostTransport:hostStub({post(message){calls.push(message);Promise.resolve().then(()=>handlers.get(message.command)?.(message.payload)??{}).then(result=>window.STHostTransport.deliver({id:message.id,ok:true,result}),error=>window.STHostTransport.deliver({id:message.id,ok:false,error:error.message}));}})};
+ const window={addEventListener(){},STHostTransport:hostStub({post(message){calls.push(message);Promise.resolve().then(()=>handlers.has(message.command)?handlers.get(message.command)(message.payload)??{}:noteRecordingHost(window)(message)??{}).then(result=>window.STHostTransport.deliver({id:message.id,ok:true,result}),error=>window.STHostTransport.deliver({id:message.id,ok:false,error:error.message}));}})};
  const context=vm.createContext({window,document,console,Date,Map,Set,Math,JSON,Number,String,Object,Array,Promise,innerWidth:1080,innerHeight:700,setTimeout(fn,delay=0){timers.set(++nextTimer,{fn,at:clock+delay});return nextTimer;},clearTimeout(id){timers.delete(id);}});
  web.load(context,'app.js');const ST=window.ST,state=ST.state;state.project=ST.demoProject();ST.refresh();
  const h={ST,state,window,node,calls,handlers,engine,

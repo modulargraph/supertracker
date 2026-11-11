@@ -150,12 +150,17 @@ the recovery copy of at most 20 seconds ago.
 
 - `host-transport.js` (first script after `util.js` and `busy.js`) chooses the channel and exposes
   `STHostTransport.post(message)` / `onMessage(handler)`; `available` is false on a page opened with
-  no host, where `app-bridge.js` keeps its browser-preview answers.
+  no host, where `app-bridge.js` answers the requests itself (`previewRequest`: a session to look at, no
+  audio; arming and recorded keys are answered as a stopped host would, so notes are entered the same way).
 - `app-bridge.js` posts through it and receives replies and events from it (events go to
-  `window.nativeEvent`). `ST.longRequest` has no time limit (`freeze.js` and `render-selection.js` use it);
-  `ST.hostImplements(name)` says whether the host registered a command.
-- `ready` returns `commands`, the list of implemented commands; `context-menu.js` uses its own
-  menu when `ui.contextMenu` is not among them.
+  `window.nativeEvent`). `ST.longRequest` has no time limit (`freeze.js` and `render-selection.js` use it).
+- `ready` returns `commands`, the list of registered commands. The page asks `ST.hostImplements(name)` about
+  the two that only a host with a window of its own has: `context-menu.js` draws its own menu without
+  `ui.contextMenu`, and `window-drag.js` leaves the top bar alone without `window.titleBar`. Every other
+  command exists in every host and is sent without asking.
+- The status and `audio.devices` say what can vary. The page does not look for capability flags in them:
+  recording is always armed through `transport.recordArm`, and a recorded note is always placed by its
+  acknowledgement ([INPUT_CAPTURE_HOST.md](INPUT_CAPTURE_HOST.md)).
 - `window-drag.js` asks the host to move the window (`window.titleBar`) on a press in empty top bar
   space.
 - Quit: the host sends the event `app.quitRequested`; `app-session.js` flushes pending edits, asks

@@ -33,8 +33,7 @@
     window.addEventListener('blur', stopHeld);
     try {
       const data = await request('ready');
-      // The host lists what it implements, so the page can keep its own fallback for the rest.
-      state.hostCommands = Array.isArray(data?.commands) ? new Set(data.commands) : null;
+      state.hostCommands = new Set(data.commands);
       if (data?.project) state.project = normalize(data.project);
       app.startupPending = false;
       readPerformance(state.project);

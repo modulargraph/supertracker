@@ -2,7 +2,7 @@
 // Real app.js and MK3 modules (mk3-screens.js + mk3.js) without a browser or hardware: synthetic 'mk3.input'
 // events drive the app; a fake native bridge answers. session() starts from the demo project.
 const vm = require('node:vm');
-const { hostStub } = require('./host');
+const { hostStub, noteRecordingHost } = require('./host');
 const web = require('./web');
 
 function harness() {
@@ -19,10 +19,11 @@ function harness() {
   const reply = message => {
     const p = message.payload || {};
     if (message.command === 'project.save') return {saved:true,project:p.project,path:'/tmp/mk3-kit.supertracker'};
-    if (message.command === 'transport.recordArm') return { armed: !!p.armed };
     if (message.command === 'mk3.connect' || message.command === 'mk3.status') return { connected: true, screens: true, exclusive: !!p.exclusive };
-    return {};
+    // Arming is confirmed and recorded keys are acknowledged, as the host does.
+    return (recording ||= noteRecordingHost(win))(message) ?? {};
   };
+  let recording = null;
   const win = { addEventListener() {}, localStorage: { getItem() { return null; }, setItem() {} }, location: { search: '' }, STHostTransport: hostStub({ post(message) { calls.push(message); Promise.resolve().then(() => context.window.STHostTransport.deliver({ id: message.id, ok: true, result: reply(message) })); } }) };
   const setTimeout_ = (fn, ms = 0) => { const id = ++timerId; timers.push({ id, fn, at: clock.now + Math.max(0, Number(ms) || 0) }); return id; };
   const clearTimeout_ = id => { const index = timers.findIndex(timer => timer.id === id); if (index >= 0) timers.splice(index, 1); };

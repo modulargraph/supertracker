@@ -4,8 +4,8 @@ A note played while recording is armed is placed where the engine applied it, no
 playhead. The engine's side (`Control::input_note`, `STInputAck`, the run and the distance it counts) is described
 in [AUDIO_ENGINE.md](AUDIO_ENGINE.md#transport); this page is the contract between the host and the interface.
 
-The host reports `inputAcknowledgements: {version: 1, supported: true}` in `audio.devices` and in the status, and
-the interface records note edges only when it has seen it. It is always there in this host.
+Every note that is recorded takes this path: the interface has no other way to place one. A page opened without
+a host answers its own requests the same way, at the stopped transport (`previewRequest` in `ui/app-bridge.js`).
 
 ## The acknowledgement
 
@@ -23,11 +23,11 @@ A `note.on` or `note.off` request with `captureInput: true` and a bounded `input
 - `recordingClock: {distanceBeats, runID}`, only for an applied edge while playing: the quarter beats played in the
   current run, counted through loops, and the run's identity as a decimal string. The run changes whenever the
   timeline does (Play, Stop, Seek, Panic, a tempo or arrangement change).
-- `recordingContext`: the project the edge was recorded against, as the engine holds it: `{version, linesPerBeat,
+- `recordingContext`: the project the edge was recorded against, as the engine holds it: `{linesPerBeat,
   swing, loopSong, bpm, patterns: [{id, length}], sequence, clips}`. The interface builds the same object from its
   own project (`inputRecordingContext` in `ui/app-input-capture.js`) and compares the two field by field, so a
   page with an edit the engine has not received cannot use an acknowledgement of the older project.
-- `version`, `requestID` (a decimal string), `inputOwner`, `on`, `track`, `instrument`, `note`, `velocity`,
+- `requestID` (a decimal string), `inputOwner`, `on`, `track`, `instrument`, `note`, `velocity`,
   `applyNote`: the request, echoed. `ownershipCurrent: false` marks a result that expired after the session
   changed.
 

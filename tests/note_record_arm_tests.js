@@ -5,7 +5,7 @@ const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const clone=x=>JSON.parse(JSON.stringify(x));
 const tick=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
-function harness({supported=true,native=true}={}){
+function harness({native=true}={}){
   const nodes=new Map(),calls=[],arms=[];let ST;
   const document={activeElement:null,querySelector:s=>node(s.startsWith('#')?s.slice(1):s),querySelectorAll:()=>[],getElementById:id=>node(id),createElement:id=>node(id),addEventListener(){}};
   function node(id){if(!nodes.has(id)){const classes=new Set();nodes.set(id,{id,dataset:{},innerHTML:'',textContent:'',value:'',style:{},attributes:{},classList:{toggle(k,on){on?classes.add(k):classes.delete(k);},add:k=>classes.add(k),remove:k=>classes.delete(k),contains:k=>classes.has(k)},setAttribute(k,v){this.attributes[k]=v;},getAttribute(k){return this.attributes[k];},addEventListener(){},querySelectorAll(){return [];},scrollIntoView(){},select(){},focus(){document.activeElement=this;},closest(selector){return selector==='.tracker'&&id==='tracker'?this:null;}});}return nodes.get(id);}
@@ -15,11 +15,11 @@ function harness({supported=true,native=true}={}){
   const timers=new Map();let timerID=0;
   const context=vm.createContext({window,document,console,setTimeout(fn){const id=++timerID;timers.set(id,fn);return id;},clearTimeout:id=>timers.delete(id),innerWidth:1280,innerHeight:800,requestAnimationFrame:fn=>fn()});
   web.load(context,'app.js');ST=window.ST;
-  Object.assign(ST.state,{project:ST.demoProject(),view:'pattern',track:0,instrument:0,row:9,status:supported?{recordArmSupported:true,noteRecordArmed:false}:{}});
+  Object.assign(ST.state,{project:ST.demoProject(),view:'pattern',track:0,instrument:0,row:9,status:{noteRecordArmed:false}});
   ST.refresh();node('tracker').focus();
   const key=(key,code,mods={})=>{const event={key,code,target:node('tracker'),metaKey:false,ctrlKey:false,altKey:false,shiftKey:false,repeat:false,preventDefault(){this.defaultPrevented=true;},...mods};ST.keyboard(event);return event;};
   const reply=(index,armed,err)=>{const message=arms[index];assert(message,'Expected arm request '+index);window.STHostTransport.deliver({id:message.id,ok:!err,...(err?{error:err}:{result:{armed}})});};
-  const status=payload=>window.nativeEvent({type:'status',payload:{recordArmSupported:true,noteRecordArmed:false,playing:false,...payload}});
+  const status=payload=>window.nativeEvent({type:'status',payload:{noteRecordArmed:false,playing:false,...payload}});
   return{ST,state:ST.state,window,document,node,calls,arms,key,reply,status};
 }
 const tests=[],test=(name,run)=>tests.push({name,run});
@@ -60,11 +60,13 @@ test('palette, Cmd-R and plain R share arming, held-key repeats do not retoggle'
 test('plain R remains a piano note when keys are on and typed R remains text',async()=>{
  const h=harness();h.state.keyboardPlay=true;h.key('r','KeyR');await tick();assert.equal(h.arms.length,0);assert(h.calls.some(x=>x.command==='note.on'));h.ST.noteOff('KeyR');h.state.keyboardPlay=false;const input=h.node('text');input.tagName='INPUT';input.type='text';input.closest=selector=>selector.startsWith('input:not(')?input:null;h.key('r','KeyR',{target:input});await tick();assert.equal(h.arms.length,0);
 });
-test('older native hosts and browser preview preserve immediate local-only arming',async()=>{
- for(const native of [true,false]){const h=harness({supported:false,native});const done=h.ST.perform('record');assert.equal(h.state.recording,true);assert.equal(h.state.keyboardPlay,true);assert.equal(await done,true);assert.equal(h.arms.length,0);await h.ST.perform('record');assert.equal(h.state.recording,false);h.ST.acceptProject(h.ST.demoProject());assert.equal(h.state.recording,false);assert.equal(h.arms.length,0);}
+test('the browser preview arms through its own stand-in for the host, and a recorded key lands at the cursor',async()=>{
+ const h=harness({native:false});const done=h.ST.perform('record');assert.equal(h.state.recording,false,'arming waits for the confirmation there too');assert.equal(await done,true);assert.equal(h.state.recording,true);assert.equal(h.state.keyboardPlay,true);
+ h.state.editStep=1;h.ST.noteOn(65,'KeyF');h.ST.noteOff('KeyF');for(let i=0;i<8;i++)await tick();assert.equal(h.ST.pattern().steps[0][9].note,65);assert.equal(h.state.row,10);assert.equal(h.state.undo.length,1);
+ await h.ST.perform('record');assert.equal(h.state.recording,false);h.ST.acceptProject(h.ST.demoProject());await tick();assert.equal(h.state.recording,false);
 });
-test('host capability arrival synchronizes legacy local intent; idle host disarm is honored',async()=>{
- const h=harness({supported:false});await h.ST.perform('record');assert.equal(h.state.recording,true);h.status({noteRecordArmed:false});assert.equal(h.state.recording,false);await tick();assert.equal(h.arms.length,1);h.reply(0,true);await tick();assert.equal(h.state.recording,true);h.status({noteRecordArmed:false});assert.equal(h.state.recording,false);
+test('an idle host disarm is honored',async()=>{
+ const h=harness(),done=h.ST.perform('record');await tick();h.reply(0,true);await done;assert.equal(h.state.recording,true);h.status({noteRecordArmed:false});assert.equal(h.state.recording,false);
 });
 test('invalid acknowledgement never falsely arms',async()=>{
  const h=harness();const done=h.ST.perform('record');await tick();assert.match(h.node('status-message').textContent,/Arming note recording/);h.reply(0,undefined);await done;assert.equal(h.state.recording,false);assert.match(h.node('toast-region').innerHTML,/did not confirm/);

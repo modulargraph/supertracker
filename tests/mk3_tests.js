@@ -3,7 +3,7 @@
 // synthetic 'mk3.input' events drive the real app modules; LEDs and display lists are checked against the
 // software contract in docs/MASCHINE_MK3.md.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
-const { hostStub } = require('./helpers/host');
+const { hostStub, noteRecordingHost } = require('./helpers/host');
 const web = require('./helpers/web');
 const same = (actual, expected, message) => assert.equal(JSON.stringify(actual), JSON.stringify(expected), message);
 const tick = async () => { for (let i = 0; i < 60; i++) await Promise.resolve(); };
@@ -21,10 +21,11 @@ function harness() {
   let context, timerId = 0;
   const reply = message => {
     const p = message.payload || {};
-    if (message.command === 'transport.recordArm') return { armed: !!p.armed };
     if (message.command === 'mk3.connect' || message.command === 'mk3.status') return { connected: true, screens: true, exclusive: !!p.exclusive };
-    return {};
+    // Arming is confirmed and recorded keys are acknowledged, as the host does.
+    return (recording ||= noteRecordingHost(win))(message) ?? {};
   };
+  let recording = null;
   const win = { addEventListener() {}, localStorage: { getItem() { return null; }, setItem() {} }, location: { search: '' }, STHostTransport: hostStub({ post(message) { calls.push(message); Promise.resolve().then(() => context.window.STHostTransport.deliver({ id: message.id, ok: true, result: reply(message) })); } }) };
   const setTimeout_ = (fn, ms = 0) => { const id = ++timerId; timers.push({ id, fn, at: clock.now + Math.max(0, Number(ms) || 0) }); return id; };
   const clearTimeout_ = id => { const index = timers.findIndex(timer => timer.id === id); if (index >= 0) timers.splice(index, 1); };
@@ -354,11 +355,11 @@ const contractNames = namesText.split(/\s+/).filter(Boolean).flatMap(name => {
   assert.ok(state.recording === true || sent('transport.recordArm').some(call => call.payload.armed === true), 'count-in arms recording');
   const playCall = sent('transport.play').at(-1); assert.ok(playCall && playCall.payload.countIn === 1, 'Play carries a one-bar count-in');
   assert.ok(state.countIn && !state.playing, 'counting in, not yet playing');
-  h.win.nativeEvent({ type: 'status', payload: { playing: false, countIn: 3, noteRecordArmed: true, recordArmSupported: true } });
+  h.win.nativeEvent({ type: 'status', payload: { playing: false, countIn: 3, noteRecordArmed: true } });
   assert.equal(MK3.state.countIn.remaining, 3); assert.equal(MK3.screenModel().title?.countIn ?? MK3.state.countIn.remaining, 3);
   assert.equal(leds().pads.filter(Boolean).length, 3, 'pads count down the clicks');
   calls.length = 0; press('keyboard'); pad(1); assert.ok(sent('note.on').length, 'pads play during the count-in');
-  h.win.nativeEvent({ type: 'status', payload: { playing: true, countIn: 0, noteRecordArmed: true, recordArmSupported: true } });
+  h.win.nativeEvent({ type: 'status', payload: { playing: true, countIn: 0, noteRecordArmed: true } });
   assert.equal(state.countIn, null); assert.equal(MK3.state.countIn, null);
   state.native = false; state.playing = false; state.status = { playing: false };
   console.log('PASS native expression (bend, CC1, aftertouch, sustain), queued pattern/scene changes, native count-in');

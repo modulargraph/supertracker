@@ -120,7 +120,7 @@ fn transport_commands_move_the_engine_and_the_status_follows() {
     engine.publish(&parse(&demo())).unwrap();
     let status = engine.status();
     assert_eq!((status["playing"].clone(), status["row"].clone(), status["sampleRate"].clone()), (json!(false), json!(0), json!(48_000.0)));
-    for key in ["songMode", "pattern", "sequence", "position", "seconds", "beat", "bpm", "peakL", "peakR", "trackPeaks", "busPeaks", "cpu", "countIn", "transportPending", "queuedPattern", "noteRecordArmed", "running", "routing", "inputAcknowledgements"] {
+    for key in ["songMode", "pattern", "sequence", "position", "seconds", "beat", "bpm", "peakL", "peakR", "trackPeaks", "busPeaks", "cpu", "countIn", "transportPending", "queuedPattern", "noteRecordArmed", "running", "routing"] {
         assert!(status.get(key).is_some(), "status has {key}");
     }
     // Play is reported as requested before the audio thread has rendered a block.

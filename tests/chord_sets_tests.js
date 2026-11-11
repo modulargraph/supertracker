@@ -1,7 +1,7 @@
 'use strict';
 // Chord sets and the MIDI-keyboard performance map, without a browser.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
-const { hostStub } = require('./helpers/host');
+const { hostStub, noteRecordingHost } = require('./helpers/host');
 const web = require('./helpers/web');
 const same = (actual, expected, message) => assert.equal(JSON.stringify(actual), JSON.stringify(expected), message);
 const tick = async () => { for (let i = 0; i < 80; i++) await Promise.resolve(); };
@@ -13,7 +13,9 @@ function plainHarness() {
   const doc = { body: element('body'), activeElement: null, querySelector: q => element(q), querySelectorAll: () => [], getElementById: element, addEventListener() {}, createElement: tag => element(tag) };
   const calls = [], timers = [];
   let context;
-  const win = { addEventListener() {}, STHostTransport: hostStub({ post(message) { calls.push(message); context.window.STHostTransport.deliver({ id: message.id, ok: true, result: {} }); } }) };
+  let recording;
+  const win = { addEventListener() {}, STHostTransport: hostStub({ post(message) { calls.push(message); context.window.STHostTransport.deliver({ id: message.id, ok: true, result: recording(message) ?? {} }); } }) };
+  recording = noteRecordingHost(win);
   context = vm.createContext({ console, window: win, document: doc, performance: { now: () => 0 }, requestAnimationFrame: fn => fn(), setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout() {}, Date, Map, Set, Math, JSON, Number, String, Object, Array, Promise, BigInt, innerWidth: 1280, innerHeight: 800 });
   for (const file of ['app.js', 'note-repeat.js']) web.load(context, file);
   return { ST: win.ST, state: win.ST.state, repeat: win.STNoteRepeat, calls, timers, element };
@@ -53,16 +55,16 @@ function plainHarness() {
   state.track = 1; state.instrument = 1; state.row = 0; state.editStep = 1; state.keyVelocity = 90; state.octave = 4; state.keyboardPlay = true;
   ST.mutate('reset', () => { for (let r = 0; r < 8; r++) steps()[r] = null; });
   const keyboard = (key, code) => { ST.keyboard({ key, code, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, repeat: false, target: element('tracker'), preventDefault() {}, defaultPrevented: false }); ST.noteOff(code); };
-  keyboard('z', 'KeyZ'); keyboard('s', 'KeyS'); keyboard('x', 'KeyX');
+  keyboard('z', 'KeyZ'); keyboard('s', 'KeyS'); keyboard('x', 'KeyX'); await tick();
   same(steps().slice(0, 3).map(s => [s.note, s.chord, s.velocity]), [[53, [0, 11, 14, 16, 19], 90], [52, [0, 10, 15, 19], 90], [50, [0, 15, 19, 22, 26], 90]], 'Fmaj9, Em7, Dm9 over C4');
   assert.equal(ST.chordSetChordName(ST.activeChordSet(), 0), 'Fmaj9');
-  ST.setPerformance({ root: 2 }, false); keyboard('z', 'KeyZ');
+  ST.setPerformance({ root: 2 }, false); keyboard('z', 'KeyZ'); await tick();
   same([steps()[3].note, steps()[3].chord], [55, [0, 11, 14, 16, 19]], 'root D transposes to Gmaj9');
   assert.equal(ST.chordSetChordName(ST.activeChordSet(), 0), 'Gmaj9');
-  ST.setPerformance({ root: 9 }, false); keyboard('z', 'KeyZ');
+  ST.setPerformance({ root: 9 }, false); keyboard('z', 'KeyZ'); await tick();
   assert.equal(steps()[4].note, 50, 'roots above F♯ transpose down to stay centred (Dmaj9)');
   // Keys past the last chord repeat the set an octave higher (12 chords: key index 12 = ",").
-  ST.setPerformance({ root: 0 }, false); keyboard(',', 'Comma');
+  ST.setPerformance({ root: 0 }, false); keyboard(',', 'Comma'); await tick();
   same([steps()[5].note, steps()[5].chord], [65, [0, 11, 14, 16, 19]]);
   await ST.setNoteRecording(false);
   console.log('PASS chord-set keys record chord steps, transpose with the root and wrap by octave');
@@ -106,6 +108,7 @@ function plainHarness() {
   state.project = ST.demoProject(); state.track = 0; state.instrument = 0; state.octave = 4;
   ST.setPerformance({ root: 0, chordSet: 'pop' }, false);
   repeat.set({ enabled: true, mode: 'up', rate: '1/16' }, false);
+  await tick(); // the new session's disarm has been sent and answered
   calls.length = 0; timers.length = 0;
   ST.noteOn(60, 'KeyZ'); await tick();
   for (let i = 0; i < 3; i++) { timers.filter(t => t.ms > 50).at(-1).fn(); await tick(); }
@@ -164,8 +167,8 @@ async function stoppedMIDIChordRecording() {
   const project = h.state.project;
   project.patterns.forEach((pat, index) => { pat.id = index ? 19 : 7; pat.length = 8; pat.steps = project.tracks.map(() => Array(8).fill(null)); pat.automation = []; });
   project.activePattern = 7; project.sequence = [7, 19];
-  Object.assign(h.state, { playing: false, row: 2, track: 0, instrument: 0, editStep: 1, status: { playing: false, pattern: 7, row: 0 }, audio: { inputAcknowledgements: { version: 1, supported: true } } });
-  h.window.STHostTransport.post = message => { h.calls.push(copy(message)); h.window.STHostTransport.deliver({ id: message.id, ok: true, result: {} }); };
+  Object.assign(h.state, { playing: false, row: 2, track: 0, instrument: 0, editStep: 1, status: { playing: false, pattern: 7, row: 0 } });
+  h.window.STHostTransport.post = message => { h.calls.push(copy(message)); h.window.STHostTransport.deliver({ id: message.id, ok: true, result: message.command === 'transport.recordArm' ? { armed: message.payload.armed } : {} }); };
   await h.ST.setNoteRecording(true);
   h.ST.setPerformance({ chordSet: 'pop', root: 0 }, false);
   for (const [id, timer] of [...timers]) if (timer.delay === 40) { timers.delete(id); timer.fn(); }
@@ -173,7 +176,7 @@ async function stoppedMIDIChordRecording() {
   assert.ok(h.calls.some(c => c.command === 'midi.performance' && Array.isArray(c.payload.map)), 'map sent');
   const edges = new Map();
   const pending = (on, token, note) => { const payload = { on, inputOwner: token, recordingPending: true, source: 1, channel: 1, track: 0, instrument: 0, note, velocity: 93 }; edges.set(token + ':' + on, { payload, context: copy(h.window.STInputCapture.recordingContext()), requestID: String(++requestID) }); h.window.nativeEvent({ type: 'midi.note', payload }); };
-  const ack = (on, token) => { const edge = edges.get(token + ':' + on), p = edge.payload; h.window.nativeEvent({ type: 'midi.note', payload: { ...p, recordingPending: false, recordingOnly: true, inputAcknowledgement: { version: 1, inputOwner: token, requestID: edge.requestID, status: 'applied', applied: true, playing: false, recording: true, mapped: Object.hasOwn(h.state.project, 'timing'), on, pattern: 7, row: 0, sequence: 0, track: 0, instrument: 0, note: p.note, velocity: p.velocity, applyNote: true, recordingContext: edge.context } } }); };
+  const ack = (on, token) => { const edge = edges.get(token + ':' + on), p = edge.payload; h.window.nativeEvent({ type: 'midi.note', payload: { ...p, recordingPending: false, recordingOnly: true, inputAcknowledgement: { inputOwner: token, requestID: edge.requestID, status: 'applied', applied: true, playing: false, recording: true, on, pattern: 7, row: 0, sequence: 0, track: 0, instrument: 0, note: p.note, velocity: p.velocity, applyNote: true, recordingContext: edge.context } } }); };
   const chord = [48, 64, 67, 72];
   chord.forEach((note, i) => pending(true, 'midi:' + i, note));
   chord.forEach((_, i) => ack(true, 'midi:' + i));

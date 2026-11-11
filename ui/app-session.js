@@ -21,12 +21,11 @@
     state.playbackMode = 'pattern';
     state.sequence = 0;
     stopHeld();
-    app.midiRecordNotes.clear();
     app.liveRecordGroups.clear();
     request('transport.stop').catch(() => {});
     state.playing = false;
     setNoteRecording(false, { newSession: true });
-    state.status = app.recordArmSupported ? { recordArmSupported: true, noteRecordArmed: false } : {};
+    state.status = {};
     state.project = normalize(p);
     app.startupPending = false;
     readPerformance(state.project);

@@ -175,7 +175,8 @@ pub struct AudioEngine {
     lines_stale: std::sync::atomic::AtomicBool,
 }
 
-/// What `audio.devices` answers.
+/// The output side of what `audio.devices` answers. The live stage adds the input in use
+/// ([`crate::live::Live::decorate_devices`]).
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DevicesStatus {
@@ -187,8 +188,6 @@ pub struct DevicesStatus {
     /// The output in use.
     pub output_device: u32,
     pub output_uid: String,
-    pub engine_device: u32,
-    pub input_device: Option<u32>,
     pub sample_rate: f64,
     pub buffer_size: u32,
     pub buffer_sizes: Vec<u32>,
@@ -197,11 +196,6 @@ pub struct DevicesStatus {
     pub fallback: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device_error: Option<String>,
-    pub input_channels: Vec<u32>,
-    pub input_metering: bool,
-    pub monitoring: bool,
-    pub monitor_volume: f64,
-    pub input_acknowledgements: Value,
     pub latency_compensation: Value,
 }
 
@@ -216,10 +210,6 @@ pub struct DeviceRequest {
     pub system_default: bool,
     pub buffer_size: Option<u32>,
     pub sample_rate: Option<f64>,
-}
-
-fn input_capability() -> Value {
-    json!({ "version": 1, "supported": true })
 }
 
 impl AudioEngine {
@@ -696,14 +686,13 @@ impl AudioEngine {
             "trackPeaks": track_peaks, "busPeaks": bus_peaks,
             "routing": routing_status(core),
             "cpu": (core.shared.load() as f64 * 100.0), "sampleRate": sample_rate,
-            "recordArmSupported": true, "inputAcknowledgements": input_capability(), "noteRecordArmed": state.record_armed,
+            "noteRecordArmed": state.record_armed,
             "transportRecording": engine.recording != 0, "queuedPattern": engine.queued_pattern, "queuedSequence": engine.queued_sequence,
             "countIn": count_in, "transportPending": engine.transport_pending != 0,
             "recording": false, "recordingStopping": false, "recordingDuration": 0.0, "exporting": false,
             "running": state.stream.as_ref().is_some_and(|stream| stream.is_alive()),
             "droppedCommands": engine.dropped_commands, "droppedEvents": engine.dropped_events + dropped_mix, "engineDroppedEvents": engine.dropped_events,
             "latencyCompensation": { "frames": latency, "seconds": latency as f64 / sample_rate },
-            "playPreparing": false, "previewPreparing": false, "graphMutationsPending": 0,
         });
         // Exporting, recording and input meters are the live stage's to report.
         self.live.decorate_status(&mut status);
@@ -920,19 +909,12 @@ impl AudioEngine {
             default_output: listed.default_output.as_deref().map(device::device_id),
             output_device: id,
             output_uid: uid.clone(),
-            engine_device: id,
-            input_device: listed.default_input.as_deref().map(device::device_id),
             sample_rate: rate,
             buffer_size: state.stream.as_ref().map_or(state.buffer_size, |stream| stream.buffer_size()),
             buffer_sizes: device::BUFFER_SIZES.to_vec(),
             running: state.stream.as_ref().is_some_and(|stream| stream.is_alive()),
             fallback: uid == NULL_DEVICE && !matches!(state.wanted, DeviceChoice::Null | DeviceChoice::None),
             device_error: state.device_error.clone(),
-            input_channels: Vec::new(),
-            input_metering: false,
-            monitoring: false,
-            monitor_volume: 0.0,
-            input_acknowledgements: input_capability(),
             latency_compensation: json!({ "frames": latency, "seconds": latency as f64 / rate }),
         }
     }
@@ -1085,7 +1067,7 @@ fn builtin_parameter_ids(effect: &str) -> Vec<String> {
 
 fn input_base(edge: &InputEdge, context: &Value, id: Option<u64>) -> Value {
     let mut result = json!({
-        "version": 1, "inputOwner": edge.owner, "on": edge.on, "track": edge.track, "instrument": edge.instrument,
+        "inputOwner": edge.owner, "on": edge.on, "track": edge.track, "instrument": edge.instrument,
         "note": edge.note, "velocity": edge.velocity, "applyNote": edge.apply_note, "recordingContext": context,
     });
     if let Some(id) = id {
@@ -1109,7 +1091,7 @@ pub fn recording_context(project: &Project) -> Value {
         })
         .collect();
     json!({
-        "version": 1, "linesPerBeat": project.lines_per_beat().clamp(1, 32), "swing": (project.swing() as f32).clamp(0.0, 0.95) as f64,
+        "linesPerBeat": project.lines_per_beat().clamp(1, 32), "swing": (project.swing() as f32).clamp(0.0, 0.95) as f64,
         "loopSong": project.loop_song(), "bpm": project.bpm().clamp(20.0, 999.0),
         "patterns": patterns, "sequence": project.sequence.clone().unwrap_or_default(), "clips": clips,
     })

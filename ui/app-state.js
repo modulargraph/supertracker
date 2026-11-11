@@ -57,6 +57,9 @@
     clipboard: null,
     dirty: false,
     native: !!window.STHostTransport?.available,
+    // The commands the host has (`ready` lists them). The page asks about the two that only a host with a
+    // window of its own registers: ui.contextMenu and window.titleBar.
+    hostCommands: new Set(),
     status: {},
     samples: {},
     plugins: [],

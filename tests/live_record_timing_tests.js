@@ -1,13 +1,14 @@
 'use strict';
-// Actual app keyboard/MIDI/recording handlers with parsed replaceable DOM and a
-// simulated bridge. The engine clocks of note edges are fixtures, not an audio claim.
+// Actual app keyboard and recording handlers with parsed replaceable DOM and a simulated bridge. A note begins
+// as an acknowledged input edge does (app-input-capture.js), with the engine clock of the edge. The clocks are
+// fixtures, not an audio claim.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
 const fixture = fs.readFileSync(path.join(__dirname, 'scalar_field_focus_tests.js'), 'utf8');
 const makeHarness = new Function('require', '__dirname', fixture.slice(0, fixture.indexOf('const tests = [], test =')) + '\nreturn harness;')(require, __dirname);
 const copy = value => JSON.parse(JSON.stringify(value));
 const clock = (distanceBeats, extra = {}) => ({ distanceBeats, runID: '1', ...extra });
-// exact: notes begin as acknowledged input does (app-input-capture.js), with the engine clock of each edge.
-function harness(exact = true) {
+const tick = async () => { for (let i = 0; i < 80; i++) await Promise.resolve(); };
+function harness() {
   const h = makeHarness(), warnings = []; let now = 100000, message = '';
   h.context.Date = class extends Date { static now() { return now; } };
   Object.defineProperty(h.toast, 'innerHTML', { get: () => message, set(value) { message = value; if (value.includes('Exact recorded-note duration')) warnings.push(value); } });
@@ -15,39 +16,39 @@ function harness(exact = true) {
   // Held-note durations are recorded only while the optional Gate column is shown.
   project.viewState = { gateColumn: true };
   project.patterns[0].length = 32; project.patterns[0].steps.forEach(steps => { steps.length = 32; });
-  Object.assign(h.state, { recordPlacement:'live', playing: true, recording: true, keyboardPlay: true, row: 0, track: 0, instrument: 0, status: { playing: true, pattern: 0, row: 0, seconds: 0, beat: 0 }, lastStatusAt: now });
+  Object.assign(h.state, { recordPlacement:'live', playing: true, recording: true, keyboardPlay: true, row: 0, track: 0, instrument: 0, status: { playing: true, pattern: 0, row: 0, seconds: 0, beat: 0 } });
   h.ST.refresh(); h.calls.length = 0;
   function status(seconds, beat, row = Math.floor(beat * 4), extra = {}) { h.window.nativeEvent({ type: 'status', payload: { playing: true, songMode: true, pattern: 0, sequence: 0, row, position: row, seconds, beat, ...extra } }); }
-  function midi(on, note = 60, recordingClock, row = 0) { h.window.nativeEvent({ type: 'midi.note', payload: { on, note, velocity: 93, source: 1, channel: 1, track: 0, instrument: 0, pattern: 0, row, ...(recordingClock === undefined ? {} : { recordingClock }) } }); }
-  return { ...h, project, warnings, status, midi, advance(seconds) { now += seconds * 1000; }, step: (row = 0) => h.ST.pattern().steps[0][row], begin(row = 0, stamp, note = 60) { return h.ST.recordLiveStep(note, 100, 0, 0, 0, row, [0], stamp, exact ? { exactInput: true } : {}); } };
+  return { ...h, project, warnings, status, advance(seconds) { now += seconds * 1000; }, step: (row = 0) => h.ST.pattern().steps[0][row], begin(row = 0, stamp, note = 60) { return h.ST.recordLiveStep(note, 100, 0, 0, 0, row, [0], stamp); } };
 }
 const tests = [], test = (name, run) => tests.push({ name, run });
 
-test('live keyboard and MIDI notes repaint the mounted cell immediately without replacing focus or the grid', () => {
-  const h = harness(false), tracker = h.get('tracker'); tracker.focus();
+test('acknowledged live notes repaint the mounted cell without replacing focus or the grid', async () => {
+  const h = harness(), tracker = h.get('tracker'); tracker.focus();
   const cell = h.document.querySelector('[data-cell="0:0"]'), content = cell.querySelector('.tracker-cell'), renders = h.renders;
-  h.key(tracker, 'z', { code: 'KeyZ' });
+  h.key(tracker, 'z', { code: 'KeyZ' }); await tick();
   assert.match(content.innerHTML, /C–4/);
   assert.match(content.innerHTML, /has-note/);
   assert.equal(h.document.activeElement, tracker); assert.equal(tracker.isConnected, true);
   assert.equal(h.document.querySelector('[data-cell="0:0"]'), cell);
   assert.equal(h.renders, renders);
-  h.midi(true, 64); assert.match(content.innerHTML, /C–4/);
+  h.begin(0, clock(0), 64); assert.match(content.innerHTML, /C–4/);
   assert(cell.classList.contains('has-chord')); assert.match(cell.attrs.title, /E–4/);
-  h.midi(true, 67, undefined, 2);
+  h.begin(2, clock(.5), 67);
   assert.match(h.document.querySelector('[data-cell="0:2"]').querySelector('.tracker-cell').innerHTML, /G–4/);
 });
 
 test('without the Gate column a released key records an OFF on its row, unless a later note ends it first', () => {
-  const h = harness(false); h.project.viewState = { gateColumn: false }; h.ST.pattern().steps[0].fill(null);
-  h.status(0, 0); h.midi(true, 60, clock(0)); h.advance(1); h.status(1, 2); h.midi(false, 60, clock(2));
-  assert.equal(h.step(0).note, 60); assert.equal(h.step(8).note, -1, 'held one second at 8 rows per second: OFF on row 8');
+  const h = harness(); h.project.viewState = { gateColumn: false }; h.ST.pattern().steps[0].fill(null);
+  const held = h.begin(0, clock(0)); h.ST.finishLiveRecord(held, clock(2));
+  assert.equal(h.step(0).note, 60); assert.equal(h.step(8).note, -1, 'held two beats at four rows per beat: OFF on row 8');
   assert.equal(h.state.undo.length, 1, 'the note and its OFF are one recording take');
-  h.status(1, 2, 10); h.midi(true, 62, clock(2.5), 10); h.status(1.1, 2.6, 10); h.midi(true, 64, clock(2.75), 11);
-  h.advance(.5); h.midi(false, 62, clock(3));
+  const ended = h.begin(10, clock(2.5), 62); h.begin(11, clock(2.75), 64); h.ST.finishLiveRecord(ended, clock(3.5));
   assert.equal(h.step(14)?.note, undefined, 'a later note before the release already ends the held note: no OFF');
-  const short = h.begin(20); h.advance(.01); h.ST.finishLiveRecord(short);
+  const short = h.begin(20, clock(5)); h.ST.finishLiveRecord(short, clock(5.01));
   assert.equal(h.step(21).note, -1, 'a short tap still gets its OFF on the next row');
+  const unclocked = h.begin(26, clock(7)); h.ST.finishLiveRecord(unclocked);
+  assert.equal(h.step(27), null, 'a release without its engine clock writes no OFF'); assert.equal(h.warnings.length, 0, 'and warns only where a gate was asked for');
 });
 
 test('an exact note without the engine clock of its edges keeps no gate and warns once per recording session', () => {
@@ -121,13 +122,11 @@ test('timing edits, project replacement and busy transactions cannot attach stal
   const old = harness(), record = old.begin(0, clock(1)); old.state.project = copy(old.project); old.ST.finishLiveRecord(record, clock(2)); assert.equal(old.step().gate, 0); assert.equal(old.state.undo.length, 1); assert.equal(old.warnings.length, 0);
   for (const [module, flag] of [['STExport', 'isBusy'], ['STRouting', 'isApplying']]) {
     const h = harness(); h.window[module] = { [flag]: true }; const before = copy(h.project); assert.equal(h.begin(0, clock(1)), null);
-    h.midi(true, 60, clock(1)); h.window[module][flag] = false; h.midi(false, 60, clock(2)); assert.deepEqual(copy(h.project), before); assert.equal(h.state.undo.length, 0); assert.equal(h.warnings.length, 0);
+    h.window[module][flag] = false; assert.deepEqual(copy(h.project), before); assert.equal(h.state.undo.length, 0); assert.equal(h.warnings.length, 0);
   }
 });
 
-test('notes without acknowledged input measure the elapsed transport time, also across a loop; a new recording session can warn once again', async () => {
-  const h = harness(false); h.status(10, 20); const record = h.begin(); h.advance(2); h.status(12, 24); h.ST.finishLiveRecord(record); assert.equal(h.step().gate, 16); assert.equal(h.warnings.length, 0);
-  const loop = harness(false); loop.status(32, 64); const wrapped = loop.begin(); loop.advance(2); loop.status(.2, .4); loop.ST.finishLiveRecord(wrapped); assert.equal(loop.step().gate, 16); assert.equal(loop.warnings.length, 0);
+test('a new recording session can warn once again', async () => {
   const exact = harness(); exact.ST.finishLiveRecord(exact.begin()); exact.ST.finishLiveRecord(exact.begin(1)); assert.equal(exact.warnings.length, 1);
   await exact.ST.setNoteRecording(true, { newSession: true }); exact.ST.finishLiveRecord(exact.begin(2)); assert.equal(exact.warnings.length, 2);
 });

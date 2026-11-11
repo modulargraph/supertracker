@@ -23,7 +23,7 @@ const context = {
 // The host says which commands it has; only a host whose window has no title bar of its own has this one.
 let hostCommands = new Set(['window.titleBar']);
 context.window = { ...context, addEventListener() {}, ST: {
-  hostImplements: (command, assumed = true) => hostCommands ? hostCommands.has(command) : assumed,
+  hostImplements: command => hostCommands.has(command),
   request: (command, payload) => { requests.push({ command, payload }); return Promise.resolve(); }
 } };
 vm.createContext(context);
@@ -45,8 +45,6 @@ console.log('PASS a press on empty top bar space asks the host to move the windo
 
 press(button); press(tempo); press(body); press(brand, { button: 2 });
 assert.equal(requests.length, 2, 'controls, the page and other mouse buttons keep their clicks');
-for (const commands of [new Set(['ready']), null]) {
-  hostCommands = commands; press(brand);
-}
+hostCommands = new Set(['ready']); press(brand);
 assert.equal(requests.length, 2); assert.equal(prevented, 2);
-console.log('PASS a host with its own title bar (or one that does not list its commands) leaves the press to the page');
+console.log('PASS a host with its own title bar leaves the press to the page');

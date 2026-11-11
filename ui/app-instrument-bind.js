@@ -95,7 +95,7 @@
     };
     if ($('#instrument-monitor')) $('#instrument-monitor').onclick = async () => {
       try {
-        state.audio = await request('audio.configure', { monitor: !(state.audio.monitoring || state.audio.monitor) });
+        state.audio = await request('audio.configure', { monitor: !state.audio.monitoring });
         refresh();
       } catch (e) {
         toast(e.message, 'error');

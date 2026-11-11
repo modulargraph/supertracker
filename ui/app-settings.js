@@ -98,7 +98,7 @@
           + `<option value="mono" ${a.inputChannels?.length === 1 ? 'selected' : ''}>Mono · use left input</option>${Array.from({
         length: Math.max(1, inputs.find(x => String(x.id) === String(inputDevice))?.inputChannels || 2)
       }, (_, i) => `<option value="${i}" ${a.inputChannels?.length !== 1 && i === (a.inputChannels?.[1] ?? 1) ? 'selected' : ''}>Input ${i + 1}</option>`).join('')}</select>`
-          + `</label></div><label class="row"><input id="audio-monitor" type="checkbox" ${a.monitoring || a.monitor ? 'checked' : ''}> `
+          + `</label></div><label class="row"><input id="audio-monitor" type="checkbox" ${a.monitoring ? 'checked' : ''}> `
           + `Monitor audio input through master</label><div class="muted" style="font-size:11px">Sample rate: ${a.sampleRate || 48000}`
           + ` Hz · System default selects the device the system currently uses. Device changes can briefly interrupt playback.</div>`
           + `<div id="audio-latency" class="muted" style="font-size:11px">${latencyNote(a.latencyCompensation || state.status.latencyCompensation)}</div>`

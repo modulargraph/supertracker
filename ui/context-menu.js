@@ -78,7 +78,8 @@
     const actions = new Map(), prepared = prepare(items, actions);
     if (!prepared.length) return;
     const restore = document.activeElement;
-    if (!S()?.state?.native || S().hostImplements?.('ui.contextMenu') === false) { fallbackMenu(x, y, prepared, actions, restore); return; }
+    // The host's window draws the menu; without one (a served bridge, a page without a host) the page does.
+    if (!S()?.hostImplements?.('ui.contextMenu')) { fallbackMenu(x, y, prepared, actions, restore); return; }
     open = true;
     try {
       const result = await S().request('ui.contextMenu', { x, y, items: prepared });

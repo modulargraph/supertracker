@@ -136,7 +136,7 @@
         + `</label></div><div class="notice info">Pattern notes and the computer keyboard send MIDI to your hardware. `
         + `Sample a patch to a new sampler track while keeping this hardware connection.</div>`
         + `<p id="hardware-input-summary" class="small-note">${esc(window.STRecording?.inputSummary(inst) || 'Current Studio input · no saved interface')}</p>`
-        + `<div class="row"><button id="instrument-monitor">${state.audio.monitoring || state.audio.monitor ? 'Disable' : 'Enable'}`
+        + `<div class="row"><button id="instrument-monitor">${state.audio.monitoring ? 'Disable' : 'Enable'}`
         + ` Studio input monitoring</button><button id="instrument-record-input">Sample this synth… <kbd>⌘⇧R</kbd>`
         + `</button><button id="instrument-line-inputs">Line inputs…</button><button id="instrument-audio-settings">Audio `
         + `settings</button></div></div></div>` : inst.type === 'au' ? plugin ? `<div class="panel wide instrument-plugin-overview" aria-label="Plug-in instrument">`

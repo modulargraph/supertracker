@@ -1,12 +1,11 @@
-/* Notes: play, hold and release notes from the computer keyboard, pointer and MIDI, and enter
-   them into the pattern while recording. */
+/* Notes: play, hold and release notes from the computer keyboard and pointer. While recording, a note is
+   an input capture (app-input-capture.js): the host's acknowledgement enters it into the pattern. */
 (function () {
   'use strict';
 
   const app = window.STApp;
   const {
-    $, $$, clamp, state, pattern, toast, request, mutate, updateTransport, paintRecordedCell, stepInstrument,
-    stopStepPreview, performanceVoicing, chordChipHighlight
+    $$, clamp, state, toast, request, updateTransport, stopStepPreview, performanceVoicing, chordChipHighlight
   } = app;
   const held = new Map();
 
@@ -42,45 +41,6 @@
     if (!pedalDown) for (const id of [...sustainedCaptures.keys()]) endSustained(id);
   }
 
-  // The row of the last note recorded into a note column: a note pressed while it is held joins that row.
-  let columnRow = null;
-
-  function insertNote(note, velocity = 100, intervals = [0], column = null) {
-    const live = state.playing && state.recordPlacement === 'live',
-      joins = column != null && app.heldColumnCount(state.track) > 1 && columnRow?.track === state.track && columnRow.pat === pattern(),
-      recordRow = joins ? columnRow.row : live ? state.status.row ?? state.row : state.row;
-    if (column != null) mutate('record note', () => {
-      // Several note columns (app-note-columns.js): the note takes its own column on the row.
-      const pat = live ? state.project.patterns.find(p => p.id === state.status.pattern) || pattern() : pattern(),
-        r = clamp(recordRow, 0, pat.length - 1), steps = pat.steps[state.track],
-        values = { note, ...stepInstrument(), velocity, gate: 0 };
-      if (column) app.setColumnCell(steps, r, column, values);
-      else steps[r] = { ...app.preservedStepFX(steps[r]), ...values };
-      columnRow = { track: state.track, row: r, pat };
-      if (!state.playing) state.row = (r + state.editStep) % pat.length;
-    }, { render: !state.playing, recordTake: live ? app.currentRecordTake() : undefined });
-    else mutate('record note', () => {
-      const pat = live ? state.project.patterns.find(p => p.id === state.status.pattern) || pattern() : pattern(),
-        r = clamp(recordRow, 0, pat.length - 1),
-        prior = pat.steps[state.track][r],
-        next = {
-          ...prior,
-          note,
-          ...stepInstrument(),
-          velocity,
-          gate: 0,
-          chord: intervals.length > 1 ? [...intervals] : undefined
-        };
-      pat.steps[state.track][r] = next;
-      if (!state.playing) state.row = (r + state.editStep) % pat.length;
-    }, { render: !state.playing, recordTake: live ? app.currentRecordTake() : undefined });
-    if (state.playing && !live) paintRecordedCell(pattern(), state.track, state.row);
-    if (!state.playing) {
-      $(`[data-cell="${state.track}:${state.row}"]`)?.scrollIntoView({ block: 'nearest' });
-      $('#tracker')?.focus({ preventScroll: true });
-    }
-  }
-
   function noteOn(note, key = 'pointer', record = true, instrument = state.instrument, track = state.track, performance = record, velocityOverride, repeatable = performance) {
     window.STSampler?.stopAudition?.();
     if (state.project.instruments[instrument]?.type === 'au'
@@ -111,10 +71,10 @@
     const sounding = new Set([...held.values()].filter(active => !active.repeat
         && active.track === track
         && active.instrument === instrument).flatMap(active => active.notes));
+    // A note that is being recorded is a capture: the host's acknowledgement says where it lands.
     const capture = record
         && state.recording
         && state.view === 'pattern'
-        && app.supportsInputAcknowledgements()
         ? app.makeInputCapture('keyboard-' + ++app.inputOwnerSerial, ns[0], velocity, track, instrument, ns)
         : null;
     const entry = { notes: ns, track, instrument, capture, slot };
@@ -133,15 +93,6 @@
       }).catch(e => toast(e.message, 'error'));
       pianoHighlight(n, true);
     }
-    if (!capture && record && state.recording && state.view === 'pattern' && !app.supportsInputAcknowledgements()) {
-      // A single note on a track with several note columns takes a free column (app-note-columns.js).
-      const column = (app.noteColumnCount?.(track) || 1) > 1 && intervals.length === 1 ? app.claimColumn(track, key, app.cursorNoteColumn(track)) : null;
-      if (column != null) entry.columnOwner = key;
-      if (state.playing && state.recordPlacement === 'live') {
-        entry.record = app.recordLiveStep(note, velocity, track, instrument, state.status.pattern ?? pattern().id,
-            state.status.row ?? state.row, intervals, undefined, { noteColumn: column });
-      } else if (!state.countIn) insertNote(note, velocity, intervals, track === state.track ? column : null);
-    }
     updateTransport();
   }
 
@@ -149,7 +100,6 @@
     const entry = held.get(key);
     if (!entry) return;
     held.delete(key);
-    if (entry.columnOwner) app.releaseColumn(entry.track, entry.columnOwner);
     chordChipHighlight(entry.slot);
     if (entry.repeat) {
       window.STNoteRepeat?.release(key);
@@ -171,7 +121,6 @@
       }).catch(() => {});
       pianoHighlight(n, owners.length > 0);
     }
-    if (entry.record) app.finishLiveRecord(entry.record);
   }
 
   function stopHeld(owner) {

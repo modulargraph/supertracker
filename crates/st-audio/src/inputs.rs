@@ -1538,7 +1538,7 @@ impl Inputs {
         let stream = state.stream.as_ref().filter(|stream| stream.is_alive());
         serde_json::json!({
             "inputDevice": effective.as_deref().map(device_id), "inputUid": effective,
-            "inputChannels": state.channels, "inputMetering": state.meter, "monitoring": state.monitor, "monitor": state.monitor, "monitorVolume": state.monitor_volume,
+            "inputChannels": state.channels, "inputMetering": state.meter, "monitoring": state.monitor, "monitorVolume": state.monitor_volume,
             "inputRunning": stream.is_some(), "inputError": state.error,
             "inputDeviceChannels": state.stream.as_ref().map(|stream| stream.channels()),
             "inputSampleRate": stream.map(|stream| stream.sample_rate()),

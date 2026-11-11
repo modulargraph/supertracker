@@ -1,14 +1,14 @@
 // Exercise the actual app functions against a deterministic asynchronous native
 // boundary. No audio, app, device, or plug-in is launched by this suite.
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
-const { hostStub } = require('./helpers/host');
+const { hostStub, noteRecordingHost } = require('./helpers/host');
 const web = require('./helpers/web');
 const copy=x=>JSON.parse(JSON.stringify(x));
 function harness(){
   const nodes=new Map(),calls=[],handlers=new Map(),timers=new Map();let next=1;
   const element=id=>{if(!nodes.has(id))nodes.set(id,{id,innerHTML:'',dataset:{},attributes:{},classList:{toggle(){},add(){},remove(){}},focus(){},select(){},scrollIntoView(){},closest(){return null;},querySelectorAll(){return[];},addEventListener(){},setAttribute(k,v){this.attributes[k]=v;}});return nodes.get(id);};
   const document={body:element('body'),activeElement:null,querySelector:element,querySelectorAll:()=>[],getElementById:element,addEventListener(){},createElement:element};
-  const window={addEventListener(){},STHostTransport:hostStub({post(m){calls.push(copy(m));Promise.resolve().then(()=>handlers.get(m.command)?.(m.payload)??{}).then(result=>window.STHostTransport.deliver({id:m.id,ok:true,result}),error=>window.STHostTransport.deliver({id:m.id,ok:false,error:error.message}));}})};
+  const window={addEventListener(){},STHostTransport:hostStub({post(m){calls.push(copy(m));Promise.resolve().then(()=>handlers.has(m.command)?handlers.get(m.command)(m.payload)??{}:noteRecordingHost(window)(m)??{}).then(result=>window.STHostTransport.deliver({id:m.id,ok:true,result}),error=>window.STHostTransport.deliver({id:m.id,ok:false,error:error.message}));}})};
   const context=vm.createContext({window,document,console,setTimeout:(f)=>{timers.set(next,f);return next++;},clearTimeout:id=>timers.delete(id),Date,Map,Set,Math,JSON,Number,String,Object,Array,Promise,innerWidth:1200,innerHeight:800});
   web.load(context, 'app.js');
   const S=window.ST;S.state.project=S.demoProject();S.state.project.audioPlugins=[];

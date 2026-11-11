@@ -83,11 +83,11 @@ test('Left / Right walk NOTE INS VEL of every note column, then FX 1 and FX 2; T
   h.key('Tab'); assert.deepEqual(at(), [1, 0, 2], 'a one-column track has no note column 1');
 });
 
-test('typing a note into an extra column records it there, previews it and leaves column 0 alone; OFF, CUT, INS and VEL too', () => {
+test('typing a note into an extra column records it there, previews it and leaves column 0 alone; OFF, CUT, INS and VEL too', async () => {
   const h = editor(2), steps = h.ST.pattern().steps[0];
   steps[0] = { note: 48, instrument: 0, velocity: 100, gate: 0, fx1: { type: 'ratchet', value: 2 } };
   h.state.noteColumn = 1;
-  h.key('z');
+  h.key('z'); await tick();
   assert.equal(steps[0].note, 48); assert.deepEqual(copy(steps[0].fx1), { type: 'ratchet', value: 2 });
   assert.deepEqual(copy(steps[0].columns), [{ note: 60, instrument: 0, velocity: 100, gate: 0 }]);
   assert.equal(h.state.undo.length, 1); assert.equal(h.state.row, 1);
@@ -190,19 +190,19 @@ test('a track deleted while a confirmation or rename prompt is open: the column 
   assert.equal(p.tracks.filter(track => track.name === 'Lead').length, 1);
 });
 
-test('computer-keyboard recording: notes held together take free note columns of one row; then the cursor moves on', () => {
+test('computer-keyboard recording: notes held together take free note columns of one row; then the cursor moves on', async () => {
   const h = editor(3), steps = h.ST.pattern().steps[0];
-  h.key('z'); h.key('c'); h.key('b');
+  h.key('z'); h.key('c'); h.key('b'); await tick();
   assert.equal(steps[0].note, 60); assert.deepEqual(copy(steps[0].columns.map(cell => cell.note)), [64, 67]);
   assert.equal(h.state.row, 1, 'the held notes share the row; the edit step applies once');
-  h.key('m'); // a fourth held note: every column is held, so it is entered as on a one-column track (cursor row, column 0)
+  h.key('m'); await tick(); // a fourth held note: every column is held, so it is entered as on a one-column track (cursor row, column 0)
   assert.equal(h.ST.pattern().steps[0][1].note, 71); assert.equal(h.state.row, 2);
   for (const code of ['KeyZ', 'KeyC', 'KeyB', 'KeyM']) h.app.noteOff(code);
-  h.state.noteColumn = 2; h.key('x');
+  await tick(); h.state.noteColumn = 2; h.key('x'); await tick();
   assert.deepEqual(copy(h.ST.pattern().steps[0][2]), { note: -3, columns: [null, { note: 62, instrument: 0, velocity: 100, gate: 0 }] }, 'released columns are free again; the cursor column comes first');
   // A one-column track keeps chord-free single-note entry.
   const one = editor(1);
-  one.key('z'); one.app.noteOff('KeyZ'); one.key('c');
+  one.key('z'); one.app.noteOff('KeyZ'); one.key('c'); await tick();
   assert.equal(one.ST.pattern().steps[0][0].note, 60); assert.equal(one.ST.pattern().steps[0][1].note, 64); assert.equal(one.ST.pattern().steps[0][0].columns, undefined);
 });
 

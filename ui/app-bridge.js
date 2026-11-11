@@ -64,10 +64,11 @@
     });
   }
 
-  /** Whether the host has a command. `ready` lists the host's commands; for a host that does not say
-      (`state.hostCommands` unset), the answer is `assumed`. */
-  function hostImplements(command, assumed = true) {
-    return state.hostCommands ? state.hostCommands.has(command) : assumed;
+  /** Whether the host has a command of its window (ui.contextMenu, window.titleBar): a host that serves the
+      bridge without a window (`--serve`) and a page without a host have neither. Every other command exists
+      in every host. */
+  function hostImplements(command) {
+    return state.hostCommands.has(command);
   }
 
   function receiveReply(message) {
@@ -90,8 +91,16 @@
     else window.nativeEvent?.(message);
   });
 
+  let previewEdges = 0;
+  const previewAcknowledgement = (on, payload) => ({
+    inputOwner: payload.inputOwner, requestID: String(++previewEdges), status: 'applied', applied: true, playing: false, recording: true,
+    on, pattern: app.pattern().id, row: state.row, sequence: 0, track: payload.track, instrument: payload.instrument, note: payload.note,
+    velocity: payload.velocity ?? 0, applyNote: payload.applyNote !== false, recordingContext: window.STInputCapture.recordingContext()
+  });
+
   async function previewRequest(command, payload) {
     if (command === 'ready') return {
+      commands: [],
       project: state.project,
       roots: [],
       plugins: [],
@@ -109,11 +118,13 @@
         || command === 'transport.seek'
         || command === 'step.preview'
         || command === 'engine.panic'
-        || command === 'note.off'
         || command === 'sample.stopPreview') return {};
-    if (command === 'note.on') {
-      toast('Computer-keyboard notes play through the app’s audio engine.');
-      return {};
+    // Note recording takes the same path as with a host: arming is confirmed, and a recorded key is
+    // acknowledged at the stopped transport (the preview never plays), so it lands at the cursor.
+    if (command === 'transport.recordArm') return { armed: payload.armed === true };
+    if (command === 'note.on' || command === 'note.off') {
+      if (command === 'note.on') toast('Computer-keyboard notes play through the app’s audio engine.');
+      return payload.captureInput ? { inputAcknowledgement: previewAcknowledgement(command === 'note.on', payload) } : {};
     }
     if (command === 'library.search') return { items: [], total: 0, categories: [], scanning: false };
     if (command === 'library.roots' || command === 'plugins.list') return [];

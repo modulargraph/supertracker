@@ -5,9 +5,8 @@
 
   const app = window.STApp;
   const { clone, clamp, state, pattern, toast, request, stableJSON } = app;
-  // Only explicitly acknowledged native input edges can place live notes. The
-  // ledger is bounded by host replies/timeouts; it never waits for a held key.
-  let inputCaptureSupported = false;
+  // Only input edges the host acknowledged place notes. The ledger is bounded by host
+  // replies/timeouts; it never waits for a held key.
   app.inputOwnerSerial = 0;
   app.inputCaptureGeneration = 0;
   app.inputArmGeneration = 0;
@@ -28,20 +27,12 @@
     return pendingInputEdges.size > 0 || stoppedGridScopes.size > 0;
   }
 
-  function supportsInputAcknowledgements() {
-    const valid = value => value?.version === 1 && value.supported === true;
-    inputCaptureSupported ||= state.native
-        && (valid(state.audio.inputAcknowledgements) || valid(state.status.inputAcknowledgements));
-    return inputCaptureSupported;
-  }
-
   function inputRecordingContext(project) {
     const number = (value, fallback) => ['number', 'boolean'].includes(typeof value) && Number.isFinite(Number(value))
         ? Number(value)
         : fallback;
     // Compared field by field with the context in the host's acknowledgement.
     return {
-      version: 1,
       linesPerBeat: clamp(Math.trunc(number(project.linesPerBeat, 4)), 1, 32),
       swing: Math.fround(clamp(Math.fround(number(project.swing, 0)), 0, Math.fround(.95))),
       loopSong: project.loopSong === true,
@@ -194,7 +185,7 @@
   }
 
   function inputAckValid(capture, on, ack) {
-    return ack?.version === 1
+    return !!ack
         && ack.inputOwner === capture.inputOwner
         && ack.on === on
         && ack.track === capture.track
@@ -227,7 +218,7 @@
     // A note column: only that column must be unchanged (other columns' recordings may have written the row).
     if (capture.noteColumn != null) {
       const column = capture.noteColumn, group = app.liveRecordGroups.get(pat.id + ':' + capture.track + ':' + row + ':' + column),
-        owned = group?.project === capture.project && app.noteCell(current, column) === group.step && group.exactInput
+        owned = group?.project === capture.project && app.noteCell(current, column) === group.step
             && group.inputWriteValue === app.cellValue(current, column);
       if (!before || !owned && app.cellValue(JSON.parse(before.value ?? 'null'), column) !== app.cellValue(current, column)) return null;
       return { pat, row };
@@ -237,7 +228,6 @@
     // Accept those exact writes, including a finalized retrigger, but not user edits.
     const ownedGroup = group?.project === capture.project
         && group.step === current
-        && group.exactInput
         && group.inputWriteValue === JSON.stringify(current);
     if (!before || !ownedGroup && (before.ref !== current || before.value !== JSON.stringify(current))) return null;
     return { pat, row };
@@ -273,7 +263,6 @@
       }
       const root = Math.min(...capture.notes);
       capture.record = app.recordLiveStep(root, capture.velocity, capture.track, capture.instrument, target.pat.id, target.row, capture.notes.map(note => note - root), ack.recordingClock, {
-        exactInput: true,
         noteColumn: capture.noteColumn
       });
     } else if (capture.record) {
@@ -404,7 +393,6 @@
   }
 
   function receiveAcknowledgedMIDI(data) {
-    if (!supportsInputAcknowledgements()) return;
     const token = data.inputOwner;
     if (typeof token !== 'string' || !token || token.length > 256) return;
     const on = data.on !== false;
@@ -460,7 +448,7 @@
   };
 
   Object.assign(app, {
-    pendingInputEdges, stoppedGridScopes, pendingInputWork, supportsInputAcknowledgements, inputDomain,
+    pendingInputEdges, stoppedGridScopes, pendingInputWork, inputDomain,
     warnInputCapture, MIDI_CHORD_MS, captureCursor, makeInputCapture, requestInputEdge, discardInputCaptures,
     rebindSavedInputCaptures, receiveAcknowledgedMIDI
   });

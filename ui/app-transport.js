@@ -21,7 +21,6 @@
   }
 
   app.recordArmSession = 0;
-  app.recordArmSupported = false;
   app.recordArmDesired = false;
   let recordArmPending = null;
   let recordArmTask = null;
@@ -29,7 +28,6 @@
   // Intent is separate from accepted capture state. A session epoch survives Save/Undo
   // object replacement, but prevents an old-session acknowledgment from arming a new song.
   function setNoteRecording(armed, options = {}) {
-    app.recordArmSupported = app.recordArmSupported || state.status.recordArmSupported === true;
     if (options.newSession) {
       app.recordArmSession++;
       app.inputArmGeneration++;
@@ -45,12 +43,6 @@
       }
     }
     app.recordArmDesired = desired;
-    if (!app.recordArmSupported) {
-      state.recording = desired;
-      if (desired) state.keyboardPlay = true;
-      updateTransport();
-      return Promise.resolve(desired);
-    }
     recordArmPending = { session: app.recordArmSession, armed: desired };
     if (!recordArmTask) {
       recordArmTask = Promise.resolve().then(async () => {
@@ -93,14 +85,6 @@
   }
 
   function receiveNoteRecordingStatus(payload) {
-    const wasSupported = app.recordArmSupported;
-    app.recordArmSupported = app.recordArmSupported || payload.recordArmSupported === true;
-    if (!app.recordArmSupported) return;
-    if (!wasSupported && state.recording && !recordArmTask) {
-      state.recording = false;
-      setNoteRecording(true);
-      return;
-    }
     if (recordArmTask || typeof payload.noteRecordArmed !== 'boolean') return;
     // Status packets have no session identity: a delayed true cannot arm a fresh song.
     if (!payload.noteRecordArmed) {
@@ -453,8 +437,6 @@
     state.countIn = null;
     updateTransport();
     app.stopHeld();
-    for (const record of app.midiRecordNotes.values()) app.finishLiveRecord(record);
-    app.midiRecordNotes.clear();
     try {
       return await requestPlaybackStop(true);
     } catch (e) {

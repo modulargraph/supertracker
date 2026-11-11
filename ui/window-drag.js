@@ -17,7 +17,7 @@
   document.addEventListener('mousedown', event => {
     if (event.button !== 0 || !draggable(event.target)) return;
     const st = window.ST;
-    if (!st?.hostImplements?.('window.titleBar', false)) return;
+    if (!st?.hostImplements?.('window.titleBar')) return;
     event.preventDefault();
     st.request('window.titleBar', { doubleClick: event.detail >= 2 }).catch(() => {});
   }, true);

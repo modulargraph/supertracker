@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const { hostStub } = require('./helpers/host');
+const { hostStub, noteRecordingHost } = require('./helpers/host');
 const web = require('./helpers/web');
 function harness(){
  const nodes=new Map(),groups=new Map(),calls=[],timers=new Map();let context,nextTimer=0;
@@ -15,7 +15,8 @@ function harness(){
   }};nodes.set(id,el);return el;
  }
  const document={body:null,activeElement:null,querySelector(q){if(q==='.context-menu')return null;return q[0]==='#'?node(q.slice(1)):(groups.get(q)||[])[0]||node(q);},querySelectorAll:q=>groups.get(q)||[],getElementById:id=>nodes.get(id)||null,createElement:node,addEventListener(){}};document.body=node('body',{},'BODY');
- const window={addEventListener(){},STHostTransport:hostStub({post(message){calls.push(message);window.STHostTransport.deliver({id:message.id,ok:true,result:{}});}})};
+ const window={addEventListener(){},STHostTransport:hostStub({post(message){calls.push(message);window.STHostTransport.deliver({id:message.id,ok:true,result:recording(message)??{}});}})};
+ const recording=noteRecordingHost(window);
  context=vm.createContext({window,document,console,Date,Map,Set,Math,JSON,Number,String,Object,Array,Promise,innerWidth:1280,innerHeight:800,setTimeout(fn){timers.set(++nextTimer,fn);return nextTimer;},clearTimeout(id){timers.delete(id);}});
  web.load(context, 'app.js');
  const ST=window.ST,state=ST.state;state.project=ST.demoProject();
@@ -167,9 +168,7 @@ function harness(){
  const first=h.ST.recordLiveStep(60,70,0,0,0,0),second=h.ST.recordLiveStep(64,90,0,0,0,0);const live=h.state.project.patterns[0].steps[0][0];
  assert.equal(live.note,60);assert.deepEqual(Array.from(live.chord),[0,4]);assert.deepEqual(JSON.parse(JSON.stringify(live.fx1)),fx1);assert.deepEqual(JSON.parse(JSON.stringify(live.fx2)),fx2);
  h.ST.finishLiveRecord(second);h.ST.finishLiveRecord(first);assert.deepEqual(JSON.parse(JSON.stringify(h.state.project.patterns[0].steps[0][0].fx1)),fx1);
- h.state.playing=false;h.state.row=1;h.state.project.patterns[0].steps[0][1]={note:-3,instrument:0,fx1,fx2};h.window.nativeEvent({type:'midi.note',payload:{on:true,note:67,velocity:83,track:0,instrument:0,channel:1,source:'fixture'}});
- const recorded=h.state.project.patterns[0].steps[0][1];assert.equal(recorded.note,67);assert.deepEqual(JSON.parse(JSON.stringify(recorded.fx1)),fx1);assert.deepEqual(JSON.parse(JSON.stringify(recorded.fx2)),fx2);
- console.log('PASS live chord and stopped MIDI note recording retain FX-only row plug-in and sample effects');
+ console.log('PASS a live chord retains the plug-in and sample effects of an FX-only row');
 }
 {
  const plugin={type:'plugin',instanceID:'00000000-0000-0000-0000-000000000017',address:'18446744073709551615',value:.4,name:'Frequency'},builtin={type:'pan',value:-.2};
@@ -204,7 +203,7 @@ function harness(){
  assert(h.key(field,'R',{metaKey:true,shiftKey:true,code:'KeyR'}).defaultPrevented);assert.equal(actions.length,count+1);
  h.state.modal='settings';const unrelated=h.key(field,'R',{metaKey:true,shiftKey:true,code:'KeyR'});assert(!unrelated.defaultPrevented);assert.equal(actions.length,count+1);
  h.state.modal=null;recording=false;h.window.STExport={isBusy:true};h.key('tracker','R',{metaKey:true,shiftKey:true,code:'KeyR'});assert.equal(actions.length,count+1);
- h.window.STExport.isBusy=false;h.key('tracker','r',{metaKey:true,code:'KeyR'});assert.equal(h.state.recording,true,'Cmd-R remains note-record arm');
+ h.window.STExport.isBusy=false;h.key('tracker','r',{metaKey:true,code:'KeyR'});assert.equal(h.window.STApp.recordArmDesired,true,'Cmd-R remains note-record arm');
  console.log('PASS hardware capture summary/button and Command-Shift-R route to the recorder without changing note-arm, hijacking other dialogs or repeating');
 }
 console.log('Workspace navigation and step audition: 18 regression groups passed.');

@@ -1,7 +1,7 @@
 'use strict';
 // Boot the real app and exercise its registered keyboard/blur handlers. No native audio runs.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
-const { hostStub } = require('./helpers/host');
+const { hostStub, noteRecordingHost } = require('./helpers/host');
 const web = require('./helpers/web');
 const copy = value => JSON.parse(JSON.stringify(value));
 async function harness() {
@@ -39,7 +39,9 @@ async function harness() {
   document.body = node('body', {}, 'BODY'); node('tracker', {}, 'DIV');
   // Input ownership cases need independent tracks/instruments and two patterns;
   // provide that fixture explicitly instead of depending on the fresh-session default.
-  const window = { addEventListener(type, handler) { listen(windowListeners, type, handler); }, STHostTransport: hostStub({ post(message) { calls.push(copy(message)); const result = message.command === 'ready' ? { project: copy(window.ST.demoProject()) } : {}; window.STHostTransport.deliver({ id: message.id, ok: true, result }); } }) };
+  const window = { addEventListener(type, handler) { listen(windowListeners, type, handler); }, STHostTransport: hostStub({ post(message) { calls.push(copy(message)); const result = message.command === 'ready' ? { project: copy(window.ST.demoProject()) } : recording(message) ?? {}; window.STHostTransport.deliver({ id: message.id, ok: true, result }); } }) };
+  // The host confirms arming and acknowledges recorded keys; its engine clock runs at 120 BPM on the test's clock.
+  const recording = noteRecordingHost(window, { clock: () => (now - 1000000) / 500 });
   class Clock extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } }
   const context = vm.createContext({ window, document, console, Date: Clock, Map, Set, Math, JSON, Number, String, Object, Array, Promise, innerWidth: 1280, innerHeight: 800,
     setTimeout(fn) { timers.set(++timerID, fn); return timerID; }, clearTimeout(id) { timers.delete(id); }
@@ -57,7 +59,10 @@ async function harness() {
     advance(ms) { now += ms; }, highlight: pitch => node('piano-' + pitch).classList.contains('held'),
     notes: command => calls.filter(call => call.command === 'note.' + command).map(call => call.payload),
     messages: () => calls.filter(call => call.command.startsWith('note.')).map(call => ({ command: call.command, ...call.payload })),
-    async settle() { for (let i = 0; i < 4; i++) await Promise.resolve(); }
+    audible: command => calls.filter(call => call.command === 'note.' + command && call.payload.applyNote !== false).map(call => call.payload),
+    async settle() { for (let i = 0; i < 4; i++) await Promise.resolve(); },
+    // Long enough for an acknowledgement to become an edit.
+    async acknowledged() { for (let i = 0; i < 80; i++) await Promise.resolve(); }
   };
 }
 const tests = [], test = (name, run) => tests.push({ name, run });
@@ -143,30 +148,30 @@ test('Stop, Escape, view/session changes, keyboard disable and focus loss releas
 
 test('live recording keeps a shared gate open until its final owner releases without retriggering audio', async () => {
   for (const reverse of [false, true]) {
-    const h = await harness(); Object.assign(h.state, { recordPlacement:'live', recording: true, playing: true, row: 0, status: { pattern: 0, row: 0, seconds: 10 }, lastStatusAt: 1000000 }); h.state.project.viewState = { gateColumn: true }; h.state.project.bpm = 120; h.state.project.linesPerBeat = 4; h.state.project.patterns[0].steps[0][0] = null;
-    h.down('q', 'KeyQ'); h.down(',', 'Comma'); assert.equal(h.notes('on').length, 1); assert.equal(h.state.undo.length, 1);
-    const keys = reverse ? [[',', 'Comma'], ['q', 'KeyQ']] : [['q', 'KeyQ'], [',', 'Comma']]; h.advance(250); h.up(...keys[0]);
-    assert.equal(h.notes('off').length, 0); assert.equal(h.state.project.patterns[0].steps[0][0].gate, 0); assert.equal(h.state.undo.length, 1, 'A partial release cannot finalize the recorded gate'); const gateBefore = h.state.project.patterns[0].steps[0][0].gate;
-    h.advance(500); h.up(...keys[1]); const step = h.state.project.patterns[0].steps[0][0]; assert.equal(step.note, 72); assert.equal(step.chord, undefined); assert.equal(step.gate, 6); assert.notEqual(step.gate, gateBefore); assert.equal(h.state.undo.length, 1, 'Notes and their gates join the take'); assert.equal(h.notes('off').length, 1);
-    h.up(...keys[0]); h.ST.stopHeld(); assert.equal(h.state.undo.length, 1, 'A completed gate is finalized once');
+    const h = await harness(); Object.assign(h.state, { recordPlacement:'live', recording: true, playing: true, row: 0, status: { pattern: 0, row: 0, seconds: 10 } }); h.state.project.viewState = { gateColumn: true }; h.state.project.bpm = 120; h.state.project.linesPerBeat = 4; h.state.project.swing = 0; h.state.project.patterns[0].steps[0][0] = null;
+    h.down('q', 'KeyQ'); h.down(',', 'Comma'); await h.acknowledged(); assert.equal(h.audible('on').length, 1); assert.equal(h.state.undo.length, 1);
+    const keys = reverse ? [[',', 'Comma'], ['q', 'KeyQ']] : [['q', 'KeyQ'], [',', 'Comma']]; h.advance(250); h.up(...keys[0]); await h.acknowledged();
+    assert.equal(h.audible('off').length, 0); assert.equal(h.state.project.patterns[0].steps[0][0].gate, 0); assert.equal(h.state.undo.length, 1, 'A partial release cannot finalize the recorded gate'); const gateBefore = h.state.project.patterns[0].steps[0][0].gate;
+    h.advance(500); h.up(...keys[1]); await h.acknowledged(); const step = h.state.project.patterns[0].steps[0][0]; assert.equal(step.note, 72); assert.equal(step.chord, undefined); assert.equal(step.gate, 6); assert.notEqual(step.gate, gateBefore); assert.equal(h.state.undo.length, 1, 'Notes and their gates join the take'); assert.equal(h.audible('off').length, 1);
+    h.up(...keys[0]); h.ST.stopHeld(); await h.acknowledged(); assert.equal(h.state.undo.length, 1, 'A completed gate is finalized once');
   }
 });
 
 test('overlapping live chords share one duration group and retain their full recorded note set', async () => {
-  const h = await harness(); Object.assign(h.state, { recordPlacement:'live', recording: true, playing: true, chord: 'major', status: { pattern: 0, row: 0, seconds: 10 }, lastStatusAt: 1000000 }); h.state.project.viewState = { gateColumn: true }; h.state.project.bpm = 120; h.state.project.linesPerBeat = 4; h.state.project.patterns[0].steps[0][0] = null;
-  h.down('z', 'KeyZ'); h.down('b', 'KeyB'); h.advance(200); h.up('z', 'KeyZ'); assert.deepEqual(pitches(h.notes('off')), [60, 64]); assert.equal(h.state.undo.length, 1);
-  h.advance(800); h.up('b', 'KeyB'); const step = h.state.project.patterns[0].steps[0][0]; assert.equal(step.note, 60); assert.deepEqual(Array.from(step.chord), [0, 4, 7, 11, 14]); assert.equal(step.gate, 8); assert.equal(h.state.undo.length, 1);
+  const h = await harness(); Object.assign(h.state, { recordPlacement:'live', recording: true, playing: true, chord: 'major', status: { pattern: 0, row: 0, seconds: 10 } }); h.state.project.viewState = { gateColumn: true }; h.state.project.bpm = 120; h.state.project.linesPerBeat = 4; h.state.project.swing = 0; h.state.project.patterns[0].steps[0][0] = null;
+  h.down('z', 'KeyZ'); h.down('b', 'KeyB'); await h.acknowledged(); h.advance(200); h.up('z', 'KeyZ'); await h.acknowledged(); assert.deepEqual(pitches(h.audible('off')), [60, 64]); assert.equal(h.state.undo.length, 1);
+  h.advance(800); h.up('b', 'KeyB'); await h.acknowledged(); const step = h.state.project.patterns[0].steps[0][0]; assert.equal(step.note, 60); assert.deepEqual(Array.from(step.chord), [0, 4, 7, 11, 14]); assert.equal(step.gate, 8); assert.equal(h.state.undo.length, 1);
 });
 
 test('one live recording pass is one Undo step until transport stop, and an intervening edit splits the take', async () => {
-  const h = await harness(); Object.assign(h.state, { recordPlacement:'live', recording: true, playing: true, row: 0, status: { pattern: 0, row: 0, seconds: 10 }, lastStatusAt: 1000000 }); h.state.undo = [];
+  const h = await harness(); Object.assign(h.state, { recordPlacement:'live', recording: true, playing: true, row: 0, status: { pattern: 0, row: 0, seconds: 10 } }); h.state.undo = [];
   const before = copy(h.state.project.patterns[0].steps[0]), pat = h.state.project.patterns[0];
-  for (let i = 0; i < 46; i++) { h.state.status = { pattern: 0, row: i % pat.length, seconds: 10 + i / 8 }; h.down('z', 'KeyZ'); h.advance(60); h.up('z', 'KeyZ'); }
+  for (let i = 0; i < 46; i++) { h.state.status = { pattern: 0, row: i % pat.length, seconds: 10 + i / 8 }; h.down('z', 'KeyZ'); h.advance(60); h.up('z', 'KeyZ'); await h.acknowledged(); }
   assert.equal(h.state.undo.length, 1, 'A 46-note take with gates is a single history entry'); assert.equal(h.state.undo[0].label, 'record take');
-  h.ST.mutate('manual edit', p => { p.masterVolume = .3; }, { render: false }); h.state.status = { pattern: 0, row: 1, seconds: 20 }; h.down('x', 'KeyX'); h.advance(60); h.up('x', 'KeyX');
+  h.ST.mutate('manual edit', p => { p.masterVolume = .3; }, { render: false }); h.state.status = { pattern: 0, row: 1, seconds: 20 }; h.down('x', 'KeyX'); h.advance(60); h.up('x', 'KeyX'); await h.acknowledged();
   assert.deepEqual(h.state.undo.map(x => x.label), ['record take', 'manual edit', 'record take'], 'Notes after another edit start a new step rather than rewriting history under it');
   h.window.nativeEvent({ type: 'status', payload: { playing: false, pattern: 0, row: 0, seconds: 0 } }); Object.assign(h.state, { playing: true, status: { pattern: 0, row: 3, seconds: 30 } });
-  h.down('c', 'KeyC'); h.advance(60); h.up('c', 'KeyC'); assert.equal(h.state.undo.length, 4, 'Stopping the transport ends the take');
+  h.down('c', 'KeyC'); h.advance(60); h.up('c', 'KeyC'); await h.acknowledged(); assert.equal(h.state.undo.length, 4, 'Stopping the transport ends the take');
   h.ST.perform('undo'); h.ST.perform('undo'); h.ST.perform('undo'); h.ST.perform('undo'); assert.deepEqual(copy(h.state.project.patterns[0].steps[0]), before, 'Undoing the takes restores the pre-recording lane');
 });
 

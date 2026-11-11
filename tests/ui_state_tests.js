@@ -1,6 +1,6 @@
 // State and bridge regression tests, independent of a browser or audio device.
 const fs = require('node:fs');
-const { hostStub } = require('./helpers/host');
+const { hostStub, noteRecordingHost } = require('./helpers/host');
 const web = require('./helpers/web');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
@@ -13,7 +13,8 @@ function element(id) {
 const doc = { body: element('body'), activeElement: null, querySelector: q => element(q), querySelectorAll: () => [], getElementById: element, addEventListener() {}, createElement: tag => element(tag) };
 const calls = [];
 let context;
-const win = { addEventListener() {}, STHostTransport: hostStub({ post(message) { calls.push(message); const result = message.command === 'midi.configure' ? {} : message.command === 'plugin.parameters' ? [] : {}; context.window.STHostTransport.deliver({ id: message.id, ok: true, result }); } }) };
+const win = { addEventListener() {}, STHostTransport: hostStub({ post(message) { calls.push(message); const result = message.command === 'plugin.parameters' ? [] : recording(message) ?? {}; context.window.STHostTransport.deliver({ id: message.id, ok: true, result }); } }) };
+const recording = noteRecordingHost(win);
 // A frozen clock: live-recording gates compare Date.now() against status timestamps.
 const now = Date.now();
 class FrozenDate extends Date { static now() { return now; } }
@@ -104,51 +105,6 @@ ST.clipboardEvent({ type: 'paste', clipboardData: clipboard, preventDefault() {}
 assert.equal(state.project.patterns[0].steps[0][12]?.note, 71, 'a 20-track clipboard pastes');
 assert.equal(state.project.patterns[0].steps[7][12]?.note, 71, 'tracks past the session end are dropped, the rest land');
 console.log('Native clipboard event regression tests passed.');
-
-// Without the Gate column a live-recorded note keeps no gate (it plays until the next note, OFF or CUT).
-state.view = 'pattern'; state.track = 0; state.instrument = 0; state.recording = true; state.recordPlacement='live';
-state.playing = true;
-state.project.bpm = 120; state.project.linesPerBeat = 4;
-assert.equal(ST.gateColumnShown(), false);
-state.status = { seconds: 10, pattern: 0, row: 9 }; state.lastStatusAt = now;
-ST.noteOn(62, 'LiveKey');
-state.status.seconds = 12; state.lastStatusAt = now;
-ST.noteOff('LiveKey');
-assert.equal(state.project.patterns[0].steps[0][9].note, 62);
-assert.equal(state.project.patterns[0].steps[0][9].gate, 0);
-assert.equal(ST.stepGate(state.project.patterns[0].steps[0][9]), null);
-console.log('Live notes without the Gate column record no gate.');
-
-// Live recording (Gate column shown) holds long notes and uses the last chord key's release for the shared gate.
-ST.setGateColumn(true);
-state.status = { seconds: 10, pattern: 0, row: 10 }; state.lastStatusAt = now;
-ST.noteOn(60, 'LiveKey');
-state.status.seconds = 12; state.lastStatusAt = now;
-ST.noteOff('LiveKey');
-assert.ok(Math.abs(state.project.patterns[0].steps[0][10].gate - 16) < .02);
-state.status = { seconds: 20, pattern: 0, row: 12 }; state.lastStatusAt = now;
-win.nativeEvent({ type: 'midi.note', payload: { on: true, source: 1, channel: 1, track: 1, instrument: 1, pattern: 0, row: 12, note: 60, velocity: 100 } });
-win.nativeEvent({ type: 'midi.note', payload: { on: true, source: 1, channel: 1, track: 1, instrument: 1, pattern: 0, row: 12, note: 64, velocity: 100 } });
-state.status.seconds = 21; state.lastStatusAt = now;
-win.nativeEvent({ type: 'midi.note', payload: { on: false, source: 1, channel: 1, note: 60 } });
-assert.equal(state.project.patterns[0].steps[1][12].gate, 0);
-state.status.seconds = 22; state.lastStatusAt = now;
-win.nativeEvent({ type: 'midi.note', payload: { on: false, source: 1, channel: 1, note: 64 } });
-assert.ok(Math.abs(state.project.patterns[0].steps[1][12].gate - 16) < .02);
-assert.deepEqual(Array.from(state.project.patterns[0].steps[1][12].chord), [0, 4]);
-console.log('Live note duration and chord release regression tests passed.');
-
-// Song-loop clock resets must not collapse held-note recordings to minimum gate.
-state.project = ST.demoProject(); state.project.bpm = 120; state.project.linesPerBeat = 4;
-state.project.viewState = { gateColumn: true };
-state.track = 0; state.instrument = 0; state.playing = true; state.recording = true;
-state.status = { seconds: 32, pattern: 0, row: 60, playing: true }; state.lastStatusAt = now;
-const wrappedRecord = ST.recordLiveStep(60,100,0,0,0,60);
-wrappedRecord.group.startedAt = now - 2000;
-win.nativeEvent({ type: 'status', payload: { seconds: .2, pattern: 0, row: 0, playing: true } });
-ST.finishLiveRecord(wrappedRecord);
-assert.ok(Math.abs(state.project.patterns[0].steps[0][60].gate - 16) < .05);
-console.log('Song-loop live-note duration regression passed.');
 
 // Newly exposed native modulation keeps its actual value when creating a lane.
 web.load(context, 'modulation.js');

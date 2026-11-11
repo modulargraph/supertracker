@@ -22,7 +22,7 @@ async function harness(options = {}) {
   project.patterns.forEach((pat, index) => { pat.id = index ? 19 : 7; pat.length = 8; pat.steps = project.tracks.map(() => Array(8).fill(null)); pat.automation = []; });
   project.activePattern = 7; project.sequence = [7, 19];
 
-  Object.assign(h.state, { recordPlacement:'live', playing: true, row: 0, track: 0, instrument: 0, status: { playing: true, pattern: 7, row: 0, seconds: 0 }, audio: { inputAcknowledgements: { version: 1, supported: true } } });
+  Object.assign(h.state, { recordPlacement:'live', playing: true, row: 0, track: 0, instrument: 0, status: { playing: true, pattern: 7, row: 0, seconds: 0 } });
   await h.ST.setNoteRecording(true); h.state.undo = []; h.state.redo = []; h.calls.length = 0;
   const result = (message, value) => h.window.STHostTransport.deliver({ id: message.id, ok: true, result: value });
   h.window.STHostTransport.post = message => {
@@ -34,7 +34,7 @@ async function harness(options = {}) {
     else result(message, {});
   };
   function ack(payload, extra = {}, context = h.window.STInputCapture.recordingContext(), edgeID) {
-    return { version: 1, inputOwner: payload.inputOwner, requestID: edgeID, status: 'applied', applied: true, playing: true, recording: true, on: payload.on !== false, pattern: 7, row: 0, sequence: 0, track: payload.track ?? 0, instrument: payload.instrument ?? 0, note: payload.note ?? 60, velocity: payload.velocity ?? 100, applyNote: payload.applyNote !== false, recordingClock: clock(0), recordingContext: copy(context), ...extra };
+    return { inputOwner: payload.inputOwner, requestID: edgeID, status: 'applied', applied: true, playing: true, recording: true, on: payload.on !== false, pattern: 7, row: 0, sequence: 0, track: payload.track ?? 0, instrument: payload.instrument ?? 0, note: payload.note ?? 60, velocity: payload.velocity ?? 100, applyNote: payload.applyNote !== false, recordingClock: clock(0), recordingContext: copy(context), ...extra };
   }
   return { ...h, project, timers, heldCommands, tick, result,
     captures: (on = true) => h.calls.filter(m => m.command === (on ? 'note.on' : 'note.off') && m.payload.captureInput),
@@ -49,11 +49,11 @@ async function harness(options = {}) {
 }
 const tests = [], test = (name, run) => tests.push({ name, run });
 
-test('native onset chooses the saved pattern and row without provisional history, and observed capability stays sticky', async () => {
+test('native onset chooses the saved pattern and row without provisional history', async () => {
   const h = await harness(); h.down('z', 'KeyZ'); assert.equal(h.state.undo.length, 0); assert.equal(h.step(), null); assert(h.window.STInputCapture.hasPendingEdits);
   const onset = h.captures()[0]; h.reply(onset, { pattern: 19, row: 5, sequence: 1, recordingClock: clock(3) }); await tick();
   assert.equal(h.step(), null); assert.equal(h.step(5, 19).note, 60); assert.equal(h.state.undo.length, 1); assert(!h.window.STInputCapture.hasPendingEdits);
-  h.state.audio = {}; h.state.status = {}; h.up('z', 'KeyZ'); h.reply(h.captures(false)[0], { pattern: 19, row: 7, sequence: 1, recordingClock: clock(5) }); await tick();
+  h.up('z', 'KeyZ'); h.reply(h.captures(false)[0], { pattern: 19, row: 7, sequence: 1, recordingClock: clock(5) }); await tick();
   assert.equal(h.step(5, 19).gate, 8); assert.equal(h.state.undo.length, 1, 'The note and its duration are one recording-pass Undo step'); assert.equal(h.state.undo[0].label, 'record take'); assert.equal(h.audible(true).length, 1); assert.equal(h.audible(false).length, 1);
 });
 
