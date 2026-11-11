@@ -179,6 +179,7 @@ pub fn validate(project: &Project) -> Result<()> {
         }
     }
 
+    validate_performance(project)?;
     let owners = validate_routing(project, tracks)?;
     validate_plugins(project, &owners)?;
     validate_patterns(patterns, &owners)?;
@@ -195,6 +196,27 @@ pub fn validate(project: &Project) -> Result<()> {
         if let Some(input) = &track.audio_input {
             validate_audio_input(input).map_err(|error| Error::invalid(format!("{}: {}", track.display_name(index), error.message())))?;
         }
+    }
+    Ok(())
+}
+
+/// The keyboard performance settings (`performance`): an object whose values have their types, a
+/// root that is a pitch class, and names for the scale, the chord and the chord set (none is the
+/// empty chord set). Which names exist is the interface's business.
+fn validate_performance(project: &Project) -> Result<()> {
+    if project.extra.contains_key("performance") {
+        return fail("The keyboard performance settings must be an object.");
+    }
+    let Some(performance) = &project.performance else { return Ok(()) };
+    if ["root", "scale", "scaleMode", "chord", "chordSet", "applyToMIDI"].iter().any(|key| performance.extra.contains_key(*key)) {
+        return fail("The keyboard performance settings have an unreadable value.");
+    }
+    if !(0..=11).contains(&performance.root()) {
+        return fail("The keyboard performance key must be a note from 0 to 11.");
+    }
+    let named = |name: &str, allow_empty: bool| (allow_empty && name.is_empty()) || is_identifier(name);
+    if !named(&performance.scale(), false) || !named(&performance.chord(), false) || !named(&performance.chord_set(), true) {
+        return fail("The keyboard performance settings name a scale, a chord and a chord set with letters, digits, hyphens, underscores or periods.");
     }
     Ok(())
 }

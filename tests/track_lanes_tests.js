@@ -5,6 +5,7 @@
 const assert = require('node:assert/strict');
 const G = require('../ui/track-groups.js');
 const { session } = require('./helpers/mk3-session');
+const { complete } = require('./helpers/project');
 const tests = [], test = (name, run) => tests.push([name, run]);
 const same = (actual, expected, message) => assert.equal(JSON.stringify(actual), JSON.stringify(expected), message);
 const tick = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
@@ -33,7 +34,7 @@ const clearTrack = (p, index, patterns = p.patterns) => { for (const pat of patt
 
 function model(count = 6) {
   const tracks = Array.from({ length: count }, (_, i) => ({ id: i, name: `T${i + 1}`, routingID: `r${i}`, instrument: i }));
-  return {
+  return complete({
     tracks,
     instruments: tracks.map((_, i) => ({ id: i, name: `I${i}`, type: 'sample' })),
     patterns: [{ id: 0, length: 2, steps: tracks.map((_, i) => [{ note: 60 + i }, null]),
@@ -44,7 +45,7 @@ function model(count = 6) {
     pluginPages: { p2: {}, p5: {} },
     routing: { buses: [], outputs: Object.fromEntries(tracks.map(t => [`track:${t.routingID}`, 'master'])),
       sends: [], sidechains: [] }
-  };
+  });
 }
 const order = p => p.tracks.map(t => t.name).join(' ');
 

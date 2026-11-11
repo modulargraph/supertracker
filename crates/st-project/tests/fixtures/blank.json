@@ -178,5 +178,17 @@
   "damping": 0.4,
   "mix": 0.25
  },
- "audioPlugins": []
+ "audioPlugins": [],
+ "audioClips": [],
+ "groups": [],
+ "pluginPages": {},
+ "viewState": {},
+ "performance": {
+  "root": 0,
+  "scale": "chromatic",
+  "scaleMode": "snap",
+  "chord": "single",
+  "chordSet": "",
+  "applyToMIDI": true
+ }
 }

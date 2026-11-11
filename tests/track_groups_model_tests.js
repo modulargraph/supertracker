@@ -4,13 +4,14 @@
 // dissolving and load-time repair.
 const assert = require('node:assert/strict');
 const G = require('../ui/track-groups.js');
+const { complete } = require('./helpers/project');
 
 let serial = 0;
 const makeID = () => `id${++serial}`;
 function project(count = 6) {
   const tracks = Array.from({ length: count }, (_, i) => ({ id: i, name: `T${i + 1}`, routingID: `r${i}`, instrument: i, volume: .8 }));
   const outputs = Object.fromEntries(tracks.map(t => [`track:${t.routingID}`, 'master']));
-  return {
+  return complete({
     tracks,
     instruments: tracks.map((_, i) => ({ id: i, name: `I${i}`, type: 'sample' })),
     patterns: [{ id: 0, length: 4, steps: tracks.map((_, i) => [{ note: 60 + i, instrument: i }, null, null, null]),
@@ -18,7 +19,7 @@ function project(count = 6) {
     audioClips: [{ id: 'c', track: 4 }],
     audioPlugins: [{ instanceID: 'p', owner: 'track:r5', kind: 'effect', slot: 0 }],
     routing: { buses: [], outputs, sends: [], sidechains: [] }
-  };
+  });
 }
 const names = p => p.tracks.map(t => t.name).join(' ');
 const tests = [];

@@ -17,7 +17,7 @@
 
   /* ---------- model ---------- */
 
-  const trackOf = (track, p = state.project) => typeof track === 'number' ? p?.tracks?.[track] : track;
+  const trackOf = (track, p = state.project) => typeof track === 'number' ? p?.tracks[track] : track;
   const noteColumnCount = (track = state.track, p = state.project) =>
     clamp(Math.round(Number(trackOf(track, p)?.noteColumns) || 1), 1, MAX_NOTE_COLUMNS);
   const noteCell = (step, column = 0) => column ? step?.columns?.[column - 1] || null : step || null;
@@ -88,12 +88,12 @@
 
   // The note column under the cursor (0 on FX columns, or when the track has one note column).
   const cursorNoteColumn = (track = state.track) => state.column > 2 ? 0 : clamp(Math.round(Number(state.noteColumn) || 0), 0, noteColumnCount(track) - 1);
-  const cursorCell = (pat = pattern(), track = state.track, row = state.row) => noteCell(pat?.steps?.[track]?.[row], cursorNoteColumn(track));
+  const cursorCell = (pat = pattern(), track = state.track, row = state.row) => noteCell(pat?.steps[track]?.[row], cursorNoteColumn(track));
 
   // Note columns with a note (or OFF / CUT) anywhere in the song, beyond the first `keep` columns of a track.
   function columnsInUse(p, track, keep) {
     let count = 0;
-    for (const pat of p.patterns || []) for (const step of pat.steps?.[track] || []) {
+    for (const pat of p.patterns) for (const step of pat.steps[track]) {
       (step?.columns || []).forEach((cell, i) => { if (cell && i + 1 >= keep) count++; });
     }
     return count;
@@ -102,14 +102,13 @@
   /* Normalization (project load, app.normalize): clamp noteColumns, drop cells beyond a track's count, tidy holders.
      A project without note columns is left exactly as it is. */
   function normalizeNoteColumns(p) {
-    const counts = (p.tracks || []).map(track => {
-      if (!track || track.noteColumns === undefined) return 1;
+    const counts = p.tracks.map(track => {
+      if (track.noteColumns === undefined) return 1;
       const count = clamp(Math.round(Number(track.noteColumns) || 1), 1, MAX_NOTE_COLUMNS);
       if (count > 1) track.noteColumns = count; else delete track.noteColumns;
       return count;
     });
-    for (const pat of p.patterns || []) (pat.steps || []).forEach((rows, t) => {
-      if (!Array.isArray(rows)) return;
+    for (const pat of p.patterns) pat.steps.forEach((rows, t) => {
       rows.forEach((step, r) => {
         if (!step || step.columns === undefined) return;
         if (!Array.isArray(step.columns)) delete step.columns;
@@ -140,9 +139,7 @@
       const t = q.tracks[index];
       if (count > 1) t.noteColumns = count; else delete t.noteColumns;
       if (count < before) for (const pat of q.patterns) {
-        const rows = pat.steps?.[index];
-        if (!rows) continue;
-        rows.forEach((step, r) => {
+        pat.steps[index].forEach((step, r, rows) => {
           if (!step?.columns) return;
           rows[r] = tidyStep({ ...step, columns: step.columns.slice(0, count - 1) });
         });

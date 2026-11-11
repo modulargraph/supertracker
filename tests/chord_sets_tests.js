@@ -49,7 +49,7 @@ function plainHarness() {
 
   // Consecutive computer keys play chord 1..N, record as the existing note + chord step, and the root transposes.
   ST.setPerformance({ root: 0, scale: 'chromatic', chord: 'single', chordSet: 'neosoul' }, false);
-  same(state.project.performance, { root: 0, scale: 'chromatic', scaleMode: 'snap', chord: 'single', chordSet: 'neosoul' });
+  same(state.project.performance, { root: 0, scale: 'chromatic', scaleMode: 'snap', chord: 'single', chordSet: 'neosoul', applyToMIDI: true });
   await ST.setNoteRecording(true);
   const steps = () => ST.pattern().steps[1];
   state.track = 1; state.instrument = 1; state.row = 0; state.editStep = 1; state.keyVelocity = 90; state.octave = 4; state.keyboardPlay = true;
@@ -93,7 +93,7 @@ function plainHarness() {
   for (const id of ['chordSetNext', 'chordSetPrevious', 'chordSetOff', 'midiPerformance']) assert.ok(ST.commands.some(c => c[0] === id), id);
   console.log('PASS chord-set palette commands, ⌥G cycling and chord/set exclusivity');
 
-  // Persistence and backward compatibility.
+  // Persistence.
   const saved = ST.demoProject(); saved.performance = { root: 5, scale: 'major', scaleMode: 'snap', chord: 'single', chordSet: 'gospel', applyToMIDI: false };
   ST.acceptProject(saved);
   assert.equal(state.chordSet, 'gospel'); assert.equal(state.root, 5); assert.equal(state.midiApply, false);
@@ -101,8 +101,8 @@ function plainHarness() {
   const unknown = ST.demoProject(); unknown.performance = { root: 0, scale: 'minor', chord: 'single', chordSet: 'nope' };
   ST.acceptProject(unknown); assert.equal(state.chordSet, ''); assert.equal(state.scale, 'minor');
   ST.setPerformance({ scale: 'chromatic' }, false);
-  same(state.project.performance, { root: 0, scale: 'chromatic', scaleMode: 'snap', chord: 'single' }, 'older shape is kept when nothing new is set');
-  console.log('PASS chord set and MIDI choice persist with the song; older or unknown values default safely');
+  same(state.project.performance, { root: 0, scale: 'chromatic', scaleMode: 'snap', chord: 'single', chordSet: '', applyToMIDI: true }, 'the saved settings are complete');
+  console.log('PASS chord set and MIDI choice persist with the song; a name the page does not know reads as the default');
 
   // Note repeat / arpeggiator over a chord-set chord.
   state.project = ST.demoProject(); state.track = 0; state.instrument = 0; state.octave = 4;
@@ -135,7 +135,7 @@ function plainHarness() {
   map = ST.midiPerformanceMap(); same(map[62], [62, 65, 68], 'D in C minor plays the diminished scale triad');
   ST.setPerformance({ midiApply: false }, false);
   assert.equal(ST.midiPerformanceMap(), null); assert.equal(state.project.performance.applyToMIDI, false);
-  ST.setPerformance({ midiApply: true }, false); assert.ok(!('applyToMIDI' in state.project.performance));
+  ST.setPerformance({ midiApply: true }, false); assert.equal(state.project.performance.applyToMIDI, true);
   console.log('PASS MIDI performance map for chord sets, snap, degrees and scale chords');
 
   // Debounced, de-duplicated sends to the native host once it is ready.

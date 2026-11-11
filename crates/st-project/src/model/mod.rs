@@ -30,7 +30,7 @@ pub use plugin::{Owner, ParameterPage, PluginDescriptor, PluginKind, PluginPages
 pub use routing::{Bus, BusKind, Routing, Send, Sidechain, Tap};
 
 use crate::error::{Error, Result};
-use crate::json::{model, Json};
+use crate::json::{model, string_enum, Json};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -221,6 +221,39 @@ model! {
     }
 }
 
+string_enum! {
+    /// How the keyboard uses the scale of the keyboard performance settings.
+    pub enum ScaleMode {
+        /// A played note moves to the nearest note of the scale.
+        Snap = "snap",
+        /// Consecutive keys play consecutive notes of the scale.
+        Degrees = "degrees",
+    }
+}
+
+model! {
+    /// The keyboard performance settings saved with a song (`project.performance`, written by
+    /// `ui/app-performance.js`): what the computer keyboard and a MIDI keyboard play. The
+    /// interface expands the keys itself; the host stores the settings and checks their shape.
+    /// The names of scales, chords and chord sets are the interface's tables, so the host checks
+    /// that they are names, not which ones; a name the interface does not know reads there as
+    /// the default below.
+    pub struct Performance {
+        /// The key: pitch class of its root, 0..=11 (0 is C).
+        "root" => root: i64 = 0,
+        /// Scale name.
+        "scale" => scale: String = "chromatic".to_string(),
+        /// How keys map onto the scale.
+        "scaleMode" => scale_mode: ScaleMode = ScaleMode::Snap,
+        /// Chord name; `single` plays one note.
+        "chord" => chord: String = "single".to_string(),
+        /// Chord set identifier; empty for none.
+        "chordSet" => chord_set: String = String::new(),
+        /// Whether a MIDI keyboard plays through these settings too.
+        "applyToMIDI" => apply_to_midi: bool = true,
+    }
+}
+
 model! {
     /// A tempo event of an imported MIDI file.
     pub struct MidiTempoChange {
@@ -386,6 +419,8 @@ model! {
         "pluginPages" => plugin_pages: BTreeMap<String, PluginPages>,
         /// View preferences.
         "viewState" => view_state: ViewState,
+        /// Keyboard performance settings.
+        "performance" => performance: Performance,
         /// What a MIDI import kept about its source.
         "midiImport" => midi_import: MidiImportInfo,
         /// Content fingerprints of media files.

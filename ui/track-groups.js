@@ -19,18 +19,18 @@
   const COLORS = ['#e2a44f', '#7fb7d9', '#9fc97a', '#d98a9e', '#b39ddb', '#80cbc4', '#e6d36f', '#ef8a5b'];
   const fallbackID = () => globalThis.crypto?.randomUUID?.() || `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
-  const list = p => Array.isArray(p?.groups) ? p.groups : [];
+  const list = p => p.groups;
   const byID = (p, id) => list(p).find(group => group.id === id) || null;
   const idOf = group => typeof group === 'string' ? group : group?.id;
   const busOwner = group => group?.busID ? `bus:${group.busID}` : null;
   const trackOwner = track => typeof track?.routingID === 'string' && track.routingID ? `track:${track.routingID}` : null;
   const ofTrack = (p, index) => {
-    const id = p?.tracks?.[index]?.groupID;
+    const id = p.tracks[index]?.groupID;
     return id ? byID(p, id) : null;
   };
   function members(p, group) {
     const id = idOf(group), result = [];
-    (p?.tracks || []).forEach((track, index) => { if (id && track?.groupID === id) result.push(index); });
+    p.tracks.forEach((track, index) => { if (id && track.groupID === id) result.push(index); });
     return result;
   }
   function span(p, group) {
@@ -66,13 +66,13 @@
     if (order.every((old, next) => old === next)) return map;
     p.tracks = order.map(old => p.tracks[old]);
     p.tracks.forEach((track, index) => { track.id = index; });
-    const fix = item => { if (object(item) && Number.isInteger(item.track) && item.track >= 0 && item.track < n) item.track = map[item.track]; };
-    for (const pattern of p.patterns || []) {
-      const steps = Array.isArray(pattern.steps) ? pattern.steps : [];
-      pattern.steps = order.map(old => steps[old] || Array(pattern.length).fill(null));
-      (pattern.automation || []).forEach(fix);
+    // A lane of a mixer channel names its owner and has no track index.
+    const fix = item => { if (Number.isInteger(item.track) && item.track >= 0 && item.track < n) item.track = map[item.track]; };
+    for (const pattern of p.patterns) {
+      pattern.steps = order.map(old => pattern.steps[old]);
+      pattern.automation.forEach(fix);
     }
-    for (const key of ['audioClips', 'patternClips']) (p[key] || []).forEach(fix);
+    p.audioClips.forEach(fix);
     return map;
   }
 
@@ -81,7 +81,7 @@
     const order = [], placed = new Set();
     p.tracks.forEach((track, index) => {
       if (placed.has(index)) return;
-      const id = track?.groupID;
+      const id = track.groupID;
       if (id && byID(p, id)) {
         for (const member of members(p, id)) { order.push(member); placed.add(member); }
       } else { order.push(index); placed.add(index); }
@@ -96,7 +96,7 @@
   }
   function unrouteMember(p, index, group) {
     const owner = trackOwner(p.tracks[index]), outputs = p.routing.outputs;
-    if (owner && outputs && (!group || outputs[owner] === busOwner(group))) outputs[owner] = 'master';
+    if (owner && (!group || outputs[owner] === busOwner(group))) outputs[owner] = 'master';
   }
 
   function nextColor(p) {
@@ -118,7 +118,6 @@
       busID: options.busID || makeID()
     };
     for (const key of ['libraryPath', 'importNotes']) if (options[key] !== undefined) group[key] = options[key];
-    p.groups ||= [];
     p.groups.push(group);
     const bus = ensureBus(p, group);
     if (options.bus) Object.assign(bus, options.bus, { id: group.busID, type: 'group', groupID: group.id });
@@ -243,26 +242,26 @@
     if (!removing.length) return p.tracks.map((_, i) => i);
     if (removing.length >= n) throw new Error('Keep at least one track in a session.');
     const chosen = new Set(removing), owners = new Set(removing.map(i => trackOwner(p.tracks[i])).filter(Boolean));
-    const ownsPlugin = plugin => object(plugin) && owners.has(plugin.owner);
+    const ownsPlugin = plugin => owners.has(plugin.owner);
     // An automation lane names its channel, or the track index for the engine's instrument parameters.
-    const ownsLane = lane => object(lane) && (lane.owner ? owners.has(lane.owner) : Number.isInteger(lane.track) && chosen.has(lane.track));
-    const plugins = (p.audioPlugins || []).filter(ownsPlugin), instances = new Set(plugins.map(plugin => plugin.instanceID).filter(Boolean));
-    p.audioPlugins = (p.audioPlugins || []).filter(plugin => !ownsPlugin(plugin));
-    for (const id of instances) if (p.pluginPages) delete p.pluginPages[id];
+    const ownsLane = lane => lane.owner ? owners.has(lane.owner) : chosen.has(lane.track);
+    const plugins = p.audioPlugins.filter(ownsPlugin), instances = new Set(plugins.map(plugin => plugin.instanceID).filter(Boolean));
+    p.audioPlugins = p.audioPlugins.filter(plugin => !ownsPlugin(plugin));
+    for (const id of instances) delete p.pluginPages[id];
     const r = p.routing;
     for (const owner of owners) delete r.outputs[owner];
     for (const source of Object.keys(r.outputs)) if (owners.has(r.outputs[source])) r.outputs[source] = null;
     const removedSends = new Set(r.sends.filter(send => owners.has(send.source) || owners.has(send.destination)).map(send => `send:${send.id}`));
     r.sends = r.sends.filter(send => !owners.has(send.source) && !owners.has(send.destination));
     r.sidechains = r.sidechains.filter(route => !owners.has(route.source) && !instances.has(route.destination));
-    for (const pattern of p.patterns || []) if (Array.isArray(pattern.automation)) pattern.automation = pattern.automation.filter(lane => !ownsLane(lane) && !removedSends.has(lane.target));
-    for (const key of ['audioClips', 'patternClips']) if (Array.isArray(p[key])) p[key] = p[key].filter(item => !(Number.isInteger(item?.track) && chosen.has(item.track)));
+    for (const pattern of p.patterns) pattern.automation = pattern.automation.filter(lane => !ownsLane(lane) && !removedSends.has(lane.target));
+    p.audioClips = p.audioClips.filter(clip => !chosen.has(clip.track));
     const groups = new Set(removing.map(i => ofTrack(p, i)).filter(Boolean));
     // Deleted tracks move to the end (every reference follows), then the tail is cut off.
     const keep = p.tracks.map((_, i) => i).filter(i => !chosen.has(i)), map = reorder(p, [...keep, ...removing]);
     const length = keep.length;
     p.tracks.length = length;
-    for (const pattern of p.patterns || []) if (Array.isArray(pattern.steps)) pattern.steps.length = Math.min(pattern.steps.length, length);
+    for (const pattern of p.patterns) pattern.steps.length = length;
     for (const group of groups) if (!members(p, group).length) dissolve(p, group.id);
     return map.map(next => next < length ? next : -1);
   }
@@ -272,16 +271,16 @@
     const owner = busOwner(group);
     if (!owner) return;
     const r = p.routing;
-    const removed = new Set((p.audioPlugins || []).filter(plugin => plugin.owner === owner).map(plugin => plugin.instanceID));
+    const removed = new Set(p.audioPlugins.filter(plugin => plugin.owner === owner).map(plugin => plugin.instanceID));
     r.buses = r.buses.filter(bus => `bus:${bus.id}` !== owner);
     delete r.outputs[owner];
     for (const source of Object.keys(r.outputs)) if (r.outputs[source] === owner) r.outputs[source] = replacement;
     const removedSends = new Set(r.sends.filter(send => send.source === owner || send.destination === owner).map(send => `send:${send.id}`));
     r.sends = r.sends.filter(send => send.source !== owner && send.destination !== owner);
     r.sidechains = r.sidechains.filter(route => route.source !== owner && !removed.has(route.destination));
-    p.audioPlugins = (p.audioPlugins || []).filter(plugin => plugin.owner !== owner);
-    for (const id of removed) if (p.pluginPages) delete p.pluginPages[id];
-    for (const pattern of p.patterns || []) if (pattern.automation) pattern.automation = pattern.automation.filter(lane => lane.owner !== owner && !removedSends.has(lane.target));
+    p.audioPlugins = p.audioPlugins.filter(plugin => plugin.owner !== owner);
+    for (const id of removed) delete p.pluginPages[id];
+    for (const pattern of p.patterns) pattern.automation = pattern.automation.filter(lane => lane.owner !== owner && !removedSends.has(lane.target));
   }
 
   // Ungroups every member (they route to Master) and removes the group and its bus.
@@ -305,26 +304,23 @@
     const group = byID(p, groupID);
     if (!group || !String(name || '').trim()) return false;
     group.name = String(name).trim();
-    const bus = p.routing.buses?.find(item => item.id === group.busID);
+    const bus = p.routing.buses.find(item => item.id === group.busID);
     if (bus) bus.name = group.name;
     return true;
   }
 
-  /* Repairs loaded data: unknown memberships are dropped, empty groups removed, members made
-     contiguous and every group gets its bus. Returns true when something changed. */
+  /* The groups' part of normalize (app-project-model.js), which has made tracks, patterns, groups and the
+     routing table before it calls this: memberships of groups that do not exist are dropped, empty groups
+     removed, members made contiguous and every group gets its bus. Returns true when something changed. */
   function normalize(p) {
-    if (!object(p) || !Array.isArray(p.tracks)) return false;
     let changed = false;
-    if (p.groups !== undefined && !Array.isArray(p.groups)) { delete p.groups; changed = true; }
     const seen = new Set();
-    if (Array.isArray(p.groups)) {
-      p.groups = p.groups.filter(group => {
-        const valid = object(group) && typeof group.id === 'string' && group.id && !seen.has(group.id);
-        if (valid) seen.add(group.id); else changed = true;
-        return valid;
-      });
-    }
-    for (const track of p.tracks) if (object(track) && track.groupID !== undefined && !seen.has(track.groupID)) { delete track.groupID; changed = true; }
+    p.groups = p.groups.filter(group => {
+      const valid = object(group) && typeof group.id === 'string' && group.id && !seen.has(group.id);
+      if (valid) seen.add(group.id); else changed = true;
+      return valid;
+    });
+    for (const track of p.tracks) if (track.groupID !== undefined && !seen.has(track.groupID)) { delete track.groupID; changed = true; }
     for (const group of list(p)) {
       if (typeof group.name !== 'string' || !group.name) { group.name = 'Group'; changed = true; }
       if (typeof group.color !== 'string') { group.color = nextColor(p); changed = true; }
@@ -335,11 +331,11 @@
     const before = list(p).length;
     dropEmpty(p);
     if (list(p).length !== before) changed = true;
-    if (!list(p).length) { if (Array.isArray(p.groups) && !p.groups.length) delete p.groups; return changed; }
+    if (!list(p).length) return changed;
     const order = contiguousOrder(p);
     if (order.some((old, next) => old !== next)) { reorder(p, order); changed = true; }
     for (const group of list(p)) {
-      const had = !!p.routing.buses?.some(bus => bus.id === group.busID && bus.type === 'group' && bus.groupID === group.id);
+      const had = p.routing.buses.some(bus => bus.id === group.busID && bus.type === 'group' && bus.groupID === group.id);
       ensureBus(p, group);
       if (!had) changed = true;
     }

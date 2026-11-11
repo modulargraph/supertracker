@@ -341,6 +341,32 @@ fn track_freeze_records() {
     assert_eq!(rejected(|p| { p["tracks"][0]["name"] = json!("Bass"); p["tracks"][0]["frozen"] = json!(true); }), "Bass: the freeze record must be an object.");
 }
 
+/// The keyboard performance settings are the interface's: the host checks their shape, and the
+/// names of scales, chords and chord sets only for being names.
+#[test]
+fn keyboard_performance_settings() {
+    accepted(|p| { p.as_object_mut().unwrap().remove("performance"); });
+    accepted(|p| p["performance"] = json!({}));
+    accepted(|p| p["performance"] = json!({ "root": 11, "scale": "harmonicMinor", "scaleMode": "degrees", "chord": "scaleTriad", "chordSet": "major-triads", "applyToMIDI": false }));
+    accepted(|p| p["performance"] = json!({ "root": 0, "scale": "chromatic", "scaleMode": "snap", "chord": "single", "chordSet": "", "applyToMIDI": true, "later": 1 }));
+    for settings in [json!("minor"), json!([]), Value::Null] {
+        assert_eq!(rejected(|p| p["performance"] = settings), "The keyboard performance settings must be an object.");
+    }
+    for (key, value) in [("root", json!("C")), ("root", json!(1.5)), ("scale", json!(3)), ("scaleMode", json!("nearest")), ("chord", Value::Null), ("chordSet", json!(false)), ("applyToMIDI", json!("yes"))] {
+        assert_eq!(rejected(|p| p["performance"] = json!({ key: value })), "The keyboard performance settings have an unreadable value.", "{key}");
+    }
+    for root in [-1, 12] {
+        assert_eq!(rejected(|p| p["performance"] = json!({ "root": root })), "The keyboard performance key must be a note from 0 to 11.");
+    }
+    for (key, name) in [("scale", ""), ("chord", ""), ("scale", "two words"), ("chordSet", "a/b")] {
+        assert_eq!(
+            rejected(|p| p["performance"] = json!({ key: name })),
+            "The keyboard performance settings name a scale, a chord and a chord set with letters, digits, hyphens, underscores or periods.",
+            "{key}"
+        );
+    }
+}
+
 /// An instrument is a sampler, a plug-in or an external MIDI instrument; anything else is refused
 /// instead of being played as a sampler.
 #[test]

@@ -247,6 +247,30 @@
     return normalize(project);
   }
 
+  /* What every project in the page has. normalize() completes a project when it enters the page (a new
+     session, a project the host hands over); the host checks the same shape when the page publishes or saves
+     one (crates/st-project/src/validate.rs). After it the page relies on these parts without asking whether
+     they are there, and every edit keeps them:
+
+       version, name, bpm, linesPerBeat, masterVolume, metronome, metronomeVolume, activePattern
+       timeSignature { numerator, denominator }
+       delay { time, feedback, mix }, reverb { size, damping, mix }
+       performance { root, scale, scaleMode, chord, chordSet, applyToMIDI }
+       viewState {}        view preferences; each of its keys is optional
+       tracks [1..]        each with routingID and instrument (an index into instruments)
+       instruments [1..]   each with every key of instrumentDefaults
+       patterns [1..]      each with id, name, length, steps[track][row] (a step or null) for every track and
+                           row, and automation [], whose lanes each have points []
+       sequence [1..]      pattern ids
+       groups [], audioClips [], audioPlugins []
+       pluginPages {}      the user's parameter pages, by plug-in instanceID
+       routing { buses [], outputs {}, sends [], sidechains [] }
+
+     Optional by design, so whoever reads them asks: songLoop (there only while a loop section is set); a
+     track's groupID, pad, padNote, chokeGroup, voiceMode, noteColumns, audioInput and frozen, and its name,
+     colour and mixer values (absent is the default); an instrument's plugin and zones; every field of a step
+     but its note; a lane's owner or track; a clip's take set; and what only the host reads and writes
+     (mediaManifest, mediaRelinkHistory, midiImport). */
   function normalize(p) {
     if (!p || typeof p !== 'object') return demoProject();
     p.version = PROJECT_VERSION;
@@ -259,13 +283,14 @@
           ? Number(p.timeSignature.denominator)
           : 4
     };
-    // Every project has a routing table with its four collections (without buses: tracks into Master).
-    p.routing = { buses: [], outputs: {}, sends: [], sidechains: [], ...(p.routing && typeof p.routing === 'object' ? p.routing : {}) };
+    // Without buses the tracks play into Master.
+    p.routing = { buses: [], outputs: {}, sends: [], sidechains: [], ...p.routing };
     p.metronome = !!p.metronome;
     p.metronomeVolume = p.metronomeVolume ?? .4;
     p.masterVolume = p.masterVolume ?? .7;
     p.activePattern = p.activePattern || 0;
     p.tracks = p.tracks?.length ? p.tracks : [{ id: 0, name: 'Track 01', volume: .8, pan: 0, instrument: 0 }];
+    for (const track of p.tracks) track.instrument = track.instrument || 0;
     p.instruments = p.instruments?.length ? p.instruments : [instrumentDefaults(0, 'Instrument 01')];
     p.instruments = p.instruments.map((x, i) => ({ ...instrumentDefaults(i, 'Instrument ' + (i + 1)), ...x }));
     p.patterns = p.patterns?.length ? p.patterns : [emptyPattern(0, 64, p.tracks.length)];
@@ -280,16 +305,35 @@
         for (let r = 0; r < pat.length; r++) pat.steps[t][r] = pat.steps[t][r] || null;
       }
       pat.automation = pat.automation || [];
+      for (const lane of pat.automation) lane.points = lane.points || [];
     });
-    app.normalizeNoteColumns?.(p);
     p.sequence = p.sequence?.length ? p.sequence : [0];
     p.delay = { time: .375, feedback: .35, mix: .3, ...p.delay };
     p.reverb = { size: .7, damping: .4, mix: .25, ...p.reverb };
     p.audioPlugins = p.audioPlugins || [];
+    p.audioClips = p.audioClips || [];
+    p.groups = p.groups || [];
+    p.pluginPages = p.pluginPages || {};
+    p.viewState = p.viewState || {};
+    p.performance = completePerformance(p.performance || {});
+    app.normalizeNoteColumns(p);
     window.STRoutingProject.ensureTrackIDs(p, uid);
     window.STGroups.normalize(p);
     window.STRoutingProject.pruneOrphanPlugins(p);
     return p;
+  }
+
+  /* The keyboard performance settings saved with a song (app-performance.js reads and writes them). A name
+     that is not in the page's tables of scales, chords and chord sets reads as that setting's default. */
+  function completePerformance(saved) {
+    return {
+      root: clamp(Math.round(Number(saved.root) || 0), 0, 11),
+      scale: app.scales[saved.scale] ? saved.scale : 'chromatic',
+      scaleMode: saved.scaleMode === 'degrees' ? 'degrees' : 'snap',
+      chord: app.chords[saved.chord] ? saved.chord : 'single',
+      chordSet: app.chordSetIdFor(saved.chordSet),
+      applyToMIDI: saved.applyToMIDI !== false
+    };
   }
 
   /* Note length. A step's gate is its length in pattern rows; gate 0 is no gate: tracker semantics, the note

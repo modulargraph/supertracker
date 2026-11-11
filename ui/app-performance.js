@@ -169,27 +169,27 @@
         + ` · vel ${state.keyVelocity} · oct ${state.octave}`;
   }
 
-  // Key, scale, keyboard mode, chord, chord set and the MIDI-keyboard choice are saved with
-  // the song; repeat and velocity are live settings. Older songs open chromatic, no set.
+  // Key, scale, keyboard mode, chord, chord set and the MIDI-keyboard choice are saved with the song
+  // (project.performance, complete after normalize); repeat and velocity are live settings.
   function readPerformance(p) {
-    const perf = p?.performance || {};
-    state.root = clamp(Math.round(Number(perf.root) || 0), 0, 11);
-    state.scale = scales[perf.scale] ? perf.scale : 'chromatic';
-    state.scaleMode = perf.scaleMode === 'degrees' ? 'degrees' : 'snap';
-    state.chord = chords[perf.chord] ? perf.chord : 'single';
-    state.chordSet = app.chordSetIdFor(perf.chordSet);
-    state.midiApply = perf.applyToMIDI !== false;
+    const saved = p.performance;
+    state.root = saved.root;
+    state.scale = saved.scale;
+    state.scaleMode = saved.scaleMode;
+    state.chord = saved.chord;
+    state.chordSet = saved.chordSet;
+    state.midiApply = saved.applyToMIDI;
     scheduleMIDIPerformance();
   }
 
   function writePerformance(p) {
-    if (p) p.performance = {
+    p.performance = {
       root: state.root,
       scale: state.scale,
       scaleMode: state.scaleMode,
       chord: state.chord,
-      ...(activeChordSet() ? { chordSet: state.chordSet } : {}),
-      ...(state.midiApply === false ? { applyToMIDI: false } : {})
+      chordSet: activeChordSet() ? state.chordSet : '',
+      applyToMIDI: state.midiApply !== false
     };
   }
 

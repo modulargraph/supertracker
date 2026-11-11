@@ -1,14 +1,13 @@
 /* Persistent routing identity and explicit project edits; no audio graph mutation. */
 (() => {
   'use strict';
-  const object = value => value && typeof value === 'object' && !Array.isArray(value);
   const trackOwner = track => typeof track?.routingID === 'string' && track.routingID ? `track:${track.routingID}` : null;
 
   function ensureTrackIDs(project, makeID) {
-    const tracks = Array.isArray(project?.tracks) ? project.tracks : [];
-    const occupied = new Set(tracks.map(track => track?.routingID).filter(id => typeof id === 'string' && id));
+    const { tracks } = project;
+    const occupied = new Set(tracks.map(track => track.routingID).filter(id => typeof id === 'string' && id));
     for (const track of tracks) {
-      if (!object(track) || typeof track.routingID==='string'&&track.routingID) continue;
+      if (typeof track.routingID === 'string' && track.routingID) continue;
       const base = String(makeID?.() || globalThis.crypto?.randomUUID?.() || `track-${Date.now().toString(36)}`);
       let id = base, suffix = 1;
       while (occupied.has(id)) id = `${base}-${suffix++}`;

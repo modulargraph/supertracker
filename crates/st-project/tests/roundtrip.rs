@@ -144,8 +144,8 @@ fn everything_fixture_reads_every_part_of_the_schema() {
     let pattern = &project.pattern_list()[0];
     let columns = pattern.step(1, 0).unwrap();
     assert_eq!(columns.gate(), 0.0, "a stored gate of 0 is no gate, not the default of a missing one");
-    assert_eq!(columns.columns.as_ref().unwrap()[0].as_ref().unwrap().note(), 64);
-    assert!(columns.columns.as_ref().unwrap()[1].is_none());
+    assert!(columns.columns.as_ref().unwrap()[0].is_none());
+    assert_eq!(columns.columns.as_ref().unwrap()[1].as_ref().unwrap().note(), 64);
     assert!(columns.extra.contains_key("fx2"), "fx2: null is kept as written");
     let lock = pattern.step(0, 1).unwrap().fx1.as_ref().unwrap();
     assert_eq!((lock.kind, lock.plugin_address(), lock.value()), (Some(StepEffectKind::Plugin), Some(u64::MAX), 0.25));
@@ -163,6 +163,9 @@ fn everything_fixture_reads_every_part_of_the_schema() {
     assert_eq!((frozen.frames, frozen.pattern_prints.as_ref().unwrap()[0].loop_print.as_ref().unwrap().frames), (Some(480_000), Some(120_000)));
     let view = project.view_state.as_ref().unwrap();
     assert_eq!((view.gate_column(), view.automation_panel.as_deref(), view.hide_empty()), (true, Some("song"), true));
+    let performance = project.performance.as_ref().unwrap();
+    assert_eq!((performance.root(), performance.scale().as_str(), performance.scale_mode(), performance.chord().as_str()), (5, "minor", ScaleMode::Degrees, "scaleTriad"));
+    assert_eq!((performance.chord_set().as_str(), performance.apply_to_midi()), ("neosoul", false));
     let delay = project.delay.as_ref().unwrap();
     assert_eq!((delay.sync.as_deref(), delay.beats()), (Some("1/8."), 0.75));
     assert_eq!(project.song_loop.as_ref().unwrap().end, Some(3));
@@ -206,6 +209,7 @@ fn unknown_fields_survive_edits_at_every_level() {
     assert_eq!(written["groups"][0]["futureGroupField"], "kept");
     assert_eq!(written["delay"]["futureDelayField"], 1);
     assert_eq!(written["viewState"]["futureViewField"], 1);
+
     // An unknown step effect type has no typed kind but is not lost.
     let effect = project.pattern_list()[0].step(0, 0).unwrap().fx1.as_ref().unwrap();
     assert_eq!((effect.kind, effect.extra.get("type")), (None, Some(&json!("futureEffect"))));

@@ -2,6 +2,7 @@
 // Observable browse, audition and import behaviour with delayed native replies.
 const assert = require('node:assert/strict');
 const web = require('./helpers/web');
+const { complete } = require('./helpers/project');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -29,7 +30,7 @@ function harness() {
     const page = pool.slice(payload.offset, payload.offset + payload.limit);
     return { items: page, total: pool.length, products, banks: [], subBanks: [], types: facet(pool, item => item.types), subtypes: facet(pool, item => item.subtypes), characters: facet(pool, item => item.characters), counts, status: { reading: false, revision: 1 }, scanning: false };
   }
-  const state = { view: 'browser', project: { name: 'Test', tracks: [{}], instruments: [{}] }, track: 0, instrument: 0 };
+  const state = { view: 'browser', project: complete({ name: 'Test', tracks: [{}], instruments: [{}] }), track: 0, instrument: 0 };
   const document = {
     activeElement: null,
     getElementById: id => markup.includes(`id="${id}"`) ? node(id) : null,
@@ -168,7 +169,7 @@ async function fresh() { const h = harness(); await h.browser.search(); h.render
 
   const leaving = await fresh(), stop = deferred();
   await leaving.browser.controller.preview(); leaving.requestHandler = command => command === 'sample.stopPreview' ? stop.promise : undefined;
-  const adding = leaving.browser.controller.load(); leaving.state.project = { name: 'Different project' };
+  const adding = leaving.browser.controller.load(); leaving.state.project = complete({ name: 'Different project' });
   stop.resolve({}); await adding; assert.equal(leaving.loads.length, 0);
   const menu = await fresh();
   const actions = menu.browser.contextItems({ target: { closest: selector => selector === '[data-kitb-row]' ? { dataset: { kitbRow: '0' } } : null } });

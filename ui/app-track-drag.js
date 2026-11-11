@@ -72,7 +72,7 @@
     const p = state.project;
     tracks = [...new Set(tracks)].filter(i => Number.isInteger(i) && p.tracks[i]).sort((a, b) => a - b);
     if (!tracks.length) return false;
-    const trial = clone({ tracks: p.tracks, groups: p.groups, routing: p.routing, patterns: [] });
+    const trial = clone({ tracks: p.tracks, groups: p.groups, routing: p.routing, patterns: [], audioClips: [] });
     G().moveTracks(trial, tracks, before, group);
     if (signature(trial) === signature(p)) return false;
     const cursor = p.tracks[state.track], anchor = state.selection ? p.tracks[state.selection.track] : null;

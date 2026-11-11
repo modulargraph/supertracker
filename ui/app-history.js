@@ -137,8 +137,8 @@
     app.discardInputCaptures();
     app.resetMIDIRoutePublication();
     state.project = item.project;
-    if (state.scale
-        && (state.project.performance || !app.performanceIsDefault() || state.midiApply === false)) app.writePerformance(state.project);
+    // The keyboard performance settings are the session's, not an Undo step: the restored project takes them.
+    app.writePerformance(state.project);
     state.selection = null;
     state.track = clamp(state.track, 0, state.project.tracks.length - 1);
     state.instrument = clamp(state.instrument, 0, state.project.instruments.length - 1);

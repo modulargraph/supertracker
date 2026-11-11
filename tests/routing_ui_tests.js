@@ -2,6 +2,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const web = require('./helpers/web');
+const { complete } = require('./helpers/project');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -24,7 +25,7 @@ class Element {
   querySelectorAll(selector){if(selector==='[data-routing-choice]')return this.children;return [];}
 }
 
-function fixture(){return {name:'Routing test',masterVolume:.7,tracks:[{routingID:'a',name:'Bass',volume:.8},{routingID:'b',name:'Keys',volume:.6}],patterns:[{id:0,automation:[]}],audioPlugins:[{instanceID:'plug-b',owner:'track:b',kind:'effect',slot:0,name:'Detector'}],routing:{buses:[{id:'g',name:'Group',type:'group',volume:1,pan:0,mute:false,solo:false},{id:'r',name:'Return',type:'return',volume:1,pan:0,mute:false,solo:false}],outputs:{'track:a':'master','track:b':'master','bus:g':'master','bus:r':'master'},sends:[],sidechains:[]}};}
+function fixture(){return complete({name:'Routing test',masterVolume:.7,tracks:[{routingID:'a',name:'Bass',volume:.8},{routingID:'b',name:'Keys',volume:.6}],patterns:[{id:0,automation:[]}],audioPlugins:[{instanceID:'plug-b',owner:'track:b',kind:'effect',slot:0,name:'Detector'}],routing:{buses:[{id:'g',name:'Group',type:'group',volume:1,pan:0,mute:false,solo:false},{id:'r',name:'Return',type:'return',volume:1,pan:0,mute:false,solo:false}],outputs:{'track:a':'master','track:b':'master','bus:g':'master','bus:r':'master'},sends:[],sidechains:[]}});}
 function capabilities(){return {buses:{max:16},sends:{taps:['preFader','postFader'],max:128},sidechains:{taps:['preInserts','preFader','postFader'],max:128,inputs:[{instanceID:'plug-b',owner:'track:b',slot:0,pluginName:'Detector'}]}};}
 
 /* The page asks the host what it can route (routing.capabilities) and the fake host answers: the harness is

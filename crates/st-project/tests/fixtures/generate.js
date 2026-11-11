@@ -12,7 +12,9 @@ const window = { STApp: { clamp: (v, lo, hi) => Math.max(lo, Math.min(hi, v)), u
 window.window = window;
 const document = { readyState: 'complete', addEventListener() {} };
 const context = vm.createContext({ window, globalThis: window, document, console, structuredClone, setTimeout() {}, crypto: { randomUUID: uid } });
-for (const name of ['util.js', 'routing-project.js', 'track-groups.js', 'app-project-model.js', 'clip-takes-project.js', 'song-model.js', 'send-effects.js']) {
+// normalize completes a project with the help of the note-column and keyboard-performance modules.
+for (const name of ['util.js', 'routing-project.js', 'track-groups.js', 'app-project-model.js', 'app-chord-sets.js', 'app-performance.js', 'app-note-columns.js',
+  'clip-takes-project.js', 'song-model.js', 'send-effects.js']) {
   vm.runInContext(fs.readFileSync(path.join(web, name), 'utf8'), context, { filename: name });
 }
 const app = window.STApp, G = window.STGroups, Takes = window.STClipTakesProject, Sends = window.STSends;
@@ -41,8 +43,9 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
     audioPlugins: [{ instanceID: 'p', owner: 'track:r5', kind: 'effect', slot: 0, component: 'stfx:eq' }],
     routing: { buses: [], outputs: Object.fromEntries(tracks.map(t => [`track:${t.routingID}`, 'master'])), sends: [], sidechains: [] }
   };
+  app.normalize(p);
   G.create(p, [1, 3, 4], { makeID: uid, name: 'Drums' });
-  write('groups.json', app.normalize(p));
+  write('groups.json', p);
 }
 
 // 4. A project that uses every part of the schema, built with the interface's creators where they
@@ -85,7 +88,7 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
   Object.assign(p.instruments[7], { type: 'midi', midiOutput: 2, midiChannel: 5, midiProgram: 10, midiBankMSB: 1, midiBankLSB: 2, midiCCMap: { cutoff: 74 }, midiCCRanges: { cutoff: [20, 20000] } });
   // app-note-columns.js, step-fx.js: extra note columns and a plug-in parameter lock.
   p.tracks[1].noteColumns = 3;
-  p.patterns[0].steps[1][0] = { note: 60, instrument: 1, velocity: 100, gate: 0, columns: [{ note: 64, velocity: 90 }, null], fx1: { type: 'microtiming', value: .25 }, fx2: null };
+  p.patterns[0].steps[1][0] = { note: 60, instrument: 1, velocity: 100, gate: 0, columns: [null, { note: 64, velocity: 90 }], fx1: { type: 'microtiming', value: .25 }, fx2: null };
   p.patterns[0].steps[0][1] = { note: -3, fx1: { type: 'plugin', instanceID: 'comp-1', address: '18446744073709551615', name: 'Threshold', value: .25 } };
   p.patterns[0].steps[0][2] = { note: -1 }; p.patterns[0].steps[0][3] = { note: -2 };
   p.patterns[0].color = '#d6a35c';
@@ -111,6 +114,8 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
     unprintedPatterns: [1], tailMode: 'auto', method: 'offline' };
   // app-track-lanes.js, app-pattern-edit.js, app-automation-panel.js, app-song-scroll.js
   p.viewState = { gateColumn: true, automationPanel: 'song', songScroll: true, hideEmpty: true, hideEmptyScope: 'song', collapsedTracks: [p.tracks[0].routingID] };
+  // app-performance.js: the keyboard performance settings.
+  p.performance = { root: 5, scale: 'minor', scaleMode: 'degrees', chord: 'scaleTriad', chordSet: 'neosoul', applyToMIDI: false };
   // MediaRelinker.fingerprint / apply
   p.mediaManifest = [{ path: '/Audio/Vocal 1.wav', size: 123456, modified: 1790000000.25, sha256: '9f'.repeat(32) }];
   p.mediaRelinkHistory = [{ date: '2026-10-02T08:00:00Z', changes: [{ id: '/audioClips/0/path', from: '/Old/Vocal 1.wav', to: '/Audio/Vocal 1.wav', differentContent: false }] }];

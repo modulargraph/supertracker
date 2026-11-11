@@ -106,7 +106,7 @@
     if (!project.tracks[from]) return false;
     const signature = p => JSON.stringify(p.tracks.map(t => t.routingID + ':' + (t.groupID || '')));
     // Try the move on a copy first: one that changes nothing (a track already at the edge) is not an edit.
-    const trial = app.clone({ tracks: project.tracks, groups: project.groups, routing: project.routing, patterns: [] });
+    const trial = app.clone({ tracks: project.tracks, groups: project.groups, routing: project.routing, patterns: [], audioClips: [] });
     G().moveTrack(trial, from, delta);
     if (signature(trial) === signature(project)) return false;
     return mutate('move track', p => {

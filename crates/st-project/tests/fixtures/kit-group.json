@@ -526,5 +526,16 @@
   "size": 0.7,
   "damping": 0.4,
   "mix": 0.25
+ },
+ "audioClips": [],
+ "pluginPages": {},
+ "viewState": {},
+ "performance": {
+  "root": 0,
+  "scale": "chromatic",
+  "scaleMode": "snap",
+  "chord": "single",
+  "chordSet": "",
+  "applyToMIDI": true
  }
 }

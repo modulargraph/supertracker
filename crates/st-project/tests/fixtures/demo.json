@@ -2717,5 +2717,17 @@
   "sidechains": []
  },
  "metronome": false,
- "metronomeVolume": 0.4
+ "metronomeVolume": 0.4,
+ "audioClips": [],
+ "groups": [],
+ "pluginPages": {},
+ "viewState": {},
+ "performance": {
+  "root": 0,
+  "scale": "chromatic",
+  "scaleMode": "snap",
+  "chord": "single",
+  "chordSet": "",
+  "applyToMIDI": true
+ }
 }

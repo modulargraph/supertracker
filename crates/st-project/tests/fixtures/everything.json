@@ -859,11 +859,11 @@
       "velocity": 100,
       "gate": 0,
       "columns": [
+       null,
        {
         "note": 64,
         "velocity": 90
-       },
-       null
+       }
       ],
       "fx1": {
        "type": "microtiming",
@@ -3060,46 +3060,6 @@
  },
  "metronome": true,
  "metronomeVolume": 0.4,
- "groups": [
-  {
-   "id": "fx000e",
-   "name": "Kit",
-   "color": "#e2a44f",
-   "collapsed": false,
-   "mixerCollapsed": false,
-   "busID": "fx000f",
-   "libraryPath": "/Library/Kits/Night.stkit",
-   "importNotes": [
-    "Pad 9 was empty."
-   ],
-   "futureGroupField": "kept"
-  }
- ],
- "pluginPages": {
-  "comp-1": {
-   "name": "Squash",
-   "pages": [
-    {
-     "name": "Main",
-     "addresses": [
-      "1",
-      "18446744073709551615",
-      null,
-      null,
-      null,
-      null,
-      null,
-      null
-     ]
-    }
-   ]
-  }
- },
- "songLoop": {
-  "start": 2,
-  "end": 3,
-  "restoreLoopSong": true
- },
  "audioClips": [
   {
    "id": "clip-1",
@@ -3145,6 +3105,41 @@
    "durationBeats": 16
   }
  ],
+ "groups": [
+  {
+   "id": "fx000e",
+   "name": "Kit",
+   "color": "#e2a44f",
+   "collapsed": false,
+   "mixerCollapsed": false,
+   "busID": "fx000f",
+   "libraryPath": "/Library/Kits/Night.stkit",
+   "importNotes": [
+    "Pad 9 was empty."
+   ],
+   "futureGroupField": "kept"
+  }
+ ],
+ "pluginPages": {
+  "comp-1": {
+   "name": "Squash",
+   "pages": [
+    {
+     "name": "Main",
+     "addresses": [
+      "1",
+      "18446744073709551615",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ]
+  }
+ },
  "viewState": {
   "gateColumn": true,
   "automationPanel": "song",
@@ -3155,6 +3150,19 @@
    "fx0004"
   ],
   "futureViewField": 1
+ },
+ "performance": {
+  "root": 5,
+  "scale": "minor",
+  "scaleMode": "degrees",
+  "chord": "scaleTriad",
+  "chordSet": "neosoul",
+  "applyToMIDI": false
+ },
+ "songLoop": {
+  "start": 2,
+  "end": 3,
+  "restoreLoopSong": true
  },
  "mediaManifest": [
   {

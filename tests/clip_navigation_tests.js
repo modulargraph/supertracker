@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const web = require('./helpers/web');
+const { complete } = require('./helpers/project');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
@@ -27,9 +28,9 @@ function harness() {
   for (const id of ['clips-import', 'clips-cursor-position', 'clips-import-cursor', 'clips-bounce', 'clips-zoom-in', 'clips-zoom-out', 'clips-preview', 'clips-stop-preview', 'clips-source', 'clips-duplicate', 'clips-split', 'clips-delete']) node(id, panel);
   node('clips-cursor', panel, 'INPUT'); node('clips-name', panel, 'INPUT'); node('clips-track', panel, 'SELECT'); node('clips-snap', panel, 'SELECT');
   node('track-label', timeline, 'BUTTON', { clipsTrack: '0' });
-  const state = { view: 'song', track: 0, clipSelected: 'a', sequence: 0, status: {}, project: { bpm: 120, linesPerBeat: 4,
+  const state = { view: 'song', track: 0, clipSelected: 'a', sequence: 0, status: {}, project: complete({ bpm: 120, linesPerBeat: 4,
     tracks: [{ name: 'One' }, { name: 'Two' }, { name: 'Three' }], patterns: [{ id: 0, length: 16, steps: [] }], sequence: [0],
-    audioClips: [{ id: 'a', track: 0, startBeat: 4, durationBeats: 4, sourceOffset: 0, path: '/fixture/a.wav' }, { id: 'b', track: 0, startBeat: 8, durationBeats: 4, sourceOffset: 0, path: '/fixture/b.wav' }, { id: 'c', track: 2, startBeat: 1, durationBeats: 4, sourceOffset: 0, path: '/fixture/c.wav' }] } };
+    audioClips: [{ id: 'a', track: 0, startBeat: 4, durationBeats: 4, sourceOffset: 0, path: '/fixture/a.wav' }, { id: 'b', track: 0, startBeat: 8, durationBeats: 4, sourceOffset: 0, path: '/fixture/b.wav' }, { id: 'c', track: 2, startBeat: 1, durationBeats: 4, sourceOffset: 0, path: '/fixture/c.wav' }] }) };
   for (const clip of state.project.audioClips) node('clip-' + clip.id, timeline, 'BUTTON', { clipId: clip.id });
   const ST = { state, refresh() {}, escapeHTML: String, toast() {}, mutate(label, fn) { changes.push(label); fn(state.project); }, request() { throw Error('No native request is needed for clip navigation'); } };
   const context = vm.createContext({ window: { ST }, document, queueMicrotask() {}, setTimeout() {}, clearTimeout() {} });
@@ -106,7 +107,8 @@ function installActualProjectUndo(h) {
   // History does not store the old UI track/clip selection, so Undo preserves the
   // current valid active track while restoring each clip's original track data.
   h.state.undo = []; h.state.redo = []; h.state.instrument = 0; h.state.row = 0;
-  h.state.project.instruments = [{}];
+  // The session's keyboard performance settings, which Undo writes into the project it restores.
+  Object.assign(h.state, { root: 0, scale: 'chromatic', scaleMode: 'snap', chord: 'single', chordSet: '', midiApply: true });
   const ST = h.context.window.ST, mutate = ST.mutate;
   ST.mutate = (label, fn) => {
     h.state.undo.push({ label, project: copy(h.state.project) }); h.state.redo = [];

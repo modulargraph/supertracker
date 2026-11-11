@@ -26,7 +26,7 @@ const steps = track => ST.pattern().steps[track];
 (async () => {
   // Scale chords follow the key; degrees mode maps consecutive keys to scale notes.
   ST.setPerformance({ root: 0, scale: 'minor', scaleMode: 'degrees', chord: 'scaleTriad' }, false);
-  same(state.project.performance, { root: 0, scale: 'minor', scaleMode: 'degrees', chord: 'scaleTriad' });
+  same(state.project.performance, { root: 0, scale: 'minor', scaleMode: 'degrees', chord: 'scaleTriad', chordSet: '', applyToMIDI: true });
   await ST.setNoteRecording(true);
   state.track = 1; state.instrument = 1; state.row = 0; state.editStep = 1; state.keyVelocity = 80;
   state.row = 0;

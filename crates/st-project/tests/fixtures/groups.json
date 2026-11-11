@@ -536,16 +536,6 @@
   "sends": [],
   "sidechains": []
  },
- "groups": [
-  {
-   "id": "fx000c",
-   "name": "Drums",
-   "color": "#e2a44f",
-   "collapsed": false,
-   "mixerCollapsed": false,
-   "busID": "fx000d"
-  }
- ],
  "version": 2,
  "linesPerBeat": 4,
  "timeSignature": {
@@ -568,5 +558,25 @@
   "size": 0.7,
   "damping": 0.4,
   "mix": 0.25
+ },
+ "groups": [
+  {
+   "id": "fx000c",
+   "name": "Drums",
+   "color": "#e2a44f",
+   "collapsed": false,
+   "mixerCollapsed": false,
+   "busID": "fx000d"
+  }
+ ],
+ "pluginPages": {},
+ "viewState": {},
+ "performance": {
+  "root": 0,
+  "scale": "chromatic",
+  "scaleMode": "snap",
+  "chord": "single",
+  "chordSet": "",
+  "applyToMIDI": true
  }
 }

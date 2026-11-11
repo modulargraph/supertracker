@@ -21,6 +21,8 @@
   function defaultInstrument(id, name) {
     return { ...S().instrumentDefaults(id, name, 'sample'), name, volume: 1, voiceMode: 'mono' };
   }
+  // A kit document's instrument as an instrument of the session: every key an instrument has, the kit's values.
+  const kitInstrument = (id, instrument) => ({ ...S().instrumentDefaults(id, instrument.name), ...clone(instrument), id });
 
   /* Owners a group project's group contains: its members, its bus and the buses it feeds
      (a kit file may carry its own returns). */
@@ -52,10 +54,8 @@
     members.forEach((member, i) => owner.set(trackOwner(member), `track:${fresh('track' + i)}`));
     const firstTrack = q.tracks.length;
     members.forEach((member, i) => {
-      const instrumentIndex = q.instruments.length,
-        instrument = clone(source.instruments[member.instrument]);
-      instrument.id = instrumentIndex;
-      q.instruments.push(instrument);
+      const instrumentIndex = q.instruments.length;
+      q.instruments.push(kitInstrument(instrumentIndex, source.instruments[member.instrument]));
       // The pad's instrument takes its insert chain (instrument-effects.js).
       owners.add(`instrument:${member.instrument}`); owner.set(`instrument:${member.instrument}`, `instrument:${instrumentIndex}`);
       const track = { ...clone(member), id: q.tracks.length, routingID: owner.get(trackOwner(member)).slice(6), groupID, instrument: instrumentIndex };
@@ -92,11 +92,11 @@
         r.sidechains.push({ ...clone(route), id: fresh('sidechain' + i), source: owner.get(route.source), destination: instances.get(route.destination) });
       }
     });
-    for (const [old, pages] of Object.entries(source.pluginPages || {})) if (instances.has(old)) { q.pluginPages ||= {}; q.pluginPages[instances.get(old)] = clone(pages); }
+    // A kit document carries parameter pages only when its plug-ins have some.
+    for (const [old, pages] of Object.entries(source.pluginPages || {})) if (instances.has(old)) q.pluginPages[instances.get(old)] = clone(pages);
     const record = { id: groupID, name: group.name, color: options.color || nextColor(q), collapsed: false, mixerCollapsed: false, busID: owner.get(busOwner(group)).slice(4) };
     if (options.libraryPath) record.libraryPath = options.libraryPath;
     if (options.notes?.length) record.importNotes = options.notes;
-    q.groups ||= [];
     q.groups.push(record);
     G().ensureBus(q, record);
     return { groupID, firstTrack, count: members.length };
@@ -113,7 +113,7 @@
     const removed = new Set(q.audioPlugins.filter(p => p.owner === ownerID || p.owner === chainID).map(p => p.instanceID));
     q.audioPlugins = q.audioPlugins.filter(p => p.owner !== ownerID && p.owner !== chainID);
     q.routing.sidechains = q.routing.sidechains.filter(route => !removed.has(route.destination));
-    for (const id of removed) if (q.pluginPages) delete q.pluginPages[id];
+    for (const id of removed) delete q.pluginPages[id];
   }
 
   /* Replace kit: the target group's members take the new kit's sources pad by pad (instrument,
@@ -131,9 +131,7 @@
       const track = q.tracks[index];
       removeTrackPlugins(q, track);
       const instrumentIndex = track.instrument;
-      const instrument = clone(source.instruments[member.instrument]);
-      instrument.id = instrumentIndex;
-      q.instruments[instrumentIndex] = instrument;
+      q.instruments[instrumentIndex] = kitInstrument(instrumentIndex, source.instruments[member.instrument]);
       for (const key of ['name', 'volume', 'pan', 'delaySend', 'reverbSend', 'chokeGroup', 'voiceMode', 'padNote']) {
         if (member[key] === undefined) delete track[key]; else track[key] = clone(member[key]);
       }
@@ -308,7 +306,7 @@
         window.STRoutingProject.removeTrackReferences(q, track, q.audioPlugins.filter(x => x.owner === owner));
         q.tracks.splice(index, 1);
         q.audioPlugins = q.audioPlugins.filter(x => x.owner !== owner);
-        q.audioClips = (q.audioClips || []).filter(x => x.track !== index).map(x => ({ ...x, track: x.track > index ? x.track - 1 : x.track }));
+        q.audioClips = q.audioClips.filter(x => x.track !== index).map(x => ({ ...x, track: x.track > index ? x.track - 1 : x.track }));
         for (const pattern of q.patterns) {
           pattern.steps.splice(index, 1);
           pattern.automation = pattern.automation.filter(l => !belongs(l)).map(l => Number.isInteger(l.track) && l.track > index ? { ...l, track: l.track - 1 } : l);

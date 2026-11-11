@@ -105,7 +105,7 @@ test('the Instrument view chord control is saved with the song and leaves a chor
   s.dirty = false;
   h.node('instrument-chord').onchange({ target: { value: 'minor' } });
   assert.equal(s.chord, 'minor'); assert.equal(s.chordSet, '', 'the chosen chord plays instead of the chord set');
-  assert.equal(s.project.performance.chord, 'minor'); assert.equal(s.project.performance.chordSet, undefined);
+  assert.equal(s.project.performance.chord, 'minor'); assert.equal(s.project.performance.chordSet, '');
   assert.equal(s.dirty, true);
 });
 
