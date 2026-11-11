@@ -664,7 +664,8 @@ Behaviour worth knowing:
   mixer then starts the plug-in's next block with the pedals up, all notes off and a
   note-off for every note the plug-in may hold, sends the returns to base values again, and
   the pedal record sends a pedal that is still down again with the next note. Nothing
-  waits for a plug-in whose container is lost: a restored plug-in starts silent.
+  waits for a plug-in whose container is lost: a restored plug-in starts silent, and gets
+  nothing of what was played to the one before it.
 - Recording under the pedal: a recorded note is as long as it sounded. A key released while
   the sustain pedal of its source is down keeps its capture open until the note ends (the
   pedal comes up or goes below half, the same key is struck again on that instrument, Stop),
