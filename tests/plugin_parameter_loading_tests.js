@@ -5,6 +5,7 @@
 // "Reading parameters…".
 const assert = require('node:assert/strict');
 const web = require('./helpers/web');
+const { routed } = require('./helpers/project');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -48,8 +49,8 @@ function pagesHarness() {
 function studioHarness(fail) {
   const groups = new Map(), nodes = new Map(), calls = []; let refreshes = 0;
   const document = { body: {}, activeElement: null, getElementById: id => nodes.get(id) || null, querySelectorAll: selector => groups.get(selector) || [], querySelector: selector => groups.get(selector)?.[0] || null };
-  const project = { activePattern: 0, tracks: [{ name: 'Keys', instrument: 0 }], instruments: [{ type: 'synth' }], patterns: [{ id: 0, length: 16, automation: [] }],
-    audioPlugins: [{ track: 0, kind: 'effect', slot: 0, component: 'stfx:graindelay', name: 'Grain Delay', format: 'Builtin', instanceID: 'grain' }, { track: 0, kind: 'effect', slot: 1, component: 'stfx:eq', name: 'Four-band EQ', format: 'Builtin', instanceID: 'eq' }] };
+  const project = routed({ activePattern: 0, tracks: [{ name: 'Keys', instrument: 0 }], instruments: [{ type: 'synth' }], patterns: [{ id: 0, length: 16, automation: [] }],
+    audioPlugins: [{ track: 0, kind: 'effect', slot: 0, component: 'stfx:graindelay', name: 'Grain Delay', format: 'Builtin', instanceID: 'grain' }, { track: 0, kind: 'effect', slot: 1, component: 'stfx:eq', name: 'Four-band EQ', format: 'Builtin', instanceID: 'eq' }] });
   const state = { project, track: 0, instrument: 0, view: 'mixer', selectedLane: 0, plugins: [] };
   const ST = { state, escapeHTML: value => String(value), toast() {}, mutate(label, fn) { fn(state.project); }, refresh() { refreshes++; },
     request(command, payload = {}) { calls.push({ command, payload }); if (command === 'plugin.parameters') return payload.slot === 1 ? Promise.reject(fail) : Promise.resolve({ parameters: grain }); return Promise.resolve({}); } };

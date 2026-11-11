@@ -137,7 +137,7 @@ test('canceled, capture-blocked and export-blocked Saves keep the existing page,
 test('Save never transfers view state to a different instance, mapping, component, track identity, or ambiguous instance ID', async () => {
   for (const change of ['instance', 'mapping', 'component', 'track', 'duplicate']) {
     const h = await harness(); await h.pageTo(1); h.knob().focus();
-    h.handlers.set('project.save', payload => { const next = copy(payload.project); if (change === 'instance') next.audioPlugins[0].instanceID = 'replacement-instance'; if (change === 'component') next.audioPlugins[0].component = 'vst3:REPLACEMENT'; if (change === 'mapping') next.audioPlugins[0].nks.pages[1].parameters[0].parameterID = 99; if (change === 'track') next.tracks[0].routingID = 'replacement-track'; if (change === 'duplicate') next.audioPlugins.push({ ...copy(next.audioPlugins[0]), kind: 'effect' }); return { saved: true, project: next }; });
+    h.handlers.set('project.save', payload => { const next = copy(payload.project); if (change === 'instance') next.audioPlugins[0].instanceID = 'replacement-instance'; if (change === 'component') next.audioPlugins[0].component = 'vst3:REPLACEMENT'; if (change === 'mapping') next.audioPlugins[0].nks.pages[1].parameters[0].parameterID = 99; if (change === 'track') { next.tracks[0].routingID = 'replacement-track'; next.audioPlugins[0].owner = 'track:replacement-track'; } if (change === 'duplicate') next.audioPlugins.push({ ...copy(next.audioPlugins[0]), kind: 'effect' }); return { saved: true, project: next }; });
     assert.equal(await h.save(), true); await tick(); assertPage(h, 0, '17'); assert(!h.calls.some(call => call.command === 'plugin.parameter'));
   }
 });
@@ -166,7 +166,7 @@ test('an unmounted NKS page survives consecutive actual Saves before returning f
 test('consecutive unmounted Saves drop page intent if the saved mapping, instance, or track changes', async () => {
   for (const change of ['mapping', 'instance', 'track']) {
     const h = await harness(); await h.pageTo(1); h.ST.setView('song'); assert.equal(await h.save(), true);
-    h.handlers.set('project.save', payload => { const next = copy(payload.project); if (change === 'mapping') next.audioPlugins[0].nks.pages[1].parameters[0].parameterID = 99; if (change === 'instance') next.audioPlugins[0].instanceID = 'changed-after-first-save'; if (change === 'track') next.tracks[0].routingID = 'changed-after-first-save'; return { saved: true, project: next }; });
+    h.handlers.set('project.save', payload => { const next = copy(payload.project); if (change === 'mapping') next.audioPlugins[0].nks.pages[1].parameters[0].parameterID = 99; if (change === 'instance') next.audioPlugins[0].instanceID = 'changed-after-first-save'; if (change === 'track') { next.tracks[0].routingID = 'changed-after-first-save'; next.audioPlugins[0].owner = 'track:changed-after-first-save'; } return { saved: true, project: next }; });
     assert.equal(await h.save(), true); h.ST.setView('instrument'); await tick(); assertPage(h, 0, '17'); assert(!h.calls.some(call => call.command === 'plugin.parameter'));
   }
 });

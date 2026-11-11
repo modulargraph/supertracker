@@ -27,11 +27,8 @@
       ? `[${value.map(stable).join(',')}]`
       : `{${Object.keys(value).sort().map(name => `${JSON.stringify(name)}:${stable(value[name])}`).join(',')}}`;
   const currentOwner = () => S().state.mixerOwner || endpoints(project()).find(item => item.track === S().state.track)?.owner || 'master';
-  const routing = (p = project()) => p.routing || { version: 1, mixModel: 'standard', buses: [], outputs: {}, sends: [], sidechains: [] };
+  const routing = (p = project()) => p.routing;
   const available = () => ui.capabilities?.supported === true;
-  const unavailableHint = () => ui.status?.projectUnavailable === true
-      || ui.capabilities?.projectUnavailable === true
-      || S().state.status?.routing?.projectUnavailable === true;
   const canOutput = owner => available() && ui.capabilities.outputs === true && owner !== 'master' && !!ownerEntity(owner);
   const canSend = owner => available() && ui.capabilities.sends?.enabled === true && taps().length > 0 && owner !== 'master' && !!ownerEntity(owner);
   const taps = () => (ui.capabilities?.sends?.taps || []).filter(tap => ['preFader', 'postFader'].includes(tap));
@@ -48,14 +45,14 @@
   function endpoints(p = project()) {
     if (!p) return [];
     const result = (p.tracks || []).map((entity, track) => ({
-      owner: `track:${entity.routingID || track}`,
-      id: entity.routingID || String(track),
+      owner: `track:${entity.routingID}`,
+      id: entity.routingID,
       name: entity.name || `Track ${track + 1}`,
       type: 'track',
       track,
       entity
     }));
-    for (const entity of p.routing?.buses || []) result.push({
+    for (const entity of p.routing.buses || []) result.push({
       owner: `bus:${entity.id}`,
       id: entity.id,
       name: entity.name || (entity.type === 'return' ? 'Return' : 'Group'),
@@ -76,7 +73,7 @@
   const channelName = (owner, p = project()) => owner === null
       ? 'No output'
       : endpoints(p).find(item => item.owner === owner)?.name || 'Unavailable channel';
-  const pluginOwner = (plugin, p = project()) => plugin.owner || endpoints(p).find(item => item.track === plugin.track)?.owner;
+  const pluginOwner = plugin => plugin.owner;
   const inputMetadata = instanceID => (ui.capabilities?.sidechains?.inputs || []).filter(input => input.instanceID === instanceID
       && input.available === true
       && Number.isInteger(input.inputBus)
@@ -90,8 +87,8 @@
       && tap === 'preInserts'
       && keyTaps().includes(tap)
       && plugin?.kind === 'effect'
-      && pluginOwner(plugin, p) === owner;
-  const routeTaps = (route, plugin, p = project()) => route.source === pluginOwner(plugin, p)
+      && pluginOwner(plugin) === owner;
+  const routeTaps = (route, plugin, p = project()) => route.source === pluginOwner(plugin)
       ? keyTaps().filter(tap => sameOwnerKey(route.source, tap, plugin, p))
       : keyTaps();
   const activeOutput = (owner, p = project()) => Object.hasOwn(routing(p).outputs || {}, owner) ? routing(p).outputs[owner] : 'master';
@@ -104,7 +101,7 @@
     for (const send of r.sends || []) if (send.id !== omitID && send.enabled !== false) edges.push([send.source, send.destination]);
     for (const route of r.sidechains || []) if (route.id !== omitID && route.enabled !== false) {
       const plugin = (p.audioPlugins || []).find(item => item.instanceID === route.destination?.instanceID);
-      const destination = plugin && pluginOwner(plugin, p); if (destination) edges.push([route.source, destination]);
+      const destination = plugin && pluginOwner(plugin); if (destination) edges.push([route.source, destination]);
     }
     return edges;
   }
@@ -148,41 +145,6 @@
     return ui.loading;
   }
 
-  function ensureDraft(p) {
-    const remap = new Map();
-    for (const [index, track] of (p.tracks || []).entries()) if (!track.routingID) {
-      const before = `track:${index}`; track.routingID = uid(); remap.set(before, `track:${track.routingID}`);
-    }
-    p.routing ||= { version: 1, mixModel: 'standard', buses: [], outputs: {}, sends: [], sidechains: [] };
-    const r = p.routing;
-    if (r.version !== 1) throw new Error(`Routing version ${r.version} is not supported by this editor.`);
-    r.buses ||= []; r.outputs ||= {}; r.sends ||= []; r.sidechains ||= [];
-    const mapped = owner => remap.get(owner) || owner;
-    r.outputs = Object.fromEntries(Object.entries(r.outputs).map(([source,destination]) => [mapped(source), mapped(destination)]));
-    for (const send of r.sends) { send.source = mapped(send.source); send.destination = mapped(send.destination); }
-    for (const route of r.sidechains) route.source = mapped(route.source);
-    for (const plugin of p.audioPlugins || []) if (plugin.owner) plugin.owner = mapped(plugin.owner);
-    return mapped;
-  }
-
-  async function retainedUnavailableProject(owner) {
-    // Cached status is only a hint to inspect the host. An opened, invalid graph
-    // can still be repaired when the host retains its exact desired connections
-    // and opaque patches; reapplying that same invalid graph would prevent repair.
-    if (!owner.routing || !unavailableHint()) return false;
-    const before = stable(owner), generation = window.STNKSControls?.editGeneration;
-    const unchanged = () => project() === owner && stable(owner) === before &&
-      window.STNKSControls?.editGeneration === generation && !window.STNKSControls?.hasPendingEdits;
-    const status = await S().request('routing.status', {});
-    if (!unchanged()) throw new Error('The project changed while preparing routing repair. Try again.');
-    if (status?.projectUnavailable !== true) return false;
-    const snapshot = await S().request('engine.snapshot', {});
-    if (!unchanged()) throw new Error('The project changed while preparing routing repair. Try again.');
-    if (stable(snapshot?.routing) !== stable(owner.routing) || stable(snapshot?.audioPlugins ?? []) !== stable(owner.audioPlugins ?? [])) {
-      throw new Error('The audio host no longer retains the current routing and plug-in state. Routing was not changed.');
-    }
-    return true;
-  }
 
   async function transaction(label, edit, options = {}) {
     if (ui.application || ui.preparing) throw new Error('A routing change is already being applied.');
@@ -201,10 +163,9 @@
     ui.preparing = true;
     try {
       if (S().captureNativeEdits
-          && await S().captureNativeEdits({ preserveUnavailable: unavailableHint() }) === false) throw new Error('Current plug-in edits could not be captured. Routing was not changed.');
+          && await S().captureNativeEdits() === false) throw new Error('Current plug-in edits could not be captured. Routing was not changed.');
       if (project() !== startingProject) throw new Error('The project changed while preparing routing. Try again.');
-      const synchronized = await retainedUnavailableProject(startingProject)
-          || await S().syncEngineProject(() => project() === startingProject ? clone(startingProject) : null);
+      const synchronized = await S().syncEngineProject(() => project() === startingProject ? clone(startingProject) : null);
       if (synchronized === false || project() !== startingProject) throw new Error('The project changed while preparing routing. Try again.');
       if (window.STStudio?.isEditingPlugin
           || window.STStudio?.isMovingEffect) throw new Error('The plug-in rack changed while preparing routing. Try again.');
@@ -220,8 +181,10 @@
       window.STNKSControls?.editGeneration === nativeEditGeneration && !window.STNKSControls?.hasPendingEdits;
     let nativeCommitted = false;
     try {
-      const draft = clone(original), remapOwner = ensureDraft(draft);
-      edit(draft, { owner: remapOwner(owner), remapOwner });
+      const draft = clone(original);
+      // An edit works on a routing table whose four collections exist.
+      window.STGroups.ensureRouting(draft);
+      edit(draft, { owner });
       S().refresh();
       const validation = await S().request('routing.validate', { project: draft });
       if (validation?.valid !== true) throw new Error(validation?.error || 'The audio host did not validate this routing change.');
@@ -235,8 +198,7 @@
         Object.assign(current, committed);
       }, { routingCommit: true });
       ui.capabilityGeneration++;ui.capabilities=response.capabilities||null;ui.capabilityError='';
-      ui.status = response.status || validation.status || null;
-      if (S().state.mixerOwner && remapOwner(S().state.mixerOwner) !== S().state.mixerOwner) S().state.mixerOwner = remapOwner(S().state.mixerOwner);
+      ui.status = statusValue(response.status);
       return response;
     } catch (error) {
       if (nativeCommitted) {
@@ -278,31 +240,20 @@
         : ''}${allowed.map(tap => `<option value="${tap}" ${current === tap ? 'selected' : ''}>${tapName(tap)}</option>`).join('')}</select>`;
   }
 
+  // The mixer's status as the page uses it: the sidechain connections the host could not make, with its reason.
   function statusValue(value) {
     const source=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
-    const unavailable = (Array.isArray(source.unavailable) ? source.unavailable : []).filter(item => item
+    const unavailable = (Array.isArray(source.unavailableSidechains) ? source.unavailableSidechains : []).filter(item => item
         && typeof item.id === 'string'
         && typeof item.reason === 'string').slice(0,
         128).map(item => ({
       id: item.id,
       reason: item.reason
     })).sort((a, b) => a.id.localeCompare(b.id) || a.reason.localeCompare(b.reason));
-    return {error:typeof source.error==='string'?source.error:'',projectUnavailable:source.projectUnavailable===true,unavailable};
-  }
-  function routingErrorMessage() {
-    const value=statusValue(ui.status);
-    return value.error||value.projectUnavailable ? `Routing unavailable. ${value.error ? value.error+' ' : ''}Your saved connections are retained. Adjust their output, sends or sidechain `
-        + `sources below.` : '';
-  }
-  function routingErrorNotice() {
-    const message=routingErrorMessage();
-    return `<p class="routing-warning" data-routing-error role="status" ${message?'':'hidden'}>${esc(message)}</p>`;
+    return {unavailable};
   }
   function routeIssue(id) {
-    return (Array.isArray(ui.status?.unavailable)
-        ? ui.status.unavailable
-        : []).find(item => item?.id === id && typeof item.reason === 'string')?.reason
-        || '';
+    return (ui.status?.unavailable || []).find(item => item.id === id)?.reason || '';
   }
   function routeStatus(id) {
     const message=routeIssue(id);
@@ -310,13 +261,11 @@
   }
   function receiveStatus(value) {
     const next=statusValue(value);
-    if(stable(next)===stable(statusValue(ui.status)))return;
+    if(stable(next)===stable(ui.status))return;
     ui.status=next;
     if(S().state.view!=='mixer')return;
     // Patch only informational nodes. Rebuilding the mixer would discard live
     // numeric drafts or a fader gesture merely because a status tick arrived.
-    const message=routingErrorMessage();
-    for(const node of document.querySelectorAll('[data-routing-error]')){node.textContent=message;node.hidden=!message;}
     for (const node of document.querySelectorAll('[data-routing-issue]')) {
       const reason = routeIssue(node.dataset.routingIssue);
       node.textContent = reason;
@@ -336,7 +285,7 @@
     const canSend = owner !== 'master' && caps?.sends?.enabled === true && taps().length;
     return `<section class="routing-panel" data-routing-owner="${esc(owner)}" aria-busy="${pending}"><div class="routing-heading">`
         + `<h3>Routing</h3><span>${pending ? 'Applying…' : endpoint.type === 'master' ? 'Stereo output' : 'Standard mix'}</span>`
-        + `</div>${routingErrorNotice()}${status ? `<p class="routing-description">${esc(status)}</p>` : ''}<fieldset ${pending || !available() ? 'disabled' : ''}>
+        + `</div>${status ? `<p class="routing-description">${esc(status)}</p>` : ''}<fieldset ${pending || !available() ? 'disabled' : ''}>
       ${owner === 'master' ? '<p class="routing-description">Master is the final audio destination.</p>' : `<div class="routing-output"><span>Output</span>${caps?.outputs === true ? `<button id="routing-output-${token}" data-routing-action="output" aria-label="Output destination for ${esc(endpoint.name)}">${esc(channelName(activeOutput(owner,p),p))}<span>⌄</span>`
           + `</button>` : `<strong>${esc(channelName(activeOutput(owner,p),p))}</strong>`}</div>`}
       ${lineInputSection(owner,p)}
@@ -412,8 +361,8 @@
   function setOutput(owner, focusID) {
     choose('Output destination', [{ owner: null, name: 'No output', type: 'Disconnected' },
         ...destinationOptions(owner, project(),
-            { output: true })], destination => transaction('Change channel output', (p, { owner: source, remapOwner }) => {
-      p.routing.outputs[source] = remapOwner(destination.owner);
+            { output: true })], destination => transaction('Change channel output', (p, { owner: source }) => {
+      p.routing.outputs[source] = destination.owner;
     }, { owner, focusID }), focusID);
   }
 
@@ -430,12 +379,12 @@
 
   function addSend(owner,focusID) {
     if(routeCount(project())>=routeLimit()){S().toast('The project has reached its send and sidechain limit.');return;}
-    choose('Send destination', destinationOptions(owner), destination => transaction('Add send', (p, { owner: source, remapOwner }) => {
+    choose('Send destination', destinationOptions(owner), destination => transaction('Add send', (p, { owner: source }) => {
       p.routing.sends.push({
         id: uid(),
         source,
         tap: taps().includes('postFader') ? 'postFader' : taps()[0],
-        destination: remapOwner(destination.owner),
+        destination: destination.owner,
         gain: 0,
         enabled: true
       });
@@ -514,7 +463,7 @@
     document.getElementById('routing-delete-apply')?.addEventListener('click',()=>{S().closeModal();if(project()!==p)return;perform(transaction('Remove bus',draft=>{
       const r = draft.routing,
         replacement = activeOutput(owner, draft),
-        removed = new Set((draft.audioPlugins || []).filter(plugin => pluginOwner(plugin, draft) === owner).map(plugin => plugin.instanceID));
+        removed = new Set((draft.audioPlugins || []).filter(plugin => pluginOwner(plugin) === owner).map(plugin => plugin.instanceID));
       r.buses = r.buses.filter(item => `bus:${item.id}` !== owner);
       delete r.outputs[owner];
       for (const source of Object.keys(r.outputs)) if (r.outputs[source] === owner) r.outputs[source] = replacement;
@@ -522,7 +471,7 @@
       removeSendLanes(draft, removedSends);
       r.sends = r.sends.filter(send => !removedSends.has(send.id));
       r.sidechains = r.sidechains.filter(route => route.source !== owner && !removed.has(route.destination?.instanceID));
-      draft.audioPlugins=(draft.audioPlugins||[]).filter(plugin=>pluginOwner(plugin,draft)!==owner);
+      draft.audioPlugins=(draft.audioPlugins||[]).filter(plugin=>pluginOwner(plugin)!==owner);
       for(const pattern of draft.patterns||[])if(pattern.automation)pattern.automation=pattern.automation.filter(lane=>lane.owner!==owner);
     },{owner}).then(()=>{if(project()===p)selectChannel(destination||'master',true);}));});
   }
@@ -612,16 +561,16 @@
           }));
           choose('Sidechain tap',tapOptions,choice=>{
             choose('Sidechain source',sourceOptions(owner,project(),undefined,
-                {tap:choice.tap,plugin:currentPlugin()}),source=>transaction('Add sidechain',(p,{remapOwner})=>{
+                {tap:choice.tap,plugin:currentPlugin()}),source=>transaction('Add sidechain',p=>{
               if (!inputMetadata(instanceID).some(current => current.inputBus === input.inputBus
                   && stable(current.layoutSignature) === stable(input.layoutSignature))) throw new Error('The plug-in input layout changed. Choose its sidechain input again.');
-              if (!keyTaps().includes(choice.tap) || !currentPlugin(p) || !sourceOptions(remapOwner(owner), p, undefined, {
+              if (!keyTaps().includes(choice.tap) || !currentPlugin(p) || !sourceOptions(owner, p, undefined, {
                 tap: choice.tap,
                 plugin: currentPlugin(p)
-              }).some(item => item.owner === remapOwner(source.owner))) throw new Error('This sidechain source or tap is no longer available. Choose it again.');
+              }).some(item => item.owner === source.owner)) throw new Error('This sidechain source or tap is no longer available. Choose it again.');
               p.routing.sidechains.push({
                 id: uid(),
-                source: remapOwner(source.owner),
+                source: source.owner,
                 tap: choice.tap,
                 destination: { instanceID, inputBus: input.inputBus, layoutSignature: clone(input.layoutSignature) },
                 gain: 1,
@@ -670,16 +619,10 @@
   }
 
   function event(type,payload={}) {
-    if(type==='status'||type==='transport.status'){
-      if(Object.hasOwn(payload,'routing'))receiveStatus({...((payload.routing&&typeof payload.routing==='object'&&!Array.isArray(payload.routing))
-          ?payload.routing
-          :{}),...(typeof payload.routingFailure==='string'&&payload.routingFailure
-          ?{error:payload.routingFailure,projectUnavailable:true}
-          :{})});
-      else if(typeof payload.routingFailure==='string'&&payload.routingFailure)receiveStatus({error:payload.routingFailure,projectUnavailable:true});
+    if(type==='status'){
+      if(Object.hasOwn(payload,'routing'))receiveStatus(payload.routing);
       return;
     }
-    if(type==='routing.error'){receiveStatus(payload);return;}
     if(type==='routing.capabilities'){ui.capabilityGeneration++;ui.capabilities=payload.capabilities||payload;ui.capabilityError='';}
     if (type === 'routing.changed' || type === 'routing.status') {
       ui.status = payload.status || payload;
@@ -731,7 +674,7 @@
     if(!ownerEntity(owner))return S().toast('This channel is no longer available.');
     S().setView?.('mixer');
     selectChannel(owner);
-    const control=document.getElementById(`routing-output-${key(owner)}`)||document.getElementById(`routing-enable-${key(owner)}`);control?.focus();
+    document.getElementById(`routing-output-${key(owner)}`)?.focus();
     if(!ui.capabilities)refreshCapabilities();
   }
 

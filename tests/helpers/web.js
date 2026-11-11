@@ -20,7 +20,7 @@ function scripts() {
 }
 
 // Foundation scripts: shared helpers and registries every module may use.
-const FOUNDATION = ['util.js', 'busy.js', 'native-events.js', 'pending-edits.js', 'track-groups.js', 'project-timing.js'];
+const FOUNDATION = ['util.js', 'busy.js', 'native-events.js', 'pending-edits.js', 'routing-project.js', 'track-groups.js', 'project-timing.js'];
 const foundation = () => FOUNDATION.filter(name => scripts().includes(name));
 
 const GROUPS = {

@@ -406,7 +406,7 @@
     const owner = lane.ref.owner;
     const track = owner.startsWith('track:') ? (p?.tracks || []).findIndex((_, index) => trackOwner(index, p) === owner) : -1;
     if (owner.startsWith('track:') && track < 0) return null;
-    if (owner.startsWith('bus:') && !(p?.routing?.buses || []).some(bus => `bus:${bus.id}` === owner)) return null;
+    if (owner.startsWith('bus:') && !(p?.routing.buses || []).some(bus => `bus:${bus.id}` === owner)) return null;
     return {track, pattern:patternById(lane.patternId, p)};
   }
   /** Close all segments and commit the pass as one Undo step. */

@@ -44,7 +44,7 @@
   const pattern = () => project().patterns.find(item => item.id === project().activePattern) || project().patterns[0];
   const lanes = () => pattern().automation || [];
   const selectedLane = () => lanes()[clamp(state().selectedLane, 0, Math.max(0, lanes().length - 1))];
-  const trackOwner = (index, p = project()) => `track:${p.tracks[index]?.routingID ?? index}`;
+  const trackOwner = (index, p = project()) => `track:${p.tracks[index]?.routingID}`;
   const normalizeOwner = (owner, p = project()) => typeof owner === 'number' || /^\d+$/.test(String(owner))
       ? trackOwner(Number(owner), p)
       : String(owner);
@@ -57,7 +57,7 @@
     p.tracks.forEach((track, index) => {
       const group = groups.length ? window.STGroups.ofTrack(p, index) : null;
       if (group && window.STGroups.members(p, group)[0] === index) {
-        const bus = p.routing?.buses?.find(item => item.id === group.busID);
+        const bus = p.routing.buses?.find(item => item.id === group.busID);
         if (bus) result.push({ owner: `bus:${bus.id}`, type: 'group', name: bus.name, entity: bus, token: `bus-${bus.id}`, group, groupHead: true });
       }
       result.push({
@@ -71,7 +71,7 @@
         hiddenByGroup: !!group?.mixerCollapsed
       });
     });
-    for (const type of ['group', 'return']) for (const bus of p.routing?.buses || []) if (bus.type === type && !groupBuses.has(bus.id)) result.push({
+    for (const type of ['group', 'return']) for (const bus of p.routing.buses || []) if (bus.type === type && !groupBuses.has(bus.id)) result.push({
       owner: `bus:${bus.id}`,
       type,
       name: bus.name,
@@ -122,7 +122,7 @@
     if (output) { output.textContent = mixerIdentity(owner); output.title = output.textContent; }
   }
   const mixerHeading = () => `<h2>Mixer<output id="mixer-current-channel" aria-label="Current mixer channel" title="${esc(mixerIdentity())}">${esc(mixerIdentity())}</output></h2>`;
-  const ownerForPlugin = (plugin, p = project()) => normalizeOwner(plugin.owner ?? plugin.track, p);
+  const ownerForPlugin = plugin => plugin.owner;
   const ownerForLane = lane => normalizeOwner(lane.owner ?? lane.track);
   const ownerPayload = owner => ({ owner: normalizeOwner(owner) });
   const pluginKey = (owner, slot, kind = 'effect') => `${normalizeOwner(owner)}:${kind}:${slot}`;
@@ -269,7 +269,7 @@
 
   function allTargets(track) {
     const results = builtInTargets(track);
-    for (const send of project().routing?.sends || []) if (normalizeOwner(send.source) === normalizeOwner(track)) results.push({
+    for (const send of project().routing.sends || []) if (normalizeOwner(send.source) === normalizeOwner(track)) results.push({
       target: `send:${send.id}`,
       name: `Send to ${channelTitle(send.destination)}`,
       group: send.tap === 'preFader' ? 'Pre-fader sends' : 'Post-fader sends',
@@ -378,8 +378,8 @@
       entity = channel.entity;
     const level = master ? number(project().masterVolume, .7) : number(entity.volume, track ? .8 : 1);
     const peak = master ? ui.peak : track ? number(ui.peaks[channel.track]) : Math.max(...(ui.busPeaks[channel.owner] || [0]));
-    const sendCount = (project().routing?.sends || []).filter(send => send.source === channel.owner).length;
-    const output = project().routing?.outputs?.[channel.owner], outputName = output === null ? 'No output' : channelTitle(output || 'master');
+    const sendCount = (project().routing.sends || []).filter(send => send.source === channel.owner).length;
+    const output = project().routing.outputs?.[channel.owner], outputName = output === null ? 'No output' : channelTitle(output || 'master');
     const tab = selected ? 0 : -1,
       prefix = track
           ? String(channel.track + 1).padStart(2, '0')
@@ -580,10 +580,10 @@
     });
   }
 
-  const savedEffects = (p, owner) => (p.audioPlugins || []).filter(item => ownerForPlugin(item, p) === normalizeOwner(owner, p)
+  const savedEffects = (p, owner) => (p.audioPlugins || []).filter(item => ownerForPlugin(item) === normalizeOwner(owner, p)
       && item.kind === 'effect').sort((a, b) => a.slot - b.slot);
   const replaceEffects = (p, owner, effects) => {
-    p.audioPlugins = [...(p.audioPlugins || []).filter(item => !(ownerForPlugin(item, p) === normalizeOwner(owner, p) && item.kind === 'effect')),
+    p.audioPlugins = [...(p.audioPlugins || []).filter(item => !(ownerForPlugin(item) === normalizeOwner(owner, p) && item.kind === 'effect')),
         ...effects];
   };
   async function moveEffect(slot, direction) {
@@ -794,7 +794,7 @@
       mutate(label, p => {
         p.audioPlugins = (p.audioPlugins || []).filter(item => !(ownerForPlugin(item) === track && item.kind === 'effect' && item.slot === slot));
         if (removed.instanceID
-            && p.routing?.sidechains) p.routing.sidechains = p.routing.sidechains.filter(route => route.destination?.instanceID !== removed.instanceID);
+            && p.routing.sidechains) p.routing.sidechains = p.routing.sidechains.filter(route => route.destination?.instanceID !== removed.instanceID);
         if (removed.instanceID && p.pluginPages?.[removed.instanceID]) delete p.pluginPages[removed.instanceID];
         for (const pattern of p.patterns || []) pattern.automation = (pattern.automation || []).filter(lane => !(ownerForLane(lane) === track && (lane.target?.startsWith(`plugin:effect:${slot}:`) || lane.target?.startsWith(`plugin:${slot}:`))));
       });

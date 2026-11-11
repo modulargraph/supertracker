@@ -1,10 +1,11 @@
 'use strict';
 // Drive the real mixer module. Native fixtures model the plugin.move response contract.
 const assert = require('node:assert/strict');
-// The mixer addresses a channel by owner; these fixtures' tracks have no routingID, so the owner is `track:<index>`.
+// The mixer addresses a channel by owner; the fixture's tracks are named by their index (helpers/project.js), so the owner is `track:<index>`.
 const trackOf = payload => payload.track ?? Number(String(payload.owner).split(':')[1]);
 const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
+const { routed } = require('./helpers/project');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
@@ -13,15 +14,15 @@ const clone = value => JSON.parse(JSON.stringify(value));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 function fixture(slots = [0, 3, 7]) {
-  return { activePattern: 0, tracks: [{ name: 'Keys', instrument: 0 }, { name: 'Bass', instrument: 1 }], instruments: [{ type: 'synth' }, { type: 'synth' }],
+  return routed({ activePattern: 0, tracks: [{ name: 'Keys', instrument: 0 }, { name: 'Bass', instrument: 1 }], instruments: [{ type: 'synth' }, { type: 'synth' }],
     audioPlugins: [...slots.map((slot, i) => ({ track: 0, kind: 'effect', slot, component: `fx:${i}`, name: ['Equalizer', 'Compressor', 'Echo'][i], state: `saved-${i}`, bypass: i === 1, parameters: [{ address: 42, name: 'Amount', normalized: .2 + i / 10 }] })), { track: 0, kind: 'instrument', slot: 0, component: 'instrument', state: 'preset' }, { track: 1, kind: 'effect', slot: 0, component: 'bassfx', state: 'bass' }],
-    patterns: [{ id: 0, length: 64, automation: [{ track: 0, target: `plugin:effect:${slots[0]}:42`, points: [{ row: 0, value: .25 }] }, { track: 0, target: `plugin:${slots[1]}:42`, points: [{ row: 4, value: .75 }] }, { track: 0, target: 'plugin:instrument:0:42', points: [{ row: 0, value: .5 }] }, { track: 1, target: 'plugin:effect:0:42', points: [] }] }, { id: 1, length: 32, automation: [{ track: 0, target: `plugin:effect:${slots[2]}:99:part`, points: [{ row: 20, value: .6 }] }, { track: 0, target: 'volume', points: [] }] }] };
+    patterns: [{ id: 0, length: 64, automation: [{ track: 0, target: `plugin:effect:${slots[0]}:42`, points: [{ row: 0, value: .25 }] }, { track: 0, target: `plugin:${slots[1]}:42`, points: [{ row: 4, value: .75 }] }, { track: 0, target: 'plugin:instrument:0:42', points: [{ row: 0, value: .5 }] }, { track: 1, target: 'plugin:effect:0:42', points: [] }] }, { id: 1, length: 32, automation: [{ track: 0, target: `plugin:effect:${slots[2]}:99:part`, points: [{ row: 20, value: .6 }] }, { track: 0, target: 'volume', points: [] }] }] });
 }
 function response(owner, track, fromSlot, toSlot) {
   const before = clone(owner.audioPlugins.filter(p => p.track === track && p.kind === 'effect').sort((a, b) => a.slot - b.slot)).map((p, i) => ({ ...p, instanceID: p.instanceID || `instance-${i}`, state: `live-${i}` }));
   const slots = before.map(p => p.slot), from = slots.indexOf(fromSlot), to = slots.indexOf(toSlot), ordered = before.slice(); ordered.splice(to, 0, ordered.splice(from, 1)[0]);
   const after = ordered.map((p, i) => ({ ...p, slot: slots[i] }));
-  return { moved: true, track, fromSlot, toSlot, previousPlugins: before, plugins: after, slotMap: before.map(p => ({ fromSlot: p.slot, toSlot: after.find(q => q.instanceID === p.instanceID).slot, instanceID: p.instanceID })) };
+  return { moved: true, owner: `track:${track}`, track, fromSlot, toSlot, previousPlugins: before, plugins: after, slotMap: before.map(p => ({ fromSlot: p.slot, toSlot: after.find(q => q.instanceID === p.instanceID).slot, instanceID: p.instanceID })) };
 }
 function harness(slots) {
   const nodes = new Map(), groups = new Map(), calls = [], mutations = [], errors = [], timers = new Map(); let timerID = 0, refreshes = 0;
@@ -169,7 +170,7 @@ test('late responses never attach to a replaced project, replaced track or edite
 });
 
 test('malformed host order is rejected and authoritative current project is restored', async () => {
-  for (const corrupt of [r=>r.track=1,r=>r.plugins[1].slot=r.plugins[0].slot,r=>r.slotMap.pop(),r=>r.slotMap[0].instanceID='wrong',r=>{r.plugins[0].component=r.previousPlugins[0].component='substitute';},r=>r.plugins[0].instanceID='wrong']) {
+  for (const corrupt of [r=>r.owner='track:1',r=>r.plugins[1].slot=r.plugins[0].slot,r=>r.slotMap.pop(),r=>r.slotMap[0].instanceID='wrong',r=>{r.plugins[0].component=r.previousPlugins[0].component='substitute';},r=>r.plugins[0].instanceID='wrong']) {
     const h=harness(); await tick(); const original=clone(h.state.project); h.native=(command,payload)=>{if(command!=='plugin.move')return {parameters:[]};const r=response(h.state.project,trackOf(payload),payload.fromSlot,payload.toSlot);corrupt(r);return r;};
     h.key(3,'ArrowUp'); await h.finish(); assert.deepEqual(h.state.project,original); assert.equal(h.mutations.length,0); assert(h.errors.some(x=>x.message.includes('mismatched'))); assert(h.calls.some(x=>x.command==='engine.project'));
   }

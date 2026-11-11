@@ -291,11 +291,11 @@
   const padLabel = () => M.padAlt ? 'Pads: slices' : groupOf() ? `Pads: ${groupOf().name}` : 'Pads: instruments';
   // Shift + MUTE / SOLO: clear every track and group-bus flag (one Undo step).
   function clearFlags(property) {
-    const p = P(), buses = (p.routing?.buses || []).filter(bus => bus.type === 'group');
+    const p = P(), buses = (p.routing.buses || []).filter(bus => bus.type === 'group');
     if (!p.tracks.some(t => t[property]) && !buses.some(bus => bus[property])) return;
     S().mutate(property === 'mute' ? 'clear mutes' : 'clear solo', q => {
       q.tracks.forEach(t => { t[property] = false; });
-      (q.routing?.buses || []).forEach(bus => { if (bus.type === 'group') bus[property] = false; });
+      (q.routing.buses || []).forEach(bus => { if (bus.type === 'group') bus[property] = false; });
     });
   }
   /* Group buttons A–H: the bank's eight entries (an ungrouped track, or a whole track group). A group selects its

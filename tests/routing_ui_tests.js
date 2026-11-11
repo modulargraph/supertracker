@@ -67,17 +67,11 @@ function sidechainRoute(instanceID='plug-b',source='track:a',tap='preInserts',na
 function statusNodes(h){
   const writes={text:0,hidden:0};
   const note=(id,dataset)=>{const element=new Element(id,h.document);element.dataset=dataset;let text='',hidden=true;Object.defineProperty(element,'textContent',{get:()=>text,set:value=>{text=String(value);writes.text++;}});Object.defineProperty(element,'hidden',{get:()=>hidden,set:value=>{hidden=!!value;writes.hidden++;}});h.document.elements.set(id,element);return element;};
-  const errors=[note('routing-error-track',{routingError:''}),note('routing-error-bus',{routingError:''})],issues=[note('routing-send-issue',{routingIssue:'send-1'}),note('routing-key-issue',{routingIssue:'key-1'}),note('routing-unrelated-issue',{routingIssue:'unrelated'})];
-  h.document.querySelectorAll=selector=>selector==='[data-routing-error]'?errors:selector==='[data-routing-issue]'?issues:[];
+  const issues=[note('routing-send-issue',{routingIssue:'send-1'}),note('routing-key-issue',{routingIssue:'key-1'}),note('routing-unrelated-issue',{routingIssue:'unrelated'})];
+  h.document.querySelectorAll=selector=>selector==='[data-routing-issue]'?issues:[];
   const draft=h.focus('routing-send-gain-draft');draft.value='0.';draft.selectionStart=2;draft.selectionEnd=2;
-  return {errors,issues,draft,writes,count:()=>writes.text+writes.hidden};
+  return {issues,draft,writes,count:()=>writes.text+writes.hidden};
 }
-
-test('pure endpoints list tracks and Master for a project without a routing table, without mutating it',()=>{
-  const p=fixture();delete p.tracks[0].routingID;delete p.routing;const before=copy(p),h=harness(p),list=h.R.endpoints(p);
-  assert.deepEqual(copy(list.map(item=>[item.owner,item.type,item.track])),[['track:0','track',0],['track:b','track',1],['master','master',undefined]].map(copy));
-  assert.equal(h.R.ownerEntity('track:0'),p.tracks[0]);assert.equal(h.R.channelName(null),'No output');assert.equal(h.R.channelName('bus:missing'),'Unavailable channel');assert.deepEqual(p,before);
-});
 
 test('master stays a sink and routing choices exclude known feedback paths',()=>{
   const p=fixture();p.routing.outputs['track:a']='bus:g';p.routing.outputs['bus:g']='bus:r';const h=harness(p);
@@ -153,54 +147,20 @@ test('validation and native application failures preserve project and undo histo
   }
 });
 
-test('an unavailable saved self-cycle is repaired without first republishing its invalid graph',async()=>{
-  for(const hint of ['status','capabilities']){
-  const h=harness();h.state.project.routing.outputs['bus:g']='bus:g';h.state.project.audioPlugins[0].state='retained patch';
-  if(hint==='status')h.R.event('status',{routing:{projectUnavailable:true,error:'Output routing contains a cycle.'}});
-  else h.R.event('routing.capabilities',{...capabilities(),projectUnavailable:true});
-  let captures=0;h.capture(()=>{captures++;return true;});
-  h.handle((command,payload)=>{
-    if(command==='routing.status')return {projectUnavailable:true};
-    if(command==='engine.snapshot')return copy(h.state.project);
-    if(command==='engine.project')throw new Error('The old self-cycle cannot be published');
-    if(command==='routing.validate')assert.equal(payload.project.routing.outputs['bus:g'],'master');
-  });
-  await h.R.transaction('Repair output',p=>{p.routing.outputs['bus:g']='master';},{owner:'bus:g'});
-  assert.equal(captures,1);assert.equal(h.state.project.routing.outputs['bus:g'],'master');assert.equal(h.state.project.audioPlugins[0].state,'retained patch');
-  assert.equal(h.mutations.length,1);assert.equal(h.mutations[0].before.routing.outputs['bus:g'],'bus:g');
-  assert.deepEqual(h.requests.filter(item=>item.command!=='routing.capabilities').map(item=>item.command),['routing.status','engine.snapshot','routing.validate','routing.apply']);
-  }
-});
-
-test('unavailable routing hints never bypass ordinary errors or mismatched retained patches',async()=>{
-  for(const failure of ['ordinary','stale-status','status-error','routing-mismatch','state-mismatch']){
-    const h=harness(),before=copy(h.state.project);if(failure!=='ordinary')h.R.event('status',{routing:{projectUnavailable:true}});
-    h.handle(command=>{
-      if(command==='engine.project')throw new Error('Strict native update failed');
-      if(command==='routing.status'){if(failure==='status-error')throw new Error('Cannot inspect routing');return {projectUnavailable:failure!=='stale-status'};}
-      if(command==='engine.snapshot'){const snapshot=copy(before);if(failure==='routing-mismatch')snapshot.routing.outputs={};if(failure==='state-mismatch')snapshot.audioPlugins[0].state='wrong patch';return snapshot;}
-    });
-    await assert.rejects(h.R.transaction('Route',p=>{p.routing.outputs['track:a']='bus:g';}),/Strict native update failed|Cannot inspect routing|no longer retains/);
-    assert.deepEqual(h.state.project,before);assert.equal(h.mutations.length,0);assert(!h.requests.some(item=>item.command==='routing.apply'));
-    assert.equal(h.requests.filter(item=>item.command==='engine.project').length,['ordinary','stale-status'].includes(failure)?1:0);
-  }
-});
-
-test('routing repair refuses failed capture and changes arriving during authoritative inspection',async()=>{
-  for(const change of ['capture-failure','owner','project-edit','mapped-draft']){
-    const h=harness(),waiting=deferred();h.R.event('status',{routing:{projectUnavailable:true}});
+test('a routing change refuses failed capture, a replaced project and a plug-in draft arriving while the project is synchronized',async()=>{
+  for(const change of ['capture-failure','owner','mapped-draft']){
+    const h=harness(),waiting=deferred();
     if(change==='capture-failure')h.capture(()=>false);
-    h.handle(command=>command==='routing.status'?waiting.promise:undefined);
-    const pending=h.R.transaction('Repair',p=>{p.routing.outputs['bus:g']='master';});
+    h.handle(command=>command==='engine.project'?waiting.promise:undefined);
+    const pending=h.R.transaction('Reroute',p=>{p.routing.outputs['bus:g']='master';});
     if(change==='capture-failure')await assert.rejects(pending,/could not be captured/);
     else{
-      await waitUntil(()=>h.requests.some(item=>item.command==='routing.status'));
+      await waitUntil(()=>h.requests.some(item=>item.command==='engine.project'));
       if(change==='owner')h.state.project=fixture();
-      if(change==='project-edit')h.state.project.tracks[0].volume=.27;
       if(change==='mapped-draft')h.context.window.STNKSControls={editGeneration:1,hasPendingEdits:true};
-      waiting.resolve({projectUnavailable:true});await assert.rejects(pending,/changed while preparing routing repair/);
+      waiting.resolve({});await assert.rejects(pending,/changed/);
     }
-    assert.equal(h.mutations.length,0);assert(!h.requests.some(item=>['engine.project','routing.apply','engine.snapshot'].includes(item.command)));assert(!h.R.isApplying);
+    assert.equal(h.mutations.length,0);assert(!h.requests.some(item=>item.command==='routing.apply'));assert(!h.R.isApplying);
   }
 });
 
@@ -231,13 +191,6 @@ test('plug-in capture occurs before the routing gate and active rack edits block
   await h.R.transaction('Route',()=>{});assert.equal(h.requests[0].payload.project.audioPlugins[0].state,'fresh-native-state');assert.equal(h.mutations[0].before.audioPlugins[0].state,'fresh-native-state');
   assert.deepEqual(order,['capture','flush','validate']);await h.R.refreshCapabilities();
   h.context.window.STStudio.isEditingPlugin=true;await assert.rejects(h.R.transaction('Blocked',()=>{}),/Finish the plug-in rack/);assert.equal(h.mutations.length,1);
-});
-
-test('a project without a routing table gets one, with stable track IDs, on its first routing change',async()=>{
-  const p=fixture();delete p.routing;delete p.tracks[0].routingID;const h=harness(p),before=copy(p);
-  await h.R.createBus('return',{assignOwner:'track:0'});assert.equal(h.state.modal,'routing-bus','no opt-in dialog: there is one mix model');assert.deepEqual(h.state.project,before);
-  h.element('routing-bus-name').value='Room';h.element('routing-bus-create').dispatch('click');await drain();
-  assert.equal(h.state.project.routing.mixModel,'standard');assert(h.state.project.tracks[0].routingID);assert(h.state.project.routing.buses.some(bus=>bus.type==='return'&&bus.name==='Room'));assert.equal(h.mutations.length,1);
 });
 
 test('send gain exposes owner automation metadata and sidechain layouts are never retargeted silently',()=>{
@@ -349,36 +302,34 @@ test('native cycle rejection from a sidechain chooser preserves project and undo
   assert.deepEqual(h.state.project,before);assert.equal(h.mutations.length,0);assert.equal(h.requests.filter(request=>request.command==='routing.validate').length,1);assert(!h.requests.some(request=>request.command==='routing.apply'||request.command==='engine.project'&&request.payload.replace));assert(h.notices.some(notice=>/cycle/.test(notice.message)));assert(!h.R.isApplying);
 });
 
-test('transport routing errors and route issues update mounted notices without rebuilding a focused numeric draft',()=>{
+test('connections the host could not make are noted on their rows without rebuilding a focused numeric draft',()=>{
   const p=fixture();p.routing.sends=[{id:'send-1',source:'track:a',destination:'bus:r',gain:.5,tap:'postFader',enabled:true}];p.routing.sidechains=[sidechainRoute('plug-b','track:a','postFader','External detector')];
   const h=harness(p),dom=statusNodes(h),before=copy(p),refreshes=h.refreshes;
-  h.R.event('status',{seconds:4,trackPeaks:[.2,.5],routing:{error:'Fixture graph <retained>',projectUnavailable:true,unavailable:[{id:'send-1',reason:'Return output is missing'},{id:'key-1',reason:'Detector input is unavailable'}]}});
-  for(const error of dom.errors){assert.equal(error.hidden,false);assert(error.textContent.includes('Fixture graph <retained>'));}
-  assert.equal(dom.issues[0].hidden,false);assert.equal(dom.issues[0].textContent,'Return output is missing');assert.equal(dom.issues[1].hidden,false);assert.equal(dom.issues[1].textContent,'Detector input is unavailable');assert.equal(dom.issues[2].hidden,true);
-  const channel=h.R.render('track:a'),insert=h.R.renderPluginSidechain(p.audioPlugins[0]);assert(channel.includes('data-routing-error'));assert(channel.includes('Fixture graph &lt;retained&gt;'));assert(channel.includes('data-routing-issue="send-1"'));assert(channel.includes('Return output is missing'));assert(insert.includes('data-routing-issue="key-1"'));assert(insert.includes('Detector input is unavailable'));
+  h.R.event('status',{seconds:4,trackPeaks:[.2,.5],routing:{standard:true,strips:[],unavailableSidechains:[{id:'send-1',reason:'Return output is missing'},{id:'key-1',reason:'Detector input <is> unavailable'}]}});
+  assert.equal(dom.issues[0].hidden,false);assert.equal(dom.issues[0].textContent,'Return output is missing');assert.equal(dom.issues[1].hidden,false);assert.equal(dom.issues[1].textContent,'Detector input <is> unavailable');assert.equal(dom.issues[2].hidden,true);
+  const channel=h.R.render('track:a'),insert=h.R.renderPluginSidechain(p.audioPlugins[0]);assert(!channel.includes('data-routing-error'));assert(channel.includes('data-routing-issue="send-1"'));assert(channel.includes('Return output is missing'));assert(insert.includes('data-routing-issue="key-1"'));assert(insert.includes('Detector input &lt;is&gt; unavailable'));
   assert.equal(h.refreshes,refreshes);assert.equal(h.document.activeElement,dom.draft);assert.equal(dom.draft.value,'0.');assert.equal(dom.draft.selectionStart,2);assert.equal(dom.draft.selectionEnd,2);assert.deepEqual(p,before);assert.equal(h.mutations.length,0);
 });
 
-test('unchanged routing notices ignore changing transport, peak and latency telemetry without DOM writes',()=>{
-  const h=harness(),dom=statusNodes(h),routing={error:'Retaining previous routing',projectUnavailable:true,unavailable:[{id:'send-1',reason:'Send destination unavailable'},{id:'key-1',reason:'Key input unavailable'}]};
+test('unchanged connection notes ignore changing transport, peak and latency telemetry without DOM writes',()=>{
+  const h=harness(),dom=statusNodes(h),routing={unavailableSidechains:[{id:'send-1',reason:'Send destination unavailable'},{id:'key-1',reason:'Key input unavailable'}]};
   h.R.event('status',{seconds:1,peakL:.2,routing:{...routing,latencyFrames:64}});const writes=dom.count(),refreshes=h.refreshes;
-  for(let i=0;i<8;i++)h.R.event(i%2?'transport.status':'status',{seconds:100+i,peakL:i/10,trackPeaks:[i/10,.8],latencyCompensation:{maximumFrames:128+i},routing:{...copy(routing),unavailable:i%2?copy(routing.unavailable).reverse():copy(routing.unavailable),latencyFrames:256+i,activeNodes:3+i}});
-  h.R.event('transport.status',{seconds:500,trackPeaks:[1,1]});
+  for(let i=0;i<8;i++)h.R.event('status',{seconds:100+i,peakL:i/10,trackPeaks:[i/10,.8],latencyCompensation:{maximumFrames:128+i},routing:{...copy(routing),unavailableSidechains:i%2?copy(routing.unavailableSidechains).reverse():copy(routing.unavailableSidechains),latencyFrames:256+i,inserts:[{slot:i}]}});
+  h.R.event('status',{seconds:500,trackPeaks:[1,1]});
   assert.equal(dom.count(),writes);assert.equal(h.refreshes,refreshes);assert.equal(h.document.activeElement,dom.draft);assert.equal(dom.draft.value,'0.');assert.equal(dom.issues[0].textContent,'Send destination unavailable');
 });
 
-test('changed, cleared and malformed routing issue reports update notices in place and retain control identity',()=>{
+test('changed, cleared and malformed connection reports update the notes in place and retain control identity',()=>{
   const h=harness(),dom=statusNodes(h),refreshes=h.refreshes;
-  h.R.event('status',{routing:{error:'Old graph is active',projectUnavailable:true,unavailable:[{id:'send-1',reason:'Old send issue'}]}});
-  h.R.event('transport.status',{routing:{error:'New retained-routing error',projectUnavailable:true,unavailable:[{id:'key-1',reason:'New key issue'}]}});
-  assert(dom.errors.every(error=>error.textContent.includes('New retained-routing error')&&!error.hidden));assert.equal(dom.issues[0].hidden,true);assert.equal(dom.issues[0].textContent,'');assert.equal(dom.issues[1].hidden,false);assert.equal(dom.issues[1].textContent,'New key issue');
-  for(const unavailable of [null,undefined,{},'invalid',42]){
-    assert.doesNotThrow(()=>h.R.event('status',{routing:{error:'',projectUnavailable:false,unavailable}}));assert.doesNotThrow(()=>h.R.render('track:a'));
-    assert(dom.errors.every(error=>error.hidden));assert(dom.issues.every(issue=>issue.hidden&&issue.textContent===''));
+  h.R.event('status',{routing:{unavailableSidechains:[{id:'send-1',reason:'Old send issue'}]}});
+  h.R.event('status',{routing:{unavailableSidechains:[{id:'key-1',reason:'New key issue'}]}});
+  assert.equal(dom.issues[0].hidden,true);assert.equal(dom.issues[0].textContent,'');assert.equal(dom.issues[1].hidden,false);assert.equal(dom.issues[1].textContent,'New key issue');
+  for(const unavailableSidechains of [null,undefined,{},'invalid',42,[null,{id:7,reason:'x'},{id:'key-1'}]]){
+    h.R.event('status',{routing:{unavailableSidechains:[{id:'key-1',reason:'Again'}]}});assert.equal(dom.issues[1].textContent,'Again');
+    assert.doesNotThrow(()=>h.R.event('status',{routing:{unavailableSidechains}}));assert.doesNotThrow(()=>h.R.render('track:a'));
+    assert(dom.issues.every(issue=>issue.hidden&&issue.textContent===''));
   }
-  h.R.event('transport.status',{routingFailure:'Native routing recovery failed'});assert(dom.errors.every(error=>!error.hidden&&error.textContent.includes('Native routing recovery failed')));
-  h.R.event('routing.error',{error:'Immediate routing error',projectUnavailable:true,unavailable:[{id:'key-1',reason:'Immediate key issue'}]});assert.equal(dom.issues[1].textContent,'Immediate key issue');
-  h.R.event('transport.status',{routing:null});assert(dom.errors.every(error=>error.hidden));assert(dom.issues.every(issue=>issue.hidden&&issue.textContent===''));
+  h.R.event('status',{routing:{unavailableSidechains:[{id:'key-1',reason:'Back'}]}});h.R.event('status',{routing:null});assert(dom.issues.every(issue=>issue.hidden&&issue.textContent===''));
   assert.equal(h.refreshes,refreshes);assert.equal(h.document.activeElement,dom.draft);assert.equal(h.element(dom.draft.id),dom.draft);assert.equal(dom.draft.value,'0.');assert.equal(dom.draft.selectionStart,2);assert.equal(h.mutations.length,0);
 });
 

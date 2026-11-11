@@ -343,12 +343,12 @@
   const noteColumns = (p, t) => clampNum(Math.round(Number(p.tracks[t]?.noteColumns) || 1), 1, 8);
   const noteCells = step => [...(hasNote(step) ? [step] : []), ...(step?.columns || []).filter(cell => cell?.note >= 0)];
   const dropEmpty = step => !step || step.note === -3 && !step.fx1 && !step.fx2 && !(step.columns || []).some(Boolean) ? null : step;
-  const onTrack = (p, plugin, t) => plugin.owner ? plugin.owner === `track:${p.tracks[t]?.routingID}` : plugin.track === t;
+  const onTrack = (p, plugin, t) => plugin.owner === `track:${p.tracks[t]?.routingID}`;
   function pluginOn(p, t, kind, slot = 0) {
     return (p.audioPlugins || []).find(plugin => onTrack(p, plugin, t) && plugin.kind === kind && (plugin.slot ?? 0) === slot) || null;
   }
   function pluginTarget(plugin, t) {
-    return { track: t, ...(plugin.owner ? { owner: plugin.owner } : {}), kind: plugin.kind, slot: plugin.slot ?? 0, instanceID: plugin.instanceID };
+    return { track: t, owner: plugin.owner, kind: plugin.kind, slot: plugin.slot ?? 0, instanceID: plugin.instanceID };
   }
 
   /* Mixer channels, as the mixer (studio.js) and routing (routing.js) address them: {type: 'track' | 'group' |
@@ -358,7 +358,7 @@
   const busChannel = bus => ({ type: bus.type === 'return' ? 'return' : 'group', owner: `bus:${bus.id}`, name: bus.name || 'Bus', bus: bus.id });
   const MASTER = Object.freeze({ type: 'master', owner: 'master', name: 'Master' });
   function channelList(p) {
-    return [MASTER, ...(p.routing?.buses || []).map(busChannel), ...p.tracks.map((_, t) => trackChannel(p, t))];
+    return [MASTER, ...(p.routing.buses || []).map(busChannel), ...p.tracks.map((_, t) => trackChannel(p, t))];
   }
   const channelLabel = ch => ch.type === 'track' ? `track ${ch.track} "${ch.name}"` : ch.type === 'master' ? 'Master' : `${ch.type} bus "${ch.name}"`;
   function channelChoices(p) {
@@ -387,7 +387,7 @@
   function channelEntity(p, ch) {
     if (ch.type === 'master') return p;
     if (ch.type === 'track') return p.tracks[ch.track] || null;
-    return (p.routing?.buses || []).find(bus => bus.id === ch.bus) || null;
+    return (p.routing.buses || []).find(bus => bus.id === ch.bus) || null;
   }
   const channelOf = (p, owner) => channelList(p).find(ch => ch.owner === owner) || null;
   function channelEffects(p, ch) {
@@ -576,7 +576,7 @@
       // Buses and the master channel in brief; mixer() has outputs, sends, levels and insert details.
       mixer: {
         masterEffects: channelEffects(p, MASTER).map(plugin => plugin.nks?.name || plugin.name),
-        buses: (p.routing?.buses || []).map(bus => ({ channel: `bus:${bus.id}`, name: bus.name, type: busChannel(bus).type,
+        buses: (p.routing.buses || []).map(bus => ({ channel: `bus:${bus.id}`, name: bus.name, type: busChannel(bus).type,
           effects: channelEffects(p, busChannel(bus)).map(plugin => plugin.nks?.name || plugin.name) }))
       },
       performance: { scale: s.scale, root: SHARP[s.root || 0], chord: s.chord, chordSet: s.chordSet || null, summary: S().performanceSummary?.() },
@@ -1346,11 +1346,10 @@
     const owner = p,
       trackObject = p.tracks[track],
       // Track plug-ins are addressed by owner, as the mixer does (studio.js ownerPayload).
-      routed = !!trackObject.routingID,
-      target = { track, ...(routed ? { owner: trackChannel(p, track).owner } : {}), kind, slot, component: plugin.id, ...(plugin.bundlePath ? { bundlePath: plugin.bundlePath } : {}) };
+      target = { track, owner: trackChannel(p, track).owner, kind, slot, component: plugin.id, ...(plugin.bundlePath ? { bundlePath: plugin.bundlePath } : {}) };
     const stillValid = () => st().project === owner && owner.tracks[track] === trackObject;
-    // The slot holds this load's instance: in a routed project the snapshot names the owner, else the track.
-    const attached = list => (Array.isArray(list) ? list : []).find(item => (item.owner ? item.owner === trackChannel(p, track).owner : item.track === track)
+    // The slot holds this load's instance.
+    const attached = list => (Array.isArray(list) ? list : []).find(item => item.owner === target.owner
         && item.kind === kind && (item.slot ?? 0) === slot && (result?.instanceID ? item.instanceID === result.instanceID : item.component === plugin.id));
     let result, snapshot;
     try {
@@ -1454,7 +1453,7 @@
       (edit.target.kind !== 'instrument' || ((edit.entity.instrument ?? 0) === edit.instrumentIndex && edit.project.instruments[edit.instrumentIndex] === edit.instrumentObject)) &&
       slotPlugin(edit.project, edit.ref) === edit.plugin &&
       edit.plugin.instanceID === edit.target.instanceID && edit.plugin.component === edit.component &&
-      (edit.target.owner ? edit.plugin.owner === edit.target.owner : edit.plugin.track === edit.target.track);
+      edit.plugin.owner === edit.target.owner;
   }
   function cancelParameterEdit(edit) {
     if (!parameterEdits.has(edit)) return;
@@ -1766,8 +1765,8 @@
       return { min: 0, max: 1, kind: 'pct', name: descriptor?.name || target };
     }
     if (target.startsWith('send:')) {
-      const send = (p.routing?.sends || []).find(item => `send:${item.id}` === target);
-      if (!send || send.source !== channel.owner) fail(`${channelLabel(channel)} has no send ${target.slice(5)}. Sends: ${(p.routing?.sends || []).filter(item => item.source === channel.owner)
+      const send = (p.routing.sends || []).find(item => `send:${item.id}` === target);
+      if (!send || send.source !== channel.owner) fail(`${channelLabel(channel)} has no send ${target.slice(5)}. Sends: ${(p.routing.sends || []).filter(item => item.source === channel.owner)
           .map(item => `send:${item.id} (to ${channelOf(p, item.destination)?.name || item.destination})`).join(', ') || 'none'}.`);
       return { min: 0, max: 2, kind: 'db', name: `Send to ${channelOf(p, send.destination)?.name || send.destination}` };
     }
@@ -1865,7 +1864,7 @@
     if (st().undo[st().undo.length - 1] === before) fail(`The routing change was not applied${toastText() ? ': ' + toastText() : '.'}`);
     return { changed: true, undoLabel: `AI: ${label}` };
   }
-  const outputOf = (p, owner) => Object.hasOwn(p.routing?.outputs || {}, owner) ? p.routing.outputs[owner] : 'master';
+  const outputOf = (p, owner) => Object.hasOwn(p.routing.outputs || {}, owner) ? p.routing.outputs[owner] : 'master';
   function describeSend(p, send) {
     return { id: send.id, from: send.source, fromName: channelOf(p, send.source)?.name, to: send.destination, toName: channelOf(p, send.destination)?.name,
       tap: send.tap, gain: formatValue('db', send.gain ?? 0), enabled: send.enabled !== false, automationTarget: `send:${send.id}` };
@@ -1885,10 +1884,10 @@
     if (ch.type === 'group' || ch.type === 'return') {
       const group = (p.groups || []).find(item => item.busID === ch.bus);
       if (group) out.trackGroup = group.name;
-      out.inputs = Object.entries(p.routing?.outputs || {}).filter(([, to]) => to === ch.owner).map(([from]) => channelOf(p, from)?.name || from);
-      out.sendsIn = (p.routing?.sends || []).filter(send => send.destination === ch.owner).map(send => channelOf(p, send.source)?.name || send.source);
+      out.inputs = Object.entries(p.routing.outputs || {}).filter(([, to]) => to === ch.owner).map(([from]) => channelOf(p, from)?.name || from);
+      out.sendsIn = (p.routing.sends || []).filter(send => send.destination === ch.owner).map(send => channelOf(p, send.source)?.name || send.source);
     }
-    if (ch.type !== 'master') out.sends = (p.routing?.sends || []).filter(send => send.source === ch.owner).map(send => describeSend(p, send));
+    if (ch.type !== 'master') out.sends = (p.routing.sends || []).filter(send => send.source === ch.owner).map(send => describeSend(p, send));
     out.inserts = channelEffects(p, ch).map(insertOut);
     return out;
   }
@@ -1904,9 +1903,9 @@
     const caps = window.STRouting?.capabilities, q = project();
     return {
       master: describeChannel(q, MASTER),
-      buses: (q.routing?.buses || []).map(bus => describeChannel(q, busChannel(bus))),
+      buses: (q.routing.buses || []).map(bus => describeChannel(q, busChannel(bus))),
       tracks: q.tracks.map((_, t) => describeChannel(q, trackChannel(q, t))),
-      sidechains: (q.routing?.sidechains || []).map(route => {
+      sidechains: (q.routing.sidechains || []).map(route => {
         const plugin = (q.audioPlugins || []).find(item => item.instanceID === route.destination?.instanceID),
           owner = plugin && (plugin.owner || (q.tracks[plugin.track] ? trackChannel(q, plugin.track).owner : null));
         return { id: route.id, from: route.source, fromName: channelOf(q, route.source)?.name, to: { channel: owner || null, plugin: plugin?.name || null, slot: plugin?.slot ?? null,
@@ -1957,7 +1956,7 @@
       output = outputDestination(p, channels, params.output);
     }
     const label = params.label || `edit ${channels.map(ch => ch.name).join(', ')} (${keys.join(', ')})`;
-    const apply = (draft, remap = owner => owner) => {
+    const apply = draft => {
       for (const { ch, volume, pan } of plan) {
         const entity = channelEntity(draft, ch); if (!entity) fail(`${channelLabel(ch)} no longer exists.`);
         if (volume !== undefined) { if (ch.type === 'master') draft.masterVolume = volume; else entity.volume = volume; }
@@ -1965,13 +1964,13 @@
         for (const key of ['mute', 'solo']) if (params[key] !== undefined) entity[key] = params[key];
         // A track group's bus carries the group's name (track-groups.js renames both).
         if (name !== undefined) { if (entity.groupID && window.STGroups?.byID(draft, entity.groupID)) window.STGroups.rename(draft, entity.groupID, name); else entity.name = name; }
-        if (output !== undefined) draft.routing.outputs[remap(ch.owner)] = output === null ? null : remap(output);
+        if (output !== undefined) draft.routing.outputs[ch.owner] = output;
       }
       return {};
     };
     const result = output === undefined
         ? commit(label, draft => apply(draft))
-        : await routingCommit(label, (draft, { remapOwner }) => { apply(draft, remapOwner); }, channels.length === 1 ? channels[0].owner : undefined);
+        : await routingCommit(label, draft => { apply(draft); }, channels.length === 1 ? channels[0].owner : undefined);
     const q = project();
     return { ...result, channels: channels.map(ch => describeChannel(q, ch.type === 'track' ? trackChannel(q, ch.track) : channelOf(q, ch.owner) || ch)) };
   });
@@ -1982,8 +1981,8 @@
     const caps = await routingCapabilities(), q = project();
     if (caps.buses?.[type] !== true) fail(`The current audio host cannot create ${type} buses.`);
     const limit = Math.min(LIMITS.tracks, Number.isFinite(Number(caps.buses?.max)) ? Number(caps.buses.max) : Infinity);
-    if ((q.routing?.buses || []).length >= limit) fail(`This song already has ${limit} buses, the most the audio host supports.`);
-    const name = params.name === undefined ? `${type === 'group' ? 'Group' : 'Return'} ${(q.routing?.buses || []).filter(bus => bus.type === type).length + 1}` : checkName(params.name);
+    if ((q.routing.buses || []).length >= limit) fail(`This song already has ${limit} buses, the most the audio host supports.`);
+    const name = params.name === undefined ? `${type === 'group' ? 'Group' : 'Return'} ${(q.routing.buses || []).filter(bus => bus.type === type).length + 1}` : checkName(params.name);
     const inputs = params.inputs === undefined ? [] : [...new Map((Array.isArray(params.inputs) ? params.inputs : [params.inputs]).map(ref => findChannel(q, ref, 'inputs'))
         .map(ch => [ch.owner, ch])).values()];
     for (const input of inputs) {
@@ -1994,10 +1993,10 @@
     if (output !== null && inputs.some(input => input.owner === output)) fail('A bus cannot output to one of its own inputs.');
     const volume = params.volume === undefined ? 1 : parseValue(BUS_VOLUME, params.volume, 'volume'), pan = params.pan === undefined ? 0 : parseValue(TRACK_VALUES.pan, params.pan, 'pan');
     const id = globalThis.crypto?.randomUUID?.() || S().uid(), owner = `bus:${id}`;
-    const result = await routingCommit(params.label || `create ${type} bus ${name}`, (draft, { remapOwner }) => {
+    const result = await routingCommit(params.label || `create ${type} bus ${name}`, draft => {
       draft.routing.buses.push({ id, name, type, volume, pan, mute: false, solo: false });
-      draft.routing.outputs[owner] = output === null ? null : remapOwner(output);
-      for (const input of inputs) draft.routing.outputs[remapOwner(input.owner)] = owner;
+      draft.routing.outputs[owner] = output;
+      for (const input of inputs) draft.routing.outputs[input.owner] = owner;
     });
     const after = project(), created = channelOf(after, owner);
     if (!created) fail('The audio host did not keep the new bus.');
@@ -2028,7 +2027,7 @@
   method('setSend', 'Add, change or remove a custom send (standard routing) from a track or bus (from) to a bus or Master (to): gain ("-6 dB" or 0–2; new sends '
       + '0 dB), tap ("postFader" default, "preFader"), enabled, remove:true. id picks an existing send (see mixer).', ['from', 'to', 'id', 'gain', 'tap', 'enabled',
           'remove', 'label'], async params => {
-    const caps = await routingCapabilities(), q = project(), sends = q.routing?.sends || [];
+    const caps = await routingCapabilities(), q = project(), sends = q.routing.sends || [];
     if (caps.sends?.enabled !== true) fail('Custom sends are not available from the current audio host.');
     const taps = (caps.sends?.taps || []).filter(tap => ['preFader', 'postFader'].includes(tap));
     let send = null;
@@ -2058,7 +2057,7 @@
           ? ': sends go to a group or return bus or to Master'
           : ': that would create a feedback loop'}. Valid destinations: ${allowed.map(item => item.owner === 'master' ? 'master' : `"${item.name}" (${item.owner})`).join(', ') || 'none'}.`);
     }
-    if (!send && sends.length + (q.routing?.sidechains || []).length >= Math.min(128, Number(caps.sends?.max) || 128)) fail('The song has reached its send and sidechain limit.');
+    if (!send && sends.length + (q.routing.sidechains || []).length >= Math.min(128, Number(caps.sends?.max) || 128)) fail('The song has reached its send and sidechain limit.');
     if (!send && !taps.length) fail('The audio host offers no send taps.');
     const changes = {};
     if (params.gain !== undefined) changes.gain = parseValue(SEND_GAIN, params.gain, 'gain');
@@ -2067,13 +2066,13 @@
     if (send && send.destination !== destination.owner) changes.destination = destination.owner;
     if (send && !Object.keys(changes).length) fail('Nothing to change. Give gain, tap, enabled, to, or remove:true.');
     const id = send?.id || globalThis.crypto?.randomUUID?.() || S().uid();
-    const result = await routingCommit(label, (draft, { remapOwner }) => {
+    const result = await routingCommit(label, draft => {
       let item = draft.routing.sends.find(x => x.id === id);
-      if (!item) draft.routing.sends.push(item = { id, source: remapOwner(source.owner), tap: taps.includes('postFader') ? 'postFader' : taps[0],
-        destination: remapOwner(destination.owner), gain: 1, enabled: true });
-      Object.assign(item, changes, changes.destination ? { destination: remapOwner(changes.destination) } : {});
+      if (!item) draft.routing.sends.push(item = { id, source: source.owner, tap: taps.includes('postFader') ? 'postFader' : taps[0],
+        destination: destination.owner, gain: 1, enabled: true });
+      Object.assign(item, changes);
     }, source.owner);
-    const after = project(), stored = (after.routing?.sends || []).find(item => item.id === id);
+    const after = project(), stored = (after.routing.sends || []).find(item => item.id === id);
     return { ...result, send: stored ? describeSend(after, stored) : null };
   });
   method('setSendEffects', 'Built-in send effects (fed by each track\'s delaySend/reverbSend): delay {time ("375 ms", seconds, or a tempo division like "1/8."), '

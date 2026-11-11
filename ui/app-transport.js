@@ -113,17 +113,10 @@
     } else if (app.recordArmDesired) state.recording = true;
   }
 
-  function updateRoutingStatus() {
+  function updateStatusMessage() {
     const label = $('#status-message');
     if (!label) return;
-    const failure = typeof state.status.routingFailure === 'string'
-        ? state.status.routingFailure
-        : typeof state.status.routing?.error === 'string'
-        ? state.status.routing.error
-        : '';
-    const message = failure
-        ? 'Audio paused · Routing needs repair (⌘4)'
-        : recordArmTask
+    const message = recordArmTask
         ? app.recordArmDesired ? 'Arming note recording…' : 'Disarming note recording…'
         : state.recording
         ? state.playing ? 'Recording live notes' : 'Step recording armed'
@@ -133,8 +126,6 @@
         ? 'Keyboard preview · ⌘R to enter notes'
         : 'Ready to make something';
     if (label.textContent !== message) label.textContent = message;
-    label.title = failure;
-    label.classList.toggle('routing-error', !!failure);
   }
 
   // Native render utilization is already a percentage, including values below 1.
@@ -146,7 +137,7 @@
     const p = state.project;
     if (!p) return;
     window.STPatternDestination?.update();
-    updateRoutingStatus();
+    updateStatusMessage();
     const modeControl = $('#transport-mode');
     if (modeControl) {
       const locked = state.playing || !!app.pendingPlayback || !!app.stoppingPlayback;

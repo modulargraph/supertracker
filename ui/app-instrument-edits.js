@@ -19,7 +19,7 @@
     const removed = project.audioPlugins.filter(x => x.kind === 'instrument' && tracks.includes(x.track));
     const ids = new Set(removed.map(x => x.instanceID).filter(Boolean));
     project.audioPlugins = project.audioPlugins.filter(x => !removed.includes(x));
-    if (project.routing?.sidechains) project.routing.sidechains = project.routing.sidechains.filter(x => !ids.has(x.destination?.instanceID));
+    if (project.routing.sidechains) project.routing.sidechains = project.routing.sidechains.filter(x => !ids.has(x.destination?.instanceID));
   }
 
   async function runInstrumentEdit(id, tracks, work) {

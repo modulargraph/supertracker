@@ -49,7 +49,7 @@
   const app = () => window.STApp;
   const groupOf = (track = st().track, p = P()) => G()?.ofTrack(p, track) || null;
   const membersOf = (group, p = P()) => group ? G().members(p, group) : [];
-  const busOf = (group, p = P()) => group ? p?.routing?.buses?.find(bus => bus.id === group.busID) || null : null;
+  const busOf = (group, p = P()) => group ? p?.routing.buses?.find(bus => bus.id === group.busID) || null : null;
   /* Entries: what the group buttons show, in track order. Each ungrouped track is one entry and each group one
      entry (all its members). { group, index (first track), members } */
   function entries(p = P()) {
@@ -72,7 +72,7 @@
     const source = entry.group ? busOf(entry.group, p) || {} : p.tracks[entry.index] || {};
     return { mute: !!source.mute, solo: !!source.solo };
   }
-  const anySolo = (p = P()) => p.tracks.some(t => t.solo) || !!p.routing?.buses?.some(bus => bus.type === 'group' && bus.solo);
+  const anySolo = (p = P()) => p.tracks.some(t => t.solo) || !!p.routing.buses?.some(bus => bus.type === 'group' && bus.solo);
   function toggleEntry(entry, property) {
     if (!entry) return;
     if (entry.group) app()?.toggleBus?.(entry.group.id, property);
@@ -160,7 +160,7 @@
      or 'track:<routingID>'. */
   function channelOf(owner, project = P()) {
     if (owner === 'master') return project;
-    if (owner?.startsWith('bus:')) return project?.routing?.buses?.find(bus => `bus:${bus.id}` === owner) || null;
+    if (owner?.startsWith('bus:')) return project?.routing.buses?.find(bus => `bus:${bus.id}` === owner) || null;
     if (owner?.startsWith('track:')) return project?.tracks?.find(track => `track:${track.routingID}` === owner) || null;
     return null;
   }

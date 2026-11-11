@@ -100,31 +100,16 @@
         if (syncFailures.length) throw syncFailures[0];
         return true;
       }
-      if (!syncFailures.length && !state.project.audioPlugins?.length && !options.preserveUnavailable) return true;
+      if (syncFailures.length) throw syncFailures[0];
+      if (!state.project.audioPlugins?.length) return true;
       const owner = state.project,
         pluginsBefore = stableJSON(owner.audioPlugins),
         nativeEditGeneration = window.STPendingEdits.generation();
-      let unavailable = false;
-      if (syncFailures.length || options.preserveUnavailable) {
-        const routing = await request('routing.status');
-        if (state.project !== owner) return false;
-        unavailable = routing?.projectUnavailable === true;
-        if (syncFailures.length && !unavailable) throw syncFailures[0];
-      }
       const snapshot = await request('engine.snapshot');
       if (state.project !== owner) return false;
       if (window.STPendingEdits.generation() !== nativeEditGeneration
           || window.STPendingEdits.hasPending(options)) throw new Error('Recording input or plug-in controls changed during capture. Save again after the current edit finishes.');
       if (stableJSON(owner.audioPlugins) !== pluginsBefore) throw new Error('The plug-ins changed during capture. Retry after the current edit finishes.');
-      if (unavailable) {
-        // An opened, unavailable graph retains its desired project in the host.
-        // Permit saving or repairing it only when no opaque state would be replaced.
-        if (!owner.routing
-            || stableJSON(snapshot?.routing) !== stableJSON(owner.routing)
-            || stableJSON(snapshot?.audioPlugins ?? []) !== pluginsBefore) throw syncFailures[0]
-                || new Error('The audio host no longer retains the current routing and plug-in state.');
-        return true;
-      }
       if (!Array.isArray(snapshot?.audioPlugins)) throw new Error('The host returned no plug-in state.');
       const failed = snapshot.audioPlugins.find(plugin => plugin?.stateError);
       if (failed) throw new Error((failed.name || 'A plug-in') + ': ' + failed.stateError);

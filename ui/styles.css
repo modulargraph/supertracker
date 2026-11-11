@@ -89,7 +89,6 @@ main { min-width:0; min-height:0; overflow:hidden; }
 .statusbar #cpu { font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; }
 /* Reserve the meter's space so digit changes cannot move the adjacent status controls. */
 body.native .statusbar #cpu { flex:0 0 11ch; width:11ch; min-width:0; }
-.statusbar .routing-error { color:var(--red, #e78c7c); }
 .status-led { display:inline-block; width:4px; height:4px; margin-right:6px; background:#9aa58a; }
 .workspace { display:grid; grid-template-columns:152px minmax(0,1fr); height:100%; min-height:0; }
 .sidebar { overflow:auto; padding:12px 7px; border-right:1px solid #4b4538; background:#23231f; }

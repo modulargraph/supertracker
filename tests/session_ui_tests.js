@@ -124,16 +124,16 @@ async function run(){
     console.log('PASS preparing playback feedback is immediate, cancellable, and clears on Stop, repeated Play, success or failure');
   }
   {
-    for(const priority of ['recording','routing']){
+    {
       const h=harness();let finish,pending=true;const gate=new Promise(resolve=>finish=resolve);
-      h.ST.state.recording=true;if(priority==='routing')h.ST.state.status.routingFailure='Output cycle';
+      h.ST.state.recording=true;
       h.window.STNKSControls={get hasPendingEdits(){return pending;},async flushEdits(){await gate;pending=false;return true;}};
       const playing=h.ST.perform('play');assert.equal(h.element('#play').attributes['aria-busy'],'true');
-      assert.match(h.element('#status-message').textContent,priority==='routing'?/Routing needs repair/:/Step recording armed/);
+      assert.match(h.element('#status-message').textContent,/Step recording armed/);
       await h.ST.perform('stop');finish();await playing;
-      assert.match(h.element('#status-message').textContent,priority==='routing'?/Routing needs repair/:/Step recording armed/);
+      assert.match(h.element('#status-message').textContent,/Step recording armed/);
     }
-    console.log('PASS pending playback retains routing-error and recording-status priority');
+    console.log('PASS pending playback keeps the recording status in the status line');
   }
   {
     for(const failure of ['mapped','native']){
@@ -312,38 +312,6 @@ async function run(){
     console.log('PASS a destination cancellation leaves queued notes eligible for their normal engine sync');
   }
   {
-    for(const queued of [false,true])for(const hasPlugins of [false,true]){
-      const h=harness();h.ST.state.engineReady=true;
-      h.ST.state.project.audioPlugins=hasPlugins?[{owner:'bus:missing',kind:'effect',slot:0,state:'retained opaque patch'}]:[];
-      h.ST.state.project.routing={version:1,mixModel:'standard',buses:[],outputs:{'bus:missing':'bus:missing'}};
-      h.ST.state.status.routingFailure='Output routing contains a cycle.';h.ST.state.status.routing={projectUnavailable:true};
-      h.handlers.set('engine.project',()=>{throw new Error('The desired routing is unavailable.');});
-      h.handlers.set('routing.status',()=>({projectUnavailable:true}));
-      h.handlers.set('engine.snapshot',()=>JSON.parse(JSON.stringify(h.ST.state.project)));
-      if(queued)h.ST.syncEngine();
-      assert.equal(await h.ST.projectAction('save'),true,queued?'an unavailable project must remain saveable while its open sync is queued':'idle unavailable project Save');
-      assert.equal(h.calls.filter(x=>x.command==='engine.project').length,queued?1:0);
-      const savedPlugins=h.calls.find(x=>x.command==='project.save').payload.project.audioPlugins;
-      if(hasPlugins)assert.equal(savedPlugins[0].state,'retained opaque patch');else assert.equal(savedPlugins.length,0);
-    }
-    console.log('PASS idle and newly opened unavailable routing can be saved without an invented engine project update');
-  }
-  {
-    for(const mismatch of ['native-status','routing','opaque-state']){
-      const h=harness();h.ST.state.engineReady=true;
-      h.ST.state.project.audioPlugins=[{track:0,kind:'effect',slot:0,state:'keep this patch'}];
-      h.ST.state.project.routing={version:1,mixModel:'standard',buses:[],outputs:{'track:missing':'bus:missing'}};
-      h.ST.state.status.routing={projectUnavailable:true}; // Stale UI status alone must not authorize fallback.
-      h.handlers.set('engine.project',()=>{throw new Error('Native project update rejected');});
-      h.handlers.set('routing.status',()=>({projectUnavailable:mismatch!=='native-status'}));
-      h.handlers.set('engine.snapshot',()=>{const p=JSON.parse(JSON.stringify(h.ST.state.project));if(mismatch==='routing')p.routing.outputs={};if(mismatch==='opaque-state')p.audioPlugins[0].state='different patch';return p;});
-      h.ST.syncEngine();assert.equal(await h.ST.projectAction('save'),false);
-      assert.equal(h.ST.state.project.audioPlugins[0].state,'keep this patch');assert.equal(h.ST.state.dirty,true);
-      assert.equal(h.calls.some(x=>x.command==='project.save'),false);
-    }
-    console.log('PASS unavailable-project fallback requires fresh native status and exact desired routing and opaque state');
-  }
-  {
     const h=harness();let failFirst,finishSecond,number=0;
     h.ST.state.engineReady=true;h.ST.state.project.audioPlugins=[{track:0,kind:'effect',slot:0,state:'keep patch'}];
     h.handlers.set('engine.project',()=>++number===1?new Promise((resolve,reject)=>failFirst=()=>reject(new Error('First update failed'))):new Promise(resolve=>finishSecond=()=>resolve({})));
@@ -395,15 +363,6 @@ async function run(){
     assert.equal(captures,1);h.ST.state.project.name='Newest edit';h.advance(1000);await tick();
     assert.equal(captures,2);assert.equal(h.calls.filter(x=>x.command==='project.autosave').at(-1).payload.project.name,'Newest edit');
     console.log('PASS a deferred native recovery request retries with the current project');
-  }
-  {
-    const h=harness();h.ST.state.view='browser';
-    h.window.nativeEvent({type:'status',payload:{playing:false,routingFailure:'Output routing contains a cycle.'}});
-    assert.match(h.element('#status-message').textContent,/Routing needs repair/);
-    assert.equal(h.element('#status-message').title,'Output routing contains a cycle.');
-    h.window.nativeEvent({type:'transport.status',payload:{playing:false,routingFailure:null,routing:{enabled:true}}});
-    assert.equal(h.element('#status-message').textContent,'Ready to make something');assert.equal(h.element('#status-message').title,'');
-    console.log('PASS routing failures stay visible in the status bar until the native host confirms repair');
   }
   {
     const h=harness(),close=h.element('modal-close'),search=h.element('routing-search'),option=h.element('routing-choice-0');

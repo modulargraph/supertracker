@@ -22,7 +22,6 @@
   const clamp = (value, lo, hi) => Math.min(hi, Math.max(lo, Number.isFinite(Number(value)) ? Number(value) : lo));
   const uid = () => `clip-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const clips = () => project().audioClips || [];
-  const routed = () => project().routing != null;
   const timingSignature = value => JSON.stringify([value.bpm, value.timeSignature]);
   const maxBeat = () => window.STProjectTiming.MAX_BEAT;
   let receivedStatus = null;
@@ -198,7 +197,7 @@
           + `<button id="clips-bounce" title="${project().tracks.length >= (window.TRACK_SANITY_LIMIT ?? Infinity)
               ? `Bounce needs a new track; the project already has ${project().tracks.length} tracks.`
               : 'Render the selected track with its effects into a new audio track'}"`
-          + ` ${local.busy || all.length >= 256 || project().tracks.length >= (window.TRACK_SANITY_LIMIT ?? Infinity) ? 'disabled' : ''}>${routed() ? 'Render stem…' : 'Bounce track…'}</button>`
+          + ` ${local.busy || all.length >= 256 || project().tracks.length >= (window.TRACK_SANITY_LIMIT ?? Infinity) ? 'disabled' : ''}>Render stem…</button>`
           + `<span class="grow"></span><button id="clips-zoom-out" aria-label="Zoom audio timeline out" ${local.pixels <= 6 ? 'disabled' : ''}>−</button>`
           + `<span class="clips-zoom-label">${Math.round(local.pixels / 22 * 100)}%</span><button id="clips-zoom-in" aria-label="Zoom audio timeline `
           + `in" ${local.pixels >= 88 ? 'disabled' : ''}>＋</button></div>
@@ -314,30 +313,23 @@
     if (local.busy) { app().toast('Finish the current audio operation first.', 'info'); return; }
     const destinationProject = project(), sourceIndex = Number(state().track || 0), sourceTrack = destinationProject.tracks[sourceIndex];
     if (!sourceTrack) return;
-    const isRouted = routed();
     if (destinationProject.tracks.length >= (window.TRACK_SANITY_LIMIT ?? Infinity)) { app().toast(`Bounce needs a new track. This project already has ${destinationProject.tracks.length} tracks.`,
         'info'); return; }
     if (clips().length >= 256) { app().toast('Remove an unused audio clip before bouncing; this project has 256 clips.', 'info'); return; }
-    const explanation = isRouted
-      ? `Capture <strong>${esc(sourceTrack.name)}</strong> after its inserts, fader and pan, before its parent bus. Shared returns and downstream `
-          + `bus or Master processing are excluded. The source stays unchanged. The rendered stem is added on a new, muted track routed directly to `
-          + `Master, with no sends. Use the mixer to audition it and decide how to use it; it is not an automatic replacement for the source mix.`
-      : `Render <strong>${esc(sourceTrack.name)}</strong> with its instruments, inserts, and send effects into a new audio track. The original `
-          + `track stays in the project and is muted after a successful bounce. The new track uses neutral mixer settings so the recorded effects and `
-          + `gain are heard once.`;
-    app().openModal(isRouted
-        ? 'Render track stem for audition'
-        : 'Bounce track to audio', `<div class="stack"><p class="clips-bounce-help">${explanation}</p><label class="field"><span>Effect tail · seconds</span>`
+    const explanation = `Capture <strong>${esc(sourceTrack.name)}</strong> after its inserts, fader and pan, before its parent bus. Shared returns and downstream `
+        + `bus or Master processing are excluded. The source stays unchanged. The rendered stem is added on a new, muted track routed directly to `
+        + `Master, with no sends. Use the mixer to audition it and decide how to use it; it is not an automatic replacement for the source mix.`;
+    app().openModal('Render track stem for audition', `<div class="stack"><p class="clips-bounce-help">${explanation}</p><label class="field"><span>Effect tail · seconds</span>`
         + `<input id="clips-bounce-tail" type="number" min="0" max="30" step=".5" value="3"></label><p class="clips-bounce-help">Undo restores `
         + `the previous arrangement. External hardware must be recorded before rendering.</p><div id="clips-bounce-status" role="status"`
-        + ` class="clips-bounce-help"></div></div>`, `<button id="clips-bounce-cancel">Cancel</button><button class="primary" id="clips-bounce-render">${isRouted ? 'Render muted stem' : 'Render track'}</button>`, {
+        + ` class="clips-bounce-help"></div></div>`, `<button id="clips-bounce-cancel">Cancel</button><button class="primary" id="clips-bounce-render">Render muted stem</button>`, {
       kind: 'clip-bounce'
     });
     const get = id => document.getElementById(id);
     if (state().modal !== 'clip-bounce' || !get('clips-bounce-render')) return;
     const renderButton = get('clips-bounce-render');
     const active = () => state().modal === 'clip-bounce' && get('clips-bounce-render') === renderButton;
-    const current = () => project() === destinationProject && destinationProject.tracks[sourceIndex] === sourceTrack && routed() === isRouted;
+    const current = () => project() === destinationProject && destinationProject.tracks[sourceIndex] === sourceTrack;
     const requireCurrent = () => {
       if (!active() || !current()) throw new Error('The project or selected source changed. Reopen the render dialog.');
     };
@@ -370,7 +362,7 @@
         if (synced === false) throw new Error('Audio preparation was canceled. Nothing was rendered.');
         if (JSON.stringify(destinationProject) !== prepared) throw new Error('The project changed during preparation. Reopen the render dialog.');
         get('clips-bounce-cancel').disabled = true;
-        get('clips-bounce-status').textContent = isRouted ? 'Rendering a muted stem for audition…' : 'Rendering the track and effect tail…';
+        get('clips-bounce-status').textContent = 'Rendering a muted stem for audition…';
         const result = await app().request('audio.bounceTrack', { track: sourceIndex, tail });
         if (!result?.clip || !result.path) throw new Error('The audio engine did not return a bounced clip.');
         if (!active()
@@ -380,31 +372,24 @@
         if (destinationProject.tracks.length >= (window.TRACK_SANITY_LIMIT ?? Infinity)) throw new Error(`No free track remains. Your bounce is saved at ${result.path}`);
         if (clips().length >= 256) throw new Error(`No free clip remains. Your audio is saved at ${result.path}`);
         let addedTrack, addedClip;
-        app().mutate(isRouted ? 'add rendered audition stem' : 'bounce track to audio', value => {
+        app().mutate('add rendered audition stem', value => {
           const newIndex = value.tracks.length;
           const track = {
             id: newIndex,
-            name: `${sourceTrack.name} · ${isRouted ? 'Stem' : 'Audio'}`,
+            name: `${sourceTrack.name} · Stem`,
             color: sourceTrack.color || '#88b5a5',
             volume: 1,
             pan: 0,
-            mute: isRouted,
-            solo: !isRouted && !!sourceTrack.solo,
+            mute: true,
+            solo: false,
             instrument: 0,
             delaySend: 0,
             reverbSend: 0,
             plugins: []
           };
-          if (window.STRoutingProject?.appendTrack) window.STRoutingProject.appendTrack(value, track, app().uid || uid);
-          else {
-            const base = uid(), used = new Set(value.tracks.map(item => item.routingID)); let id = base, suffix = 1;
-            while (used.has(id)) id = `${base}-${suffix++}`;
-            track.routingID = id; value.tracks.push(track);
-            if (value.routing?.version === 1) { value.routing.outputs ||= {}; value.routing.outputs[`track:${id}`] = 'master'; }
-          }
+          window.STRoutingProject.appendTrack(value, track, app().uid || uid);
           value.patterns.forEach(pattern => { pattern.steps ||= []; pattern.steps.push(Array.from({ length: pattern.length }, () => null)); });
-          if (!isRouted) sourceTrack.mute = true;
-          const clip = { ...result.clip, id: uid(), track: newIndex, path: result.path, name: `${sourceTrack.name} ${isRouted ? 'stem' : 'bounce'}` };
+          const clip = { ...result.clip, id: uid(), track: newIndex, path: result.path, name: `${sourceTrack.name} stem` };
           value.audioClips ||= []; value.audioClips.push(clip); addedTrack = track; addedClip = clip;
         });
         if (!addedClip
@@ -413,9 +398,7 @@
             || !destinationProject.audioClips?.includes(addedClip)) throw new Error(`The rendered clip was not applied. Your audio is saved at ${result.path}`);
         state().track = destinationProject.tracks.indexOf(addedTrack); state().clipSelected = addedClip.id;
         app().closeModal();
-        app().toast(isRouted
-            ? 'Muted stem added for audition. The source and its routing are unchanged.'
-            : 'Track bounced to audio. The source track is preserved and muted.');
+        app().toast('Muted stem added for audition. The source and its routing are unchanged.');
       } catch (error) { app().toast(error.message || String(error),
           'error'); if (active()) { renderButton.disabled = false; get('clips-bounce-cancel').disabled = false; get('clips-bounce-status').textContent = error.message || String(error); } }
       finally { local.busy = false; if (state().view === 'song') refresh(); }

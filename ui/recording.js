@@ -336,15 +336,14 @@
             reverbSend: 0,
             plugins: []
           };
-          if (window.STRoutingProject?.appendTrack) window.STRoutingProject.appendTrack(p,track,app().uid);
-          else { track.routingID = app().uid(); p.tracks.push(track); if (p.routing?.version === 1) { p.routing.outputs ||= {}; p.routing.outputs[`track:${track.routingID}`] = 'master'; } }
+          window.STRoutingProject.appendTrack(p,track,app().uid);
           for (const pattern of p.patterns || []) { pattern.steps ||= []; pattern.steps.push(Array.from({length:pattern.length},()=>null)); }
           attachedTrack = track;
         } else {
           const removed = new Set((p.audioPlugins || []).filter(plugin => plugin.track === session.track
               && plugin.kind === 'instrument').map(plugin => plugin.instanceID).filter(Boolean));
           p.audioPlugins = (p.audioPlugins || []).filter(plugin => !(plugin.track === session.track && plugin.kind === 'instrument'));
-          if (p.routing?.sidechains) p.routing.sidechains = p.routing.sidechains.filter(send => !removed.has(send.destination?.instanceID));
+          if (p.routing.sidechains) p.routing.sidechains = p.routing.sidechains.filter(send => !removed.has(send.destination?.instanceID));
           session.trackObject.instrument = index; attachedTrack = session.trackObject;
         }
         attachedInstrument = instrument;

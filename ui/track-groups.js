@@ -41,11 +41,9 @@
   // Owners whose audio a group contains: its bus and every member channel.
   const owners = (p, group) => [busOwner(group), ...members(p, group).map(index => trackOwner(p.tracks[index]))].filter(Boolean);
 
+  // The project's routing table with its four collections (a saved table may leave empty ones out).
   function ensureRouting(p) {
-    p.routing ||= { version: 1, mixModel: 'standard', buses: [], outputs: {}, sends: [], sidechains: [] };
     const r = p.routing;
-    r.version ??= 1;
-    r.mixModel = 'standard';
     r.buses ||= []; r.outputs ||= {}; r.sends ||= []; r.sidechains ||= [];
     return r;
   }
@@ -99,15 +97,13 @@
     return order;
   }
 
-  function routeMember(p, index, group, makeID = fallbackID) {
-    const track = p.tracks[index];
-    if (track && !(typeof track.routingID === 'string' && track.routingID)) track.routingID = makeID();
-    const owner = trackOwner(track);
+  function routeMember(p, index, group) {
+    const owner = trackOwner(p.tracks[index]);
     if (!owner || !group) return;
     ensureRouting(p).outputs[owner] = busOwner(group);
   }
   function unrouteMember(p, index, group) {
-    const owner = trackOwner(p.tracks[index]), outputs = p.routing?.outputs;
+    const owner = trackOwner(p.tracks[index]), outputs = p.routing.outputs;
     if (owner && outputs && (!group || outputs[owner] === busOwner(group))) outputs[owner] = 'master';
   }
 
@@ -139,7 +135,7 @@
       const previous = ofTrack(p, index);
       if (previous) unrouteMember(p, index, previous);
       p.tracks[index].groupID = group.id;
-      routeMember(p, index, group, makeID);
+      routeMember(p, index, group);
     }
     const map = reorder(p, contiguousOrder(p));
     dropEmpty(p, { removeBuses: true });
@@ -255,24 +251,19 @@
     if (!removing.length) return p.tracks.map((_, i) => i);
     if (removing.length >= n) throw new Error('Keep at least one track in a session.');
     const chosen = new Set(removing), owners = new Set(removing.map(i => trackOwner(p.tracks[i])).filter(Boolean));
-    const belongs = item => object(item) && (item.owner ? owners.has(item.owner) : Number.isInteger(item.track) && chosen.has(item.track));
-    const plugins = (p.audioPlugins || []).filter(belongs), instances = new Set(plugins.map(plugin => plugin.instanceID).filter(Boolean));
-    p.audioPlugins = (p.audioPlugins || []).filter(plugin => !belongs(plugin));
+    const ownsPlugin = plugin => object(plugin) && owners.has(plugin.owner);
+    // An automation lane names its channel, or the track index for the engine's instrument parameters.
+    const ownsLane = lane => object(lane) && (lane.owner ? owners.has(lane.owner) : Number.isInteger(lane.track) && chosen.has(lane.track));
+    const plugins = (p.audioPlugins || []).filter(ownsPlugin), instances = new Set(plugins.map(plugin => plugin.instanceID).filter(Boolean));
+    p.audioPlugins = (p.audioPlugins || []).filter(plugin => !ownsPlugin(plugin));
     for (const id of instances) if (p.pluginPages) delete p.pluginPages[id];
-    const r = p.routing;
-    let removedSends = new Set();
-    if (object(r)) {
-      if (object(r.outputs)) {
-        for (const owner of owners) delete r.outputs[owner];
-        for (const source of Object.keys(r.outputs)) if (owners.has(r.outputs[source])) r.outputs[source] = null;
-      }
-      if (Array.isArray(r.sends)) {
-        removedSends = new Set(r.sends.filter(send => owners.has(send.source) || owners.has(send.destination)).map(send => `send:${send.id}`));
-        r.sends = r.sends.filter(send => !owners.has(send.source) && !owners.has(send.destination));
-      }
-      if (Array.isArray(r.sidechains)) r.sidechains = r.sidechains.filter(route => !owners.has(route.source) && !instances.has(route.destination?.instanceID));
-    }
-    for (const pattern of p.patterns || []) if (Array.isArray(pattern.automation)) pattern.automation = pattern.automation.filter(lane => !belongs(lane) && !removedSends.has(lane.target));
+    const r = ensureRouting(p);
+    for (const owner of owners) delete r.outputs[owner];
+    for (const source of Object.keys(r.outputs)) if (owners.has(r.outputs[source])) r.outputs[source] = null;
+    const removedSends = new Set(r.sends.filter(send => owners.has(send.source) || owners.has(send.destination)).map(send => `send:${send.id}`));
+    r.sends = r.sends.filter(send => !owners.has(send.source) && !owners.has(send.destination));
+    r.sidechains = r.sidechains.filter(route => !owners.has(route.source) && !instances.has(route.destination?.instanceID));
+    for (const pattern of p.patterns || []) if (Array.isArray(pattern.automation)) pattern.automation = pattern.automation.filter(lane => !ownsLane(lane) && !removedSends.has(lane.target));
     for (const key of ['audioClips', 'patternClips']) if (Array.isArray(p[key])) p[key] = p[key].filter(item => !(Number.isInteger(item?.track) && chosen.has(item.track)));
     const groups = new Set(removing.map(i => ofTrack(p, i)).filter(Boolean));
     // Deleted tracks move to the end (every reference follows), then the tail is cut off.
@@ -286,17 +277,16 @@
 
   // Removes the bus channel and everything attached to it (inserts, sends, automation).
   function removeBus(p, group, replacement = 'master') {
-    const owner = busOwner(group), r = p.routing;
-    if (!owner || !r) return;
+    const owner = busOwner(group);
+    if (!owner) return;
+    const r = ensureRouting(p);
     const removed = new Set((p.audioPlugins || []).filter(plugin => plugin.owner === owner).map(plugin => plugin.instanceID));
-    r.buses = (r.buses || []).filter(bus => `bus:${bus.id}` !== owner);
-    if (r.outputs) {
-      delete r.outputs[owner];
-      for (const source of Object.keys(r.outputs)) if (r.outputs[source] === owner) r.outputs[source] = replacement;
-    }
-    const removedSends = new Set((r.sends || []).filter(send => send.source === owner || send.destination === owner).map(send => `send:${send.id}`));
-    r.sends = (r.sends || []).filter(send => send.source !== owner && send.destination !== owner);
-    r.sidechains = (r.sidechains || []).filter(route => route.source !== owner && !removed.has(route.destination?.instanceID));
+    r.buses = r.buses.filter(bus => `bus:${bus.id}` !== owner);
+    delete r.outputs[owner];
+    for (const source of Object.keys(r.outputs)) if (r.outputs[source] === owner) r.outputs[source] = replacement;
+    const removedSends = new Set(r.sends.filter(send => send.source === owner || send.destination === owner).map(send => `send:${send.id}`));
+    r.sends = r.sends.filter(send => send.source !== owner && send.destination !== owner);
+    r.sidechains = r.sidechains.filter(route => route.source !== owner && !removed.has(route.destination?.instanceID));
     p.audioPlugins = (p.audioPlugins || []).filter(plugin => plugin.owner !== owner);
     for (const id of removed) if (p.pluginPages) delete p.pluginPages[id];
     for (const pattern of p.patterns || []) if (pattern.automation) pattern.automation = pattern.automation.filter(lane => lane.owner !== owner && !removedSends.has(lane.target));
@@ -323,7 +313,7 @@
     const group = byID(p, groupID);
     if (!group || !String(name || '').trim()) return false;
     group.name = String(name).trim();
-    const bus = p.routing?.buses?.find(item => item.id === group.busID);
+    const bus = p.routing.buses?.find(item => item.id === group.busID);
     if (bus) bus.name = group.name;
     return true;
   }
@@ -357,7 +347,7 @@
     const order = contiguousOrder(p);
     if (order.some((old, next) => old !== next)) { reorder(p, order); changed = true; }
     for (const group of list(p)) {
-      const had = !!p.routing?.buses?.some(bus => bus.id === group.busID && bus.type === 'group' && bus.groupID === group.id);
+      const had = !!p.routing.buses?.some(bus => bus.id === group.busID && bus.type === 'group' && bus.groupID === group.id);
       ensureBus(p, group);
       if (!had) changed = true;
     }

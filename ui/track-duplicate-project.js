@@ -30,19 +30,17 @@
     if (!Number.isInteger(source.instrument) || source.instrument < 0 || source.instrument >= instruments.length || !object(instruments[source.instrument])) fail('The source track has an invalid assigned instrument.');
     const patterns = array(proposal.patterns, 'Patterns', true), clips = array(proposal.audioClips, 'Audio clips', true);
     const plugins = array(proposal.audioPlugins, 'Audio plug-ins', true), routing = proposal.routing;
-    if (routing !== undefined && (!object(routing) || routing.version !== 1)) fail('Track duplication supports routing version 1 only.');
-    const buses = routing ? array(routing.buses, 'Routing buses', true) : [];
-    const sends = routing ? array(routing.sends, 'Routing sends', true) : [];
-    const sidechains = routing ? array(routing.sidechains, 'Routing sidechains', true) : [];
+    if (!object(routing) || routing.version !== 1) fail('Track duplication needs the project\'s routing table (version 1).');
+    const buses = array(routing.buses, 'Routing buses', true);
+    const sends = array(routing.sends, 'Routing sends', true);
+    const sidechains = array(routing.sidechains, 'Routing sidechains', true);
     const owners = new Set(['master']), trackOwners = [], explicitTrackIDs = new Set();
     for (let i = 0; i < tracks.length; i++) {
       const track = tracks[i];
       if (!object(track)) fail('Tracks must contain track objects.');
-      if (has(track, 'routingID')) {
-        if (!identifier(track.routingID) || explicitTrackIDs.has(track.routingID)) fail('Track routing identities must be valid and unique.');
-        explicitTrackIDs.add(track.routingID);
-      } else if (routing) fail('Routed tracks need stable routing identities before duplication.');
-      const owner = `track:${track.routingID ?? `legacy-${i}`}`;
+      if (!identifier(track.routingID) || explicitTrackIDs.has(track.routingID)) fail('Track routing identities must be valid and unique.');
+      explicitTrackIDs.add(track.routingID);
+      const owner = `track:${track.routingID}`;
       trackOwners.push(owner); owners.add(owner);
     }
     for (const bus of buses) {
@@ -106,7 +104,7 @@
     const copiedPluginIDs = new Set(sourcePlugins.map(plugin => plugin.instanceID).filter(Boolean));
     const sourceSidechains = sidechains.filter(route => object(route.destination) && copiedPluginIDs.has(route.destination.instanceID));
     if (sends.length + sidechains.length + sourceSends.length + sourceSidechains.length > 128) fail('Track duplication would exceed 128 sends and sidechains combined.');
-    if (routing?.outputs !== undefined && !object(routing.outputs)) fail('Routing outputs must be an object.');
+    if (routing.outputs !== undefined && !object(routing.outputs)) fail('Routing outputs must be an object.');
 
     // Reserve identity fields throughout the JSON, including dormant metadata,
     // without rewriting anything inside vendor state or NKS payloads.
@@ -194,12 +192,10 @@
       for (const key of ['fx1', 'fx2']) if (step[key]?.type === 'plugin' && instanceMap.has(step[key].instanceID)) step[key].instanceID = instanceMap.get(step[key].instanceID);
     }
     if (pluginCopies.length || chainCopies.length) proposal.audioPlugins = [...plugins, ...pluginCopies, ...chainCopies];
-    if (routing) {
-      routing.outputs ||= {};
-      routing.outputs[newOwner] = has(routing.outputs, sourceOwner) ? routing.outputs[sourceOwner] : 'master';
-      if (sourceSends.length) routing.sends = sends;
-      if (sourceSidechains.length) routing.sidechains = sidechains;
-    }
+    routing.outputs ||= {};
+    routing.outputs[newOwner] = has(routing.outputs, sourceOwner) ? routing.outputs[sourceOwner] : 'master';
+    if (sourceSends.length) routing.sends = sends;
+    if (sourceSidechains.length) routing.sidechains = sidechains;
     tracks.push(newTrack);
     return { project: proposal, trackIndex, sourceTrackIndex: index, instrumentMap: Object.fromEntries(instrumentMap), instanceMap: Object.fromEntries(instanceMap), newPluginInstanceIDs: pluginCopies.map(plugin => plugin.instanceID) };
   }

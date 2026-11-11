@@ -27,7 +27,7 @@ function harness() {
   const context=vm.createContext({window,document,console,Date,Map,Set,Math,JSON,Number,String,Object,Array,Promise,queueMicrotask,innerWidth:1280,innerHeight:800,setTimeout:(fn,delay)=>{timers.set(++timerID,{fn,delay});return timerID;},clearTimeout:id=>timers.delete(id),requestAnimationFrame:fn=>fn()});
   for (const file of ['app.js','nks-controls.js','studio.js']) web.load(context, file);
   const ST=window.ST, p=ST.demoProject();p.audioPlugins=[];p.tracks=p.tracks.slice(0,1);p.tracks[0].instrument=0;p.instruments=p.instruments.slice(0,1);p.instruments[0].type='au';p.patterns[0].automation=[];
-  const plugin={track:0,kind:'instrument',slot:0,instanceID:'fixture-instance',component:'fixture',name:'Original fixture',state:'state:0.25',nks:{name:'Original mapping fixture',path:'/fixture.nksf',pages:[{name:'Colour',parameters:[{slot:0,parameterID:270544960,mapped:true,name:'Brightness',section:'Filter'}]},{name:'Tone alias',parameters:[{slot:0,parameterID:270544960,mapped:true,name:'Sheen',section:'Air'}]}]}};
+  const plugin={owner:'track:'+p.tracks[0].routingID,track:0,kind:'instrument',slot:0,instanceID:'fixture-instance',component:'fixture',name:'Original fixture',state:'state:0.25',nks:{name:'Original mapping fixture',path:'/fixture.nksf',pages:[{name:'Colour',parameters:[{slot:0,parameterID:270544960,mapped:true,name:'Brightness',section:'Filter'}]},{name:'Tone alias',parameters:[{slot:0,parameterID:270544960,mapped:true,name:'Sheen',section:'Air'}]}]}};
   p.audioPlugins=[plugin];p.instruments[0].plugin=copy(plugin);ST.state.project=p;ST.state.view='instrument';ST.state.track=0;ST.state.instrument=0;ST.state.engineReady=true;
   let value=.25;
   const parameters=()=>[{address:'270544960',name:'Generic Macro 7',normalized:value,writable:true,automatable:true}];
@@ -45,17 +45,17 @@ function prepareSampler(h) {
   h.node('sampler-slice-map').contains=element=>element===button;button.focus();
   return ()=>h.window.STSampler.key({key:'Enter',target:button,preventDefault(){},stopPropagation(){}});
 }
-function prepareRoutingRepair(h,{unavailable=true}={}) {
+// A routing change through the real transaction: the group's output moves from "no output" to Master.
+function prepareRoutingChange(h) {
   h.loadModule('routing.js');h.p.tracks[0].routingID='fixture-tone';
-  h.p.routing={version:1,mixModel:'standard',buses:[{id:'repair-group',name:'Repair group',type:'group',volume:1,pan:0,mute:false,solo:false}],outputs:{'track:fixture-tone':'bus:repair-group','bus:repair-group':unavailable?'bus:repair-group':'master'},sends:[],sidechains:[]};
-  const capabilities={supported:true,outputs:true,mixModels:['legacy','standard'],buses:{group:true,return:true,max:16},sends:{enabled:true,taps:['preFader','postFader'],max:128},sidechains:{enabled:true,taps:['preInserts','preFader','postFader'],inputs:[]},projectUnavailable:unavailable};
-  h.ST.state.status={routing:{projectUnavailable:unavailable},routingFailure:unavailable?'Saved self-route is unavailable':null};
-  h.window.STRouting.event('routing.capabilities',capabilities);
-  h.handlers.set('routing.capabilities',()=>capabilities);h.handlers.set('routing.status',()=>({projectUnavailable:unavailable}));
+  for(const descriptor of [h.p.audioPlugins[0],h.p.instruments[0].plugin,h.plugin])descriptor.owner='track:fixture-tone';
+  h.p.routing={version:1,mixModel:'standard',buses:[{id:'repair-group',name:'Repair group',type:'group',volume:1,pan:0,mute:false,solo:false}],outputs:{'track:fixture-tone':'bus:repair-group','bus:repair-group':null},sends:[],sidechains:[]};
+  const capabilities={supported:true,outputs:true,buses:{group:true,return:true,max:16},sends:{enabled:true,taps:['preFader','postFader'],max:128},sidechains:{enabled:true,taps:['preInserts','preFader','postFader'],inputs:[]}};
+  h.handlers.set('routing.capabilities',()=>capabilities);
   h.handlers.set('engine.snapshot',()=>copy(h.p));
-  h.handlers.set('routing.validate',()=>({valid:true,status:{projectUnavailable:false}}));
-  h.handlers.set('routing.apply',payload=>({project:copy(payload.project),capabilities:{...capabilities,projectUnavailable:false},status:{projectUnavailable:false}}));
-  return ()=>h.window.STRouting.transaction('Repair saved output',project=>{project.routing.outputs['bus:repair-group']='master';},{owner:'bus:repair-group'});
+  h.handlers.set('routing.validate',()=>({valid:true}));
+  h.handlers.set('routing.apply',payload=>({project:copy(payload.project),capabilities,status:{}}));
+  return async()=>{await h.window.STRouting.refreshCapabilities();return h.window.STRouting.transaction('Change group output',project=>{project.routing.outputs['bus:repair-group']='master';},{owner:'bus:repair-group'});};
 }
 (async()=>{
   {
@@ -394,44 +394,15 @@ function prepareRoutingRepair(h,{unavailable=true}={}) {
     console.log('PASS genuine instrument edits or reassignment during NKS settlement still cancel loading into the changed destination');
   }
   {
-    const h=harness();await tick();const repair=prepareRoutingRepair(h),desired='retained-desired-opaque-state';
-    h.p.audioPlugins[0].state=desired;h.p.instruments[0].plugin.state=desired;h.p.patterns[0].steps[0][0].note=73;
-    h.handlers.set('engine.project',()=>{throw Error('The saved routing contains a self-cycle');});h.ST.syncEngine();
-    await bounded(repair());
-    assert.equal(h.p.routing.outputs['bus:repair-group'],'master');assert.equal(h.p.audioPlugins[0].state,desired);assert.equal(h.p.patterns[0].steps[0][0].note,73);
-    const apply=h.calls.find(call=>call.command==='routing.apply');assert(apply);assert.equal(apply.payload.project.audioPlugins[0].state,desired);
-    assert(h.calls.some(call=>call.command==='routing.status'),'repair must obtain explicit current native unavailable status');
-    assert(h.calls.filter(call=>call.command==='engine.snapshot').length>=2,'capture and repair proof independently retain exact desired state');
-    assert.equal(h.ST.state.undo.length,1);assert.equal(h.ST.state.undo[0].project.routing.outputs['bus:repair-group'],'bus:repair-group');
-    console.log('PASS explicit unavailable routing repairs its saved self-cycle while retaining desired plug-in state, notes and one Undo baseline');
-  }
-  {
-    const h=harness();await tick();const repair=prepareRoutingRepair(h,{unavailable:false}),before=copy(h.p);
+    const h=harness();await tick();const repair=prepareRoutingChange(h),before=copy(h.p);
     h.handlers.set('engine.project',()=>{throw Error('Ordinary project synchronization failed');});
     await assert.rejects(bounded(repair()),/Ordinary project synchronization failed/);
     assert.deepEqual(copy(h.p),before);assert(!h.calls.some(call=>['routing.validate','routing.apply'].includes(call.command)));assert.equal(h.ST.state.undo.length,0);
-    console.log('PASS normal routing changes retain strict synchronization failure and cannot use the unavailable-project repair exception');
-  }
-  {
-    for(const mismatch of ['routing','opaque-state']){
-      const h=harness();await tick();const repair=prepareRoutingRepair(h),before=copy(h.p);
-      h.handlers.set('engine.snapshot',()=>{const retained=copy(before);if(mismatch==='routing')retained.routing.outputs['track:fixture-tone']='master';else retained.audioPlugins[0].state='older-unrelated-blob';return retained;});
-      await assert.rejects(bounded(repair()));
-      assert.deepEqual(copy(h.p),before,`${mismatch}: the first retained snapshot must not overwrite desired UI intent before repair proof`);
-      assert(!h.calls.some(call=>['routing.validate','routing.apply'].includes(call.command)));assert.equal(h.ST.state.undo.length,0);
-    }
-    console.log('PASS the first unavailable snapshot must match retained routing and opaque state before any desired state can be overwritten or repaired');
-  }
-  {
-    const h=harness();await tick();const repair=prepareRoutingRepair(h),before=copy(h.p);
-    h.handlers.set('routing.status',()=>({projectUnavailable:false}));h.handlers.set('engine.project',()=>{throw Error('Fresh native status does not authorize repair bypass');});
-    await assert.rejects(bounded(repair()),/does not authorize repair bypass/);
-    assert.deepEqual(copy(h.p),before);assert(!h.calls.some(call=>['routing.validate','routing.apply'].includes(call.command)));
-    console.log('PASS a stale unavailable UI hint cannot bypass a normal native synchronization error');
+    console.log('PASS a routing change stops at a failed project synchronization before it is validated or applied');
   }
   {
     for(const change of ['new-draft','replacement']){
-      const h=harness();await tick();const repair=prepareRoutingRepair(h),before=copy(h.p);let finishSnapshot;
+      const h=harness();await tick();const repair=prepareRoutingChange(h),before=copy(h.p);let finishSnapshot;
       h.handlers.set('engine.snapshot',()=>new Promise(resolve=>{finishSnapshot=()=>resolve(copy(before));}));
       const pending=repair();await tick();assert.equal(typeof finishSnapshot,'function');
       if(change==='new-draft')h.edit(.92);else h.ST.state.project={...copy(h.p),name:'A newer session'};
@@ -440,33 +411,33 @@ function prepareRoutingRepair(h,{unavailable=true}={}) {
       if(change==='new-draft'){assert.equal(h.controls.hasPendingEdits,true);assert.equal(h.p.audioPlugins[0].state,before.audioPlugins[0].state);}
       else assert.equal(h.ST.state.project.name,'A newer session');
     }
-    console.log('PASS a new mapped draft or session replacement during retained-state proof prevents a stale routing repair');
+    console.log('PASS a new mapped draft or session replacement during the capture before a routing change prevents a stale change');
   }
   {
     for(const phase of ['routing.validate','routing.apply']){
-      const h=harness();await tick();const repair=prepareRoutingRepair(h),owner=h.p;let finish;
-      h.handlers.set(phase,payload=>new Promise(resolve=>{finish=()=>resolve(phase==='routing.validate'?{valid:true}:{project:copy(payload.project),status:{projectUnavailable:false}});}));
+      const h=harness();await tick();const repair=prepareRoutingChange(h),owner=h.p;let finish;
+      h.handlers.set(phase,payload=>new Promise(resolve=>{finish=()=>resolve(phase==='routing.validate'?{valid:true}:{project:copy(payload.project),status:{}});}));
       const pending=repair();await tick();assert.equal(typeof finish,'function');h.edit(.92);finish();await assert.rejects(bounded(pending));
-      assert.equal(h.ST.state.project,owner);assert.equal(owner.routing.outputs['bus:repair-group'],'bus:repair-group','canceled repair retains the desired old route');
+      assert.equal(h.ST.state.project,owner);assert.equal(owner.routing.outputs['bus:repair-group'],null,'a canceled change keeps the old route');
       if(phase==='routing.validate'){
         assert(!h.calls.some(call=>call.command==='routing.apply'));assert.equal(h.controls.hasPendingEdits,true);assert.equal(owner.audioPlugins[0].state,'state:0.25');
       }else{
-        const rollback=h.calls.find(call=>call.command==='engine.project');assert(rollback);assert.equal(rollback.payload.replace,true);
-        assert.equal(rollback.payload.project.audioPlugins[0].state,'state:0.92');assert.equal(rollback.payload.project.routing.outputs['bus:repair-group'],'bus:repair-group');
+        const rollback=h.calls.findLast(call=>call.command==='engine.project');assert(rollback);assert.equal(rollback.payload.replace,true);
+        assert.equal(rollback.payload.project.audioPlugins[0].state,'state:0.92');assert.equal(rollback.payload.project.routing.outputs['bus:repair-group'],null);
         assert.equal(owner.audioPlugins[0].state,'state:0.92');assert.equal(h.controls.hasPendingEdits,false);assert.equal(h.ST.state.undo.length,1);
       }
     }
     console.log('PASS a new mapped draft during routing validation cancels before apply; during apply it is captured into the explicit current-project rollback');
   }
   {
-    const h=harness();await tick();const repair=prepareRoutingRepair(h),owner=h.p;let finish;
-    h.handlers.set('routing.apply',payload=>new Promise(resolve=>{finish=()=>resolve({project:copy(payload.project),status:{projectUnavailable:false}});}));
+    const h=harness();await tick();const repair=prepareRoutingChange(h),owner=h.p;let finish;
+    h.handlers.set('routing.apply',payload=>new Promise(resolve=>{finish=()=>resolve({project:copy(payload.project),status:{}});}));
     const pending=repair();await tick();h.edit(.97);h.handlers.set('plugin.state',()=>{throw Error('Mapped rollback state capture failed');});finish();
     await assert.rejects(bounded(pending),/Restoring current audio state failed/);
-    assert.equal(h.ST.state.project,owner);assert.equal(owner.audioPlugins[0].state,'state:0.25');assert.equal(owner.routing.outputs['bus:repair-group'],'bus:repair-group');
-    assert.equal(h.controls.hasPendingEdits,true);assert.equal(h.ST.state.undo.length,0);assert(!h.calls.some(call=>call.command==='engine.project'));
+    assert.equal(h.ST.state.project,owner);assert.equal(owner.audioPlugins[0].state,'state:0.25');assert.equal(owner.routing.outputs['bus:repair-group'],null);
+    assert.equal(h.controls.hasPendingEdits,true);assert.equal(h.ST.state.undo.length,0);assert(!h.calls.some(call=>call.command==='engine.project'&&call.payload.replace));
     h.handlers.set('plugin.state',()=>({...copy(h.plugin),state:`state:${h.value}`}));assert.equal(await bounded(h.controls.flushEdits()),true);assert.equal(owner.audioPlugins[0].state,'state:0.97');
-    console.log('PASS a failed repair rollback capture keeps the latest mapped intent retryable without installing stale blobs or a false routing Undo');
+    console.log('PASS a failed rollback capture after a routing change keeps the latest mapped intent retryable without installing stale blobs or a false routing Undo');
   }
-  console.log('NKS automation workflow: 37 application integration groups passed (simulated bridge, no audio claim).');
+  console.log('NKS automation workflow: 34 application integration groups passed (simulated bridge, no audio claim).');
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -3,6 +3,7 @@
 // scheduling: validation, one undo step per call, readable round-trips and UI sync.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const web = require('./helpers/web');
+const { owned } = require('./helpers/project');
 const fixture = fs.readFileSync(path.join(__dirname, 'scalar_field_focus_tests.js'), 'utf8');
 const makeHarness = new Function('require', '__dirname', fixture.slice(0, fixture.indexOf('const tests = [], test =')) + '\nreturn harness;')(require, __dirname);
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -198,7 +199,7 @@ test('plug-in parameters resolve by name, change natively and commit captured st
     'plugin.parameter': payload => { set.push(payload); const item = parameters.find(p => p.address === payload.address); Object.assign(item, { normalized: payload.value, value: item.min + payload.value * (item.max - item.min), display: String(payload.value) }); return { ...item }; },
     'plugin.state': payload => ({ ...payload, component: 'aufx:test', name: 'Test FX', state: 'NEWSTATE' })
   });
-  h.state.project.audioPlugins = [{ track: 1, kind: 'effect', slot: 0, instanceID: 'fx-1', component: 'aufx:test', name: 'Test FX', state: 'OLD' }];
+  h.state.project.audioPlugins = [{ track: 1, kind: 'effect', slot: 0, instanceID: 'fx-1', component: 'aufx:test', name: 'Test FX', state: 'OLD' }]; owned(h.state.project);
   h.state.project.tracks[1].plugins = [{ name: 'Test FX' }];
   const list = await h.ok('pluginParameters', { track: 1, kind: 'effect', slot: 0, query: 'cut' });
   assert.deepEqual(list.parameters.map(p => p.name), ['Cutoff']);
@@ -315,7 +316,7 @@ test('setAutomation keeps one point per row, needs real values and refuses unkno
   // A plug-in target names a plug-in the track holds.
   await h.rejects('setAutomation', { track: 0, target: 'plugin:garbage', points: [{ row: 0, value: .5 }] }, /has no plug-in for "plugin:garbage"/);
   await h.rejects('setAutomation', { track: 0, target: 'plugin:effect:3:7', points: [{ row: 0, value: .5 }] }, /has no plug-in/);
-  h.state.project.audioPlugins = [{ track: 0, kind: 'effect', slot: 3, instanceID: 'fx-3', component: 'aufx:test', name: 'Test FX' }];
+  h.state.project.audioPlugins = [{ track: 0, kind: 'effect', slot: 3, instanceID: 'fx-3', component: 'aufx:test', name: 'Test FX' }]; owned(h.state.project);
   assert.equal((await h.ok('setAutomation', { track: 0, target: 'plugin:effect:3:7', points: [{ row: 0, value: '50%' }] })).lane.points, 1);
 });
 

@@ -66,7 +66,7 @@ test('older native hosts and browser preview preserve immediate local-only armin
 test('host capability arrival synchronizes legacy local intent; idle host disarm is honored',async()=>{
  const h=harness({supported:false});await h.ST.perform('record');assert.equal(h.state.recording,true);h.status({noteRecordArmed:false});assert.equal(h.state.recording,false);await tick();assert.equal(h.arms.length,1);h.reply(0,true);await tick();assert.equal(h.state.recording,true);h.status({noteRecordArmed:false});assert.equal(h.state.recording,false);
 });
-test('invalid acknowledgement never falsely arms and routing warning retains priority',async()=>{
- const h=harness();h.state.status.routingFailure='Cannot route';const done=h.ST.perform('record');await tick();assert.match(h.node('status-message').textContent,/Routing needs repair/);h.reply(0,undefined);await done;assert.equal(h.state.recording,false);assert.match(h.node('toast-region').innerHTML,/did not confirm/);
+test('invalid acknowledgement never falsely arms',async()=>{
+ const h=harness();const done=h.ST.perform('record');await tick();assert.match(h.node('status-message').textContent,/Arming note recording/);h.reply(0,undefined);await done;assert.equal(h.state.recording,false);assert.match(h.node('toast-region').innerHTML,/did not confirm/);
 });
 (async()=>{for(const {name,run} of tests){await run();console.log('PASS '+name);}console.log(`${tests.length} note-record arm groups passed.`);})().catch(e=>{console.error(e);process.exitCode=1;});

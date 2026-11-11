@@ -2,7 +2,8 @@
 const assert = require('node:assert/strict');
 const duplicate = require('../ui/track-duplicate-project.js');
 const project = {
-  tracks: [{id: 0, name: 'Performance', instrument: 0}], instruments: [{id: 0, type: 'sample'}],
+  tracks: [{id: 0, routingID: 'performance', name: 'Performance', instrument: 0}], instruments: [{id: 0, type: 'sample'}],
+  routing: {version: 1, mixModel: 'standard', buses: [], outputs: {}, sends: [], sidechains: []},
   patterns: [{id: 0, length: 1, steps: [[null]]}], sequence: [0],
   audioClips: [{id: 'clip', track: 0, path: '/takes/current.wav', startBeat: 4, durationBeats: 8, sourceOffset: .2,
     takeSet: {version: 1, activeID: 'a', takes: [

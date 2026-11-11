@@ -13,7 +13,7 @@ const tick = async () => { for (let i = 0; i < 40; i++) await Promise.resolve();
 function lanes() {
   const h = session(), app = h.win.STApp;
   h.state.view = 'pattern';
-  h.state.project.tracks.forEach((track, i) => { track.routingID ||= `r${i}`; });
+  h.state.project.tracks.forEach((track, i) => { track.routingID = `r${i}`; });
   const p = () => h.state.project;
   const visible = () => app.patternColumns().map(c => c.collapsed ? `G${c.index}` : c.slim ? `s${c.index}` : c.index);
   const html = () => { h.ST.refresh(); return h.element('#app').innerHTML; };
@@ -107,8 +107,7 @@ test('removeTracks deletes tracks with their steps, automation, clips, plug-ins,
 
 test('orphaned plug-in descriptors (owner deleted) are dropped on load and before every audio publish', async () => {
   const { h, app, p } = lanes();
-  if (!h.win.STRoutingProject) h.load('routing-project.js');
-  const keep = { owner: 'track:r1', kind: 'effect', slot: 0, instanceID: 'keep' }, bus = { owner: 'bus:nope', kind: 'effect', slot: 0, instanceID: 'bus' },
+  const keep = { owner: `track:${p().tracks[1].routingID}`, kind: 'effect', slot: 0, instanceID: 'keep' }, bus = { owner: 'bus:nope', kind: 'effect', slot: 0, instanceID: 'bus' },
     gone = { owner: 'track:deleted', kind: 'effect', slot: 0, instanceID: 'gone' }, inst = { owner: 'instrument:999', kind: 'effect', slot: 0, instanceID: 'inst' };
   const loaded = app.normalize({ ...JSON.parse(JSON.stringify(p())), audioPlugins: [keep, gone, bus, inst] });
   same(loaded.audioPlugins.map(x => x.instanceID), ['keep']);

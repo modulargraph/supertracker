@@ -1,5 +1,6 @@
 /* Project model: defaults for new instruments, patterns and sessions, the demo session,
-   and normalize(), which upgrades and repairs any loaded project. */
+   and normalize(), which gives every project the page holds its complete shape (defaults for what a
+   file leaves out, a routing table, a routing identity for every track). */
 (function () {
   'use strict';
 
@@ -243,7 +244,7 @@
       }];
       project.patterns.push(pat);
     }
-    return project;
+    return normalize(project);
   }
 
   function normalize(p) {
@@ -285,9 +286,9 @@
     p.delay = { time: .375, feedback: .35, mix: .3, ...p.delay };
     p.reverb = { size: .7, damping: .4, mix: .25, ...p.reverb };
     p.audioPlugins = p.audioPlugins || [];
-    window.STRoutingProject?.ensureTrackIDs(p, uid);
-    window.STGroups?.normalize(p);
-    window.STRoutingProject?.pruneOrphanPlugins(p);
+    window.STRoutingProject.ensureTrackIDs(p, uid);
+    window.STGroups.normalize(p);
+    window.STRoutingProject.pruneOrphanPlugins(p);
     return p;
   }
 

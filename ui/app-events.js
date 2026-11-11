@@ -100,7 +100,7 @@
       // plug-ins belong to that candidate; the commit brings its own descriptors.
       if (window.STKitGroups?.isBusy) return;
       const p = state.project, tracks = new Set((p.tracks || []).map(t => 'track:' + t.routingID)),
-        buses = new Set((p.routing?.buses || []).map(b => 'bus:' + b.id));
+        buses = new Set((p.routing.buses || []).map(b => 'bus:' + b.id));
       // A descriptor for an owner this project does not have (a superseded candidate) is not adopted.
       const instruments = new Set((p.instruments || []).map((_, i) => 'instrument:' + i));
       const plugins = (payload.plugins || payload).filter(x => !x.owner || x.owner === 'master' || tracks.has(x.owner) || buses.has(x.owner)

@@ -2,6 +2,7 @@
 // Behavior tests drive the real studio module; native range defaults remain unhandled intentionally.
 const assert = require('node:assert/strict');
 const web = require('./helpers/web');
+const { routed } = require('./helpers/project');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
@@ -15,7 +16,7 @@ function harness(count = 4) {
     const item = { id, dataset, type, tagName: tag, handlers: {}, value: '.8', scrolls: 0, disabled: false, style: {}, classList: { toggle() {} }, setAttribute() {}, addEventListener(event, callback) { (this.handlers[event] ||= []).push(callback); }, focus() { document.activeElement = this; }, scrollIntoView(options) { this.scrolls++; this.scrollOptions = options; }, closest(selector) { if (selector === '[data-mixer-channel]' || selector === '[data-mixer-owner]') return this.channel || null; if (selector === '.studio-plugin > summary') return this.isSummary ? this : null; return null; }, fire(event, extra = {}) { const e = { key: '', target: this, preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }, ...extra }; for (const fn of this.handlers[event] || []) fn(e); return e; } };
     nodes.set(id, item); return item;
   }
-  const state = { view: 'mixer', track: 0, instrument: 0, keyboardPlay: true, selectedLane: 0, row: 0, project: { activePattern: 1, masterVolume: .7, tracks: Array.from({ length: count }, (_, i) => ({ name: `Track ${i + 1}`, instrument: i, volume: .8, pan: 0, delaySend: .1, reverbSend: .2 })), instruments: Array.from({ length: count }, () => ({ type: 'synth' })), audioPlugins: [], patterns: [{ id: 1, name: 'Pattern', length: 64, automation: [{ track: 0, target: 'volume', name: 'Volume', points: [{ row: 0, value: .8 }] }, { track: 1, target: 'pan', name: 'Pan', points: [{ row: 0, value: 0 }] }] }] } };
+  const state = { view: 'mixer', track: 0, instrument: 0, keyboardPlay: true, selectedLane: 0, row: 0, project: routed({ activePattern: 1, masterVolume: .7, tracks: Array.from({ length: count }, (_, i) => ({ name: `Track ${i + 1}`, instrument: i, volume: .8, pan: 0, delaySend: .1, reverbSend: .2 })), instruments: Array.from({ length: count }, () => ({ type: 'synth' })), audioPlugins: [], patterns: [{ id: 1, name: 'Pattern', length: 64, automation: [{ track: 0, target: 'volume', name: 'Volume', points: [{ row: 0, value: .8 }] }, { track: 1, target: 'pan', name: 'Pan', points: [{ row: 0, value: 0 }] }] }] }) };
   const properties = [], toggles = [], selectButtons = [];
   for (let i = 0; i < count; i++) {
     const channel = node(`channel-${i}`, { mixerChannel: String(i), mixerOwner: `track:${i}` });

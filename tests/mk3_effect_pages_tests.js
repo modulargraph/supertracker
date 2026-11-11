@@ -17,8 +17,8 @@ function effectSession() {
   let nativePlugins = [
     { owner: 'track:lead', track: 0, kind: 'effect', slot: 0, component: 'stfx:filter', name: 'Multimode Filter', format: 'Builtin', instanceID: 'fx-filter', state: 'filter-state' },
     { owner: 'track:lead', track: 0, kind: 'effect', slot: 1, component: 'stfx:beatdelay', name: 'Beat Delay', format: 'Builtin', instanceID: 'fx-delay', state: 'delay-state' }];
-  p.audioPlugins = clone(nativePlugins).map(({ owner, ...rest }) => rest);
-  const at = payload => nativePlugins.find(x => x.slot === payload.slot && (payload.owner ? x.owner === payload.owner : x.track === payload.track));
+  p.audioPlugins = clone(nativePlugins);
+  const at = payload => nativePlugins.find(x => x.slot === payload.slot && x.owner === payload.owner);
   const handlers = {
     'plugin.parameters': q => ({ parameters: parameterList(at(q)?.component || 'stfx:filter') }),
     'plugin.parameter': q => { const d = at(q); if (q.bypass !== undefined) { d.bypass = q.bypass; return clone(d); } return { normalized: q.value }; },

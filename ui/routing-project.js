@@ -23,7 +23,8 @@
     project.tracks.push(track);
     ensureTrackIDs(project, makeID);
     const routing = project.routing, owner = trackOwner(track);
-    if (routing?.version === 1 && object(routing.outputs) && owner && !Object.hasOwn(routing.outputs, owner)) routing.outputs[owner] = 'master';
+    routing.outputs ||= {};
+    if (!Object.hasOwn(routing.outputs, owner)) routing.outputs[owner] = 'master';
     return track;
   }
 
@@ -31,7 +32,6 @@
     const owner = trackOwner(track), routing = project.routing;
     if (!owner) return;
     for (const pattern of project.patterns || []) if (Array.isArray(pattern.automation)) pattern.automation = pattern.automation.filter(lane => lane.owner !== owner);
-    if (routing?.version !== 1) return;
     if (object(routing.outputs)) {
       delete routing.outputs[owner];
       // An explicitly removed destination becomes disconnected, never another track.
@@ -52,7 +52,7 @@
   function pruneOrphanPlugins(project) {
     if (!Array.isArray(project?.audioPlugins)) return 0;
     const tracks = new Set((project.tracks || []).map(trackOwner).filter(Boolean)),
-      buses = new Set((project.routing?.buses || []).map(bus => 'bus:' + bus.id)),
+      buses = new Set((project.routing.buses || []).map(bus => 'bus:' + bus.id)),
       instruments = (project.instruments || []).length;
     const live = item => {
       const owner = item?.owner;
