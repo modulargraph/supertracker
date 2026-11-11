@@ -117,7 +117,7 @@ test('the browser preview answers the seek before Play and step auditions', asyn
   // Play reaches its own explanation instead of failing on the seek.
   s.view = 'pattern';
   assert.equal(await h.ST.perform('play'), true);
-  assert.match(h.node('toast-region').innerHTML, /Interface preview: open the macOS app for audio playback/);
+  assert.match(h.node('toast-region').innerHTML, /Interface preview: open the SuperTracker app for audio playback/);
   assert.equal(s.playing, false);
 });
 

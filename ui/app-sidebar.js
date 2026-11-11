@@ -32,7 +32,7 @@
         + `class="sidebar-section"><div class="sidebar-heading"><span class="eyebrow">Session</span>`
         + `</div><div class="small-note">${p.tracks.length} tracks<br>${p.instruments.length} instruments<br>${p.patterns.length}`
         + ` patterns<br><br><kbd>⌘K</kbd> Find any action</div></div>${!state.native ? '<div class="small-note" style="color:var(--amber)">Interface preview<br>Audio, plug-ins and disk browsing '
-        + 'run in the macOS app.</div>' : ''}</aside>`;
+        + 'run in the SuperTracker app.</div>' : ''}</aside>`;
   }
 
   /* The Pattern view's left pane (like Renoise's instrument box over its pattern matrix): the instrument list on

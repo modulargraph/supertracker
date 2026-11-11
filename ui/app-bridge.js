@@ -101,7 +101,7 @@
     };
     if (command === 'engine.project' || command === 'project.autosave') return {};
     if (command === 'transport.play') {
-      toast('Interface preview: open the macOS app for audio playback.');
+      toast('Interface preview: open the SuperTracker app for audio playback.');
       return {};
     }
     // Seek precedes every Play (which explains the preview); a step audition is silent like a released note.
@@ -112,7 +112,7 @@
         || command === 'note.off'
         || command === 'sample.stopPreview') return {};
     if (command === 'note.on') {
-      toast('Computer-keyboard notes play through the native macOS audio engine.');
+      toast('Computer-keyboard notes play through the app’s audio engine.');
       return {};
     }
     if (command === 'library.search') return { items: [], total: 0, categories: [], scanning: false };
@@ -141,7 +141,7 @@
         f.click();
       });
     }
-    throw new Error('This action uses the native macOS app. The browser preview cannot access audio devices, plug-ins, or your sample folders.');
+    throw new Error('This action needs the SuperTracker app. The browser preview cannot access audio devices, plug-ins, or your sample folders.');
   }
 
   Object.assign(app, { request, longRequest, hostImplements });

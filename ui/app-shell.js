@@ -102,7 +102,7 @@
         + `</div><button id="metronome" class="metronome ${p.metronome ? 'active' : ''}" aria-label="Metronome"`
         + ` aria-pressed="${!!p.metronome}" title="Toggle metronome · ⌘⇧M"><svg viewBox="0 0 20 22" aria-hidden="true">`
         + `<path d="M6 2h8l4 18H2L6 2Z M10 17L16 5 M7 17h6"/></svg><span>${p.timeSignature?.numerator || 4}/${p.timeSignature?.denominator || 4}</span>`
-        + `</button></div><div class="top-actions"><span class="native-badge ${state.native ? '' : 'preview'}">${state.native ? '● Core Audio' : 'Interface preview'}</span>`
+        + `</button></div><div class="top-actions"><span class="native-badge ${state.native ? '' : 'preview'}">${state.native ? '● Audio engine' : 'Interface preview'}</span>`
         + `<button class="quiet" id="save" title="Save project · ⌘S">Save</button><button id="palette"`
         + ` class="quiet" title="Command palette · ⌘K">⌘ K</button><button id="settings" class="quiet"`
         + ` title="Studio settings">⚙</button></div></header><nav class="nav" aria-label="Studio views">${views.map(([id, label], i) => `<button class="nav-button ${state.view === id ? 'active' : ''}" id="view-${id}" data-view="${id}"`

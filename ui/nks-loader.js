@@ -59,7 +59,7 @@
   async function load(path, options = {}) {
     const app = window.ST, state = app.state;
     if (loading) { app.toast('An NKS preset is already loading.'); return false; }
-    if (!state.native) { app.toast('Open the macOS app to load NKS presets.'); return false; }
+    if (!state.native) { app.toast('Open the SuperTracker app to load NKS presets.'); return false; }
     if (options.kind === 'effect') return loadEffect(path, options);
     const owner = state.project, trackIndex = state.track, track = owner.tracks[trackIndex];
     const instrumentIndex = state.instrument, instrument = owner.instruments[instrumentIndex];

@@ -87,7 +87,7 @@
     for (const fn of listeners) try { fn(); } catch {}
     return metadata.size > 0;
   }
-  /** Reads the native catalogue once (the macOS app); safe to call repeatedly. */
+  /** Reads the native catalogue once (the app's host); safe to call repeatedly. */
   let attempted = 0;
   function load(request = root.ST?.request) {
     if (metadata.size) return Promise.resolve(true);

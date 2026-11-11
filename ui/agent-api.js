@@ -1315,7 +1315,7 @@
   method('loadPlugin', 'Load a plug-in (AU/VST3/CLAP/built-in) on a track as its instrument (kind "instrument") or as an insert effect (kind "effect", slot 0–15). '
       + 'channel loads an insert effect on a bus or the master channel ("master", bus name or "bus:<id>").', ['plugin',
       'track', 'channel', 'kind', 'slot', 'instrument'], async params => {
-    const p = project(); if (!st().native) fail('Plug-ins load only in the macOS app.');
+    const p = project(); if (!st().native) fail('Plug-ins load only in the SuperTracker app.');
     if (!(st().plugins || []).length) await api.listPlugins({ refresh: true });
     const channel = params.channel === undefined ? null : pluginChannel(p, params);
     const kind = params.kind === undefined ? channel && channel.type !== 'track' ? 'effect' : 'instrument' : params.kind;
@@ -1684,7 +1684,7 @@
   method('loadNKS', 'Load an NKS preset (by path, or the best match for query) on a track: kind "instrument" (default) or "effect" (slot 0–15; default: the next '
       + 'free slot, an explicit slot replaces what it holds).', ['path',
       'query', 'track', 'kind', 'slot', 'instrument'], async params => {
-    const p = project(); if (!st().native) fail('NKS presets load only in the macOS app.');
+    const p = project(); if (!st().native) fail('NKS presets load only in the SuperTracker app.');
     if (!window.STNKS) fail('The NKS loader is unavailable.');
     const kind = params.kind || 'instrument'; if (!['instrument', 'effect'].includes(kind)) fail('kind must be "instrument" or "effect".');
     if ((params.path === undefined) === (params.query === undefined)) fail('Give either path (an .nksf/.nksfx file) or query.');
@@ -2270,7 +2270,7 @@
         || !params.path.startsWith('/')
         || !/\.wav$/i.test(params.path)) fail('path must be an absolute path ending in .wav.');
     const tail = params.tail ?? 3; if (!Number.isFinite(tail) || tail < 0 || tail > 30) fail('tail must be 0–30 seconds.');
-    if (!st().native) fail('Audio export runs only in the macOS app.');
+    if (!st().native) fail('Audio export runs only in the SuperTracker app.');
     if (window.STBusy.isBusy('export')) fail('An export is already running.');
     const busy = blockedByBusyUI(); if (busy) fail(`Cannot export while ${busy}.`);
     const p = project(), pat = params.pattern === undefined ? activePattern(p) : findPattern(p, params.pattern);

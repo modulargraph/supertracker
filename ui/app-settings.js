@@ -82,9 +82,9 @@
           + mo.map(x => option(x.id, x.name, String(x.id) === midiOutput)).join('');
       const previousApply = $('#settings-apply');
       openModal('Studio settings', `<div class="stack">${!state.native
-          ? '<div class="notice">Audio and MIDI configuration is available in the native macOS app.</div>'
+          ? '<div class="notice">Audio and MIDI configuration is available in the SuperTracker app.</div>'
           : ''}<div `
-          + `class="eyebrow">Core Audio</div><div class="grid2"><label class="field"><span>Output device</span>`
+          + `class="eyebrow">Audio device</div><div class="grid2"><label class="field"><span>Output device</span>`
           + `<select id="audio-output">${audioOptions(outputs, outputDevice, a.defaultOutput)}</select>`
           + `</label><label class="field"><span>Input device</span><select id="audio-input">${audioOptions(inputs, inputDevice, a.defaultInput)}</select>`
           + `</label><label class="field"><span>Buffer size · samples</span><select id="audio-buffer">${(a.bufferSizes || [64, 128, 256, 512, 1024, 2048]).map(n => `<option value="${n}" ${n === (a.bufferSize || 256) ? 'selected' : ''}>${n}</option>`).join('')}</select>`
@@ -100,7 +100,7 @@
       }, (_, i) => `<option value="${i}" ${a.inputChannels?.length !== 1 && i === (a.inputChannels?.[1] ?? 1) ? 'selected' : ''}>Input ${i + 1}</option>`).join('')}</select>`
           + `</label></div><label class="row"><input id="audio-monitor" type="checkbox" ${a.monitoring || a.monitor ? 'checked' : ''}> `
           + `Monitor audio input through master</label><div class="muted" style="font-size:11px">Sample rate: ${a.sampleRate || 48000}`
-          + ` Hz · System default selects the device currently used by macOS. Device changes can briefly interrupt playback.</div>`
+          + ` Hz · System default selects the device the system currently uses. Device changes can briefly interrupt playback.</div>`
           + `<div id="audio-latency" class="muted" style="font-size:11px">${latencyNote(a.latencyCompensation || state.status.latencyCompensation)}</div>`
           + `<div class="eyebrow" style="margin-top:10px">MIDI routing</div><div class="grid2">`
           + `<label class="field"><span>Input device</span><select id="midi-input">${midiInputOptions}</select>`

@@ -584,7 +584,7 @@
         + `and stopped manually.` : hardwareSample ? 'The hardware instrument and its track stay intact. Stop & load creates a new sampler track, ready to trim and chop.' : 'Stop & load opens the recorded sample or timeline clip.';
     const footer = `<div class="recording-status-row"><div id="record-status" role="status">${state.native
         ? 'Choose the note you will play as the root note.'
-        : 'Recording requires the native macOS app.'}</div>`
+        : 'Recording requires the SuperTracker app.'}</div>`
         + `<output id="record-duration" aria-label="Recorded duration">0.0 s</output></div><button id="record-close">Close</button>`
         + `<button id="record-start" class="primary">● Start recording · ⌘⇧R</button>`;
     session.markup = body + `<div class="recording-inline-foot">${footer}</div>`;
