@@ -1177,12 +1177,12 @@
       requireUnfrozen(p, [track]);
       if (pluginOn(p, track, 'instrument')) fail(`Track ${track} plays a plug-in instrument; assign the new instrument with runCommand "assignInstrument" after selecting it, or choose another track.`);
     }
-    const probe = S().normalize({ instruments: [{ id: 0, type, name: 'probe' }] }).instruments[0];
+    const probe = S().instrumentDefaults(0, 'probe', type);
     const plan = planParams(probe, params.params);
     return commit(params.label || `create ${type} instrument${name ? ' ' + name : ''}`, target => {
       const id = target.instruments.length;
-      const inst = S().normalize({ instruments: [{ id, type, name: name || 'Instrument ' + String(id).padStart(2, '0') }] }).instruments[0];
-      inst.id = id; applyParams(inst, plan);
+      const inst = S().instrumentDefaults(id, name || 'Instrument ' + String(id).padStart(2, '0'), type);
+      applyParams(inst, plan);
       if (inst.type === 'sample' && inst.mode === 'wavetable' && !inst.samplePath) inst.samplePath = S().wavetablePath?.('Saw') || 'builtin:wavetables/Basic/Saw.wav';
       target.instruments.push(inst);
       if (track !== null) target.tracks[track].instrument = id;
@@ -1371,8 +1371,7 @@
       if (kind === 'instrument') {
         instrumentIndex = instrument === 'new' ? project.instruments.length : instrument;
         if (instrument === 'new') {
-          const inst = S().normalize({ instruments: [{ id: instrumentIndex, type: 'plugin', name: plugin.name }] }).instruments[0];
-          inst.id = instrumentIndex;
+          const inst = S().instrumentDefaults(instrumentIndex, plugin.name, 'plugin');
           project.instruments.push(inst);
         }
         const inst = project.instruments[instrumentIndex];

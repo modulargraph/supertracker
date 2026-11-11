@@ -13,7 +13,7 @@ function environment() {
   const state = { native: true, project, track: 0, instrument: 0 };
   const app = { state, captureNativeEdits: async () => true, syncEngine: async () => {},
     toast: text => notices.push(text), stopHeld: () => {}, setView: view => { state.view = view; },
-    normalize: value => value,
+    instrumentDefaults: (id, name, type) => ({ id, type, name }),
     mutate: (label, fn) => { undo.push(copy(state.project)); fn(state.project); },
     request: async (command, payload) => { calls.push({ command, payload }); return copy(descriptor); } };
   app.syncEngineProject=async(makeProject,options={})=>{const project=makeProject();return project?app.request('engine.project',{project,...(options.replace?{replace:true}:{})}):false;};

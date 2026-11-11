@@ -224,7 +224,7 @@
       const label = chosen.replace ? 'bounce selection in place' : 'render selection to sample';
       const done = a.mutate(label, p => {
         applied = apply(p, sel, { name: chosen.name, path: sample.path }, chosen, {
-          instrument: (id, name) => a.normalize({ instruments: [{ id, type: 'sample', name }] }).instruments[0],
+          instrument: (id, name) => a.instrumentDefaults(id, name, 'sample'),
           appendTrack: (draft, instrument, name) => a.appendInstrumentTrack(draft, instrument, name)
         });
       });

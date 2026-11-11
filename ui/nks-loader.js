@@ -112,7 +112,7 @@
           // The track's previous plug-in instrument stays available.
           window.STRoutingProject.keepInstrumentPlugins(project, [track]);
           destination = project.instruments.length;
-          const defaults = app.normalize({ instruments: [{ id: destination, type: 'plugin', name: result.nks.name || result.name }] }).instruments[0];
+          const defaults = app.instrumentDefaults(destination, result.nks.name || result.name, 'plugin');
           project.instruments.push(defaults);
         }
         const selected = project.instruments[destination];

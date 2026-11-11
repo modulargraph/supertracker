@@ -305,9 +305,7 @@
           { owner: channel, kind: 'instrument', slot: hosted.slot || 0 }); session.removedPlugin = true; requireDestination(session); }
       let attachedInstrument, attachedTrack;
       app().mutate('Record sampler instrument', p => {
-        if (createsInstrument(session)) p.instruments.push(app().normalize({
-          instruments: [{ id: index, type: 'sample', name: session.name }]
-        }).instruments[0]);
+        if (createsInstrument(session)) p.instruments.push(app().instrumentDefaults(index, session.name, 'sample'));
         const instrument = p.instruments[index];
         delete instrument.plugin;
         Object.assign(instrument, {

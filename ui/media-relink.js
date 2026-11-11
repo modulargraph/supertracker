@@ -7,10 +7,6 @@
   const { clone } = window.STUtil;
   const fingerprint = value => JSON.stringify(value);
   const active = session => currentSession === session && app().state.project === session.project && app().state.modal === 'media-relink';
-  const missingReferences = report => Array.isArray(report?.missing)
-      ? report.missing
-      : (report?.references || []).filter(reference => ['missing', 'unreadable', 'notFile', 'empty',
-          'unresolvedRelativePath'].includes(reference.status));
   const referenceName = reference => reference.label || reference.path?.split('/').pop() || reference.id;
   const selectedReference = session => session.references.find(reference => reference.id === session.selectedID);
   const prettySize = size => Number.isFinite(Number(size))
@@ -135,7 +131,7 @@
     try {
       const result = await app().request('project.media.inspect', { project: clone(session.project) });
       if (!active(session)) return;
-      session.references = missingReferences(result); session.presentCount = Number(result.presentCount || 0); session.inspectDone = true;
+      session.references = result.missing; session.presentCount = Number(result.presentCount || 0); session.inspectDone = true;
       session.warnings = result.warnings || [];
       session.selectedID = session.references.some(reference => reference.id === session.selectedID)
           ? session.selectedID
@@ -173,7 +169,7 @@
       const result = await app().request('project.media.search', { project: clone(session.project), roots: [...session.rootSelection], relocations });
       if (!active(session)) return;
       if (result.cancelled) { status(session, 'Search canceled. Existing selections are unchanged.'); return; }
-      const found = missingReferences(result);
+      const found = result.missing;
       for (const reference of session.references) {
         const update = found.find(candidate => candidate.id === reference.id); if (update) Object.assign(reference, update);
       }
@@ -226,18 +222,15 @@
         await app().syncEngineProject(() => clone(app().state.project));
         throw new Error('The session changed while replacements were being applied. Check the references again before applying.');
       }
-      if (typeof app().applyMediaRelink === 'function') await app().applyMediaRelink(result, { project: session.project, selections });
-      else {
-        const replacement = app().normalize ? app().normalize(clone(result.project)) : clone(result.project);
-        app().state.samples = {};
-        app().mutate('relink project media', project => {
-          for (const key of Object.keys(project)) delete project[key];
-          Object.assign(project, replacement);
-        });
-      }
+      const replacement = app().normalize(clone(result.project));
+      app().state.samples = {};
+      app().mutate('relink project media', project => {
+        for (const key of Object.keys(project)) delete project[key];
+        Object.assign(project, replacement);
+      });
       if (!active(session)) return;
       session.selections.clear(); session.warnings = result.warnings || [];
-      const count = Array.isArray(result.relinked) ? result.relinked.length : Number(result.relinked ?? selections.length);
+      const count = result.relinked.length;
       app().toast(`${count} media reference${count === 1 ? '' : 's'} relinked.`, 'success');
       session.busy = ''; await inspect(session);
     } catch (error) {

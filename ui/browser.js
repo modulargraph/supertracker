@@ -1159,9 +1159,7 @@
           const track = destinationTrack;
           if (target.kind === 'instrument') {
             const destination = createInstrument ? state.project.instruments.length : instrumentIndex;
-            if (createInstrument) state.project.instruments.push(app().normalize({
-              instruments: [{ id: destination, type: 'plugin', name: plugin.name }]
-            }).instruments[0]);
+            if (createInstrument) state.project.instruments.push(app().instrumentDefaults(destination, plugin.name, 'plugin'));
             const instrument = state.project.instruments[destination];
             if (instrument) {
               instrument.type = 'plugin';
