@@ -32,7 +32,7 @@ const routing = require('../ui/routing-project.js');
     routing: {
       version: 1, outputs: { 'track:a': 'bus:g', 'track:b': 'master', 'bus:g': 'track:a' },
       sends: [{ id: 'gone', source: 'track:a', destination: 'bus:g' }, { id: 'incoming', source: 'track:b', destination: 'track:a' }, { id: 'keep', source: 'track:b', destination: 'bus:g' }],
-      sidechains: [{ id: 'source', source: 'track:a', destination: { instanceID: 'other' } }, { id: 'insert', source: 'track:b', destination: { instanceID: 'removed' } }, { id: 'keep', source: 'track:b', destination: { instanceID: 'other' } }]
+      sidechains: [{ id: 'source', source: 'track:a', destination: 'other' }, { id: 'insert', source: 'track:b', destination: 'removed' }, { id: 'keep', source: 'track:b', destination: 'other' }]
     }
   };
   routing.removeTrackReferences(project, { routingID: 'a' }, [{ instanceID: 'removed' }]);
@@ -94,7 +94,7 @@ function harness() {
     const owner = routing.trackOwner(project.tracks[0]), nextID = project.tracks[1].routingID;
     project.audioPlugins = [{ owner, kind: 'effect', slot: 0, instanceID: 'remove' }, { owner: `track:${nextID}`, kind: 'effect', slot: 0, instanceID: 'next' }, { owner: 'bus:group', kind: 'effect', slot: 0, instanceID: 'bus' }];
     project.routing.outputs[owner] = 'bus:group';
-    project.routing.sidechains = [{ id: 'key', source: routing.trackOwner(project.tracks[1]), destination: { instanceID: 'remove' } }];
+    project.routing.sidechains = [{ id: 'key', source: routing.trackOwner(project.tracks[1]), destination: 'remove' }];
     const before = JSON.stringify(project);
     ST.perform('removeTrack');
     assert.deepEqual(project.audioPlugins.map(item => item.instanceID), ['next', 'bus']);
@@ -123,7 +123,7 @@ function harness() {
       { track: 0, target: 'cutoff' }, { track: 1, target: 'cutoff' }
     ];
     p.audioClips = [{ id: 'gone', track: 0 }, { id: 'keep', track: 1 }];
-    p.routing.sidechains = [{ id: 'keep', source: survivor, destination: { instanceID: 'sound' } }];
+    p.routing.sidechains = [{ id: 'keep', source: survivor, destination: 'sound' }];
     const assigned = p.tracks[1].instrument, before = JSON.stringify(p);
     ST.perform('removeTrack');
     assert.deepEqual(p.audioPlugins.map(x => x.instanceID), ['survivor', 'bus', 'sound']);

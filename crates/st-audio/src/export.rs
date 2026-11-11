@@ -176,8 +176,7 @@ fn file_name(name: &str) -> String {
 /// `audio.export`: renders and writes the files. The result is what the interface gets:
 /// `{path, paths, mode, frames, musicalFrames, tailFrames, sourceFrames, container, encoding,
 /// sampleRate, bitDepth, isFloat, dither, renderSampleRate, latencyCompensation, stems: [{owner,
-/// name, path, boundary, frames, sourceFrames, sampleRate, arrivalFrames}], renderPasses,
-/// stemPolicy}`.
+/// name, path, frames, sourceFrames, sampleRate, arrivalFrames}]}`.
 #[cfg(unix)]
 pub fn export(context: &RenderContext<'_>, request: &ExportRequest) -> Result<Value, String> {
     if request.path.is_empty() {
@@ -283,7 +282,6 @@ pub fn export(context: &RenderContext<'_>, request: &ExportRequest) -> Result<Va
         .map(|(index, owner)| {
             json!({
                 "owner": owner.id, "name": owner.name, "path": paths.get(index),
-                "boundary": if owner.id == MASTER { "masterOutput" } else { "postFaderPreParent" },
                 "frames": delivered_frames, "sourceFrames": frames, "sampleRate": settings.sample_rate(),
                 "arrivalFrames": summary.arrivals.get(index), "arrivalSampleRate": RENDER_SAMPLE_RATE,
             })
@@ -294,7 +292,7 @@ pub fn export(context: &RenderContext<'_>, request: &ExportRequest) -> Result<Va
         "frames": delivered_frames, "musicalFrames": musical_delivered, "tailFrames": delivered_frames - musical_delivered.min(delivered_frames), "sourceFrames": frames,
         "duration": delivered_frames as f64 / settings.sample_rate() as f64,
         "latencyCompensation": { "frames": summary.latency_frames, "seconds": summary.latency_frames as f64 / rate },
-        "stems": stems, "renderPasses": 1, "stemPolicy": "fullGraph",
+        "stems": stems,
     });
     if let (Value::Object(result), Ok(Value::Object(metadata))) = (&mut result, serde_json::to_value(settings.metadata())) {
         result.extend(metadata);

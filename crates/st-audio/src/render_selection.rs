@@ -283,7 +283,7 @@ pub fn plan(canonical: &Value, request: &Request, sample_rate: f64) -> Result<Pl
         .collect();
     let kept_ids: Vec<&str> = kept.iter().filter_map(|plugin| plugin["instanceID"].as_str()).collect();
     if let Some(sidechains) = project["routing"]["sidechains"].as_array().cloned() {
-        let wired: Vec<Value> = sidechains.into_iter().filter(|sidechain| sidechain["destination"]["instanceID"].as_str().is_none_or(|id| kept_ids.contains(&id))).collect();
+        let wired: Vec<Value> = sidechains.into_iter().filter(|sidechain| sidechain["destination"].as_str().is_none_or(|id| kept_ids.contains(&id))).collect();
         project["routing"]["sidechains"] = Value::Array(wired);
     }
     if let Some(buses) = project["routing"]["buses"].as_array_mut() {

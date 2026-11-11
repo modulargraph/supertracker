@@ -101,7 +101,7 @@ fn rendering_with_plug_ins_never_allocates_also_when_one_of_them_crashes() {
         plugin("track:c", "instrument", "synth", "clap", CLAP_SINE), plugin("master", "effect", "last", "clap", CLAP_GAIN),
     ]);
     project["routing"]["sidechains"] = json!([{ "id": "k", "source": "track:a", "tap": "postFader", "gain": 1, "enabled": true,
-        "destination": { "instanceID": "vst3-fx", "inputBus": 1, "layoutSignature": { "name": "Sidechain", "channels": 2 } } }]);
+        "destination": "vst3-fx" }]);
     project["patterns"][0]["automation"] = json!([
         { "id": "a", "owner": "track:b", "target": format!("plugin:effect:0:{}", vst3_gain::GAIN), "interpolation": "linear", "points": [{ "row": 0, "value": 0.3 }, { "row": 15, "value": 0.6 }] },
         { "id": "b", "owner": "track:c", "target": "plugin:instrument:0:1", "interpolation": "linear", "points": [{ "row": 0, "value": 0.2 }, { "row": 15, "value": 0.9 }] },

@@ -105,7 +105,7 @@ fn stems_a_bounce_and_a_selection_render() {
     let paths = result["paths"].as_array().unwrap();
     assert_eq!(paths.len(), 8, "one stem per track");
     assert!(paths.iter().all(|path| path.as_str().unwrap().starts_with(&stems) && std::path::Path::new(path.as_str().unwrap()).is_file()));
-    assert_eq!((result["stems"][0]["owner"].clone(), result["stems"][0]["boundary"].clone()), (json!(format!("track:{}", demo()["tracks"][0]["routingID"].as_str().unwrap())), json!("postFaderPreParent")));
+    assert_eq!(result["stems"][0]["owner"], json!(format!("track:{}", demo()["tracks"][0]["routingID"].as_str().unwrap())));
 
     // A bounce goes to the support folder's Renders and comes back as a clip for the timeline.
     let bounce = long_request(host, "audio.bounceTrack", json!({ "track": 3, "tail": 0.5 })).unwrap();

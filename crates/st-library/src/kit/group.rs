@@ -282,7 +282,7 @@ pub fn extract_group(project: &Value, group_id: &str) -> Result<ExtractedGroup> 
     }
     let relevant: Vec<&Value> = list(&routing, "sidechains")
         .iter()
-        .filter(|route| route.get("destination").and_then(|destination| text(destination, "instanceID")).is_some_and(|id| plugin_ids.contains(id)))
+        .filter(|route| text(route, "destination").is_some_and(|id| plugin_ids.contains(id)))
         .collect();
     let kept_sidechains: Vec<Value> = relevant.iter().filter(|route| text(route, "source").is_some_and(|source| owners.contains(source))).map(|route| (*route).clone()).collect();
     if kept_sidechains.len() != relevant.len() {

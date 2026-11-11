@@ -286,7 +286,7 @@ fn rendering_never_allocates_or_frees_even_across_project_and_plan_changes() {
         "outputs": { "track:t3": "bus:drums", "track:t4": "bus:drums" },
         "sends": [{ "id": "s", "source": "track:t1", "tap": "preFader", "destination": "bus:space", "gain": 0.5 }],
         "sidechains": [{ "id": "k", "source": "track:t3", "tap": "postFader", "gain": 1,
-            "destination": { "instanceID": "comp", "inputBus": 1, "layoutSignature": { "name": "Sidechain", "channels": 2 } } }],
+            "destination": "comp" }],
     });
     project["audioPlugins"] = json!([
         effect("track:t0", 0, "comp", "stfx:compressor"), effect("bus:space", 0, "lim", "stfx:limiter"),

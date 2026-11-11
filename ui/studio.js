@@ -792,7 +792,7 @@
       mutate(label, p => {
         p.audioPlugins = (p.audioPlugins || []).filter(item => !(ownerForPlugin(item) === track && item.kind === 'effect' && item.slot === slot));
         if (removed.instanceID
-            && p.routing.sidechains) p.routing.sidechains = p.routing.sidechains.filter(route => route.destination?.instanceID !== removed.instanceID);
+            && p.routing.sidechains) p.routing.sidechains = p.routing.sidechains.filter(route => route.destination !== removed.instanceID);
         if (removed.instanceID && p.pluginPages?.[removed.instanceID]) delete p.pluginPages[removed.instanceID];
         for (const pattern of p.patterns || []) pattern.automation = (pattern.automation || []).filter(lane => !(lane.owner === track && lane.target?.startsWith(`plugin:effect:${slot}:`)));
       });

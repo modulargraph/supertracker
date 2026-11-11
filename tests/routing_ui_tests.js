@@ -25,7 +25,7 @@ class Element {
 }
 
 function fixture(){return {name:'Routing test',masterVolume:.7,tracks:[{routingID:'a',name:'Bass',volume:.8},{routingID:'b',name:'Keys',volume:.6}],patterns:[{id:0,automation:[]}],audioPlugins:[{instanceID:'plug-b',owner:'track:b',kind:'effect',slot:0,name:'Detector'}],routing:{buses:[{id:'g',name:'Group',type:'group',volume:1,pan:0,mute:false,solo:false},{id:'r',name:'Return',type:'return',volume:1,pan:0,mute:false,solo:false}],outputs:{'track:a':'master','track:b':'master','bus:g':'master','bus:r':'master'},sends:[],sidechains:[]}};}
-function capabilities(){return {buses:{max:16},sends:{taps:['preFader','postFader'],max:128},sidechains:{taps:['preInserts','preFader','postFader'],max:128,inputs:[{instanceID:'plug-b',owner:'track:b',pluginName:'Detector',inputBus:2,layoutSignature:{name:'External detector',channels:2},available:true}]}};}
+function capabilities(){return {buses:{max:16},sends:{taps:['preFader','postFader'],max:128},sidechains:{taps:['preInserts','preFader','postFader'],max:128,inputs:[{instanceID:'plug-b',owner:'track:b',slot:0,pluginName:'Detector'}]}};}
 
 /* The page asks the host what it can route (routing.capabilities) and the fake host answers: the harness is
    ready once the first answer is in, and `offer` makes the host answer something else from then on. */
@@ -66,8 +66,8 @@ function sidechainControls(h,plugin,route){
 async function chooseRouting(h,query=''){
   const input=h.element('routing-search');assert(input,'Expected searchable routing chooser');input.value=query;input.dispatch('input');assert(!h.element('routing-results').innerHTML.includes('No matching destinations'),`No choice matching ${query}`);input.dispatch('keydown',{key:'Enter'});await drain();
 }
-function sidechainRoute(instanceID='plug-b',source='track:a',tap='preInserts',name=''){
-  return {id:'key-1',source,tap,gain:1,enabled:true,destination:{instanceID,inputBus:2,layoutSignature:{name,channels:2}}};
+function sidechainRoute(instanceID='plug-b',source='track:a',tap='preInserts'){
+  return {id:'key-1',source,tap,gain:1,enabled:true,destination:instanceID};
 }
 function statusNodes(h){
   const writes={text:0,hidden:0};
@@ -205,9 +205,9 @@ test('plug-in capture occurs before the routing gate and active rack edits block
   h.context.window.STStudio.isEditingPlugin=true;await assert.rejects(h.R.transaction('Blocked',()=>{}),/Finish the plug-in rack/);assert.equal(h.mutations.length,1);
 });
 
-test('send gain exposes owner automation metadata and sidechain layouts are never retargeted silently',async()=>{
-  const p=fixture();p.routing.sends=[{id:'s1',source:'track:a',destination:'bus:r',tap:'preFader',gain:.5,enabled:true}];p.routing.sidechains=[{id:'k1',source:'track:a',tap:'postFader',destination:{instanceID:'plug-b',inputBus:2,layoutSignature:{name:'Old detector',channels:1}},gain:1,enabled:true}];
-  const h=await harness(p),before=copy(p);const sends=h.R.render('track:a');assert(sends.includes('data-owner="track:a" data-automate="send:s1"'));assert(sends.includes('max="2"'));const keys=h.R.renderPluginSidechain(p.audioPlugins[0]);assert(keys.includes('saved input layout is unavailable'));assert(keys.includes('Old detector'));assert.deepEqual(p,before);
+test('send gain exposes owner automation metadata, and a sidechain into an insert that reads none is kept with a warning',async()=>{
+  const p=fixture();p.routing.sends=[{id:'s1',source:'track:a',destination:'bus:r',tap:'preFader',gain:.5,enabled:true}];p.routing.sidechains=[{id:'k1',source:'track:a',tap:'postFader',destination:'plug-b',gain:1,enabled:true}];
+  const h=await harness(p),before=copy(p);const sends=h.R.render('track:a');assert(sends.includes('data-owner="track:a" data-automate="send:s1"'));assert(sends.includes('max="2"'));assert(!h.R.renderPluginSidechain(p.audioPlugins[0]).includes('not reading a sidechain now'));const none=capabilities();none.sidechains.inputs=[];await h.offer(none);const keys=h.R.renderPluginSidechain(p.audioPlugins[0]);assert(keys.includes('not reading a sidechain now'));assert(keys.includes('data-routing-key-action="remove"'));assert.deepEqual(p,before);
 });
 
 test('search chooser supports filtering, arrows, Return, Escape and focus return',async()=>{
@@ -229,11 +229,11 @@ test('group creation leaves track assignment opt-in and removal reparents childr
 });
 
 test('capability replies from before a project replacement are discarded and refreshed',async()=>{
-  const h=await harness(),old=deferred(),fresh=capabilities(),seen=[];fresh.sidechains.inputs[0].layoutSignature.name='Current detector';let count=0;
+  const h=await harness(),old=deferred(),fresh=capabilities(),seen=[];fresh.sidechains.inputs[0].pluginName='Current detector';let count=0;
   h.handle(command=>command==='routing.capabilities'?(++count===1?old.promise:fresh):undefined);
-  h.ST.refresh=()=>{const value=h.R.capabilities;if(value)seen.push(value.sidechains.inputs[0]?.layoutSignature.name);};
+  h.ST.refresh=()=>{const value=h.R.capabilities;if(value)seen.push(value.sidechains.inputs[0]?.pluginName);};
   const pending=h.R.refreshCapabilities();h.R.event('project.loaded');old.resolve(capabilities());await pending;await drain();
-  assert.equal(count,2);assert.equal(h.R.capabilities.sidechains.inputs[0].layoutSignature.name,'Current detector');assert(!seen.includes('External detector'),'An obsolete reply must never be published to the selector');
+  assert.equal(count,2);assert.equal(h.R.capabilities.sidechains.inputs[0].pluginName,'Current detector');assert(!seen.includes('Detector'),'An obsolete reply must never be published to the selector');
 });
 
 test('routing editors opened across a capability wait reject replaced projects or owner entities',async()=>{
@@ -274,17 +274,17 @@ test('advertised tap choices are respected without relabelling saved unsupported
   const markup=h.R.render('track:a');assert(markup.includes('value="preFader" selected disabled>Pre-fader · unavailable'));assert(markup.includes('value="postFader"'));assert.equal(h.state.project.routing.sends[0].tap,'preFader');
 });
 
-test('unnamed auxiliary inputs remain available, show their actual bus index and retain an exact empty-name signature',async()=>{
-  const p=fixture(),caps=capabilities();caps.sidechains.inputs[0].layoutSignature.name='';const h=await harness(p);await h.offer(caps);
-  p.routing.sidechains=[sidechainRoute()];const saved=h.R.renderPluginSidechain(p.audioPlugins[0]);assert(saved.includes('Input 2'));assert(!saved.includes('saved input layout is unavailable'));assert(saved.includes('data-routing-key-action="add"'));assert.equal(p.routing.sidechains[0].destination.layoutSignature.name,'');
-  p.routing.sidechains=[];const {add}=sidechainControls(h,p.audioPlugins[0]);add.dispatch('click');assert.equal(h.modals.at(-1).title,'Sidechain input');assert(h.element('routing-results').innerHTML.includes('Input 2'));assert(!h.element('routing-results').innerHTML.includes('Input 0'));
-  await chooseRouting(h,'Input 2');assert.equal(h.modals.at(-1).title,'Sidechain tap');await chooseRouting(h,'pre-insert');assert.equal(h.modals.at(-1).title,'Sidechain source');await chooseRouting(h,'Keys');
-  assert.equal(h.mutations.length,1);const route=h.state.project.routing.sidechains[0];assert.equal(route.source,'track:b');assert.equal(route.tap,'preInserts');assert.deepEqual(copy(route.destination),{instanceID:'plug-b',inputBus:2,layoutSignature:{name:'',channels:2}});
-  assert.deepEqual(h.requests.find(request=>request.command==='routing.apply').payload.project.routing.sidechains[0].destination,{instanceID:'plug-b',inputBus:2,layoutSignature:{name:'',channels:2}});
+test('adding a key input asks for the tap and the source; the destination is the insert and nothing else',async()=>{
+  const p=fixture(),h=await harness(p);
+  p.routing.sidechains=[sidechainRoute()];const saved=h.R.renderPluginSidechain(p.audioPlugins[0]);assert(!saved.includes('not reading a sidechain now'));assert(saved.includes('data-routing-key-action="add"'));
+  p.routing.sidechains=[];const {add}=sidechainControls(h,p.audioPlugins[0]);add.dispatch('click');
+  assert.equal(h.modals.at(-1).title,'Sidechain tap');await chooseRouting(h,'pre-insert');assert.equal(h.modals.at(-1).title,'Sidechain source');await chooseRouting(h,'Keys');
+  assert.equal(h.mutations.length,1);const route=h.state.project.routing.sidechains[0];assert.deepEqual(copy(route),{id:route.id,source:'track:b',tap:'preInserts',destination:'plug-b',gain:1,enabled:true});
+  assert.equal(h.requests.find(request=>request.command==='routing.apply').payload.project.routing.sidechains[0].destination,'plug-b');
 });
 
 test('sidechain taps use their own capability list and preserve unsupported saved taps without borrowing send choices',async()=>{
-  const p=fixture(),caps=capabilities();p.routing.sends=[{id:'s1',source:'track:a',destination:'bus:r',tap:'preFader',gain:.5,enabled:true}];p.routing.sidechains=[sidechainRoute('plug-b','track:a','preInserts','External detector')];const h=await harness(p);await h.offer(caps);
+  const p=fixture(),caps=capabilities();p.routing.sends=[{id:'s1',source:'track:a',destination:'bus:r',tap:'preFader',gain:.5,enabled:true}];p.routing.sidechains=[sidechainRoute('plug-b','track:a','preInserts')];const h=await harness(p);await h.offer(caps);
   const sends=h.R.render('track:a'),keys=h.R.renderPluginSidechain(p.audioPlugins[0]);assert(!sends.includes('value="preInserts"'));assert(keys.includes('value="preInserts" selected'));assert(keys.includes('value="preFader"'));assert(keys.includes('value="postFader"'));assert(keys.includes('Pre-insert'));
   caps.sends.taps=['postFader'];caps.sidechains.taps=['preInserts'];p.routing.sidechains[0].tap='preFader';await h.offer(caps);const restricted=h.R.renderPluginSidechain(p.audioPlugins[0]);assert(restricted.includes('value="preFader" selected disabled'));assert(restricted.includes('value="preInserts"'));assert(!restricted.includes('value="postFader"'));assert.equal(p.routing.sidechains[0].tap,'preFader');
   delete caps.sidechains.taps;await h.offer(caps);const unsupported=h.R.renderPluginSidechain(p.audioPlugins[0]);assert(!unsupported.includes('value="postFader"'),'Send taps must not become implicit sidechain taps');assert(!unsupported.includes('data-routing-key-action="add"'),'No advertised key taps means no key-creation action');
@@ -301,21 +301,20 @@ test('same-owner source choices allow only advertised pre-insert track or bus ef
   caps.sidechains.taps=['postFader'];await h.offer(caps);assert(!h.R.sourceOptions('track:b',h.state.project,undefined,{tap:'preInserts',plugin:h.state.project.audioPlugins[0]}).some(option=>option.owner==='track:b'));
 });
 
-test('same-owner pre-insert keys restrict tap edits while absent auxiliary metadata never guesses an input',async()=>{
-  const p=fixture(),caps=capabilities();p.routing.sidechains=[sidechainRoute('plug-b','track:b','preInserts','External detector')];const h=await harness(p);await h.offer(caps);
+test('same-owner pre-insert keys restrict tap edits, and an insert the host does not list offers no key input',async()=>{
+  const p=fixture(),caps=capabilities();p.routing.sidechains=[sidechainRoute('plug-b','track:b','preInserts')];const h=await harness(p);await h.offer(caps);
   const keys=h.R.renderPluginSidechain(p.audioPlugins[0]);assert(keys.includes('value="preInserts" selected'));assert(!keys.includes('value="preFader"'));assert(!keys.includes('value="postFader"'));
-  p.routing.sidechains=[];caps.sidechains.inputs=[];await h.offer(caps);assert.equal(h.R.renderPluginSidechain(p.audioPlugins[0]),'');
-  caps.sidechains.inputs=[{instanceID:'plug-b',owner:'track:b',inputBus:2,available:false,layoutSignature:{name:'',channels:2}}];await h.offer(caps);assert.equal(h.R.renderPluginSidechain(p.audioPlugins[0]),'');assert.equal(h.requests.length,0);assert.equal(h.mutations.length,0);
+  p.routing.sidechains=[];caps.sidechains.inputs=[];await h.offer(caps);assert.equal(h.R.renderPluginSidechain(p.audioPlugins[0]),'');assert.equal(h.requests.length,0);assert.equal(h.mutations.length,0);
 });
 
 test('native cycle rejection from a sidechain chooser preserves project and undo without applying a guessed graph',async()=>{
   const h=await harness(),before=copy(h.state.project),{add}=sidechainControls(h,h.state.project.audioPlugins[0]);h.handle(command=>command==='routing.validate'?{valid:false,error:'Sidechain dependency would create a cycle'}:undefined);
-  add.dispatch('click');await chooseRouting(h);await chooseRouting(h,'pre-insert');await chooseRouting(h,'Bass');
+  add.dispatch('click');await chooseRouting(h,'pre-insert');await chooseRouting(h,'Bass');
   assert.deepEqual(h.state.project,before);assert.equal(h.mutations.length,0);assert.equal(h.requests.filter(request=>request.command==='routing.validate').length,1);assert(!h.requests.some(request=>request.command==='routing.apply'||request.command==='engine.project'&&request.payload.replace));assert(h.notices.some(notice=>/cycle/.test(notice.message)));assert(!h.R.isApplying);
 });
 
 test('connections the host could not make are noted on their rows without rebuilding a focused numeric draft',async()=>{
-  const p=fixture();p.routing.sends=[{id:'send-1',source:'track:a',destination:'bus:r',gain:.5,tap:'postFader',enabled:true}];p.routing.sidechains=[sidechainRoute('plug-b','track:a','postFader','External detector')];
+  const p=fixture();p.routing.sends=[{id:'send-1',source:'track:a',destination:'bus:r',gain:.5,tap:'postFader',enabled:true}];p.routing.sidechains=[sidechainRoute('plug-b','track:a','postFader')];
   const h=await harness(p),dom=statusNodes(h),before=copy(p),refreshes=h.refreshes;
   h.R.event('status',{seconds:4,trackPeaks:[.2,.5],routing:{standard:true,strips:[],unavailableSidechains:[{id:'send-1',reason:'Return output is missing'},{id:'key-1',reason:'Detector input <is> unavailable'}]}});
   assert.equal(dom.issues[0].hidden,false);assert.equal(dom.issues[0].textContent,'Return output is missing');assert.equal(dom.issues[1].hidden,false);assert.equal(dom.issues[1].textContent,'Detector input <is> unavailable');assert.equal(dom.issues[2].hidden,true);

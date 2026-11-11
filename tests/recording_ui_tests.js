@@ -91,11 +91,11 @@ test('sampler recording removes only sidechains belonging to the replaced instru
   for (const destination of ['current']) {
     const h = harness();
     h.state.project.audioPlugins = [{owner:'track:midi-track',kind:'instrument',instanceID:'old-instrument',slot:0},{owner:'track:midi-track',kind:'effect',instanceID:'keep-effect',slot:1}];
-    h.state.project.routing = {version:1,outputs:{'track:midi-track':'master'},sidechains:[{destination:{instanceID:'old-instrument'}},{destination:{instanceID:'keep-effect'}}]};
+    h.state.project.routing = {version:1,outputs:{'track:midi-track':'master'},sidechains:[{destination:'old-instrument'},{destination:'keep-effect'}]};
     await h.open(); h.change('record-destination',destination); await h.startStop(); await h.startStop();
     assert.equal(h.state.modal,null);
     assert.deepEqual(copy(h.state.project.audioPlugins).map(p=>p.instanceID),['keep-effect']);
-    assert.deepEqual(copy(h.state.project.routing.sidechains),[{destination:{instanceID:'keep-effect'}}]);
+    assert.deepEqual(copy(h.state.project.routing.sidechains),[{destination:'keep-effect'}]);
     assert.equal(h.state.project.instruments[h.state.instrument].samplePath,'/recordings/Synth-take-uuid.wav');
   }
 });

@@ -343,7 +343,7 @@
           const channel = `track:${session.trackObject.routingID}`, own = plugin => plugin.owner === channel && plugin.kind === 'instrument';
           const removed = new Set((p.audioPlugins || []).filter(own).map(plugin => plugin.instanceID).filter(Boolean));
           p.audioPlugins = (p.audioPlugins || []).filter(plugin => !own(plugin));
-          if (p.routing.sidechains) p.routing.sidechains = p.routing.sidechains.filter(send => !removed.has(send.destination?.instanceID));
+          p.routing.sidechains = p.routing.sidechains.filter(route => !removed.has(route.destination));
           session.trackObject.instrument = index; attachedTrack = session.trackObject;
         }
         attachedInstrument = instrument;

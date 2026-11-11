@@ -96,9 +96,8 @@
       }
     });
     (source.routing?.sidechains || []).forEach((route, i) => {
-      if (owner.has(route.source) && instances.has(route.destination?.instanceID)) {
-        r.sidechains.push({ ...clone(route), id: fresh('sidechain' + i), source: owner.get(route.source),
-          destination: { ...clone(route.destination), instanceID: instances.get(route.destination.instanceID) } });
+      if (owner.has(route.source) && instances.has(route.destination)) {
+        r.sidechains.push({ ...clone(route), id: fresh('sidechain' + i), source: owner.get(route.source), destination: instances.get(route.destination) });
       }
     });
     for (const [old, pages] of Object.entries(source.pluginPages || {})) if (instances.has(old)) { q.pluginPages ||= {}; q.pluginPages[instances.get(old)] = clone(pages); }
@@ -121,7 +120,7 @@
     const ownerID = trackOwner(track), chainID = `instrument:${track.instrument ?? 0}`;
     const removed = new Set(q.audioPlugins.filter(p => p.owner === ownerID || p.owner === chainID).map(p => p.instanceID));
     q.audioPlugins = q.audioPlugins.filter(p => p.owner !== ownerID && p.owner !== chainID);
-    q.routing.sidechains = (q.routing.sidechains || []).filter(route => !removed.has(route.destination?.instanceID));
+    q.routing.sidechains = q.routing.sidechains.filter(route => !removed.has(route.destination));
     for (const id of removed) if (q.pluginPages) delete q.pluginPages[id];
   }
 
@@ -179,7 +178,7 @@
     // The bus: the new kit's inserts and mix.
     const owner = busOwner(group), removed = new Set(q.audioPlugins.filter(p => p.owner === owner).map(p => p.instanceID));
     q.audioPlugins = q.audioPlugins.filter(p => p.owner !== owner);
-    q.routing.sidechains = q.routing.sidechains.filter(route => !removed.has(route.destination?.instanceID));
+    q.routing.sidechains = q.routing.sidechains.filter(route => !removed.has(route.destination));
     for (const plugin of source.audioPlugins || []) if (plugin.owner === busOwner(incoming)) q.audioPlugins.push({ ...clone(plugin), owner, instanceID: fresh('plugin:' + plugin.instanceID) });
     const bus = G().ensureBus(q, group), sourceBus = source.routing?.buses?.find(item => item.id === incoming.busID);
     for (const key of ['volume', 'pan']) if (sourceBus?.[key] !== undefined) bus[key] = sourceBus[key];

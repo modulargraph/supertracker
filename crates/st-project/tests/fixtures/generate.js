@@ -60,7 +60,7 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
   p.routing.outputs[`track:${p.tracks[7].routingID}`] = null;
   p.routing.sends.push({ id: 'send1', source: `track:${p.tracks[0].routingID}`, tap: 'postFader', destination: 'bus:ret1', gain: .5, enabled: true });
   p.routing.sidechains.push({ id: 'sc1', source: `track:${p.tracks[3].routingID}`, tap: 'preFader',
-    destination: { instanceID: 'comp-1', inputBus: 1, layoutSignature: { name: 'Sidechain', channels: 2 } }, gain: 1, enabled: true });
+    destination: 'comp-1', gain: 1, enabled: true });
   // Plug-in descriptors as plugin.load returns them (AudioPluginRack.summary) plus built-in effects (insert-chain.js).
   p.audioPlugins = [
     { owner: `track:${p.tracks[0].routingID}`, kind: 'effect', slot: 0, instanceID: 'comp-1', component: 'vst3:ABCDEF0123456789ABCDEF0123456789',

@@ -265,13 +265,11 @@ fn routing_changes_are_validated_applied_and_reported() {
     let targets = capabilities["exportTargets"].as_array().unwrap();
     let tracks = project["tracks"].as_array().unwrap().len();
     assert_eq!(targets.len(), tracks + 1, "every track and Master: {targets:?}");
-    assert_eq!(targets[0], json!({ "owner": "track:t0", "name": project["tracks"][0]["name"], "kind": "track", "boundary": "postFaderPreParent", "available": true }));
-    assert_eq!(targets.last().unwrap()["owner"], "master");
-    assert_eq!(targets.last().unwrap()["boundary"], "masterOutput");
+    assert_eq!(targets[0], json!({ "owner": "track:t0", "name": project["tracks"][0]["name"], "kind": "track" }));
+    assert_eq!(targets.last().unwrap(), &json!({ "owner": "master", "name": "Master", "kind": "master" }));
     let inputs = capabilities["sidechains"]["inputs"].as_array().unwrap();
     assert_eq!(inputs.len(), 1);
-    assert_eq!((inputs[0]["instanceID"].clone(), inputs[0]["owner"].clone(), inputs[0]["pluginName"].clone(), inputs[0]["inputBus"].clone()), (json!("comp"), json!("track:t0"), json!("Compressor"), json!(1)));
-    assert_eq!(inputs[0]["layoutSignature"], json!({ "name": "Sidechain", "channels": 2 }));
+    assert_eq!(inputs[0], json!({ "instanceID": "comp", "owner": "track:t0", "slot": 0, "pluginName": "Compressor" }), "the insert, and nothing about its one input");
     assert_eq!((capabilities["audioExport"]["container"].clone(), capabilities["audioExport"]["defaultEncoding"].clone()), (json!("wav"), json!("pcm24")));
     assert!(capabilities["audioExport"]["sampleRates"].as_array().unwrap().contains(&json!(96000)));
 
@@ -290,7 +288,7 @@ fn routing_changes_are_validated_applied_and_reported() {
     routed["routing"]["sends"] = json!([{ "id": "s1", "source": "track:t1", "destination": "bus:room", "tap": "postFader", "gain": 0.5, "enabled": true }]);
     routed["routing"]["sidechains"] = json!([{
         "id": "k1", "source": "track:t3", "tap": "preFader", "gain": 1.0, "enabled": true,
-        "destination": { "instanceID": "comp", "inputBus": 1, "layoutSignature": { "name": "Sidechain", "channels": 2 } },
+        "destination": "comp",
     }]);
     assert_eq!(host.request("routing.validate", json!({ "project": routed })).unwrap(), json!({ "valid": true }));
     let applied = host.request("routing.apply", json!({ "project": routed })).unwrap();

@@ -455,7 +455,7 @@ fn a_sidechain_reaches_the_plug_ins_second_input_bus() {
     let mut project = project(2);
     project["audioPlugins"] = json!([fixture.vst3("track:a", "effect", 0, "fx", VST3_GAIN), fixture.clap("track:b", "effect", 0, "plain", CLAP_GAIN)]);
     project["routing"]["outputs"] = json!({ "track:b": null });
-    let sidechain = |destination: &str| json!([{ "id": "k", "source": "track:b", "tap": "preInserts", "gain": 0.5, "enabled": true, "destination": { "instanceID": destination, "inputBus": 1, "layoutSignature": { "name": "Sidechain", "channels": 2 } } }]);
+    let sidechain = |destination: &str| json!([{ "id": "k", "source": "track:b", "tap": "preInserts", "gain": 0.5, "enabled": true, "destination": destination }]);
     project["routing"]["sidechains"] = sidechain("fx");
     engine.publish(&parse(&project)).unwrap();
     // The plug-in adds its sidechain input, times this parameter, to its output.

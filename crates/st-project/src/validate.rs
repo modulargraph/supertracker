@@ -352,19 +352,8 @@ fn validate_routing(project: &Project, tracks: &[Track]) -> Result<Owners> {
         }
         ranged(sidechain.gain, &sidechain.extra, "gain", "Route gain", (0.0, 2.0))?;
         flag(&sidechain.extra, "enabled", "Route enabled")?;
-        let layout = sidechain.destination.as_ref().and_then(|destination| destination.layout_signature.as_ref().map(|signature| (destination, signature)));
-        let Some((destination, signature)) = layout else { return fail("Sidechains require a destination and saved input layout.") };
-        identifier(destination.instance_id.as_deref(), &destination.extra, "instanceID", "Sidechain instance ID")?;
-        match &signature.name {
-            Some(name) => text(name, "Sidechain input name", true)?,
-            None => return fail("Sidechain input name must be text."),
-        }
-        if !destination.input_bus.is_some_and(|bus| (0..=31).contains(&bus)) {
-            return fail("Sidechain input bus must be a whole number from 0 to 31.");
-        }
-        if !signature.channels.is_some_and(|count| (1..=64).contains(&count)) {
-            return fail("Sidechain input channels must be a whole number from 1 to 64.");
-        }
+        // The insert may be gone as well: the destination only has to be an instance identity.
+        identifier(sidechain.destination.as_deref(), &sidechain.extra, "destination", "Sidechain destination")?;
     }
     if let Some(cycle) = find_cycle(&edges) {
         return fail(format!("Routing feedback is unsupported. Cycle includes: {}.", cycle.join(", ")));

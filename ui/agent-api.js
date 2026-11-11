@@ -1899,10 +1899,9 @@
       buses: (q.routing.buses || []).map(bus => describeChannel(q, busChannel(bus))),
       tracks: q.tracks.map((_, t) => describeChannel(q, trackChannel(q, t))),
       sidechains: (q.routing.sidechains || []).map(route => {
-        const plugin = (q.audioPlugins || []).find(item => item.instanceID === route.destination?.instanceID),
+        const plugin = q.audioPlugins.find(item => item.instanceID === route.destination),
           owner = plugin?.owner;
-        return { id: route.id, from: route.source, fromName: channelOf(q, route.source)?.name, to: { channel: owner || null, plugin: plugin?.name || null, slot: plugin?.slot ?? null,
-          input: route.destination?.layoutSignature?.name || null }, tap: route.tap, gain: formatValue('db', route.gain ?? 1), enabled: route.enabled !== false };
+        return { id: route.id, from: route.source, fromName: channelOf(q, route.source)?.name, to: { channel: owner || null, plugin: plugin?.name || null, slot: plugin?.slot ?? null }, tap: route.tap, gain: formatValue('db', route.gain ?? 1), enabled: route.enabled !== false };
       }),
       sendEffects: sendEffectsOut(q),
       ...(caps ? { limits: { buses: caps.buses?.max, sendsAndSidechains: caps.sends?.max, sendTaps: caps.sends?.taps || [] } } : {})
@@ -2009,7 +2008,7 @@
       for (const source of Object.keys(r.outputs)) if (r.outputs[source] === owner) r.outputs[source] = replacement;
       const removedSends = new Set(r.sends.filter(send => send.source === owner || send.destination === owner).map(send => `send:${send.id}`));
       r.sends = r.sends.filter(send => !removedSends.has(`send:${send.id}`));
-      r.sidechains = r.sidechains.filter(route => route.source !== owner && !removed.has(route.destination?.instanceID));
+      r.sidechains = r.sidechains.filter(route => route.source !== owner && !removed.has(route.destination));
       draft.audioPlugins = (draft.audioPlugins || []).filter(plugin => plugin.owner !== owner);
       for (const pattern of draft.patterns || []) if (pattern.automation) pattern.automation = pattern.automation.filter(lane => lane.owner !== owner && !removedSends.has(lane.target));
     }, ch.owner);

@@ -341,7 +341,7 @@ impl GraphSpec {
         let mut sidechains = Vec::new();
         for sidechain in routing.sidechains.as_deref().unwrap_or(&[]) {
             let (Some(id), Some(source)) = (sidechain.id.clone(), sidechain.source.clone()) else { continue };
-            let Some(instance) = sidechain.destination.as_ref().and_then(|destination| destination.instance_id.clone()) else { continue };
+            let Some(instance) = sidechain.destination.clone() else { continue };
             sidechains.push(RouteSpec {
                 id,
                 source,
@@ -554,7 +554,7 @@ mod tests {
                 "buses": [{ "id": "drums", "name": "Drums", "type": "group", "volume": 1.1, "pan": 0.2 }, { "id": "space", "name": "Space", "type": "return" }],
                 "outputs": { "track:a": "bus:drums", "track:b": null },
                 "sends": [{ "id": "s", "source": "track:a", "tap": "preFader", "destination": "bus:space", "gain": 0.5 }, { "id": "off", "source": "track:b", "tap": "postFader", "destination": "bus:space", "enabled": false }],
-                "sidechains": [{ "id": "k", "source": "track:b", "tap": "postFader", "destination": { "instanceID": "comp", "inputBus": 1 } }],
+                "sidechains": [{ "id": "k", "source": "track:b", "tap": "postFader", "destination": "comp" }],
             },
         }));
         let ids: Vec<&str> = spec.strips.iter().map(|strip| strip.id.as_str()).collect();

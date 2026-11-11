@@ -132,9 +132,8 @@ fn stems_are_captured_in_one_pass_and_sum_to_the_mix() {
     let paths: Vec<String> = result["paths"].as_array().unwrap().iter().map(|path| path.as_str().unwrap().to_string()).collect();
     let names: Vec<String> = paths.iter().map(|path| Path::new(path).file_name().unwrap().to_string_lossy().into_owned()).collect();
     assert_eq!(names, ["01-a.wav", "02-b.wav", "03-c.wav", "04-g.wav", "05-Master.wav"]);
-    assert_eq!(result["stems"][3]["boundary"], "postFaderPreParent");
-    assert_eq!((result["stems"][4]["owner"].clone(), result["stems"][4]["boundary"].clone()), (json!("master"), json!("masterOutput")));
-    assert_eq!((result["renderPasses"].clone(), result["frames"].clone()), (json!(1), mix["frames"].clone()));
+    assert_eq!(result["stems"][4]["owner"], json!("master"));
+    assert_eq!(result["frames"], mix["frames"]);
 
     let mix = read(fixture.path("mix.wav"));
     let stems: Vec<SamplePcm> = paths.iter().map(read).collect();

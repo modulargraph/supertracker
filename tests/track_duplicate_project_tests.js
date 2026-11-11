@@ -48,10 +48,10 @@ function fixture() {
       outputs: { 'track:source': 'bus:group', 'track:other': 'track:source', 'bus:group': 'master', 'bus:return': 'master' },
       sends: [{ id: 'send-source', source: 'track:source', destination: 'bus:return', tap: 'preFader', gain: .6, enabled: true }, { id: 'send-other', source: 'track:other', destination: 'track:source', gain: .8 }],
       sidechains: [
-        { id: 'self-key', source: 'track:source', tap: 'postFader', destination: { instanceID: 'fx-six', inputBus: 2, layoutSignature: { name: 'Detector', channels: 2 } }, gain: .4 },
-        { id: 'external-key', source: 'track:other', tap: 'preInserts', destination: { instanceID: 'fx-two', inputBus: 1, layoutSignature: { name: 'Key', channels: 1 } } },
-        { id: 'missing-key', source: 'bus:disconnected', destination: { instanceID: 'fx-six', inputBus: 2, layoutSignature: { name: 'Detector', channels: 2 } } },
-        { id: 'outgoing-key', source: 'track:source', destination: { instanceID: 'other-fx', inputBus: 1 } }
+        { id: 'self-key', source: 'track:source', tap: 'postFader', destination: 'fx-six', gain: .4 },
+        { id: 'external-key', source: 'track:other', tap: 'preInserts', destination: 'fx-two' },
+        { id: 'missing-key', source: 'bus:disconnected', destination: 'fx-six' },
+        { id: 'outgoing-key', source: 'track:source', destination: 'other-fx' }
       ]
     }
   };
@@ -103,8 +103,8 @@ test('routing preserves shared destinations and incoming connections while remap
   assert.equal(routing.sends.length, 3); assert.deepEqual(routing.sends.slice(0, 2), original.routing.sends); assert.deepEqual(routing.sends[2], { ...original.routing.sends[0], id: routing.sends[2].id, source: newOwner }); assert.notEqual(routing.sends[2].id, 'send-source');
   assert.equal(routing.sidechains.length, 7); assert.deepEqual(routing.sidechains.slice(0, 4), original.routing.sidechains);
   assert.deepEqual(routing.sidechains.slice(4).map(route => route.source), [newOwner, 'track:other', 'bus:disconnected']);
-  assert.deepEqual(routing.sidechains.slice(4).map(route => route.destination.instanceID), [result.instanceMap['fx-six'], result.instanceMap['fx-two'], result.instanceMap['fx-six']]);
-  for (let i = 0; i < 3; i++) { assert.notEqual(routing.sidechains[4 + i].id, original.routing.sidechains[i].id); assert.deepEqual(routing.sidechains[4 + i].destination.layoutSignature, original.routing.sidechains[i].destination.layoutSignature); }
+  assert.deepEqual(routing.sidechains.slice(4).map(route => route.destination), [result.instanceMap['fx-six'], result.instanceMap['fx-two'], result.instanceMap['fx-six']]);
+  for (let i = 0; i < 3; i++) { assert.notEqual(routing.sidechains[4 + i].id, original.routing.sidechains[i].id); assert.equal(routing.sidechains[4 + i].tap, original.routing.sidechains[i].tap); }
 });
 test('copied automation has fresh IDs and correct owner, track and send identity without altering unrelated lanes', () => {
   const original = fixture(), result = build(original), lanes = result.project.patterns[0].automation, copied = lanes.slice(original.patterns[0].automation.length), owner = `track:${result.project.tracks[2].routingID}`;
@@ -124,7 +124,7 @@ test('a frozen input remains unchanged and changing any duplicated nested data c
   const original = fixture(), before = copy(original), result = build(freeze(original)), p = result.project;
   assert.deepEqual(original, before); assert.deepEqual(copy(result), result);
   p.instruments[3].plugin.state.owner = 'edited'; p.instruments[4].zones[0].lo = 80; p.patterns[0].steps[2][0].chord[0] = 12;
-  p.patterns[0].automation[7].points[0].value = .1; p.routing.sidechains[4].destination.layoutSignature.name = 'edited'; p.audioClips[2].path = '/edited.wav';
+  p.patterns[0].automation[7].points[0].value = .1; p.routing.sidechains[4].gain = .5; p.audioClips[2].path = '/edited.wav';
   assert.deepEqual(p.instruments.slice(0, 3), before.instruments); assert.deepEqual(p.patterns[0].steps.slice(0, 2), before.patterns[0].steps); assert.deepEqual(p.patterns[0].automation.slice(0, 7), before.patterns[0].automation);
   assert.deepEqual(p.routing.sidechains.slice(0, 4), before.routing.sidechains); assert.deepEqual(p.audioClips.slice(0, 2), before.audioClips); assert.deepEqual(original, before);
 });
@@ -177,7 +177,7 @@ test('selection of a later source track appends at the end and follows authorita
   assert.deepEqual(project.patterns[0].steps[2], [{ note: 72, instrument: 3 }, null]);
   assert.equal(project.patterns[0].automation.length, original.patterns[0].automation.length + 1); assert.equal(project.patterns[0].automation.at(-1).track, 2);
   assert.equal(project.routing.outputs[`track:${project.tracks[2].routingID}`], 'track:source');
-  assert.equal(project.routing.sidechains.at(-1).source, 'track:source'); assert.equal(project.routing.sidechains.at(-1).destination.instanceID, result.instanceMap['other-fx']);
+  assert.equal(project.routing.sidechains.at(-1).source, 'track:source'); assert.equal(project.routing.sidechains.at(-1).destination, result.instanceMap['other-fx']);
 });
 test('lanes addressed by track index stay numeric, inactive metadata is kept and short columns are padded safely', () => {
   const original = { tracks: [{ routingID: 'plain', instrument: 0, name: 'Plain' }], instruments: [{ id: 0, type: 'sample', metadata: { id: 'unused' } }], patterns: [{ id: 0, length: 4, steps: [[{ note: 60, instrument: 0 }]], automation: [{ track: 0, target: 'pan', points: [] }] }],
@@ -245,7 +245,7 @@ test('a whole group duplicates its members and a new bus with inserts, sends, si
   if (!p.routing.buses.some(bus => bus.id === 'group')) p.routing.buses.push({ id: 'group', name: 'Kit', type: 'group', groupID: 'g' });
   p.routing.buses.find(bus => bus.id === 'group').volume = .6;
   p.routing.sends.push({ id: 'bus-send', source: 'bus:group', destination: 'master', level: .4 });
-  p.routing.sidechains.push({ id: 'bus-key', source: 'track:source', destination: { instanceID: 'bus-fx' } });
+  p.routing.sidechains.push({ id: 'bus-key', source: 'track:source', destination: 'bus-fx' });
   p.patterns[0].automation.push({ id: 'lane-bus-send', owner: 'bus:group', target: 'send:bus-send', points: [] });
   const before = copy(p), ids = ['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9', 'n10', 'n11', 'n12', 'n13', 'n14', 'n15', 'n16', 'n17', 'n18', 'n19', 'n20', 'n21', 'n22'];
   const result = duplicate.buildGroup(p, 'g', () => ids.shift()), q = result.project;
@@ -260,7 +260,7 @@ test('a whole group duplicates its members and a new bus with inserts, sends, si
   assert.equal(insert.component, 'AU:group'); assert.notEqual(insert.instanceID, 'bus-fx'); assert.ok(result.newPluginInstanceIDs.includes(insert.instanceID));
   const send = q.routing.sends.find(item => item.source === `bus:${result.busID}`);
   assert.equal(send.level, .4); assert.notEqual(send.id, 'bus-send');
-  const key = q.routing.sidechains.find(route => route.destination.instanceID === insert.instanceID);
+  const key = q.routing.sidechains.find(route => route.destination === insert.instanceID);
   assert.equal(key.source, `track:${q.tracks[2].routingID}`, 'a sidechain from a member follows the member copy');
   const lanes = q.patterns[0].automation.filter(item => item.owner === `bus:${result.busID}`), lane = lanes.find(item => item.target.startsWith('send:'));
   assert.equal(lanes.length, 2, 'bus lanes are copied');

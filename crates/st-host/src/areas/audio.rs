@@ -657,35 +657,18 @@ impl Audio {
     }
 
     /// `routing.capabilities`: what the mixer can route and export. The limits are the project
-    /// format's; the export targets and sidechain inputs are those of the mixer in use.
+    /// format's. `exportTargets` are the strips of the mixer in use (`{owner, name, kind}`):
+    /// each can be written as a stem, a track, group or return after its fader and before its
+    /// output bus, the master as the complete mix. `sidechains.inputs` are the inserts in use
+    /// that read a sidechain (`{instanceID, owner, slot, pluginName}`); an insert reads one, in
+    /// stereo.
     fn routing_capabilities(&self, _: NoPayload) -> Result<Value> {
         let targets = self.engine.routing_targets();
-        let list = |key: &str| targets.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
-        let export_targets: Vec<Value> = list("strips")
-            .into_iter()
-            .map(|strip| {
-                let master = strip["kind"] == "master";
-                json!({
-                    "owner": strip["owner"], "name": strip["name"], "kind": strip["kind"],
-                    "boundary": if master { "masterOutput" } else { "postFaderPreParent" }, "available": true,
-                })
-            })
-            .collect();
-        // An insert has one stereo sidechain input (bus 1 beside its main input).
-        let sidechain_inputs: Vec<Value> = list("sidechainInputs")
-            .into_iter()
-            .map(|input| {
-                json!({
-                    "instanceID": input["instanceID"], "owner": input["owner"], "slot": input["slot"], "pluginName": input["pluginName"],
-                    "inputBus": 1, "layoutSignature": { "name": "Sidechain", "channels": 2 }, "available": true,
-                })
-            })
-            .collect();
         Ok(json!({
             "buses": { "max": st_project::validate::MAX_BUSES },
             "sends": { "taps": ["preFader", "postFader"], "max": st_project::validate::MAX_ROUTES },
-            "sidechains": { "taps": ["preInserts", "preFader", "postFader"], "max": st_project::validate::MAX_ROUTES, "inputs": sidechain_inputs },
-            "exportTargets": export_targets,
+            "sidechains": { "taps": ["preInserts", "preFader", "postFader"], "max": st_project::validate::MAX_ROUTES, "inputs": targets["sidechainInputs"] },
+            "exportTargets": targets["strips"],
             "audioExport": st_samples::export::format::capabilities(),
         }))
     }

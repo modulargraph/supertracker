@@ -106,7 +106,7 @@
     }
     const sourceSends = sends.filter(send => send.source === sourceOwner);
     const copiedPluginIDs = new Set(sourcePlugins.map(plugin => plugin.instanceID).filter(Boolean));
-    const sourceSidechains = sidechains.filter(route => object(route.destination) && copiedPluginIDs.has(route.destination.instanceID));
+    const sourceSidechains = sidechains.filter(route => copiedPluginIDs.has(route.destination));
     if (sends.length + sidechains.length + sourceSends.length + sourceSidechains.length > 128) fail('Track duplication would exceed 128 sends and sidechains combined.');
     if (routing.outputs !== undefined && !object(routing.outputs)) fail('Routing outputs must be an object.');
 
@@ -155,7 +155,7 @@
     for (const next of instrumentMap.values()) remapDescriptor(instruments[next].plugin);
     for (const send of sourceSends) { const copied = clone(send); copied.id = fresh(); copied.source = newOwner; sendMap.set(send.id, copied.id); sends.push(copied); }
     for (const route of sourceSidechains) {
-      const copied = clone(route); copied.id = fresh(); copied.destination.instanceID = instanceMap.get(route.destination.instanceID);
+      const copied = clone(route); copied.id = fresh(); copied.destination = instanceMap.get(route.destination);
       if (copied.source === sourceOwner) copied.source = newOwner;
       sidechains.push(copied);
     }
@@ -257,8 +257,8 @@
     routing.sends = sends;
     const sidechains = array(routing.sidechains, 'Routing sidechains', true);
     const busInstances = new Set(busPlugins.length ? plugins.filter(plugin => plugin.owner === sourceOwner).map(plugin => plugin.instanceID) : []);
-    for (const route of sidechains.filter(route => busInstances.has(route.destination?.instanceID))) {
-      sidechains.push({ ...clone(route), id: fresh(), source: ownerMap.get(route.source) || route.source, destination: { ...clone(route.destination), instanceID: instanceMap.get(route.destination.instanceID) } });
+    for (const route of sidechains.filter(route => busInstances.has(route.destination))) {
+      sidechains.push({ ...clone(route), id: fresh(), source: ownerMap.get(route.source) || route.source, destination: instanceMap.get(route.destination) });
     }
     routing.sidechains = sidechains;
     if (sends.length + sidechains.length > 128) fail('Group duplication would exceed 128 sends and sidechains combined.');

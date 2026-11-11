@@ -82,7 +82,7 @@ test('moveTracks moves a block before a track, joins or leaves groups and keeps 
 test('removeTracks deletes tracks with their steps, automation, clips, plug-ins, sends and sidechains', () => {
   const p = model();
   p.routing.sends.push({ id: 's1', source: 'track:r2', destination: 'track:r0', level: .5 }, { id: 's2', source: 'track:r1', destination: 'track:r3' });
-  p.routing.sidechains.push({ source: 'track:r2', destination: { instanceID: 'p5' } }, { source: 'track:r1', destination: { instanceID: 'p2' } });
+  p.routing.sidechains.push({ source: 'track:r2', destination: 'p5' }, { source: 'track:r1', destination: 'p2' });
   p.routing.outputs['track:r3'] = 'track:r2';
   p.patterns[0].automation.push({ id: 'send', target: 'send:s1', points: [] });
   const map = G.removeTracks(p, [2, 4]);

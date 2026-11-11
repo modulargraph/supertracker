@@ -918,7 +918,7 @@ fn remove_sidechains(project: &mut Value, instances: &[String]) {
         return;
     }
     if let Some(sidechains) = project["routing"]["sidechains"].as_array_mut() {
-        sidechains.retain(|sidechain| !sidechain["destination"]["instanceID"].as_str().is_some_and(|id| instances.iter().any(|instance| instance == id)));
+        sidechains.retain(|sidechain| !sidechain["destination"].as_str().is_some_and(|id| instances.iter().any(|instance| instance == id)));
     }
 }
 

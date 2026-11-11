@@ -120,8 +120,7 @@ fn everything_fixture_reads_every_part_of_the_schema() {
     let send = &routing.sends.as_ref().unwrap()[0];
     assert_eq!((send.tap, send.gain(), send.enabled()), (Some(Tap::PostFader), 0.5, true));
     let sidechain = &routing.sidechains.as_ref().unwrap()[0];
-    let destination = sidechain.destination.as_ref().unwrap();
-    assert_eq!((destination.instance_id.as_deref(), destination.input_bus, destination.layout_signature.as_ref().unwrap().channels), (Some("comp-1"), Some(1), Some(2)));
+    assert_eq!(sidechain.destination.as_deref(), Some("comp-1"));
 
     let plugins = project.plugin_list();
     assert_eq!(plugins[0].parsed_owner(), Some(Owner::Track(project.track_list()[0].routing_id.clone().unwrap())));

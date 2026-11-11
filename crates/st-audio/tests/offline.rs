@@ -170,7 +170,7 @@ fn a_sidechain_reaches_its_insert_and_is_not_heard_by_itself() {
     keyed["routing"]["outputs"] = json!({ "track:b": null });
     keyed["routing"]["sidechains"] = json!([{
         "id": "k", "source": "track:b", "tap": "postFader", "gain": 1, "enabled": true,
-        "destination": { "instanceID": "key", "inputBus": 1, "layoutSignature": { "name": "Sidechain", "channels": 2 } },
+        "destination": "key",
     }]);
     keyed["audioPlugins"] = json!([effect("track:a", 0, "key", "test:key")]);
     assert_signal(&render(&keyed, FRAMES).0, |i| reference[i] * reference[i].abs(), 1e-6, "keyed by track b");

@@ -260,7 +260,7 @@
     for (const source of Object.keys(r.outputs)) if (owners.has(r.outputs[source])) r.outputs[source] = null;
     const removedSends = new Set(r.sends.filter(send => owners.has(send.source) || owners.has(send.destination)).map(send => `send:${send.id}`));
     r.sends = r.sends.filter(send => !owners.has(send.source) && !owners.has(send.destination));
-    r.sidechains = r.sidechains.filter(route => !owners.has(route.source) && !instances.has(route.destination?.instanceID));
+    r.sidechains = r.sidechains.filter(route => !owners.has(route.source) && !instances.has(route.destination));
     for (const pattern of p.patterns || []) if (Array.isArray(pattern.automation)) pattern.automation = pattern.automation.filter(lane => !ownsLane(lane) && !removedSends.has(lane.target));
     for (const key of ['audioClips', 'patternClips']) if (Array.isArray(p[key])) p[key] = p[key].filter(item => !(Number.isInteger(item?.track) && chosen.has(item.track)));
     const groups = new Set(removing.map(i => ofTrack(p, i)).filter(Boolean));
@@ -284,7 +284,7 @@
     for (const source of Object.keys(r.outputs)) if (r.outputs[source] === owner) r.outputs[source] = replacement;
     const removedSends = new Set(r.sends.filter(send => send.source === owner || send.destination === owner).map(send => `send:${send.id}`));
     r.sends = r.sends.filter(send => send.source !== owner && send.destination !== owner);
-    r.sidechains = r.sidechains.filter(route => route.source !== owner && !removed.has(route.destination?.instanceID));
+    r.sidechains = r.sidechains.filter(route => route.source !== owner && !removed.has(route.destination));
     p.audioPlugins = (p.audioPlugins || []).filter(plugin => plugin.owner !== owner);
     for (const id of removed) if (p.pluginPages) delete p.pluginPages[id];
     for (const pattern of p.patterns || []) if (pattern.automation) pattern.automation = pattern.automation.filter(lane => lane.owner !== owner && !removedSends.has(lane.target));

@@ -3077,14 +3077,7 @@
     "id": "sc1",
     "source": "track:fx0007",
     "tap": "preFader",
-    "destination": {
-     "instanceID": "comp-1",
-     "inputBus": 1,
-     "layoutSignature": {
-      "name": "Sidechain",
-      "channels": 2
-     }
-    },
+    "destination": "comp-1",
     "gain": 1,
     "enabled": true
    }

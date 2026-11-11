@@ -68,29 +68,8 @@ model! {
 }
 
 model! {
-    /// The input bus layout a sidechain was connected to, so a changed plug-in is noticed.
-    pub struct LayoutSignature {
-        /// The input bus's name.
-        "name" => name: String,
-        /// Its channel count, 1..64.
-        "channels" => channels: i64,
-    }
-}
-
-model! {
-    /// Where a sidechain arrives: an auxiliary input bus of a plug-in instance.
-    pub struct SidechainDestination {
-        /// The plug-in instance (`audioPlugins[].instanceID`).
-        "instanceID" => instance_id: String,
-        /// Input bus index, 0..31.
-        "inputBus" => input_bus: i64,
-        /// The bus layout when the sidechain was made.
-        "layoutSignature" => layout_signature: LayoutSignature,
-    }
-}
-
-model! {
-    /// A sidechain from a track or bus to a plug-in's auxiliary input.
+    /// A sidechain from a track or bus to the sidechain input of an insert. An insert has one,
+    /// in stereo, so the insert is the whole destination.
     pub struct Sidechain {
         /// Identity (unique among sends and sidechains).
         "id" => id: String,
@@ -99,8 +78,9 @@ model! {
         "source" => source: String,
         /// Where the signal is taken.
         "tap" => tap: Tap,
-        /// The plug-in input.
-        "destination" => destination: SidechainDestination,
+        /// The insert that reads it: the `instanceID` of an `audioPlugins` entry. It may name an
+        /// insert that is gone or cannot be loaded; the sidechain is then unavailable, not invalid.
+        "destination" => destination: String,
         /// Gain, 0..2.
         "gain" => gain: f64 = 1.0,
         /// Whether the sidechain passes signal.

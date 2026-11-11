@@ -43,7 +43,7 @@
       for (const pattern of project.patterns || []) if (Array.isArray(pattern.automation)) pattern.automation = pattern.automation.filter(lane => !removedSends.has(lane.target));
     }
     const instances = new Set(removedPlugins.map(plugin => plugin.instanceID).filter(Boolean));
-    if (Array.isArray(routing.sidechains)) routing.sidechains = routing.sidechains.filter(route => route.source !== owner && !instances.has(route.destination?.instanceID));
+    routing.sidechains = routing.sidechains.filter(route => route.source !== owner && !instances.has(route.destination));
   }
 
   /* Drops plug-in descriptors whose owner is gone: a deleted track or bus, or an instrument index past the end.

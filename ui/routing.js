@@ -77,13 +77,8 @@
       ? 'No output'
       : endpoints(p).find(item => item.owner === owner)?.name || 'Unavailable channel';
   const pluginOwner = plugin => plugin.owner;
-  const inputMetadata = instanceID => (ui.capabilities?.sidechains?.inputs || []).filter(input => input.instanceID === instanceID
-      && input.available === true
-      && Number.isInteger(input.inputBus)
-      && input.inputBus >= 0
-      && typeof input.layoutSignature?.name === 'string'
-      && Number(input.layoutSignature.channels) > 0);
-  const inputName = input => input.layoutSignature.name || `Input ${input.inputBus}`;
+  // An insert reads at most one sidechain, in stereo. The host lists the inserts in use that read one.
+  const readsSidechain = instanceID => !!ui.capabilities?.sidechains.inputs.some(input => input.instanceID === instanceID);
   // An owner-level self edge is valid only from the earlier insert-input tap to
   // an effect input. The native planner still validates the precise dependency.
   const sameOwnerKey = (owner, tap, plugin, p = project()) => owner !== 'master'
@@ -103,7 +98,7 @@
     }
     for (const send of r.sends || []) if (send.id !== omitID && send.enabled !== false) edges.push([send.source, send.destination]);
     for (const route of r.sidechains || []) if (route.id !== omitID && route.enabled !== false) {
-      const plugin = (p.audioPlugins || []).find(item => item.instanceID === route.destination?.instanceID);
+      const plugin = p.audioPlugins.find(item => item.instanceID === route.destination);
       const destination = plugin && pluginOwner(plugin); if (destination) edges.push([route.source, destination]);
     }
     return edges;
@@ -465,7 +460,7 @@
       const removedSends = new Set(r.sends.filter(send => send.source === owner || send.destination === owner).map(send => send.id));
       removeSendLanes(draft, removedSends);
       r.sends = r.sends.filter(send => !removedSends.has(send.id));
-      r.sidechains = r.sidechains.filter(route => route.source !== owner && !removed.has(route.destination?.instanceID));
+      r.sidechains = r.sidechains.filter(route => route.source !== owner && !removed.has(route.destination));
       draft.audioPlugins=(draft.audioPlugins||[]).filter(plugin=>pluginOwner(plugin)!==owner);
       for(const pattern of draft.patterns||[])if(pattern.automation)pattern.automation=pattern.automation.filter(lane=>lane.owner!==owner);
     },{owner}).then(()=>{if(project()===p)selectChannel(destination||'master',true);}));});
@@ -506,25 +501,23 @@
 
   function renderPluginSidechain(plugin) {
     if(!plugin?.instanceID)return '';
-    const inputs = inputMetadata(plugin.instanceID),
-      saved = (routing().sidechains || []).filter(route => route.destination?.instanceID === plugin.instanceID),
+    const reads = readsSidechain(plugin.instanceID),
+      saved = routing().sidechains.filter(route => route.destination === plugin.instanceID),
       supported = available();
-    if(!saved.length&&(!supported||!inputs.length||!keyTaps().length))return '';
+    if(!saved.length&&(!supported||!reads||!keyTaps().length))return '';
     const owner=pluginOwner(plugin), token=key(plugin.instanceID);
     return `<section class="routing-sidechains" data-routing-plugin="${esc(plugin.instanceID)}" data-routing-plugin-owner="${esc(owner)}">`
-        + `<div class="routing-subhead"><h4>Sidechain inputs</h4>${supported&&inputs.length&&keyTaps().length?`<button id="routing-key-add-${token}" data-routing-key-action="add" ${ui.application||routeCount(project())>=routeLimit()?'disabled':''}>+ `
+        + `<div class="routing-subhead"><h4>Sidechain input</h4>${supported&&reads&&keyTaps().length?`<button id="routing-key-add-${token}" data-routing-key-action="add" ${ui.application||routeCount(project())>=routeLimit()?'disabled':''}>+ `
         + `Key input</button>`:''}</div>`
         + `<fieldset ${ui.application||!available()?'disabled':''}>${saved.map(route=>{
-      const advertised = inputs.some(input => input.inputBus === route.destination.inputBus
-          && stable(input.layoutSignature) === stable(route.destination.layoutSignature));
-      return `<div class="routing-key" data-routing-key="${esc(route.id)}"><span class="routing-key-input">${esc(route.destination.layoutSignature?.name||`Input ${route.destination.inputBus}`)}<small>${number(route.destination.layoutSignature?.channels)}`
-          + ` ch</small></span><button id="routing-key-source-${key(route.id)}" data-routing-key-action="source" ${!supported||!advertised?'disabled':''}>${esc(channelName(route.source))}</button>${tapSelect(`routing-key-tap-${key(route.id)}`,
+      const advertised = reads;
+      return `<div class="routing-key" data-routing-key="${esc(route.id)}"><span class="routing-key-input">Key<small>stereo</small></span><button id="routing-key-source-${key(route.id)}" data-routing-key-action="source" ${!supported||!advertised?'disabled':''}>${esc(channelName(route.source))}</button>${tapSelect(`routing-key-tap-${key(route.id)}`,
               route.tap,`data-routing-key-field="tap" ${!supported||!advertised?'disabled':''}`,routeTaps(route,plugin),'Sidechain tap')}<label `
           + `class="routing-gain">Gain<input id="routing-key-gain-${key(route.id)}" type="number" min="0" max="2" step=".01" value="${gain(route.gain)}"`
           + ` data-routing-key-field="gain" ${!supported||!advertised?'disabled':''}></label><button id="routing-key-enable-${key(route.id)}"`
           + ` data-routing-key-action="enable" aria-pressed="${route.enabled!==false}" ${!supported||!advertised?'disabled':''}>${route.enabled===false?'Off':'On'}</button>`
           + (`<button id="routing-key-remove-${key(route.id)}" data-routing-key-action="remove" class="routing-remove" aria-label="Remove sidechain `
-          + `connection">×</button>${!advertised?'<p class="routing-warning">This saved input layout is unavailable. The connection is preserved until the matching input returns or you '
+          + `connection">×</button>${!advertised?'<p class="routing-warning">This insert is not reading a sidechain now. The connection is kept until it does or you '
           + 'remove it.</p>':routeStatus(route.id)}</div>`);
     }).join('')}${!saved.length?'<p class="routing-description">No external key signal.</p>':''}</fieldset></section>`;
   }
@@ -537,14 +530,7 @@
       section.querySelector('[data-routing-key-action="add"]')?.addEventListener('click',()=>{
         if(!available()||!keyTaps().length)return;
         const focusID=`routing-key-add-${key(instanceID)}`;
-        const inputs = inputMetadata(instanceID),
-          options = inputs.map(input => ({
-            ...input,
-            name: inputName(input),
-            type: `${input.layoutSignature.channels} channels`,
-            owner: input.owner
-          }));
-        choose('Sidechain input',options,input=>{
+        {
           const tapOptions = [...keyTaps()].sort((a, b) => a === 'postFader' ? -1 : b === 'postFader' ? 1 : 0).map(tap => ({
             tap,
             name: tapName(tap),
@@ -557,8 +543,7 @@
           choose('Sidechain tap',tapOptions,choice=>{
             choose('Sidechain source',sourceOptions(owner,project(),undefined,
                 {tap:choice.tap,plugin:currentPlugin()}),source=>transaction('Add sidechain',p=>{
-              if (!inputMetadata(instanceID).some(current => current.inputBus === input.inputBus
-                  && stable(current.layoutSignature) === stable(input.layoutSignature))) throw new Error('The plug-in input layout changed. Choose its sidechain input again.');
+              if (!readsSidechain(instanceID)) throw new Error('This insert no longer reads a sidechain.');
               if (!keyTaps().includes(choice.tap) || !currentPlugin(p) || !sourceOptions(owner, p, undefined, {
                 tap: choice.tap,
                 plugin: currentPlugin(p)
@@ -567,13 +552,13 @@
                 id: uid(),
                 source: source.owner,
                 tap: choice.tap,
-                destination: { instanceID, inputBus: input.inputBus, layoutSignature: clone(input.layoutSignature) },
+                destination: instanceID,
                 gain: 1,
                 enabled: true
               });
             },{owner,focusID}),focusID);
           },focusID);
-        },focusID);
+        }
       });
       for(const row of section.querySelectorAll('[data-routing-key]')){
         const id = row.dataset.routingKey,

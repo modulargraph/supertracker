@@ -182,12 +182,13 @@ fn buses_outputs_sends_and_sidechains() {
     accepted(|p| p["routing"]["sends"] = many(MAX_ROUTES));
     assert_eq!(rejected(|p| p["routing"]["sends"] = many(MAX_ROUTES + 1)), "Routing supports at most 128 sends and sidechains combined.");
 
-    let sidechain = json!({ "id": "sc", "source": "track:gone", "tap": "preFader", "destination": { "instanceID": "comp", "inputBus": 1, "layoutSignature": { "name": "", "channels": 2 } } });
+    let sidechain = json!({ "id": "sc", "source": "track:gone", "tap": "preFader", "destination": "comp" });
     accepted(|p| p["routing"]["sidechains"] = json!([sidechain.clone()]));
     assert_eq!(rejected(|p| { p["routing"]["sidechains"] = json!([sidechain.clone()]); p["routing"]["sidechains"][0]["source"] = json!("master"); }), "Sidechain source must reference a track or bus ID.");
-    assert_eq!(rejected(|p| { p["routing"]["sidechains"] = json!([sidechain.clone()]); p["routing"]["sidechains"][0]["destination"].as_object_mut().unwrap().remove("layoutSignature"); }), "Sidechains require a destination and saved input layout.");
-    assert_eq!(rejected(|p| { p["routing"]["sidechains"] = json!([sidechain.clone()]); p["routing"]["sidechains"][0]["destination"]["inputBus"] = json!(32); }), "Sidechain input bus must be a whole number from 0 to 31.");
-    assert_eq!(rejected(|p| { p["routing"]["sidechains"] = json!([sidechain.clone()]); p["routing"]["sidechains"][0]["destination"]["layoutSignature"]["channels"] = json!(0); }), "Sidechain input channels must be a whole number from 1 to 64.");
+    // The destination is the insert, by its instance identity, and nothing else.
+    assert_eq!(rejected(|p| { p["routing"]["sidechains"] = json!([sidechain.clone()]); p["routing"]["sidechains"][0].as_object_mut().unwrap().remove("destination"); }), "Sidechain destination is missing.");
+    assert_eq!(rejected(|p| { p["routing"]["sidechains"] = json!([sidechain.clone()]); p["routing"]["sidechains"][0]["destination"] = json!({ "instanceID": "comp" }); }), "Sidechain destination must be text.");
+    assert_eq!(rejected(|p| { p["routing"]["sidechains"] = json!([sidechain.clone()]); p["routing"]["sidechains"][0]["destination"] = json!("no spaces"); }), "Sidechain destination must contain 1–128 letters, digits, hyphens, underscores, or periods.");
     assert_eq!(rejected(|p| { p["routing"]["sidechains"] = json!([sidechain.clone()]); p["routing"]["sends"] = json!([send("sc", "track:t0", "bus:r")]); }), "Duplicate route ID: sc.");
 }
 

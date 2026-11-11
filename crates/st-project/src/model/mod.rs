@@ -27,7 +27,7 @@ pub use clip::{AudioClip, FreezeRecord, PatternPrint, PrintLoop, Take, TakeSet};
 pub use instrument::{FilterType, Instrument, InstrumentKind, LfoShape, LfoTarget, SamplerMode, VoiceMode, Zone};
 pub use pattern::{AutomationLane, AutomationPoint, AutomationTarget, ColumnCell, Interpolation, Pattern, Step, StepEffect, StepEffectKind};
 pub use plugin::{Owner, ParameterPage, PluginDescriptor, PluginKind, PluginPages};
-pub use routing::{Bus, BusKind, LayoutSignature, Routing, Send, Sidechain, SidechainDestination, Tap};
+pub use routing::{Bus, BusKind, Routing, Send, Sidechain, Tap};
 
 use crate::error::{Error, Result};
 use crate::json::{model, Json};

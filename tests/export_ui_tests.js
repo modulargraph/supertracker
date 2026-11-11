@@ -16,11 +16,11 @@ const decode = value => value.replace(/&(amp|lt|gt|quot|#39);/g, (_, c) => ({ am
 const { audioExport, exportDelivery: delivered } = require('./helpers/host');
 function capabilities() {
   return { audioExport: audioExport(), exportTargets: [
-    { owner: 'track:keys', name: 'Keys', kind: 'track', boundary: 'postFaderPreParent', available: true },
-    { owner: 'track:bass', name: 'Bass', kind: 'track', boundary: 'postFaderPreParent', available: true },
-    { owner: 'bus:drums', name: 'Drum group', kind: 'group', boundary: 'postFaderPreParent', available: true },
-    { owner: 'bus:hall', name: 'Hall return', kind: 'return', boundary: 'postFaderPreParent', available: true },
-    { owner: 'master', name: 'Master', kind: 'master', boundary: 'masterOutput', available: true }
+    { owner: 'track:keys', name: 'Keys', kind: 'track' },
+    { owner: 'track:bass', name: 'Bass', kind: 'track' },
+    { owner: 'bus:drums', name: 'Drum group', kind: 'group' },
+    { owner: 'bus:hall', name: 'Hall return', kind: 'return' },
+    { owner: 'master', name: 'Master', kind: 'master' }
   ] };
 }
 function harness(overrides = {}) {
@@ -155,7 +155,7 @@ test('headless format and selected stems honor capabilities and require actual d
 test('opening advertises graph targets and selects only tracks without requesting an export or editing the project', async () => {
   const h = harness(), before = clone(h.state.project); await h.open(); await h.change('export-mode', 'stems');
   assert.equal(h.state.modal, 'export'); assert.deepEqual(stems(h).map(item => item.dataset.exportOwner), ['track:keys', 'track:bass', 'bus:drums', 'bus:hall', 'master']);
-  assert.deepEqual(selected(h), ['track:keys', 'track:bass']); assert(!stems(h).some(item => item.dataset.exportOwner.startsWith('return:')));
+  assert.deepEqual(selected(h), ['track:keys', 'track:bass']);
   assert.deepEqual(h.calls.map(call => call.command), ['routing.capabilities']); assert.equal(h.mutations.length, 0); assert.deepEqual(h.state.project, before);
 });
 
@@ -247,21 +247,10 @@ test('export options that cannot be read keep every range from starting and say 
   }
 });
 
-test('malformed target metadata is filtered and an empty advertised graph cannot start stems', async () => {
-  const badTargets = [null, {}, { ...capabilities().exportTargets[0], owner: '' }, { ...capabilities().exportTargets[0], name: '' }, { ...capabilities().exportTargets[0], kind: 'unknown' }, { ...capabilities().exportTargets[0], boundary: 'masterOutput' }, { owner: 'master', name: 'Bad master', kind: 'master', boundary: 'postFaderPreParent', available: true }, { owner: 'return:chorus', name: 'Unadvertisable return', kind: 'return', boundary: 'postFaderPreParent', available: true }];
-  for (const exportTargets of ['malformed', badTargets]) {
-    const h = harness({ 'routing.capabilities': () => ({ ...capabilities(), exportTargets }) }); await h.open(); await h.change('export-mode', 'stems'); await h.start();
-    assert.equal(stems(h).length, 0); assert(h.get('export-start').disabled); assert(!h.calls.some(call => call.command === 'dialog.export')); assert.equal(successes(h).length, 0);
-    await h.change('export-mode', 'song'); await h.start(); assert.equal(exported(h).length, 1); assert.equal(successes(h).length, 1);
-  }
-});
-
-test('optional built-in returns are offered only when advertised and unavailable or duplicate targets cannot add extra stems', async () => {
-  const cap = capabilities(); cap.exportTargets.push({ owner: 'return:delay', name: 'Built-in delay', kind: 'return', boundary: 'postFaderPreParent', available: true }, { owner: 'return:reverb', name: 'Built-in reverb', kind: 'return', boundary: 'postFaderPreParent', available: false }, { ...cap.exportTargets[0], name: 'Duplicate Keys' });
-  const h = harness({ 'routing.capabilities': () => cap }); await h.open(); await h.change('export-mode', 'stems');
-  assert.equal(stems(h).filter(item => item.dataset.exportOwner === 'track:keys').length, 1); assert(stem(h, 'return:reverb').disabled); assert.deepEqual(selected(h), ['track:keys', 'track:bass']);
-  await check(h, 'return:delay', true); await check(h, 'return:reverb', true); await h.start();
-  assert.deepEqual(exported(h)[0].payload.owners, ['track:keys', 'track:bass', 'return:delay']); assert.equal(successes(h).length, 1);
+test('a mixer that lists no channel cannot start a stem export; the song still exports', async () => {
+  const h = harness({ 'routing.capabilities': () => ({ ...capabilities(), exportTargets: [] }) }); await h.open(); await h.change('export-mode', 'stems'); await h.start();
+  assert.equal(stems(h).length, 0); assert(h.get('export-start').disabled); assert(!h.calls.some(call => call.command === 'dialog.export')); assert.equal(successes(h).length, 0);
+  await h.change('export-mode', 'song'); await h.start(); assert.equal(exported(h).length, 1); assert.equal(successes(h).length, 1);
 });
 
 test('pending capability discovery keeps range focused and tail drafts usable without allowing export', async () => {

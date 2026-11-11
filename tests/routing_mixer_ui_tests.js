@@ -336,7 +336,7 @@ test('effect removal captures state and atomically cleans exact instance routes 
     const removedID = `${owner}-removed`;
     const h = harness(state => {
       state.project.audioPlugins = [effect(owner, 3, 'removed'), effect(owner, 0, 'kept'), effect('bus:verb', 3, 'return'), effect('track:bass', 3, 'bass'), { ...effect('track:keys', 0, 'instrument'), kind: 'instrument' }];
-      const route = (id, instanceID, source = 'track:bass') => ({ id, source, tap: 'postFader', gain: 1, enabled: true, destination: { instanceID, inputBus: 2, layoutSignature: { name: 'Detector', channels: 2 } } });
+      const route = (id, instanceID, source = 'track:bass') => ({ id, source, tap: 'postFader', gain: 1, enabled: true, destination: instanceID });
       state.project.routing.sidechains = [route('removed-key', removedID), route('second-removed-key', removedID, 'bus:verb'), route('same-source-keep', `${owner}-kept`), route('prefix-keep', `${removedID}-other`), route('other-owner-keep', 'bus:verb-return', owner)];
       const lane = (name, target, laneOwner = owner) => ({ owner: laneOwner, name, target, points: [{ row: 4, value: .4 }] });
       state.project.patterns[0].automation.push(lane('remove-modern', 'plugin:effect:3:42'), lane('keep-neighbor-slot', 'plugin:effect:30:42'), lane('keep-instrument', 'plugin:instrument:3:42'), lane('keep-other-bus', 'plugin:effect:3:42', 'bus:verb'));

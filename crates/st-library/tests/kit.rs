@@ -61,8 +61,8 @@ fn session(sample: &str, zone: &str) -> Value {
             "outputs": { "track:kick": "bus:kitbus", "track:synth": "track:lead", "bus:kitbus": "master", "track:lead": "bus:other" },
             "sends": [ { "id": "s1", "source": "track:kick", "destination": "bus:space", "level": 0.4 }, { "id": "s2", "source": "track:empty", "destination": "track:lead", "level": 0.2 },
                        { "id": "s3", "source": "track:lead", "destination": "bus:space", "level": 0.9 } ],
-            "sidechains": [ { "id": "c1", "source": "track:kick", "destination": { "instanceID": "p-bus" } }, { "id": "c2", "source": "track:lead", "destination": { "instanceID": "p-bus" } },
-                            { "id": "c3", "source": "track:kick", "destination": { "instanceID": "p-lead" } } ]
+            "sidechains": [ { "id": "c1", "source": "track:kick", "destination": "p-bus" }, { "id": "c2", "source": "track:lead", "destination": "p-bus" },
+                            { "id": "c3", "source": "track:kick", "destination": "p-lead" } ]
         },
         "pluginPages": { "p-synth": { "name": "Fixture Synth", "pages": [ { "name": "Tone", "addresses": ["0", null] } ] }, "p-lead": { "name": "Chorus", "pages": [] } },
         "patterns": [ { "id": 0, "length": 4, "steps": [[null, null, null, null], [{ "note": 36 }, null, null, null], [null, null, null, null], [null, null, null, null]] } ],

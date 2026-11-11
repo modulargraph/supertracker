@@ -44,13 +44,13 @@
       : window.STBusy.any(['effectMovePrep', 'routingPrep'])
       ? 'Wait for the routing change to finish preparing, then export again.'
       : '';
-  const kindName = target => target.owner.startsWith('return:') ? 'Built-in return' : {
+  const kindName = target => ({
     track: 'Track',
     group: 'Group',
     return: 'Return',
     master: 'Master'
-  }[target.kind];
-  const selectedTargets = session => session.targets.filter(target => target.available && session.selected.has(target.owner));
+  })[target.kind];
+  const selectedTargets = session => session.targets.filter(target => session.selected.has(target.owner));
   const visibleTargets = session => {
     const query = session.query.trim().toLowerCase();
     return session.targets.filter(target => `${target.name} ${kindName(target)}`.toLowerCase().includes(query));
@@ -69,8 +69,7 @@
     for (const id of ['export-mode','export-tail']) if (get(id)) get(id).disabled = session.busy || session.waiting;
     for (const id of ['export-search','export-select-visible','export-clear','export-encoding','export-sample-rate']) if (get(id)) get(id).disabled = locked;
     get('export-dither').disabled = locked || !dithered(get('export-encoding').value);
-    for (const input of document.querySelectorAll('[data-export-owner]')) input.disabled = locked
-        || !session.targets.find(target => target.owner === input.dataset.exportOwner)?.available;
+    for (const input of document.querySelectorAll('[data-export-owner]')) input.disabled = locked;
     get('export-stems').hidden = session.mode !== 'stems';
     get('export-start').disabled = locked || !S().state.native || (session.mode === 'stems' && !selectedTargets(session).length);
     get('export-start').textContent = session.waiting
@@ -95,9 +94,9 @@
     const focused = document.activeElement?.dataset?.exportOwner;
     list.innerHTML = targets.length ? targets.map(target => {
       const index = session.targets.indexOf(target), id = `export-stem-${index}`;
-      return `<label class="export-target ${target.available ? '' : 'is-unavailable'}" for="${id}"><input type="checkbox" id="${id}" data-export-owner="${esc(target.owner)}"`
-          + ` ${session.selected.has(target.owner) ? 'checked' : ''} ${!target.available || session.busy || session.loading ? 'disabled' : ''}>`
-          + `<span class="export-target-name">${esc(target.name)}</span><span class="export-target-kind">${esc(kindName(target))}${target.available ? '' : ' · unavailable'}</span></label>`;
+      return `<label class="export-target" for="${id}"><input type="checkbox" id="${id}" data-export-owner="${esc(target.owner)}"`
+          + ` ${session.selected.has(target.owner) ? 'checked' : ''} ${session.busy || session.loading ? 'disabled' : ''}>`
+          + `<span class="export-target-name">${esc(target.name)}</span><span class="export-target-kind">${esc(kindName(target))}</span></label>`;
     }).join('') : '<p class="export-empty">No matching stem channels.</p>';
     list.querySelectorAll('[data-export-owner]').forEach(input => {
       input.addEventListener('change', () => {
@@ -123,26 +122,10 @@
     });
     controls(session);
   }
-  function parseTargets(result) {
-    const used = new Set();
-    return (Array.isArray(result?.exportTargets) ? result.exportTargets : []).filter(target => {
-      if (!target
-          || typeof target.owner !== 'string'
-          || !target.owner
-          || typeof target.name !== 'string'
-          || !target.name
-          || !['track','group','return','master'].includes(target.kind)) return false;
-      if (target.kind === 'track' && !/^track:.+/.test(target.owner)
-          || target.kind === 'group' && !/^bus:.+/.test(target.owner)
-          || target.kind === 'return' && !/^(?:bus|return):.+/.test(target.owner)) return false;
-      if (!['postFaderPreParent','masterOutput'].includes(target.boundary)
-          || target.kind === 'master' && (target.owner !== 'master' || target.boundary !== 'masterOutput')
-          || target.kind !== 'master' && target.boundary !== 'postFaderPreParent'
-          || used.has(target.owner)) return false;
-      if (target.owner.startsWith('return:') && !['return:delay','return:reverb'].includes(target.owner)) return false;
-      used.add(target.owner); return true;
-    }).map(target => ({owner:target.owner,name:target.name,kind:target.kind,boundary:target.boundary,available:target.available === true}));
-  }
+  /* The channels the host can write as stems: every strip of its mixer, `{owner, name, kind}` with kind track,
+     group, return or master. A track, group or return stem is taken after its fader and before its output
+     bus; the master is the complete mix. The built-in delay and reverb are part of the master only. */
+  const exportTargets = capabilities => capabilities.exportTargets.map(({ owner, name, kind }) => ({ owner, name, kind }));
   // Fill the three format fields with what the host offers; the host's defaults are selected.
   function showFormats(session) {
     const formats = session.formats;
@@ -302,9 +285,8 @@
           || !formats.sampleRates.includes(format.sampleRate)
           || !formats.dithers.includes(format.dither)) throw new Error('The host does not advertise the requested WAV encoding, sample rate and dither.');
       if (selectedOwners) {
-        const targets = parseTargets(capabilities);
-        if (selectedOwners.some(owner => !targets.some(target => target.owner === owner
-            && target.available))) throw new Error('One or more selected stem channels are unavailable.');
+        const targets = exportTargets(capabilities);
+        if (selectedOwners.some(owner => !targets.some(target => target.owner === owner))) throw new Error('One or more selected stem channels are unavailable.');
       }
       await S().waitForGraphEdit?.(); requireCurrent();
       if (await S().captureNativeEdits?.() === false) throw new Error('Current plug-in settings could not be captured. Nothing was exported.');
@@ -425,7 +407,7 @@
       }
     });
     get('export-select-visible').addEventListener('click', () => {
-      for (const target of visibleTargets(session)) if (target.available) session.selected.add(target.owner);
+      for (const target of visibleTargets(session)) session.selected.add(target.owner);
       renderTargets(session);
     });
     get('export-clear').addEventListener('click',()=>{session.selected.clear();renderTargets(session);});
@@ -437,12 +419,9 @@
       if (!active(session) || !sameProject(session)) return false;
       session.formats = exportFormats(capabilities);
       showFormats(session);
-      session.targets = parseTargets(capabilities);
-      session.selected = new Set(session.targets.filter(target=>target.available&&target.kind==='track').map(target=>target.owner));
-      status(session,
-          !session.targets.some(target => target.available)
-              ? 'The host reported no available stem channels. Song and pattern export remain available.'
-              : 'Ready to export.');
+      session.targets = exportTargets(capabilities);
+      session.selected = new Set(session.targets.filter(target=>target.kind==='track').map(target=>target.owner));
+      status(session, 'Ready to export.');
     } catch (error) {
       if (!active(session)) return false;
       status(session,`Export options could not be read: ${error?.message || error} Close this dialog and open Export again.`,'error');
