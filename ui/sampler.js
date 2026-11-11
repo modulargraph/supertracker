@@ -30,11 +30,7 @@
   const note = value => `${['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'][((value % 12) + 12) % 12]}${Math.floor(value / 12) - 1}`;
   const sliceNote = (root, index, count) => { let value = root + index; while (value > 127) value -= count; return note(value); };
   const fileName = path => String(path || '').split('/').pop();
-  const markerList = inst => Array.isArray(inst.slicePoints) && inst.slicePoints.length
-      ? inst.slicePoints
-      : Array.isArray(inst.slices)
-      ? inst.slices
-      : [];
+  const markerList = inst => inst.slicePoints || [];
   const slicing = {
     sensitivity: .5,
     minimumGapSeconds: .04,
@@ -101,7 +97,6 @@
         128);
     ST().mutate(label, () => {
       destination.slicePoints = values;
-      destination.slices = [...values];
       destination.sliceCount = values.length;
       destination.mode = 'slice';
       state().selection = null;
@@ -115,7 +110,7 @@
     });
   }
   const sliceSignature = inst => JSON.stringify([inst.type, inst.samplePath, inst.start, inst.end, inst.mode, inst.sliceCount,
-      inst.slicePoints, inst.slices]);
+      inst.slicePoints]);
   const auditionSignature = inst => JSON.stringify([sliceSignature(inst), inst.rootNote, inst.zones || []]);
   function selectedSlice(inst = current()) {
     if (audition.instrument !== inst) { audition.instrument = inst; audition.selected = 0; audition.message = ''; audition.error = false; }
@@ -282,7 +277,7 @@
         slicing.feedback = { instrument, message: 'Detection discarded because its sample, region or markers changed.' };
         ST().toast('Slice detection was discarded because its destination changed. Existing edits were kept.', 'info'); return;
       }
-      const points = result?.slicePoints ?? result?.slices;
+      const points = result?.slicePoints;
       if (!Array.isArray(points)
           || !points.length
           || points.length > 128
@@ -335,7 +330,7 @@
           + `from line input, then set its root note and playback region before chopping.</p><button id="sampler-record-input">Record line input…</button></div></section>`,
       voice: `<section class="panel wide sampler-voices" aria-label="Voice behavior"><div class="panel-head"><h2>Voice behavior</h2>`
           + `<span class="chip">VOICE</span></div><div class="panel-body stack"><div class="grid2"><label class="field">`
-          + `<span>Voice mode · this track</span><select id="sampler-voice-mode">${[['poly', 'Polyphonic'], ['mono', 'Monophonic'], ['legato', 'Legato']].map(([value, label]) => `<option value="${value}" ${(voiceTrack()?.voiceMode || inst.voiceMode || 'poly') === value ? 'selected' : ''}>${label}</option>`).join('')}</select>`
+          + `<span>Voice mode · this track</span><select id="sampler-voice-mode">${[['poly', 'Polyphonic'], ['mono', 'Monophonic'], ['legato', 'Legato']].map(([value, label]) => `<option value="${value}" ${(voiceTrack()?.voiceMode || 'poly') === value ? 'selected' : ''}>${label}</option>`).join('')}</select>`
           + `</label><label class="field"><span>Choke group · this track</span><select id="sampler-choke">${Array.from({
         length: 17
       }, (_, index) => `<option value="${index}" ${Number(voiceTrack()?.chokeGroup ?? 0) === index ? 'selected' : ''}>${index === 0 ? 'Off · independent' : `Group ${index}`}</option>`).join('')}</select>`
@@ -415,7 +410,7 @@
         + `<thead><tr><th>Sample</th><th>Root</th><th>Key low</th><th>Key high</th><th>Vel low</th><th>Vel high</th>`
         + `<th>Tune · st</th><th>Level</th><th></th></tr></thead><tbody>${zones.map((zone, index) => `<tr><td class="sampler-zone-file"><div><button class="sampler-zone-preview" data-sampler-zone-preview="${index}" aria-label="Audition `
         + `zone ${index + 1}">▶</button><button id="sampler-zone-name-${index}" class="sampler-zone-name" data-sampler-zone-replace="${index}"`
-        + ` title="${esc(zone.samplePath || zone.path)}" aria-label="Replace sample for zone ${index + 1}: ${esc(fileName(zone.samplePath || zone.path))}">${esc(fileName(zone.samplePath || zone.path))}</button>`
+        + ` title="${esc(zone.samplePath)}" aria-label="Replace sample for zone ${index + 1}: ${esc(fileName(zone.samplePath))}">${esc(fileName(zone.samplePath))}</button>`
         + `</div></td><td><div class="sampler-zone-root">${zoneNumber(index, 'rootNote', zone.rootNote ?? 60, 0, 127, 1, 'root note')}<small>${note(zone.rootNote ?? 60)}</small>`
         + `</div></td><td>${zoneNumber(index, 'keyLow', zone.keyLow ?? 0, 0, 127, 1, 'lowest key')}</td><td>${zoneNumber(index, 'keyHigh', zone.keyHigh ?? 127, 0, 127, 1, 'highest key')}</td>`
         + `<td>${zoneNumber(index, 'velocityLow', zone.velocityLow ?? 0, 0, 127, 1, 'lowest velocity')}</td><td>${zoneNumber(index, 'velocityHigh', zone.velocityHigh ?? 127, 0, 127, 1, 'highest velocity')}</td>`
@@ -434,7 +429,7 @@
       ST().mutate(replace == null ? 'add multisample zone' : 'replace zone sample', project => {
         const inst = resolveInstrument(context, project); if (!inst) return;
         inst.zones ||= [];
-        if (replace != null && inst.zones[replace]) { inst.zones[replace].samplePath = path; delete inst.zones[replace].path; }
+        if (replace != null && inst.zones[replace]) inst.zones[replace].samplePath = path;
         else if (inst.zones.length < 128) inst.zones.push({ samplePath: path, keyLow: 0, keyHigh: 127, velocityLow: 0, velocityHigh: 127, rootNote: inst.rootNote, tune: 0, volume: 1 });
       });
       ST().toast(`${replace == null ? 'Zone added' : 'Zone sample replaced'}. Audio loads in the background.`);
@@ -602,7 +597,7 @@
     })));
     document.querySelectorAll('[data-sampler-zone-preview]').forEach(button => button.addEventListener('click', () => {
       const zone = current().zones[Number(button.dataset.samplerZonePreview)];
-      ST().request('sample.preview', { path: zone.samplePath || zone.path }).catch(error => ST().toast(error.message, 'error'));
+      ST().request('sample.preview', { path: zone.samplePath }).catch(error => ST().toast(error.message, 'error'));
     }));
     document.querySelectorAll('[data-sampler-zone-field]').forEach(input => input.addEventListener('change', () => {
       if (!validFields(fields)) return;
@@ -723,7 +718,7 @@
     if (key.startsWith('slice:')) {
       const points = slicePoints(inst), index = Number(key.split(':')[1]), start = inst.start, end = inst.end;
       points[index] = (value - start) / (end - start);
-      inst.slicePoints = points; inst.slices = [...points]; inst.sliceCount = points.length;
+      inst.slicePoints = points; inst.sliceCount = points.length;
       return;
     }
     inst[key] = value;
@@ -778,7 +773,7 @@
     return Number.isFinite(value) ? value : position;
   }
   const markerSignature = inst => JSON.stringify([inst.samplePath, inst.start, inst.end, inst.loopStart, inst.loopEnd, inst.mode, inst.sliceCount,
-      inst.slicePoints, inst.slices]);
+      inst.slicePoints]);
   function markerOwner(inst, key) {
     const owner = state().project, signature = markerSignature(inst);
     return () => state().project === owner
@@ -1122,7 +1117,7 @@
             ? { note: root + index, ...target, velocity: 100, gate }
             : { note: root, ...target, velocity: 100, gate, fx1: { type: 'slice', value: index + 1 } };
       });
-      if (inst.mode !== 'slice') { inst.mode = 'slice'; inst.slicePoints = [...points]; inst.slices = [...points]; inst.sliceCount = count; }
+      if (inst.mode !== 'slice') { inst.mode = 'slice'; inst.slicePoints = [...points]; inst.sliceCount = count; }
       created = { id: patternID, name: `${inst.name || 'Slices'} slices`.slice(0, 60), length, steps, automation: [] };
       project.patterns.push(created); project.activePattern = patternID; s.row = 0;
     });

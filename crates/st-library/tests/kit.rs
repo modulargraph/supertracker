@@ -44,7 +44,7 @@ fn session(sample: &str, zone: &str) -> Value {
             { "id": 0, "type": "sample", "name": "Lead", "samplePath": "/elsewhere/lead.wav" },
             { "id": 1, "type": "plugin", "name": "Synth" },
             { "id": 2, "type": "sample", "name": "Layered kick", "samplePath": sample, "rootNote": 36, "start": 0.03, "end": 0.91, "cutoff": 1532.5,
-              "zones": [ { "samplePath": zone, "rootNote": 42, "keyLow": 36, "keyHigh": 60, "volume": 0.71 }, { "path": sample, "rootNote": 48, "velocityLow": 80, "velocityHigh": 127 } ] },
+              "zones": [ { "samplePath": zone, "rootNote": 42, "keyLow": 36, "keyHigh": 60, "volume": 0.71 }, { "samplePath": sample, "rootNote": 48, "velocityLow": 80, "velocityHigh": 127 } ] },
             { "id": 3, "type": "sample", "name": "Empty", "samplePath": "" }
         ],
         "groups": [ { "id": "g1", "name": "Fixture kit", "color": "#e2a44f", "collapsed": true, "busID": "kitbus", "libraryPath": "/Users/x/Kits/Fixture kit.stkit", "importNotes": ["A note"] } ],
@@ -79,7 +79,7 @@ fn sample_paths(project: &Value) -> [String; 3] {
     [
         instrument["samplePath"].as_str().unwrap().to_string(),
         instrument["zones"][0]["samplePath"].as_str().unwrap().to_string(),
-        instrument["zones"][1]["path"].as_str().unwrap().to_string(),
+        instrument["zones"][1]["samplePath"].as_str().unwrap().to_string(),
     ]
 }
 
@@ -202,7 +202,7 @@ fn collected_round_trip() {
     let mut expected = project.clone();
     expected["instruments"][0]["samplePath"] = json!(stored_paths[0]);
     expected["instruments"][0]["zones"][0]["samplePath"] = json!(stored_paths[1]);
-    expected["instruments"][0]["zones"][1]["path"] = json!(stored_paths[2]);
+    expected["instruments"][0]["zones"][1]["samplePath"] = json!(stored_paths[2]);
     assert_eq!(stored, expected, "collection changes nothing but the sample paths");
 
     // A move proves that reading resolves members from the opened package, not the save location.

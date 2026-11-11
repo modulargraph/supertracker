@@ -76,7 +76,7 @@
   }
   async function addFile(path, owner = target(), name) {
     requireTarget(owner);
-    const activePath = owner.clip.path || owner.clip.samplePath;
+    const activePath = owner.clip.path;
     const [meta, previous] = await Promise.all([app().request('audio.clipInfo', { path }),
         activePath === path ? Promise.resolve(null) : app().request('audio.clipInfo', { path: activePath })]); requireTarget(owner);
     if (!Number.isFinite(Number((previous || meta)?.duration))

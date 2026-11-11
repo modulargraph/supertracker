@@ -18,9 +18,11 @@
   const busOwner = group => `bus:${group.busID}`;
   const trackOwner = track => `track:${track.routingID}`;
 
+  // An empty pad: a sampler at full level. Its track is monophonic (EMPTY_PAD_VOICE): a new hit cuts the last one.
   function defaultInstrument(id, name) {
-    return { ...S().instrumentDefaults(id, name, 'sample'), name, volume: 1, voiceMode: 'mono' };
+    return { ...S().instrumentDefaults(id, name, 'sample'), name, volume: 1 };
   }
+  const EMPTY_PAD_VOICE = 'mono';
   // A kit document's instrument as an instrument of the session: every key an instrument has, the kit's values.
   const kitInstrument = (id, instrument) => ({ ...S().instrumentDefaults(id, instrument.name), ...clone(instrument), id });
 
@@ -148,7 +150,7 @@
       removeTrackPlugins(q, track);
       q.instruments[track.instrument] = defaultInstrument(track.instrument, `Pad ${String((track.pad ?? 0) + 1).padStart(2, '0')}`);
       track.name = `Pad ${String((track.pad ?? 0) + 1).padStart(2, '0')}`;
-      delete track.chokeGroup; delete track.voiceMode;
+      delete track.chokeGroup; track.voiceMode = EMPTY_PAD_VOICE;
     }
     let added = 0;
     for (const member of sourceMembers) {
@@ -237,7 +239,7 @@
       const id = q.instruments.length;
       q.instruments.push(defaultInstrument(id, 'Pad 01'));
       const index = S().appendInstrumentTrack(q, id, 'Pad 01');
-      q.tracks[index].pad = 0; q.tracks[index].padNote = 60;
+      q.tracks[index].pad = 0; q.tracks[index].padNote = 60; q.tracks[index].voiceMode = EMPTY_PAD_VOICE;
       const { map } = G().create(q, [index], { name, makeID: S().uid });
       state().track = map[index]; state().instrument = id; state().selection = null;
       created = true;

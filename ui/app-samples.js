@@ -111,7 +111,6 @@
         inst.samplePath = result.path || path;
         inst.name = result.name || path.split('/').pop().replace(/\.[^.]+$/, '');
         inst.slicePoints = [];
-        inst.slices = [];
         inst.zones = [];
         inst.start = 0;
         inst.end = 1;
@@ -154,9 +153,9 @@
       await edit.commit('add sample instrument', p => {
         if (p.instruments.length !== id
             || p.tracks.length !== destinationTrack) throw new Error('The destination changed. Add the sample again.');
-        // A loaded sample (a hit, a break) starts monophonic: a new note cuts the previous one, as in a tracker.
-        p.instruments.push({ ...instrumentDefaults(id, name, 'sample'), voiceMode: 'mono', samplePath: result.path || path });
-        app.appendInstrumentTrack(p, id, name, routingID);
+        p.instruments.push({ ...instrumentDefaults(id, name, 'sample'), samplePath: result.path || path });
+        // A loaded sample (a hit, a break) starts monophonic on its track: a new note cuts the previous one, as in a tracker.
+        p.tracks[app.appendInstrumentTrack(p, id, name, routingID)].voiceMode = 'mono';
       });
       rememberSampleMetadata(result);
       reconcileSampleMetadata(false);

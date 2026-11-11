@@ -39,7 +39,7 @@
   function beatsFromSeconds(start, duration, destination = project()) { return timing(destination).endingBeat(start, duration) - start; }
   // A clip keeps its length in beats wherever it starts.
   function moveTo(clip, start) { clip.startBeat = Math.max(0, start); }
-  const clipPath = clip => clip.path || clip.samplePath || '';
+  const clipPath = clip => clip.path || '';
   const selected = () => clips().find(clip => String(clip.id) === String(state().clipSelected));
   function sequenceBeat(index = state().sequence || 0) {
     return project().sequence.slice(0, index).reduce((sum, id) => sum

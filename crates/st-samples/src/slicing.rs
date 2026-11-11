@@ -37,8 +37,6 @@ pub struct SliceAnalysis {
     /// Slice starts as fractions (0 inclusive ... 1 exclusive) of the analysed region,
     /// ascending; the first is always 0.
     pub slice_points: Vec<f64>,
-    /// The same list (the name older interface code reads).
-    pub slices: Vec<f64>,
     /// Number of slices.
     pub slice_count: usize,
     /// The sensitivity used.
@@ -189,7 +187,6 @@ pub fn analyze_slices(sample: &DecodedSample, request: &SliceRequest, operation:
     Ok(SliceAnalysis {
         method: "transient",
         slice_count: markers.len(),
-        slices: markers.clone(),
         slice_points: markers,
         sensitivity,
         minimum_gap_seconds: gap_seconds,
@@ -248,7 +245,6 @@ mod tests {
         assert!(points[0] == 0.0 && points.iter().all(|p| p.is_finite() && *p >= 0.0 && *p < 1.0));
         assert!(points.windows(2).all(|pair| pair[0] < pair[1]), "ascending and unique");
         assert_eq!(result.slice_count, points.len());
-        assert_eq!(result.slices, points);
         points
     }
 
@@ -339,11 +335,12 @@ mod tests {
         assert_eq!((request.minimum_gap_seconds, request.maximum_slices), (Some(0.05), Some(16.0)));
         let json = serde_json::to_value(analyze(&source, &request).unwrap()).unwrap();
         for key in [
-            "method", "slicePoints", "slices", "sliceCount", "sensitivity", "minimumGapSeconds", "maximumSlices", "start", "end", "duration", "analyzedFrames",
+            "method", "slicePoints", "sliceCount", "sensitivity", "minimumGapSeconds", "maximumSlices", "start", "end", "duration", "analyzedFrames",
             "analysisWindows", "analysisWindowSeconds", "candidateCount", "capped",
         ] {
             assert!(json.get(key).is_some(), "missing {key}");
         }
+        assert!(json.get("slices").is_none(), "the markers have one name");
         assert_eq!(json["method"], "transient");
         let token = crate::CancelToken::new();
         token.cancel();

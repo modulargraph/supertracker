@@ -315,7 +315,6 @@
           rootNote: session.rootNote,
           mode: 'oneshot',
           zones: [],
-          slices: [],
           slicePoints: [],
           start: 0,
           end: 1,

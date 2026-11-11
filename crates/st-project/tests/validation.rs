@@ -391,6 +391,37 @@ fn instrument_types() {
     }
 }
 
+/// A sample file, the slice markers and the voice mode have one name each. Under the other name
+/// the host would not play them, so it refuses the project instead of opening it without them.
+#[test]
+fn one_name_for_a_sample_file_the_slice_markers_and_the_voice_mode() {
+    accepted(|p| p["instruments"][0]["zones"] = json!([{ "samplePath": "/a.wav" }, { "samplePath": "/b.wav" }]));
+    assert_eq!(rejected(|p| p["instruments"][0]["zones"] = json!([{ "samplePath": "/a.wav" }, { "path": "/b.wav" }])), "Instrument 1, zone 2: the sample must be saved as samplePath, not path.");
+    assert_eq!(rejected(|p| p["instruments"][0]["zones"] = json!([{ "samplePath": "/a.wav", "path": "/a.wav" }])), "Instrument 1, zone 1: the sample must be saved as samplePath, not path.");
+
+    let clip = json!({ "id": "c", "track": 0, "path": "/a.wav", "startBeat": 0, "durationBeats": 4 });
+    accepted(|p| p["audioClips"] = json!([clip]));
+    for extra in [json!("/a.wav"), json!("")] {
+        let mut named_twice = clip.clone();
+        named_twice["samplePath"] = extra;
+        assert_eq!(rejected(|p| p["audioClips"] = json!([named_twice])), "An audio clip's file must be saved as path, not samplePath.");
+    }
+    assert_eq!(rejected(|p| p["audioClips"] = json!([{ "id": "c", "track": 0, "samplePath": "/a.wav", "startBeat": 0, "durationBeats": 4 }])), "An audio clip's file must be saved as path, not samplePath.");
+
+    accepted(|p| p["instruments"][0]["slicePoints"] = json!([0, 0.5]));
+    for slices in [json!([0, 0.5]), json!([])] {
+        assert_eq!(rejected(|p| p["instruments"][0]["slices"] = slices), "Instrument 1: slice markers must be saved as slicePoints, not slices.");
+    }
+
+    for mode in ["poly", "mono", "legato"] {
+        accepted(|p| p["tracks"][1]["voiceMode"] = json!(mode));
+        assert_eq!(rejected(|p| p["instruments"][0]["voiceMode"] = json!(mode)), "Instrument 1: the voice mode belongs to the track that plays it, not to the instrument.");
+    }
+    for mode in [json!("duo"), json!(1), Value::Null] {
+        assert_eq!(rejected(|p| p["tracks"][1]["voiceMode"] = mode), "Track 2: the voice mode must be poly, mono or legato.");
+    }
+}
+
 /// The input a hardware instrument is sampled from is saved with the device's identity; a name
 /// alone is not a saved input.
 #[test]

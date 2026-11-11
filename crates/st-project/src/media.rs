@@ -5,8 +5,8 @@
 //! unknown fields can hold path-like strings that mean something else and are never touched.
 //! The media fields are:
 //!
-//! * `instruments[].samplePath`, `instruments[].zones[].samplePath` and `.path`
-//! * `audioClips[].path` and `.samplePath`, `audioClips[].takeSet.takes[].path`
+//! * `instruments[].samplePath`, `instruments[].zones[].samplePath`
+//! * `audioClips[].path`, `audioClips[].takeSet.takes[].path`
 //! * `tracks[].frozen.path`, `.patternPrints[].path`, `.patternPrints[].loop.path`
 //! * `mediaManifest[].path`
 //!
@@ -40,13 +40,11 @@ pub fn map_media_paths(project: &mut Project, transform: &mut dyn FnMut(&str) ->
     for instrument in project.instruments.iter_mut().flatten() {
         apply(&mut instrument.sample_path);
         for zone in instrument.zones.iter_mut().flatten() {
-            apply(&mut zone.path);
             apply(&mut zone.sample_path);
         }
     }
     for clip in project.audio_clips.iter_mut().flatten() {
         apply(&mut clip.path);
-        apply(&mut clip.sample_path);
         if let Some(takes) = clip.take_set.as_mut().and_then(|set| set.takes.as_mut()) {
             for take in takes {
                 apply(&mut take.path);
@@ -258,9 +256,9 @@ mod tests {
     #[test]
     fn media_fields_are_the_schema_fields_only() {
         let mut project = Project::from_value(json!({
-            "instruments": [{ "samplePath": "/a.wav", "zones": [{ "samplePath": "/z.wav", "path": "/z.wav" }, { "path": "builtin:wavetables/Basic/Saw.wav" }], "plugin": { "state": "/not/media.wav" } },
+            "instruments": [{ "samplePath": "/a.wav", "zones": [{ "samplePath": "/z.wav", "path": "/not/the/sample.wav" }, { "samplePath": "builtin:wavetables/Basic/Saw.wav" }], "plugin": { "state": "/not/media.wav" } },
                 { "samplePath": "" }, { "samplePath": "builtin:drums/kick/00" }],
-            "audioClips": [{ "path": "/c.wav", "samplePath": "/a.wav", "takeSet": { "takes": [{ "path": "/t.wav" }] }, "notes": "/not/media.txt" }],
+            "audioClips": [{ "path": "/c.wav", "samplePath": "/not/the/clip.wav", "takeSet": { "takes": [{ "path": "/t.wav" }] }, "notes": "/not/media.txt" }],
             "tracks": [{ "frozen": { "path": "/f.wav", "patternPrints": [{ "path": "/h.wav", "loop": { "path": "/l.wav" } }] } }],
             "mediaManifest": [{ "path": "/a.wav" }],
             "audioPlugins": [{ "bundlePath": "/Plug-Ins/x.vst3", "state": "/also/not/media" }]
@@ -269,8 +267,9 @@ mod tests {
         assert_eq!(media_paths(&project), ["/a.wav", "/z.wav", "/c.wav", "/t.wav", "/f.wav", "/h.wav", "/l.wav"]);
         map_media_paths(&mut project, &mut |path| Some(format!("moved{path}")));
         let value = project.to_value();
-        assert_eq!(value["instruments"][0]["zones"][0], json!({ "samplePath": "moved/z.wav", "path": "moved/z.wav" }));
-        assert_eq!(value["instruments"][0]["zones"][1]["path"], "builtin:wavetables/Basic/Saw.wav");
+        assert_eq!(value["instruments"][0]["zones"][0], json!({ "samplePath": "moved/z.wav", "path": "/not/the/sample.wav" }));
+        assert_eq!(value["instruments"][0]["zones"][1]["samplePath"], "builtin:wavetables/Basic/Saw.wav");
+        assert_eq!((&value["audioClips"][0]["path"], &value["audioClips"][0]["samplePath"]), (&json!("moved/c.wav"), &json!("/not/the/clip.wav")));
         assert_eq!((&value["instruments"][1]["samplePath"], &value["instruments"][2]["samplePath"]), (&json!(""), &json!("builtin:drums/kick/00")));
         assert_eq!(value["instruments"][0]["plugin"]["state"], "/not/media.wav");
         assert_eq!((&value["audioClips"][0]["notes"], &value["audioPlugins"][0]["bundlePath"]), (&json!("/not/media.txt"), &json!("/Plug-Ins/x.vst3")));

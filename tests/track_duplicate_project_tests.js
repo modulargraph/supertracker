@@ -16,7 +16,7 @@ function fixture() {
     ],
     instruments: [
       { id: 0, name: 'Juno patch', type: 'plugin', rootNote: 60 },
-      { id: 1, name: 'Slice', type: 'sample', samplePath: '/samples/chord.wav', slices: [.2, .4], zones: [{ samplePath: '/samples/zone.wav', lo: 20, hi: 127 }] },
+      { id: 1, name: 'Slice', type: 'sample', samplePath: '/samples/chord.wav', slicePoints: [0, .2, .4], zones: [{ samplePath: '/samples/zone.wav', lo: 20, hi: 127 }] },
       { id: 2, name: 'Unused', type: 'midi', midiChannel: 7 }
     ],
     audioPlugins: [

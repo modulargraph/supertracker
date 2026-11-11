@@ -829,9 +829,12 @@ fn cutoff_hertz(value: f64, highpass: bool) -> f64 {
 /// The Sampler's controls mapped onto a sampler instrument.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SamplerMapping {
-    /// Instrument fields to set: `tune`, `voiceMode`, `attack`, `decay`, `sustain`, `release`,
+    /// Instrument fields to set: `tune`, `attack`, `decay`, `sustain`, `release`,
     /// `filterAttack` ..., `filterType`, `cutoff`, `resonance`.
     pub instrument: Map<String, Value>,
+    /// The voice mode (`poly`, `mono`, `legato`), a setting of the track that plays the
+    /// instrument. `None` when the control was not read.
+    pub voice_mode: Option<&'static str>,
     /// Recovered physical values (seconds, semitones, Hz), also of controls that are not applied.
     pub physical: BTreeMap<String, f64>,
     /// What is approximate or not converted.
@@ -846,6 +849,7 @@ pub struct SamplerMapping {
 /// Controls without a verified equivalent stay in `source_parameters` and are never guessed.
 pub fn map_sampler(raw: &BTreeMap<String, f64>) -> SamplerMapping {
     let mut fields: Map<String, Value> = Map::new();
+    let mut voice_mode = None;
     let mut physical: BTreeMap<String, f64> = BTreeMap::new();
     let mut warnings: Vec<String> = Vec::new();
     fn warn(warnings: &mut Vec<String>, text: impl Into<String>) {
@@ -868,7 +872,7 @@ pub fn map_sampler(raw: &BTreeMap<String, f64>) -> SamplerMapping {
         physical.insert("tuneSemitones".to_string(), 36.0 * tune);
     }
     if let Some(voices) = value("0xc8", 0.0, 7.0, &mut warnings).filter(|voices| voices.round() == *voices) {
-        fields.insert("voiceMode".to_string(), json!(if voices == 0.0 { "legato" } else if voices == 1.0 { "mono" } else { "poly" }));
+        voice_mode = Some(if voices == 0.0 { "legato" } else if voices == 1.0 { "mono" } else { "poly" });
         if voices > 1.0 {
             warn(&mut warnings, "Sampler polyphony uses SuperTracker's voice pool; the original per-Sound voice limit is retained in the import data.");
         }
@@ -967,5 +971,5 @@ pub fn map_sampler(raw: &BTreeMap<String, f64>) -> SamplerMapping {
         warn(&mut warnings, "Nonfinite sampler source controls were preserved as diagnostic strings and were not applied.");
     }
     let source_parameters = raw.iter().map(|(key, value)| (key.clone(), if value.is_finite() { json!(value) } else { json!(format!("{value}")) })).collect();
-    SamplerMapping { instrument: fields, physical, warnings, source_parameters }
+    SamplerMapping { instrument: fields, voice_mode, physical, warnings, source_parameters }
 }

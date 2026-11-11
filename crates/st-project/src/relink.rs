@@ -339,25 +339,10 @@ pub struct Fingerprinted {
 // ---- Internals ---------------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Field {
-    Path,
-    SamplePath,
-}
-
-impl Field {
-    fn key(self) -> &'static str {
-        match self {
-            Field::Path => "path",
-            Field::SamplePath => "samplePath",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Location {
     InstrumentSample { instrument: usize },
-    Zone { instrument: usize, zone: usize, field: Field },
-    Clip { clip: usize, field: Field },
+    Zone { instrument: usize, zone: usize },
+    Clip { clip: usize },
     Take { clip: usize, take: usize },
     FrozenSong { track: usize },
     FrozenHead { track: usize, print: usize },
@@ -494,16 +479,12 @@ fn references(project: &Project, project_file: Option<&Path>) -> Vec<Ref> {
         let label = item.display_name(instrument);
         push(format!("/instruments/{instrument}/samplePath"), ReferenceKind::Sample, label.clone(), &item.sample_path, Location::InstrumentSample { instrument }, None);
         for (zone, entry) in item.zones.iter().flatten().take(128).enumerate() {
-            for (field, path) in [(Field::SamplePath, &entry.sample_path), (Field::Path, &entry.path)] {
-                push(format!("/instruments/{instrument}/zones/{zone}/{}", field.key()), ReferenceKind::Zone, format!("{label} · Zone {}", zone + 1), path, Location::Zone { instrument, zone, field }, None);
-            }
+            push(format!("/instruments/{instrument}/zones/{zone}/samplePath"), ReferenceKind::Zone, format!("{label} · Zone {}", zone + 1), &entry.sample_path, Location::Zone { instrument, zone }, None);
         }
     }
     for (clip, item) in project.clip_list().iter().take(256).enumerate() {
         let label = item.name.clone().unwrap_or_else(|| format!("Audio clip {}", clip + 1));
-        for (field, path) in [(Field::Path, &item.path), (Field::SamplePath, &item.sample_path)] {
-            push(format!("/audioClips/{clip}/{}", field.key()), ReferenceKind::Clip, label.clone(), path, Location::Clip { clip, field }, None);
-        }
+        push(format!("/audioClips/{clip}/path"), ReferenceKind::Clip, label.clone(), &item.path, Location::Clip { clip }, None);
         if let Some(set) = &item.take_set {
             for (take, entry) in set.takes.iter().flatten().take(32).enumerate() {
                 let name = entry.name.clone().unwrap_or_else(|| format!("Take {}", take + 1));
@@ -574,8 +555,8 @@ fn expectations(project: &Project, references: &[Ref], project_file: Option<&Pat
 fn row(reference: &Ref, info: Option<&FileInfo>, expected: &Expected) -> Reference {
     let (instrument, zone, clip, take, track) = match reference.location {
         Location::InstrumentSample { instrument } => (Some(instrument), None, None, None, None),
-        Location::Zone { instrument, zone, .. } => (Some(instrument), Some(zone), None, None, None),
-        Location::Clip { clip, .. } => (None, None, Some(clip), None, None),
+        Location::Zone { instrument, zone } => (Some(instrument), Some(zone), None, None, None),
+        Location::Clip { clip } => (None, None, Some(clip), None, None),
         Location::Take { clip, take } => (None, None, Some(clip), Some(take), None),
         Location::FrozenSong { track } | Location::FrozenHead { track, .. } | Location::FrozenLoop { track, .. } => (None, None, None, None, Some(track)),
     };
@@ -1054,64 +1035,36 @@ fn manifest_entry(path: String, value: &Fingerprint) -> MediaManifestEntry {
     MediaManifestEntry { path: Some(path), size: Some(value.size as i64), modified: Some(value.modified), sha256: value.sha256.clone(), ..MediaManifestEntry::default() }
 }
 
-/// The paths that must move together with `reference`, and a name for the group:
-/// a zone's two aliases; a clip's `path`, `samplePath` and active take.
+/// The paths that must move together with `reference`, and a name for the pair: a clip's own
+/// path and the path of its active take, which the clip mirrors.
 fn linked(project: &Project, reference: &Ref) -> Option<(String, Vec<String>)> {
-    let present = |paths: Vec<&Option<String>>| paths.into_iter().flatten().filter(|path| !path.is_empty()).cloned().collect::<Vec<String>>();
-    match reference.location {
-        Location::Zone { instrument, zone, .. } => {
-            let entry = project.instrument_list().get(instrument)?.zones.as_ref()?.get(zone)?;
-            Some((format!("/instruments/{instrument}/zones/{zone}"), present(vec![&entry.path, &entry.sample_path])))
+    let (Location::Clip { clip } | Location::Take { clip, .. }) = reference.location else { return None };
+    let item = project.clip_list().get(clip)?;
+    let active = item.take_set.as_ref().and_then(|set| set.active_index());
+    if let Location::Take { take, .. } = reference.location {
+        if Some(take) != active {
+            return None;
         }
-        Location::Clip { clip, .. } | Location::Take { clip, .. } => {
-            let item = project.clip_list().get(clip)?;
-            let active = item.take_set.as_ref().and_then(|set| set.active_index());
-            if let Location::Take { take, .. } = reference.location {
-                if Some(take) != active {
-                    return None;
-                }
-            }
-            let mut paths = present(vec![&item.path, &item.sample_path]);
-            if let Some(path) = active.and_then(|active| item.take_set.as_ref()?.takes.as_ref()?.get(active)?.path.clone()) {
-                paths.push(path);
-            }
-            Some((format!("/audioClips/{clip}"), paths))
-        }
-        _ => None,
     }
+    let mut paths: Vec<String> = item.file().map(str::to_string).into_iter().collect();
+    if let Some(path) = active.and_then(|active| item.take_set.as_ref()?.takes.as_ref()?.get(active)?.path.clone()) {
+        paths.push(path);
+    }
+    Some((format!("/audioClips/{clip}"), paths))
 }
 
 fn set_path(project: &mut Project, location: Location, path: &str) -> Option<()> {
     let value = Some(path.to_string());
-    let follow = |field: &mut Option<String>| {
-        if field.is_some() {
-            *field = Some(path.to_string());
-        }
-    };
     match location {
         Location::InstrumentSample { instrument } => project.instruments.as_mut()?.get_mut(instrument)?.sample_path = value,
-        Location::Zone { instrument, zone, field } => {
-            let entry = project.instruments.as_mut()?.get_mut(instrument)?.zones.as_mut()?.get_mut(zone)?;
-            match field {
-                Field::Path => entry.path = value,
-                Field::SamplePath => entry.sample_path = value,
-            }
-            follow(&mut entry.path);
-            follow(&mut entry.sample_path);
-        }
-        Location::Clip { clip, field } => {
+        Location::Zone { instrument, zone } => project.instruments.as_mut()?.get_mut(instrument)?.zones.as_mut()?.get_mut(zone)?.sample_path = value,
+        Location::Clip { clip } => {
             let item = project.audio_clips.as_mut()?.get_mut(clip)?;
-            match field {
-                Field::Path => item.path = value,
-                Field::SamplePath => item.sample_path = value,
-            }
-            follow(&mut item.path);
-            follow(&mut item.sample_path);
+            item.path = value.clone();
             // The active take mirrors the clip's own path.
             if let Some(set) = &mut item.take_set {
                 if let Some(active) = set.active_index() {
-                    set.takes.as_mut()?.get_mut(active)?.path = Some(path.to_string());
-                    item.path = Some(path.to_string());
+                    set.takes.as_mut()?.get_mut(active)?.path = value;
                 }
             }
         }
@@ -1122,7 +1075,6 @@ fn set_path(project: &mut Project, location: Location, path: &str) -> Option<()>
             set.takes.as_mut()?.get_mut(take)?.path = value;
             if active == Some(take) {
                 item.path = Some(path.to_string());
-                follow(&mut item.sample_path);
             }
         }
         Location::FrozenSong { track } => project.tracks.as_mut()?.get_mut(track)?.frozen.as_mut()?.path = value,
@@ -1142,8 +1094,8 @@ fn set_path(project: &mut Project, location: Location, path: &str) -> Option<()>
 ///   the project changed is stale);
 /// * `to` must be an absolute path to a readable file with content;
 /// * a reference whose original file is available again is not replaced (refresh instead);
-/// * linked fields (a zone's `path`/`samplePath`, a clip's path and active take) must agree
-///   before and get the same replacement;
+/// * a clip's path and the path of its active take must agree before and get the same
+///   replacement;
 /// * a replacement whose content differs from the saved fingerprint needs
 ///   `allow_different_content`; a frozen print only accepts its exact printed content.
 ///
@@ -1181,10 +1133,10 @@ pub fn apply(project: &Project, selections: &[Selection], project_file: Option<&
         }
         if let Some((owner, paths)) = linked(project, reference) {
             if !paths.iter().all(|path| resolve(path, project_file) == reference.resolved) {
-                return Err(Error::invalid("The sample or audio clip aliases refer to different files. Repair the source selection before relinking."));
+                return Err(Error::invalid("The audio clip and its active take refer to different files. Repair the source selection before relinking."));
             }
             if linked_targets.get(&owner).is_some_and(|previous| *previous != target.path) {
-                return Err(Error::invalid("Linked sample or audio clip references must use the same replacement file."));
+                return Err(Error::invalid("An audio clip and its active take must use the same replacement file."));
             }
             linked_targets.insert(owner, target.path.clone());
         }

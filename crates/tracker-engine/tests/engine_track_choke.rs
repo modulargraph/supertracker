@@ -1,6 +1,6 @@
 //! Choke groups and voice modes as per-track properties (`set_track_voice`): an open hat on one
 //! track chokes a closed hat on another track of the same group, never a track of another group,
-//! and a track's voice mode overrides its instrument's.
+//! and a mono track keeps one voice.
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
@@ -46,18 +46,19 @@ fn setup(e: &mut Engine, voice: Option<&[[i32; 3]; 3]>) {
 fn invalid_track_voice_settings_are_rejected() {
     let mut e = Engine::new();
     assert!(
-        !e.set_track_voice(-1, 1, 0, -1)
-            && !e.set_track_voice(0, 200, 0, -1)
-            && !e.set_track_voice(0, 1, -1, -1)
+        !e.set_track_voice(-1, 1, 0, 0)
+            && !e.set_track_voice(0, 200, 0, 0)
+            && !e.set_track_voice(0, 1, -1, 0)
             && !e.set_track_voice(0, 1, 0, 3)
-            && !e.set_track_voice(ST_TRACK_SANITY_LIMIT, 1, 0, -1)
+            && !e.set_track_voice(0, 1, 0, -1)
+            && !e.set_track_voice(ST_TRACK_SANITY_LIMIT, 1, 0, 0)
     );
 }
 
 #[test]
 fn a_track_choke_group_stops_another_track_of_the_same_group_not_another_group() {
     // Tracks 0 and 1 share choke group 1 in group scope 1; track 2 has choke 1 in another group.
-    let voice = [[1, 1, -1], [1, 1, -1], [1, 2, -1]];
+    let voice = [[1, 1, 0], [1, 1, 0], [1, 2, 0]];
     let mut e = Engine::new();
     setup(&mut e, Some(&voice));
     e.note_on(0, 0, 69, 100); // closed hat
@@ -81,7 +82,7 @@ fn a_track_choke_group_stops_another_track_of_the_same_group_not_another_group()
 #[test]
 fn mono_keeps_a_chord_whole_and_cuts_the_earlier_notes_on_the_next_note() {
     // Mono: a chord (two notes on the same frame) stays whole; a later note cuts both.
-    let voice = [[0, 0, 1], [0, 0, -1], [0, 0, -1]];
+    let voice = [[0, 0, 1], [0, 0, 0], [0, 0, 0]];
     let mut e = Engine::new();
     setup(&mut e, Some(&voice));
     e.note_on(0, 0, 69, 100);
@@ -112,7 +113,7 @@ fn a_mono_track_keeps_one_voice_without_settings_tracks_are_independent() {
     energy(&mut e, 2400);
     let three = energy(&mut e, 4800);
     let mut m = Engine::new();
-    let mono = [[0, 0, 1], [0, 0, -1], [0, 0, -1]];
+    let mono = [[0, 0, 1], [0, 0, 0], [0, 0, 0]];
     setup(&mut m, Some(&mono));
     m.note_on(0, 0, 69, 100);
     m.note_on(0, 0, 69, 100);

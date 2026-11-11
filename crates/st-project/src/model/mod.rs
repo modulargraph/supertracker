@@ -24,7 +24,7 @@ pub mod plugin;
 pub mod routing;
 
 pub use clip::{AudioClip, FreezeRecord, PatternPrint, PrintLoop, Take, TakeSet};
-pub use instrument::{FilterType, Instrument, InstrumentKind, LfoShape, LfoTarget, SamplerMode, VoiceMode, Zone};
+pub use instrument::{FilterType, Instrument, InstrumentKind, LfoShape, LfoTarget, SamplerMode, Zone};
 pub use pattern::{AutomationLane, AutomationPoint, AutomationTarget, ColumnCell, Interpolation, Pattern, Step, StepEffect, StepEffectKind};
 pub use plugin::{Owner, ParameterPage, PluginDescriptor, PluginKind, PluginPages};
 pub use routing::{Bus, BusKind, Routing, Send, Sidechain, Tap};
@@ -57,6 +57,18 @@ model! {
         /// Whether the input is heard through the track. Absent: it is. Off keeps the route
         /// (and what it names) but mixes nothing into the track.
         "monitor" => monitor: bool = true,
+    }
+}
+
+string_enum! {
+    /// How many notes of a track sound at once.
+    pub enum VoiceMode {
+        /// Every note gets a voice.
+        Poly = "poly",
+        /// One voice; a new note retriggers.
+        Mono = "mono",
+        /// One voice; overlapping notes glide without retriggering.
+        Legato = "legato",
     }
 }
 
@@ -94,8 +106,8 @@ model! {
         "padNote" => pad_note: i64 = 60,
         /// Choke group within the track's group, 0 = off, else 1..16.
         "chokeGroup" => choke_group: i64 = 0,
-        /// Overrides the instrument's voice mode.
-        "voiceMode" => voice_mode: VoiceMode,
+        /// How many notes of the track sound at once.
+        "voiceMode" => voice_mode: VoiceMode = VoiceMode::Poly,
         /// Note columns, 1..8. Absent for one.
         "noteColumns" => note_columns: i64 = 1,
         /// MIDI channel (1..16) notes are exported on when the instrument names none.

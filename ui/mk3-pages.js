@@ -259,9 +259,8 @@
   function voiceKnobs(track) {
     const p = P(), t = p.tracks[track], inst = p.instruments[t?.instrument ?? -1];
     if (!t || inst?.type !== 'sample') return [null, null];
-    const instOf = q => q.instruments[q.tracks[track]?.instrument ?? -1];
     return [enumKnob({ key: `mix:${track}:voiceMode`, label: 'Voice', name: `${t.name} · voice mode`,
-      read: q => q.tracks[track]?.voiceMode || instOf(q)?.voiceMode || 'poly',
+      read: q => q.tracks[track]?.voiceMode || 'poly',
       write: (q, v) => { if (q.tracks[track]) q.tracks[track].voiceMode = v; },
       options: [['poly', 'Poly'], ['mono', 'Mono'], ['legato', 'Legato']] }),
     enumKnob({ key: `mix:${track}:chokeGroup`, label: 'Choke', name: `${t.name} · choke group`,

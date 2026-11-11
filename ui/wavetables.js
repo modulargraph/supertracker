@@ -123,7 +123,7 @@
     return ST().mutate('wavetable table', () => {
       delete inst.plugin;
       Object.assign(inst, { type: 'sample', samplePath: path, mode: 'wavetable', start: 0, end: 1, loopStart: 0, loopEnd: 1,
-        slicePoints: [], slices: [], zones: [] });
+        slicePoints: [], zones: [] });
     });
   }
 

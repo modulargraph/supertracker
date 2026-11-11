@@ -194,7 +194,6 @@ fn engine_instrument(item: &st_project::model::Instrument) -> STInstrument {
     p.grain_scan = item.grain_scan() as f32;
     p.grain_reverse = item.grain_reverse() as f32;
     p.grain_stereo = item.grain_stereo() as f32;
-    p.voice_mode = voice_mode(item.voice_mode());
     p.filter_attack = item.filter_attack() as f32;
     p.filter_decay = item.filter_decay() as f32;
     p.filter_sustain = item.filter_sustain() as f32;
@@ -376,8 +375,8 @@ impl ProjectSync {
         let group_scope = |id: &str| project.groups.as_deref().unwrap_or(&[]).iter().position(|group| group.id.as_deref() == Some(id)).map_or(0, |index| index + 1);
         for (index, item) in tracks.iter().enumerate() {
             let choke = item.choke_group().clamp(0, 16) as i32;
-            let mode = item.voice_mode.map_or(-1, voice_mode);
-            if choke > 0 || mode >= 0 {
+            let mode = voice_mode(item.voice_mode());
+            if choke > 0 || mode > 0 {
                 let scope = item.group_id.as_deref().map_or(0, group_scope).min(ST_TRACK_SANITY_LIMIT as usize) as i32;
                 if !control.set_track_voice(index as i32, choke, scope, mode) {
                     return Err("The engine rejected a track's choke group or voice mode.".to_string());

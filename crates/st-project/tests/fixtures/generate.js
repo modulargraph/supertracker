@@ -56,7 +56,7 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
   p.routing = { buses: [], outputs: {}, sends: [], sidechains: [] };
   for (const track of p.tracks) p.routing.outputs[`track:${track.routingID}`] = 'master';
   G.create(p, [3, 4, 5, 6], { makeID: uid, name: 'Kit', libraryPath: '/Library/Kits/Night.stkit', importNotes: ['Pad 9 was empty.'] });
-  p.tracks[3].pad = 0; p.tracks[3].padNote = 36; p.tracks[5].chokeGroup = 1; p.tracks[6].chokeGroup = 1; p.tracks[4].voiceMode = 'mono';
+  p.tracks[3].pad = 0; p.tracks[3].padNote = 36; p.tracks[5].chokeGroup = 1; p.tracks[6].chokeGroup = 1; p.tracks[4].voiceMode = 'mono'; p.tracks[2].voiceMode = 'legato';
   // routing.js: a return bus, a send, a sidechain.
   p.routing.buses.push({ id: 'ret1', name: 'Plate', type: 'return', volume: .9, pan: 0, mute: false, solo: false });
   p.routing.outputs['bus:ret1'] = 'master';
@@ -79,11 +79,11 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
   // plugin-pages.js
   p.pluginPages = { 'comp-1': { name: 'Squash', pages: [{ name: 'Main', addresses: ['1', '18446744073709551615', null, null, null, null, null, null] }] } };
   // sampler.js: zones and slice markers; modulation.js; granular.js.
-  Object.assign(p.instruments[3], { samplePath: '/Samples/Kick.wav', mode: 'slice', slicePoints: [0, .25, .5, .75], slices: [0, .25, .5, .75], sliceCount: 4,
+  Object.assign(p.instruments[3], { samplePath: '/Samples/Kick.wav', mode: 'slice', slicePoints: [0, .25, .5, .75], sliceCount: 4,
     zones: [{ samplePath: '/Samples/Kick soft.wav', keyLow: 0, keyHigh: 127, velocityLow: 0, velocityHigh: 63, rootNote: 36, tune: 0, volume: 1 },
-      { samplePath: '/Samples/Kick hard.wav', path: '/Samples/Kick hard.wav', keyLow: 0, keyHigh: 127, velocityLow: 64, velocityHigh: 127, rootNote: 36, tune: -.5, volume: .9 }] });
+      { samplePath: '/Samples/Kick hard.wav', keyLow: 0, keyHigh: 127, velocityLow: 64, velocityHigh: 127, rootNote: 36, tune: -.5, volume: .9 }] });
   Object.assign(p.instruments[2], { mode: 'granular', samplePath: '/Samples/Pad.flac', grainSize: .12, grainDensity: 4, grainSpray: .2, grainScan: -1, lfoSync: true, lfoBeats: .5,
-    lfoTarget: 'position', lfoShape: 'random', lfo2Target: 'grainSize', voiceMode: 'legato' });
+    lfoTarget: 'position', lfoShape: 'random', lfo2Target: 'grainSize' });
   // docs/MIDI_FILES.md: external MIDI instrument.
   Object.assign(p.instruments[7], { type: 'midi', midiOutput: 2, midiChannel: 5, midiProgram: 10, midiBankMSB: 1, midiBankLSB: 2, midiCCMap: { cutoff: 74 }, midiCCRanges: { cutoff: [20, 20000] } });
   // app-note-columns.js, step-fx.js: extra note columns and a plug-in parameter lock.
@@ -104,7 +104,7 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
   // clip-arranger.js / recording.js clips, clip-takes-project.js takes.
   const clip = { id: 'clip-1', name: 'Vocal', track: 7, path: '/Audio/Vocal 1.wav', startBeat: 4, durationBeats: 8, sourceOffset: .5, sourceDuration: 30, gain: .8, fadeIn: .01, fadeOut: .2, muted: false };
   const withTakes = Takes.add(clip, { name: 'Take 2', path: '/Audio/Vocal 2.wav', sourceOffset: 0, sourceDuration: 31.5 }, 60 / p.bpm, () => 'take-2');
-  p.audioClips = [withTakes, { id: 'clip-2', track: 0, samplePath: '/Audio/Loop.wav', path: '/Audio/Loop.wav', startBeat: 0, durationBeats: 16 }];
+  p.audioClips = [withTakes, { id: 'clip-2', track: 0, path: '/Audio/Loop.wav', startBeat: 0, durationBeats: 16 }];
   // line-inputs.js
   p.tracks[7].audioInput = { enabled: true, deviceUID: 'BuiltInMicrophoneDevice', channels: [0, 1], gain: 1, monitor: false };
   // freeze.js stores what freeze.track returns.

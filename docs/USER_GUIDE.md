@@ -483,8 +483,9 @@ External MIDI and plug-ins receive note-off messages; the receiving instrument
 controls its release tail. On the MK3, hold SELECT on Home for **Note off**
 (Shift: **Note cut**), or press Shift+NOTES.
 
-Ratchets trigger notes using the instrument's Voice mode (Instrument → Voice &
-Record). Samples you load and kit sounds start Monophonic: a new note cuts the
+Ratchets trigger notes using the track's Voice mode (Instrument → Voice &
+Record). The track of a sample you load as a new instrument and the empty pads of a
+kit start Monophonic: a new note cuts the
 previous one, so a looping break or a retriggered hit never overlaps its own tail.
 A chord (different pitches starting together) stays whole, and on a track with
 several note columns a note cuts only its own column. Polyphonic can overlap notes

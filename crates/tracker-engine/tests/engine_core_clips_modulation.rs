@@ -314,9 +314,9 @@ fn test_modulation_lifecycle_and_compatibility() {
         i.filter_attack = 0.0;
         i.filter_decay = 0.05;
         i.filter_sustain = 0.0;
-        i.voice_mode = mode;
         e.begin_update();
         e.set_instrument(0, i);
+        assert!(e.set_track_voice(0, 0, 0, mode));
         e.commit_update();
         e.note_on(0, 0, 69, 127);
         let mut warm = Audio::new(12000);
@@ -535,9 +535,11 @@ fn test_tempo_synced_lfo_live_edits() {
     for slot in [0, 1] {
         let mut e = Engine::new();
         let mut p = synced_pan_instrument(slot);
-        p.voice_mode = 1;
         p.lfo2_depth = 0.0;
         p.lfo_depth = 0.0;
+        e.begin_update();
+        assert!(e.set_track_voice(0, 0, 0, 1));
+        e.commit_update();
         configure_synced_lfo(&mut e, p, 120.0);
         let mut silent_mod = Audio::new(15000);
         render(&mut e, &mut silent_mod);
@@ -565,8 +567,10 @@ fn test_tempo_synced_lfo_live_edits() {
     }
     for slot in [0, 1] {
         let mut e = Engine::new();
-        let mut p = synced_pan_instrument(slot);
-        p.voice_mode = 2;
+        let p = synced_pan_instrument(slot);
+        e.begin_update();
+        assert!(e.set_track_voice(0, 0, 0, 2));
+        e.commit_update();
         configure_synced_lfo(&mut e, p, 120.0);
         let mut warm = Audio::new(9000);
         render(&mut e, &mut warm);

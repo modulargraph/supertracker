@@ -23,7 +23,7 @@ function harness() {
     focus(){if(!this.disabled)document.activeElement=this;}
     setAttribute(key,value){this.attrs[key]=value;}
   }
-  const instrument={id:0,type:'sample',name:'Break',samplePath:'/fixture/break.wav',rootNote:60,start:.1,end:.9,slicePoints:[0,.5],slices:[0,.5],sliceCount:2,mode:'oneshot'};
+  const instrument={id:0,type:'sample',name:'Break',samplePath:'/fixture/break.wav',rootNote:60,start:.1,end:.9,slicePoints:[0,.5],sliceCount:2,mode:'oneshot'};
   const state={view:'instrument',modal:null,native:true,instrument:0,selection:{row:1},project:{bpm:120,instruments:[instrument,{id:1,type:'sample',samplePath:'/fixture/other.wav',start:0,end:1}],tracks:[{instrument:0}]} };
   const ST={state,escapeHTML,mutate(label,fn){mutations.push({label,before:clone(state.project)});fn(state.project);mount();},refresh(){mount();},toast(message,type){notices.push({message,type});},request(command,payload){requests.push({command,payload:clone(payload)});return requestResult;},showRecording(){recordingEntries++;}};
   const context={window:{ST},document,setTimeout:()=>1,clearTimeout(){},queueMicrotask};web.runText('sampler.js', source, context,{filename:'sampler.js'});
@@ -54,7 +54,7 @@ test('transient detection sends bounded full-file region and commits relative st
  const h=harness(),before=clone(h.instrument);await h.click('sampler-detect-transients');
  assert.deepEqual(h.requests,[{command:'sample.analyzeSlices',payload:{instrument:0,path:'/fixture/break.wav',start:.1,end:.9,sensitivity:.5,minimumGapSeconds:.04,maximumSlices:128}}]);
  assert.equal(h.mutations.length,1);assert.deepEqual(h.mutations[0].before.instruments[0],before);
- assert.deepEqual(clone(h.instrument.slicePoints),[0,.2,.7]);assert.deepEqual(clone(h.instrument.slices),[0,.2,.7]);assert.equal(h.instrument.sliceCount,3);assert.equal(h.instrument.mode,'slice');
+ assert.deepEqual(clone(h.instrument.slicePoints),[0,.2,.7]);assert.equal(h.instrument.slices,undefined,'the markers have one name');assert.equal(h.instrument.sliceCount,3);assert.equal(h.instrument.mode,'slice');
  assert.equal(h.instrument.samplePath,before.samplePath);assert.equal(h.instrument.start,.1);assert.equal(h.instrument.end,.9);assert.equal(h.state.selection,null);assert.equal(h.document.activeElement.id,'sampler-detect-transients');
  assert.equal(h.nodes.get('sampler-detect-transients').disabled,false);assert(h.nodes.get('sampler-slice-status').textContent.includes('3 slices detected'));
 });

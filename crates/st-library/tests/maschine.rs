@@ -539,12 +539,13 @@ fn sampler_sounds_keep_their_zones() {
     let kick = &imported.sounds[0];
     let zones = kick.instrument["zones"].as_array().unwrap();
     assert_eq!(zones.len(), 2);
-    assert_eq!(zones[0]["path"], temp.text("Fixture Library/Samples/Drums/Kick.wav"));
+    assert_eq!(zones[0]["samplePath"], temp.text("Fixture Library/Samples/Drums/Kick.wav"));
     assert_eq!((zones[0]["rootNote"].as_i64(), zones[0]["keyLow"].as_i64(), zones[0]["keyHigh"].as_i64(), zones[0]["start"].as_f64(), zones[0]["end"].as_f64(), zones[0]["volume"].as_f64()), (Some(36), Some(0), Some(59), Some(0.0), Some(1.0), Some(1.0)), "native ranges include their final frame");
     assert_eq!((zones[1]["start"].as_f64(), zones[1]["end"].as_f64(), zones[1]["tune"].as_f64(), zones[1]["pan"].as_f64(), zones[1]["loopEnabled"].as_bool()), (Some(0.2), Some(1.0), Some(-12.0), Some(0.25), Some(false)));
     assert!((zones[1]["volume"].as_f64().unwrap() - 2.0).abs() < 1e-9 && imported.warnings.iter().any(|warning| warning.contains("sample-zone level exceeded")), "a +10 dB zone is limited to the supported gain");
-    assert_eq!(kick.instrument["samplePath"], zones[0]["path"]);
-    assert_eq!((kick.instrument["type"].as_str(), kick.instrument["voiceMode"].as_str(), kick.instrument["filterType"].as_str(), kick.instrument["tune"].as_f64()), (Some("sample"), Some("mono"), Some("lowpass"), Some(-9.0)));
+    assert_eq!(kick.instrument["samplePath"], zones[0]["samplePath"]);
+    assert!(zones.iter().all(|zone| zone.get("path").is_none()), "a zone names its sample once");
+    assert_eq!((kick.instrument["type"].as_str(), kick.voice_mode, kick.instrument.get("voiceMode"), kick.instrument["filterType"].as_str(), kick.instrument["tune"].as_f64()), (Some("sample"), Some("mono"), None, Some("lowpass"), Some(-9.0)));
     assert!((kick.instrument["sustain"].as_f64().unwrap() - 0.125).abs() < 1e-9 && (kick.instrument["attack"].as_f64().unwrap() - 0.171032).abs() < 1e-4);
     assert!((kick.volume - level_amplitude(0.5).unwrap()).abs() < 1e-12 && kick.pan == 0.25 && !kick.mute);
     // A missing sample keeps its zone, marked; a zone that leaves the library is skipped.
@@ -569,7 +570,7 @@ fn sampler_sounds_keep_their_zones() {
     assert_eq!(audio_archive.audio_module_sample(&audio_archive.modules[3]).unwrap().path, "//Samples/Loops/Beat.wav");
     let audio_import = import_group(&audio_path, Some(&temp.text(""))).unwrap();
     let zone = &audio_import.sounds[0].instrument["zones"][0];
-    assert!(zone["path"].as_str().unwrap().ends_with("Renamed Expansion/Samples/Loops/Beat.wav") && zone.get("unavailable").is_none());
+    assert!(zone["samplePath"].as_str().unwrap().ends_with("Renamed Expansion/Samples/Loops/Beat.wav") && zone.get("unavailable").is_none());
     assert_eq!((zone["start"].as_f64(), zone["end"].as_f64(), zone["volume"].as_f64()), (Some(0.0), Some(1.0), Some(1.0)), "an Audio module zone covers its whole file at unity");
     assert!(audio_import.warnings.iter().any(|warning| warning.contains("Audio module") && warning.contains("tempo sync")));
     let bad_body: Body = Box::new(|module, _| [e(module + 1), e(2), string("Samples/Loops/Beat.exe"), string(""), string("")].concat());
@@ -587,7 +588,7 @@ fn sampler_sounds_keep_their_zones() {
     };
     let library = temp.join("Renamed Expansion");
     let (rex, warnings) = maschine::map_zones(&[slice(0.0, 2204.0), slice(2205.0, 4409.0)], &library);
-    assert!(rex.len() == 2 && rex.iter().all(|zone| zone["path"].as_str().unwrap().ends_with("Beat.wav") && zone.get("unavailable").is_none()) && rex[1]["start"].as_f64() == Some(2205.0 / 4410.0));
+    assert!(rex.len() == 2 && rex.iter().all(|zone| zone["samplePath"].as_str().unwrap().ends_with("Beat.wav") && zone.get("unavailable").is_none()) && rex[1]["start"].as_f64() == Some(2205.0 / 4410.0));
     assert!(warnings.iter().any(|warning| warning.contains("REX2")));
     let (too_long, warnings) = maschine::map_zones(&[slice(0.0, 9000.0)], &library);
     assert!(too_long.len() == 1 && too_long[0]["unavailable"] == true && warnings.iter().any(|warning| warning.contains("do not match")));
@@ -1143,7 +1144,7 @@ fn sampler_mapping() {
         assert!((actual - expected).abs() <= (expected.abs() * tolerance).max(tolerance), "{message}: {actual} != {expected}");
     };
     near(field(&result, "tune"), -9.0, 1e-5, "tune is 36 semitones per unit");
-    assert_eq!(result.instrument["voiceMode"], "mono");
+    assert_eq!((result.voice_mode, result.instrument.get("voiceMode")), (Some("mono"), None), "the voice mode is not an instrument field");
     near(field(&result, "sustain"), 0.125, 1e-5, "cubic amp sustain");
     near(field(&result, "filterSustain"), 0.421875, 1e-5, "the second envelope is independent");
     near(field(&result, "attack"), 0.171032, 1e-4, "attack midpoint is about 171 ms");
@@ -1182,7 +1183,7 @@ fn sampler_mapping() {
     }
     let preserved = map_sampler(&raw);
     assert_eq!((preserved.source_parameters["filterEnvelope.8"].as_f64(), preserved.source_parameters["unrecognizedFutureField"].as_f64()), (Some(0.7), Some(0.37)));
-    assert!(preserved.instrument["voiceMode"] == "legato" && preserved.instrument.get("mode").is_none(), "a reversed one-shot does not become a reverse loop");
+    assert!(preserved.voice_mode == Some("legato") && preserved.instrument.get("mode").is_none(), "a reversed one-shot does not become a reverse loop");
     for (key, value) in [("0xf8", f64::INFINITY), ("0x100", 1e300), ("ampEnvelope.0", -0.2)] {
         raw.insert(key.to_string(), value);
     }

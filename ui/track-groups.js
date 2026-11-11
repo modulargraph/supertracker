@@ -10,7 +10,8 @@
      track.padNote     = note that Pad keys / MK3 pads enter on this member (default C-4 = 60)
      track.chokeGroup  = 0 (off) or 1..16; a note on one member stops sounding notes of other
                          members of the same group with the same choke group
-     track.voiceMode   = optional 'poly' | 'mono' | 'legato', overrides the instrument's mode
+     track.voiceMode   = optional 'poly' | 'mono' | 'legato' (absent = poly): how many notes of
+                         the member sound at once
    The group bus is routing.buses[] { id: busID, type: 'group', groupID } and every member
    outputs to it: routing.outputs['track:<routingID>'] = 'bus:<busID>'. */
 (() => {

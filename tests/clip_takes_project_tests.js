@@ -5,12 +5,12 @@ const context = vm.createContext({window:{}});
 web.load(context, 'clip-takes-project.js');
 const M = context.window.STClipTakesProject, clone = value => JSON.parse(JSON.stringify(value));
 let counter = 0; const uid = () => `take-${++counter}`;
-const base = () => ({id:'clip-1',track:0,name:'Phrase',path:'/old.wav',samplePath:'/old.wav',startBeat:4,durationBeats:8,sourceOffset:1,sourceDuration:12,gain:.6,fadeIn:.08,fadeOut:.1,muted:false});
+const base = () => ({id:'clip-1',track:0,name:'Phrase',path:'/old.wav',startBeat:4,durationBeats:8,sourceOffset:1,sourceDuration:12,gain:.6,fadeIn:.08,fadeOut:.1,muted:false});
 const add = clip => M.add(clip,{path:'/new.wav',name:'New take',sourceDuration:10},.5,uid);
 const tests = [], test = (name,fn) => tests.push([name,fn]);
 test('adding an alternative is immutable, preserves original, and exposes only its canonical audio path',()=>{
  const original=base(), before=clone(original), result=add(original);assert.deepEqual(original,before);
- assert.equal(result.takeSet.takes.length,2);assert.equal(result.path,'/new.wav');assert.equal(result.samplePath,'/new.wav');assert.equal(result.sourceOffset,0);assert.equal(result.startBeat,4);assert.equal(result.durationBeats,8);assert.equal(result.gain,.6);
+ assert.equal(result.takeSet.takes.length,2);assert.equal(result.path,'/new.wav');assert.equal(result.samplePath,undefined);assert.equal(result.sourceOffset,0);assert.equal(result.startBeat,4);assert.equal(result.durationBeats,8);assert.equal(result.gain,.6);
  assert.equal(result.takeSet.takes[0].path,'/old.wav');assert.equal(result.takeSet.takes[0].sourceOffset,1);assert.equal(result.takeSet.takes[0].sourceDuration,12);
  const reverted=M.activate(result,result.takeSet.takes[0].id,.5);assert.equal(reverted.path,'/old.wav');assert.equal(reverted.sourceOffset,1);
 });

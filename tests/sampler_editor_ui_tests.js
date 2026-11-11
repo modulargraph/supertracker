@@ -34,7 +34,7 @@ function harness({ native = true, mode = 'forward' } = {}) {
     const key = selector.match(/^\[data-([\w-]+)\]$/)?.[1]; if (!key) return [];
     const name = key.replace(/-([a-z])/g, (_, x) => x.toUpperCase()); return [...nodes.values()].filter(node => node.dataset[name] !== undefined);
   } };
-  const instrument = { id: 0, type: 'sample', name: 'Break', samplePath: '/fixture/break.wav', rootNote: 60, start: .1, end: .9, loopStart: .2, loopEnd: .8, mode, slicePoints: [], slices: [], sliceCount: 16, grainPosition: .5 };
+  const instrument = { id: 0, type: 'sample', name: 'Break', samplePath: '/fixture/break.wav', rootNote: 60, start: .1, end: .9, loopStart: .2, loopEnd: .8, mode, slicePoints: [], sliceCount: 16, grainPosition: .5 };
   const state = { view: 'instrument', modal: null, native, instrument: 0, track: 0, row: 5, undo: [], redo: [], keyboardPlay: false,
     samples: { 0: { path: '/fixture/break.wav', frames: 48000, sampleRate: 48000, duration: 1, peaks: new Array(512).fill(.5) } },
     project: { bpm: 120, linesPerBeat: 4, activePattern: 0, instruments: [instrument], tracks: [{ name: 'Track 01', instrument: 0 }, { name: 'Track 02', instrument: 1 }], patterns: [{ id: 0, name: 'Pattern 01', length: 64, steps: [[], []], automation: [] }] } };
@@ -166,7 +166,7 @@ test('gain prompt validates and edits; failures leave the project untouched', as
 
 test('slices: add at selected marker, nudge between neighbours, remove, then build a pattern', () => {
   const h = harness({ mode: 'slice' }); h.canvas().focus();
-  h.instrument.slicePoints = [0, .5]; h.instrument.slices = [0, .5]; h.instrument.sliceCount = 2; h.mount(); h.canvas().focus();
+  h.instrument.slicePoints = [0, .5]; h.instrument.sliceCount = 2; h.mount(); h.canvas().focus();
   h.key('a'); // split slice 1 (Start selected)
   assert.deepEqual(clone(h.instrument.slicePoints), [0, .25, .5]);
   assert.match(h.canvas().attrs['aria-valuetext'], /^Slice 2/);
@@ -268,7 +268,7 @@ test('a refused sample commit leaves waveform metadata unchanged and reports ret
 
 test('waveform slice hold uses explicit slice at root pitch across the MIDI note limit', async () => {
   for (const [root, count, selected] of [[127,2,1],[60,128,100]]) {
-    const h=harness({mode:'slice'});h.instrument.rootNote=root;h.instrument.slicePoints=Array.from({length:count},(_,i)=>i/count);h.instrument.slices=[...h.instrument.slicePoints];h.instrument.sliceCount=count;h.mount();h.canvas().focus();
+    const h=harness({mode:'slice'});h.instrument.rootNote=root;h.instrument.slicePoints=Array.from({length:count},(_,i)=>i/count);h.instrument.sliceCount=count;h.mount();h.canvas().focus();
     for(let i=0;i<selected+1;i++)h.key('ArrowDown');
     const before=clone(h.state.project);h.key('Enter');h.key('Enter',{repeat:true});await settle();
     assert.match(h.canvas().attrs['aria-valuetext'],new RegExp(`^Slice ${selected+1} `));assert.equal(h.notes.length,0,'slice selection must not transpose an ordinary note');

@@ -167,6 +167,17 @@ pub fn validate(project: &Project) -> Result<()> {
         if instrument.zones.as_ref().is_some_and(|zones| zones.len() > MAX_ZONES) {
             return fail(format!("An instrument can contain up to {MAX_ZONES} sample zones."));
         }
+        // Each of these has one name. Under another name the host would not see it and the
+        // instrument would play something else, so the project is refused instead.
+        if let Some(zone) = instrument.zones.iter().flatten().position(|zone| zone.extra.contains_key("path")) {
+            return fail(format!("Instrument {}, zone {}: the sample must be saved as samplePath, not path.", index + 1, zone + 1));
+        }
+        if instrument.extra.contains_key("slices") {
+            return fail(format!("Instrument {}: slice markers must be saved as slicePoints, not slices.", index + 1));
+        }
+        if instrument.extra.contains_key("voiceMode") {
+            return fail(format!("Instrument {}: the voice mode belongs to the track that plays it, not to the instrument.", index + 1));
+        }
     }
     if project.extra.contains_key("audioClips") {
         return fail("Audio clips must be a list of clips.");
@@ -176,6 +187,9 @@ pub fn validate(project: &Project) -> Result<()> {
         return fail(format!("A song can contain up to {MAX_AUDIO_CLIPS} audio clips."));
     }
     for clip in clips {
+        if clip.extra.contains_key("samplePath") {
+            return fail("An audio clip's file must be saved as path, not samplePath.");
+        }
         let track = clip.track();
         let (start, duration) = (clip.start_beat(), clip.duration_beats());
         if track < 0 || track as usize >= tracks.len() || !start.is_finite() || start < 0.0 || !duration.is_finite() || duration <= 0.0 {
@@ -307,6 +321,9 @@ fn validate_routing(project: &Project, tracks: &[Track]) -> Result<Owners> {
         ranged(track.pan, &track.extra, "pan", &format!("{name} pan"), (-1.0, 1.0))?;
         flag(&track.extra, "mute", &format!("{name} mute"))?;
         flag(&track.extra, "solo", &format!("{name} solo"))?;
+        if track.extra.contains_key("voiceMode") {
+            return fail(format!("{name}: the voice mode must be poly, mono or legato."));
+        }
         channels.insert(format!("track:{id}"), Channel::Track(index));
     }
     ranged(project.master_volume, &project.extra, "masterVolume", "Master volume", (0.0, 2.0))?;

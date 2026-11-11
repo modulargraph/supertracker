@@ -68,7 +68,7 @@ function harness() {
   }
   document.body = new Element('body', ' id="body"'); document.activeElement = document.body;
   const outside = new Element('button', ' id="outside"');
-  const instrument = { id: 1, type: 'sample', samplePath: '/fixture/break.wav', rootNote: 60, start: 0, end: 1, mode: 'slice', sliceCount: 4, slicePoints: [0, .25, .5, .75], slices: [0, .25, .5, .75], zones: [{ samplePath: '/fixture/zone.wav', rootNote: 60, keyLow: 0, keyHigh: 127, velocityLow: 0, velocityHigh: 127, tune: 0, volume: 1 }] };
+  const instrument = { id: 1, type: 'sample', samplePath: '/fixture/break.wav', rootNote: 60, start: 0, end: 1, mode: 'slice', sliceCount: 4, slicePoints: [0, .25, .5, .75], zones: [{ samplePath: '/fixture/zone.wav', rootNote: 60, keyLow: 0, keyHigh: 127, velocityLow: 0, velocityHigh: 127, tune: 0, volume: 1 }] };
   const state = { project: { instruments: [{ id: 0, type: 'synth' }, instrument], tracks: [{ instrument: 1 }], audioPlugins: [] }, view: 'instrument', instrument: 1, track: 0, modal: null, selection: null };
   const ST = {
     state, escapeHTML: value => String(value),

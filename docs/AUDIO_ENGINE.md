@@ -42,7 +42,7 @@ Native voice rendering visits active slots through a fixed bitset in their origi
 ## Music behavior
 
 - No fixed track count (per-track tables sized at commit; 1024 sanity bound), 64 instrument slots, 256 patterns, 256 rows per pattern, 4096 song sequence entries, and 256 active voices.
-- Chords hold up to eight notes. Voice modes include poly, mono and legato. Matching nonzero choke groups cut previous voices. Native live pitch bend is additive to instrument tuning and track pitch automation.
+- Chords hold up to eight notes. The voice mode (poly, mono or legato) and the choke group are a track's (`Control::set_track_voice`); an instrument has neither. Matching nonzero choke groups cut previous voices. Native live pitch bend is additive to instrument tuning and track pitch automation.
 - Native instruments use sine, polyBLEP saw and square, triangle, or noise oscillators, or decoded stereo PCM. Native sample modes include one-shot, forward loop, reverse, ping-pong loop, equal/manual slices, wavetable and overlapping Hann-window granular playback.
 - Manual slice points are normalized within the selected sample region. Zero is included automatically; the selected MIDI note relative to root note chooses the slice. Wavetable playback uses a movable window up to 2048 samples. Granular size and position are adjustable; two grains overlap with complementary windows.
 - The `slice` step effect (`ST_FX_SLICE=15`) selects slice 1–128, clamped to the last available slice. It uses equal or manual markers and plays that region once; notes and chords transpose the selected slice relative to the root note. Without this effect, Slice mode retains ascending-note slice selection. A slice effect in an effects-only cell does not retrigger a note.

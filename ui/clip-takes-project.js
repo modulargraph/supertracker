@@ -5,7 +5,7 @@
   const { clone } = window.STUtil;
   const fail = message => { throw new Error(message); };
   const finite = value => typeof value === 'number' && Number.isFinite(value);
-  const pathOf = clip => clip.path || clip.samplePath || '';
+  const pathOf = clip => clip.path || '';
   const maxTakes = 32;
   function regionSeconds(clip, secondsPerBeat) {
     if (!finite(clip.durationBeats) || clip.durationBeats <= 0) fail('The clip has an invalid duration.');
@@ -59,8 +59,6 @@
     const result = clone(clip), active = set.takes.find(take => take.id === set.activeID);
     if (!active) fail('Choose an existing take.');
     result.takeSet = set; result.path = active.path; result.sourceOffset = active.sourceOffset;
-    // Avoid retaining an old alternate path on projects imported with samplePath.
-    if ('samplePath' in result) result.samplePath = active.path;
     if (active.sourceDuration != null) result.sourceDuration = active.sourceDuration; else delete result.sourceDuration;
     return result;
   }

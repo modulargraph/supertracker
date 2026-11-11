@@ -66,7 +66,7 @@ reference:
 ```
 
 - `id` names the field of the project that holds the path (`/instruments/<i>/samplePath`,
-  `/instruments/<i>/zones/<z>/samplePath` or `/path`, `/audioClips/<c>/path` or `/samplePath`,
+  `/instruments/<i>/zones/<z>/samplePath`, `/audioClips/<c>/path`,
   `/audioClips/<c>/takeSet/takes/<t>/path`, `/tracks/<t>/frozen/path`, `/tracks/<t>/frozen/patternPrints/<p>/path`
   and `/loop/path`). Treat it as an opaque token.
 - `kind` is `sample`, `zone`, `clip`, `take` or `freeze`.
@@ -125,8 +125,7 @@ Every selection is checked before anything changes; one bad selection rejects th
   stale and refused.
 - `to` must be an absolute path to a readable file with content.
 - A reference whose original file is available again is not replaced.
-- Fields that belong together move together and must agree before: a zone's `path` and `samplePath`, a clip's path
-  and its active take.
+- A clip's path and the path of its active take move together and must agree before.
 - A file whose content differs from the saved fingerprint needs `allowDifferentContent`. An unverified name match
   does not need it: it is checked against the fingerprint when applied. A frozen print only accepts the exact
   printed content.
@@ -156,7 +155,7 @@ corrupt or unsupported file when it loads it.
 
 - `cargo test -p st-project --test relink`: a moved root and a batch that is refused as a whole, ambiguity and
   deliberately different content, collected hash prefixes and relative paths, a renamed file found by content,
-  limits, progress, linked zone and clip fields, takes, a portable project recovered from its library, frozen
+  limits, progress, a clip with its active take, a portable project recovered from its library, frozen
   prints, built-in references. Unit tests in `relink.rs` cover the two collection layouts.
 - `cargo test -p st-host --test host`: the commands against a project on disk
   (`missing_media_is_inspected_searched_and_relinked`, `a_media_search_stops_when_it_is_cancelled`) and the folder

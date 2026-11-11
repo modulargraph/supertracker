@@ -202,8 +202,8 @@ impl Control {
         p.tracks[index] = track;
     }
 
-    /// Per-track voice settings: choke group (0..=127), its scope and the voice mode (-1..=2).
-    /// False for values out of range.
+    /// Per-track voice settings: choke group (0..=127), its scope and the voice mode (0 poly,
+    /// 1 mono, 2 legato). False for values out of range.
     pub fn set_track_voice(&mut self, track: i32, choke_group: i32, choke_scope: i32, voice_mode: i32) -> bool {
         if track < 0
             || track >= ST_TRACK_SANITY_LIMIT
@@ -211,7 +211,7 @@ impl Control {
             || choke_group > 127
             || choke_scope < 0
             || choke_scope > ST_TRACK_SANITY_LIMIT
-            || voice_mode < -1
+            || voice_mode < 0
             || voice_mode > 2
         {
             return false;
@@ -246,7 +246,6 @@ impl Control {
         if p.wavetable_frame_size < ST_WAVETABLE_MIN_FRAME || p.wavetable_frame_size > ST_WAVETABLE_MAX_FRAME {
             p.wavetable_frame_size = 0;
         }
-        p.voice_mode = clamp(p.voice_mode, 0, 2);
         p.mode = clamp(p.mode, 0, 6);
         p.root_note = clamp(p.root_note, 0, 127);
         p.filter_type = clamp(p.filter_type, 0, 2);

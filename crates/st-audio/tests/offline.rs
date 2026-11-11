@@ -363,3 +363,43 @@ fn a_new_plan_while_playing_keeps_tails_delays_and_insert_state() {
     assert!(peak(&left) > 0.05);
     assert!(left == undisturbed.0 && right == undisturbed.1, "the plan swap changed the audio");
 }
+
+/// How many notes of a track sound at once is the track's `voiceMode`, and nothing else's:
+/// without one the notes of a track overlap, on a mono track a note cuts the one before it, and
+/// a mono track beside another leaves the other as it is.
+#[test]
+fn a_tracks_voice_mode_decides_whether_its_notes_overlap() {
+    // A held note on row 0 and a second one on row 2, while the first still sounds.
+    let second_row = 2 * ROW;
+    let held = json!({ "note": 57, "instrument": 0, "velocity": 100, "gate": 8 });
+    let notes = |tracks: usize, first: bool, second: bool| {
+        let mut project = project(tracks);
+        for track in 0..tracks {
+            project["patterns"][0]["steps"][track][0] = if first { held.clone() } else { json!(null) };
+            project["patterns"][0]["steps"][track][2] = if second { held.clone() } else { json!(null) };
+        }
+        project
+    };
+    let (first, _) = render(&notes(1, true, false), FRAMES);
+    let (second, _) = render(&notes(1, false, true), FRAMES);
+    assert!(peak(&first[second_row..]) > 0.2 && peak(&second[second_row..]) > 0.2 && peak(&second[..second_row]) == 0.0);
+
+    let (overlapping, _) = render(&notes(1, true, true), FRAMES);
+    assert_signal(&overlapping, |i| first[i] + second[i], 1e-5, "without a voice mode both notes sound");
+    let mut poly = notes(1, true, true);
+    poly["tracks"][0]["voiceMode"] = json!("poly");
+    assert_eq!(render(&poly, FRAMES).0, overlapping, "poly is what a track without a voice mode is");
+
+    // The cut voice is gone after a short fade; from there the track is its second note alone.
+    let settled = second_row + 2_400;
+    let mut mono = notes(1, true, true);
+    mono["tracks"][0]["voiceMode"] = json!("mono");
+    let (cut, _) = render(&mono, FRAMES);
+    assert_signal(&cut[..second_row], |i| first[i], 1e-5, "the first note until the second");
+    assert_signal(&cut[settled..], |i| second[settled + i], 1e-5, "a mono track plays its latest note alone");
+
+    let mut beside = notes(2, true, true);
+    beside["tracks"][0]["voiceMode"] = json!("mono");
+    let (both, _) = render(&beside, FRAMES);
+    assert_signal(&both[settled..], |i| second[settled + i] + overlapping[settled + i], 1e-5, "the track beside a mono track still overlaps its notes");
+}

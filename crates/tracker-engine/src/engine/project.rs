@@ -368,7 +368,7 @@ pub struct TrackVoice {
 
 impl Default for TrackVoice {
     fn default() -> Self {
-        TrackVoice { choke: 0, scope: 0, mode: -1 }
+        TrackVoice { choke: 0, scope: 0, mode: 0 }
     }
 }
 

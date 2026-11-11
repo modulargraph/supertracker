@@ -79,6 +79,9 @@ test('Replace kit swaps member sources pad by pad and keeps their pattern steps'
   assert.equal(p.patterns[0].steps[kick][0].note, 60, 'the pattern is kept');
   const empty = after.find(i => p.tracks[i].pad === 3);
   assert.equal(p.instruments[p.tracks[empty].instrument].samplePath, '', 'a pad the new kit lacks becomes an empty sampler');
+  assert.equal(p.tracks[empty].voiceMode, 'mono', 'an empty pad is monophonic');
+  assert.equal(p.tracks[kick].voiceMode, undefined, 'a pad takes the voice mode of the kit\'s track (none: polyphonic)');
+  assert(p.instruments.every(instrument => !('voiceMode' in instrument)), 'the voice mode is the track\'s');
   assert.equal(p.audioPlugins.filter(x => x.owner === `track:${p.tracks[empty].routingID}`).length, 0);
   assert(after.some(i => p.tracks[i].pad === 2));
   assert.equal(group.name === 'New Kit' || h.G.byID(p, group.id).name === 'New Kit', true);
@@ -109,6 +112,8 @@ test('New empty kit is a group with one empty pad track', () => {
   const p = h.S.state.project, group = h.G.list(p)[0];
   assert.equal(group.name, 'Mine'); assert.equal(h.G.members(p, group).length, 1);
   assert.equal(p.tracks[h.S.state.track].pad, 0);
+  assert.equal(p.tracks[h.S.state.track].voiceMode, 'mono', 'an empty pad is monophonic: a new hit cuts the last one');
+  assert.equal('voiceMode' in p.instruments[h.S.state.instrument], false, 'the voice mode is the track\'s');
 });
 
 (async () => {

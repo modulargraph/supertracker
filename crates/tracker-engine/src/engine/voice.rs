@@ -828,10 +828,10 @@ impl<'a> Rt<'a> {
             }
             return;
         }
-        // A track's own voice mode wins over its instrument's. The choke group is the track's,
-        // scoped to the track's group (scope).
+        // The voice mode and the choke group are the track's; the choke group is scoped to the
+        // track's group (scope).
         let track_voice = p.track_voices.get(track as usize).copied().unwrap_or_default();
-        let voice_mode = if track_voice.mode >= 0 { track_voice.mode } else { instrument_data.p.voice_mode };
+        let voice_mode = track_voice.mode;
         let choke_group = track_voice.choke;
         let choke_scope = if track_voice.choke > 0 { track_voice.scope } else { -1 };
         let kind = instrument_data.p.type_;

@@ -25,7 +25,7 @@ function harness(count=4){
   setAttribute(key,value){this.attrs[key]=String(value);}
  }
  const points=Array.from({length:count},(_,i)=>i/count);
- const instrument={id:1,type:'sample',samplePath:'/fixture/break.wav',rootNote:72,start:.1,end:.9,sliceCount:count,slicePoints:points,slices:[...points],mode:'oneshot'};
+ const instrument={id:1,type:'sample',samplePath:'/fixture/break.wav',rootNote:72,start:.1,end:.9,sliceCount:count,slicePoints:points,mode:'oneshot'};
  const state={view:'instrument',modal:null,track:0,instrument:1,recording:true,playing:true,row:13,column:2,selection:{row:4,track:0},project:{bpm:174,instruments:[{id:0,type:'synth'},instrument],tracks:[{instrument:0,effects:[]}],patterns:[{steps:[[{note:50}]]}],audioPlugins:[]}};
  const ST={state,escapeHTML:value=>String(value).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),
   mutate(label,fn){mutations.push({label,before:clone(state.project)});fn(state.project);mount();},

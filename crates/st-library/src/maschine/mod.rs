@@ -63,6 +63,8 @@ pub struct ImportedSound {
     pub mute: bool,
     /// Choke group, 0 = none.
     pub choke_group: u32,
+    /// Voice mode of the pad's track (`poly`, `mono`, `legato`), when the Sound's sampler names one.
+    pub voice_mode: Option<&'static str>,
     /// The Sound's original mixer members.
     pub maschine_channel: Value,
     /// The plug-in descriptors of this pad (instrument plug-in, inserts), without an owner.
@@ -268,6 +270,7 @@ impl Importer<'_> {
         let mut instrument: Map<String, Value> =
             json!({ "type": "sample", "name": name, "volume": 1.0, "mode": "oneshot", "rootNote": 60, "attack": 0.0, "decay": 0.0, "sustain": 1.0, "release": 0.01 }).as_object().cloned().unwrap_or_default();
         let mut plugins: Vec<Value> = Vec::new();
+        let mut voice_mode = None;
         // A Sound may hold only inserts for an external or internal audio input: the position
         // of a module alone does not make it a generator.
         let first_is_effect =
@@ -278,7 +281,7 @@ impl Importer<'_> {
         } else if let Some(source) = modules.first() {
             let mut report = self.report(source, &owner, 0);
             report["kind"] = json!("instrument");
-            let converted = self.source(source, &name, &mut instrument, &mut report, &mut plugins);
+            let converted = self.source(source, &name, &mut instrument, &mut voice_mode, &mut report, &mut plugins);
             if let Err(error) = converted {
                 instrument.insert("unavailable".to_string(), json!(true));
                 report["status"] = json!("unavailable");
@@ -309,11 +312,11 @@ impl Importer<'_> {
             }
             Err(error) => self.warn(format!("{name}: mixer controls were not decoded: {error}")),
         }
-        ImportedSound { pad: sound.index, name, instrument, volume, pan, mute, choke_group, maschine_channel, plugins }
+        ImportedSound { pad: sound.index, name, instrument, volume, pan, mute, choke_group, voice_mode, maschine_channel, plugins }
     }
 
     /// Converts the generator module of a Sound into `instrument`.
-    fn source(&mut self, module: &Module, name: &str, instrument: &mut Map<String, Value>, report: &mut Value, plugins: &mut Vec<Value>) -> Result<()> {
+    fn source(&mut self, module: &Module, name: &str, instrument: &mut Map<String, Value>, voice_mode: &mut Option<&'static str>, report: &mut Value, plugins: &mut Vec<Value>) -> Result<()> {
         let archive = self.archive;
         match module.kind.as_str() {
             "Sampler" => {
@@ -322,7 +325,7 @@ impl Importer<'_> {
                     Ok(controls) => {
                         report["samplerParameters"] = json!(controls);
                         let mapped = mapping::map_sampler(&controls);
-                        // The voice mode is a property of the pad's track.
+                        *voice_mode = mapped.voice_mode;
                         instrument.extend(mapped.instrument);
                         for warning in mapped.warnings {
                             self.warn(warning);
@@ -335,7 +338,7 @@ impl Importer<'_> {
                 if mapped.is_empty() {
                     return Err(invalid("no sample zone could be imported."));
                 }
-                instrument.insert("samplePath".to_string(), mapped[0]["path"].clone());
+                instrument.insert("samplePath".to_string(), mapped[0]["samplePath"].clone());
                 instrument.insert("zones".to_string(), Value::Array(mapped));
                 report["status"] = json!("sample-zones-decoded");
                 report["zones"] = zones.iter().map(|zone| json!({ "objectID": zone.object_id, "path": zone.path, "origin": zone.origin, "library": zone.library, "values": zone.values })).collect();
@@ -347,7 +350,7 @@ impl Importer<'_> {
                 if mapped.is_empty() {
                     return Err(invalid("the Audio module's sample could not be imported."));
                 }
-                instrument.insert("samplePath".to_string(), mapped[0]["path"].clone());
+                instrument.insert("samplePath".to_string(), mapped[0]["samplePath"].clone());
                 instrument.insert("zones".to_string(), Value::Array(mapped));
                 self.warn(format!("{name}: the Audio module's loop is imported as a plain sample; tempo sync, time-stretching and its play modes are not reproduced."));
                 report["status"] = json!("audio-sample-decoded");
@@ -444,7 +447,7 @@ impl Importer<'_> {
             }
             let gain = mapping::level_amplitude(values["gain"]);
             let mut entry = json!({
-                "path": path.to_string_lossy(), "keyLow": values["keyLow"] as i64, "keyHigh": values["keyHigh"] as i64, "velocityLow": values["velocityLow"] as i64, "velocityHigh": values["velocityHigh"] as i64,
+                "samplePath": path.to_string_lossy(), "keyLow": values["keyLow"] as i64, "keyHigh": values["keyHigh"] as i64, "velocityLow": values["velocityLow"] as i64, "velocityHigh": values["velocityHigh"] as i64,
                 "rootNote": values["root"] as i64, "pan": values["pan"], "tune": values["tune"], "volume": gain.unwrap_or(1.0).min(2.0), "loopEnabled": values["loopEnabled"] != 0.0, "maschineSource": zone.values,
             });
             if gain.unwrap_or(0.0) > 2.0 {
@@ -566,8 +569,6 @@ impl ImportedGroup {
             let mut instrument = sound.instrument.clone();
             instrument.insert("id".to_string(), json!(index));
             instrument.insert("name".to_string(), json!(sound.name));
-            // Mono and legato are the member track's voice mode.
-            let voice_mode = instrument.remove("voiceMode").and_then(|mode| mode.as_str().map(String::from));
             let mut track = json!({
                 "id": index, "name": sound.name, "routingID": routing_id, "groupID": group_id, "pad": sound.pad, "padNote": 60, "instrument": index,
                 "volume": sound.volume, "pan": sound.pan, "mute": sound.mute, "solo": false, "delaySend": 0.0, "reverbSend": 0.0,
@@ -575,7 +576,7 @@ impl ImportedGroup {
             if sound.choke_group > 0 {
                 track["chokeGroup"] = json!(sound.choke_group.min(16));
             }
-            if let Some(mode) = voice_mode.filter(|mode| mode == "mono" || mode == "legato") {
+            if let Some(mode) = sound.voice_mode.filter(|mode| *mode != "poly") {
                 track["voiceMode"] = json!(mode);
             }
             for plugin in &sound.plugins {

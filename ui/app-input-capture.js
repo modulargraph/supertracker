@@ -47,9 +47,9 @@
         track: Math.trunc(number(clip.track, 0)),
         startBeat: number(clip.startBeat, 0),
         durationBeats: number(clip.durationBeats, 0),
-        path: String(clip.path ?? clip.samplePath ?? ''),
-        sourceOffset: clamp(number(clip.sourceOffset, number(clip.offsetSeconds, 0)), 0, 1000000),
-        muted: (clip.muted ?? clip.mute) === true
+        path: String(clip.path ?? ''),
+        sourceOffset: clamp(number(clip.sourceOffset, 0), 0, 1000000),
+        muted: clip.muted === true
       }))
     };
   }

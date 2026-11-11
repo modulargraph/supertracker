@@ -45,6 +45,7 @@ async function run(){
     const h=harness(),old=h.plugin(),before=copy(h.S.state.project),id=before.instruments.length,track=before.tracks.length;
     await h.S.loadSampleAsNew('/added.wav');assert.equal(h.S.state.instrument,id);assert.equal(h.S.state.track,track);
     assert.equal(h.S.state.project.tracks[track].instrument,id);assert.equal(h.S.state.project.instruments[id].samplePath,'/added.wav');
+    assert.equal(h.S.state.project.tracks[track].voiceMode,'mono','a loaded sample starts monophonic on its track');assert.equal('voiceMode' in h.S.state.project.instruments[id],false,'the voice mode is the track\'s');
     assert.deepEqual(copy(h.S.state.project.tracks.slice(0,track)),before.tracks);assert.deepEqual(copy(h.S.state.project.audioPlugins),before.audioPlugins);
     assert(!h.calls.some(c=>c.command==='plugin.remove'));assert.equal(h.native.tracks[track].instrument,id);assert.equal(h.S.state.undo.length,1);
     await h.S.perform('undo');assert.deepEqual(copy(h.S.state.project),before);

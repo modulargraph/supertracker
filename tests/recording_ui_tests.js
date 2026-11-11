@@ -16,7 +16,7 @@ function configureAudio(audio, payload) {
 function harness(overrides = {}) {
   const nodes = new Map(), calls = [], edits = [], toasts = [];
   const audio = { inputs: [{ id: 22, uid: 'interface-stable-uid', name: 'Interface', inputChannels: 8 }, { id: 33, uid: 'second-stable-uid', name: 'Second input', inputChannels: 2 }], inputDevice: 22, inputChannels: [2, 3], inputMetering: false, monitoring: false, monitorVolume: .6 };
-  const state = { native: true, modal: null, view: 'instrument', track: 0, instrument: 0, sequence: 0, row: 8, playing: false, keyboardPlay: true, audio: copy(audio), samples: {}, project: { name: 'Session', bpm: 120, activePattern: 4, sequence: [4], tracks: [{ id: 0, routingID: 'midi-track', name: 'Hardware', instrument: 0, volume: .8, pan: -.2, mute: false, solo: false, delaySend: .25, reverbSend: .4 }], instruments: [{ id: 0, name: 'Synth', rootNote: 60, zones: [{ samplePath: '/old.wav' }], slices: [.2, .6], slicePoints: [.2, .6], mode: 'slice' }], patterns: [{ id: 4, length: 4, steps: [[{ note: 60, instrument: 0 }, null, null, null]], automation: [{ track: 0, target: 'volume', points: [{ row: 0, value: .8 }] }] }, { id: 5, length: 8, steps: [Array(8).fill(null)], automation: [] }], audioPlugins: [], audioClips: [], routing: routingTable() } };
+  const state = { native: true, modal: null, view: 'instrument', track: 0, instrument: 0, sequence: 0, row: 8, playing: false, keyboardPlay: true, audio: copy(audio), samples: {}, project: { name: 'Session', bpm: 120, activePattern: 4, sequence: [4], tracks: [{ id: 0, routingID: 'midi-track', name: 'Hardware', instrument: 0, volume: .8, pan: -.2, mute: false, solo: false, delaySend: .25, reverbSend: .4 }], instruments: [{ id: 0, name: 'Synth', rootNote: 60, zones: [{ samplePath: '/old.wav' }], slicePoints: [.2, .6], mode: 'slice' }], patterns: [{ id: 4, length: 4, steps: [[{ note: 60, instrument: 0 }, null, null, null]], automation: [{ track: 0, target: 'volume', points: [{ row: 0, value: .8 }] }] }, { id: 5, length: 8, steps: [Array(8).fill(null)], automation: [] }], audioPlugins: [], audioClips: [], routing: routingTable() } };
   let ui, nextID = 0;
   const document = { getElementById: id => nodes.get(id) || null, activeElement: null };
   const trimStart = { id: 'param-value-start', focus() { document.activeElement = this; } };
@@ -194,11 +194,11 @@ test('named mono capture produces one new sampler with the chosen root and no in
   assert.equal(h.calls.find(c => c.command === 'audio.record').payload.name, 'Juno F sharp');
   h.ui.event('status', { recording: true, recordingDuration: 1.25, inputPeakLeft: .2, inputPeakRight: .2 }); assert.equal(h.get('record-duration').textContent, '1.3 s');
   await h.startStop(); assert(!h.ui.isRecording && !h.ui.isBusy); assert.equal(h.state.modal, null); assert.equal(h.state.project.instruments.length, 2);
-  const sample = h.state.project.instruments[1]; assert.equal(sample.name, 'Juno F sharp'); assert.equal(sample.rootNote, 66); assert.equal(sample.mode, 'oneshot'); assert.deepEqual(copy(sample.zones), []); assert.deepEqual(copy(sample.slices), []); assert.deepEqual(copy(sample.slicePoints), []); assert.equal(h.edits.length, 1);
+  const sample = h.state.project.instruments[1]; assert.equal(sample.name, 'Juno F sharp'); assert.equal(sample.rootNote, 66); assert.equal(sample.mode, 'oneshot'); assert.deepEqual(copy(sample.zones), []); assert.equal(sample.slices, undefined); assert.deepEqual(copy(sample.slicePoints), []); assert.equal(h.edits.length, 1);
 });
 test('replacing current sampler clears stale zones and slices but preserves unrelated controls', async () => {
   const h = harness(); h.state.project.instruments[0].cutoff = 1234; await h.open(); h.change('record-destination', 'current'); await h.startStop(); await h.startStop();
-  const sample = h.state.project.instruments[0]; assert.equal(h.state.project.instruments.length, 1); assert.deepEqual(copy(sample.zones), []); assert.deepEqual(copy(sample.slices), []); assert.deepEqual(copy(sample.slicePoints), []); assert.equal(sample.cutoff, 1234); assert.equal(sample.mode, 'oneshot');
+  const sample = h.state.project.instruments[0]; assert.equal(h.state.project.instruments.length, 1); assert.deepEqual(copy(sample.zones), []); assert.equal(sample.slices, undefined); assert.deepEqual(copy(sample.slicePoints), []); assert.equal(sample.cutoff, 1234); assert.equal(sample.mode, 'oneshot');
 });
 test('empty name errors happen before permission or capture; 64 instruments is no longer a limit', async () => {
   const h = harness(); await h.open(); h.state.project.instruments = Array.from({ length: 64 }, (_, id) => ({ id })); await h.startStop(); assert(h.calls.some(c => c.command === 'audio.record'), 'no 64-instrument cap');
@@ -325,7 +325,7 @@ test('hardware capture adds a fresh sampler track and empty pattern columns whil
     assert.deepEqual(copy(project.patterns[index].automation), before.patterns[index].automation);
   }
   assert.equal(sample.type, 'sample'); assert.equal(sample.rootNote, 66); assert.equal(sample.name, 'Hardware C sharp'); assert.equal(sample.samplePath, '/recordings/Synth-take-uuid.wav');
-  assert.deepEqual(copy(sample.zones), []); assert.deepEqual(copy(sample.slices), []); assert.deepEqual(copy(sample.slicePoints), []);
+  assert.deepEqual(copy(sample.zones), []); assert.equal(sample.slices, undefined); assert.deepEqual(copy(sample.slicePoints), []);
   assert.equal(h.edits.length, 2); assert.equal(h.edits[0].label, 'Remember hardware input');
   assert.equal(h.state.track, 1); assert.equal(h.state.instrument, 1); assert.equal(h.state.view, 'instrument'); assert.equal(h.document.activeElement.id, 'param-value-start');
 });

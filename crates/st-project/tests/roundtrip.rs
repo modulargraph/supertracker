@@ -136,7 +136,8 @@ fn everything_fixture_reads_every_part_of_the_schema() {
     assert_eq!((kick.mode(), kick.slice_markers(), kick.zones.as_ref().unwrap().len()), (SamplerMode::Slice, &[0.0, 0.25, 0.5, 0.75][..], 2));
     assert_eq!(kick.zones.as_ref().unwrap()[1].velocity_low(), 64);
     let pad = &project.instrument_list()[2];
-    assert_eq!((pad.mode(), pad.lfo_target(), pad.lfo_shape(), pad.lfo2_target(), pad.voice_mode()), (SamplerMode::Granular, LfoTarget::Position, LfoShape::Random, LfoTarget::GrainSize, VoiceMode::Legato));
+    assert_eq!((pad.mode(), pad.lfo_target(), pad.lfo_shape(), pad.lfo2_target()), (SamplerMode::Granular, LfoTarget::Position, LfoShape::Random, LfoTarget::GrainSize));
+    assert_eq!((project.track_list()[4].voice_mode(), project.track_list()[2].voice_mode(), project.track_list()[0].voice_mode), (VoiceMode::Mono, VoiceMode::Legato, None), "the voice mode is the track's");
     let external = &project.instrument_list()[7];
     assert_eq!((external.kind(), external.midi_channel(), external.midi_program, external.midi_cc_map.as_ref().unwrap()["cutoff"]), (InstrumentKind::Midi, 5, Some(10), 74));
     assert_eq!((project.instrument_list()[1].kind(), project.instrument_list()[1].plugin.is_none()), (InstrumentKind::Plugin, true), "its plug-in is the descriptor on the track");
@@ -226,7 +227,7 @@ fn absent_fields_stay_absent_and_read_as_documented_defaults() {
     assert_eq!((project.meter(), project.song_sequence(), project.display_name()), ((4, 4), vec![0], "Untitled session"));
     let track = &project.track_list()[0];
     assert_eq!((track.volume(), track.pan(), track.mute(), track.solo(), track.instrument()), (0.8, 0.0, false, false, 0));
-    assert_eq!((track.delay_send(), track.reverb_send(), track.note_column_count(), track.pad_note(), track.choke_group()), (0.0, 0.0, 1, 60, 0));
+    assert_eq!((track.delay_send(), track.reverb_send(), track.note_column_count(), track.pad_note(), track.choke_group(), track.voice_mode()), (0.0, 0.0, 1, 60, 0, VoiceMode::Poly));
     assert_eq!((track.display_name(0), track.owner()), ("Track 1".to_string(), None));
     let instrument = &project.instrument_list()[0];
     assert_eq!((instrument.kind(), instrument.mode(), instrument.filter_type(), instrument.root_note()), (InstrumentKind::Sample, SamplerMode::OneShot, FilterType::LowPass, 60));
@@ -236,7 +237,7 @@ fn absent_fields_stay_absent_and_read_as_documented_defaults() {
     assert_eq!((instrument.lfo_rate(), instrument.lfo_sync(), instrument.lfo_beats(), instrument.lfo_depth(), instrument.lfo_target(), instrument.lfo_shape()), (0.0, false, 1.0, 0.0, LfoTarget::Cutoff, LfoShape::Sine));
     assert_eq!((instrument.filter_attack(), instrument.filter_decay(), instrument.filter_sustain(), instrument.filter_release(), instrument.filter_env_amount()), (0.005, 0.2, 0.0, 0.2, 0.0));
     assert_eq!((instrument.slice_count(), instrument.grain_size(), instrument.grain_position(), instrument.grain_density()), (16, 0.08, 0.5, 2));
-    assert_eq!((instrument.wavetable_position(), instrument.wavetable_frame_size(), instrument.voice_mode(), instrument.midi_channel()), (0.0, 0, VoiceMode::Poly, 1));
+    assert_eq!((instrument.wavetable_position(), instrument.wavetable_frame_size(), instrument.midi_channel()), (0.0, 0, 1));
     let pattern = &project.pattern_list()[0];
     assert_eq!((pattern.length(), pattern.number(3)), (64, 3));
     let step = pattern.step(0, 0).unwrap();

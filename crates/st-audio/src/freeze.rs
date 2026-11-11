@@ -330,24 +330,29 @@ fn media_identity(path: &str, hash: ContentHash<'_>) -> Value {
     }
 }
 
-/// Replaces the media paths of an instrument or clip object by content identities.
-fn with_media_identities(item: &Value, hash: ContentHash<'_>) -> Value {
-    let mut item = item.clone();
-    for key in ["samplePath", "path"] {
-        if let Some(path) = item[key].as_str().map(str::to_string) {
-            item[key] = media_identity(&path, hash);
-        }
+/// Replaces the media path under `key` of `item` by its content identity.
+fn identify_media(item: &mut Value, key: &str, hash: ContentHash<'_>) {
+    if let Some(path) = item[key].as_str().map(str::to_string) {
+        item[key] = media_identity(&path, hash);
     }
-    if let Some(zones) = item["zones"].as_array_mut() {
-        for zone in zones {
-            *zone = with_media_identities(zone, hash);
-        }
+}
+
+/// An instrument with its sample and the samples of its zones as content identities.
+fn instrument_identity(instrument: &Value, hash: ContentHash<'_>) -> Value {
+    let mut instrument = instrument.clone();
+    identify_media(&mut instrument, "samplePath", hash);
+    for zone in instrument["zones"].as_array_mut().into_iter().flatten() {
+        identify_media(zone, "samplePath", hash);
     }
-    if item["takeSet"].is_object() {
-        // Takes other than the active one are not heard.
-        item.as_object_mut().map(|item| item.remove("takeSet"));
-    }
-    item
+    instrument
+}
+
+/// A clip with its file as a content identity, without the takes that are not heard (the
+/// active take is the clip's own file).
+fn clip_identity(clip: &Value, hash: ContentHash<'_>) -> Value {
+    let mut clip = without(clip, &["takeSet"]);
+    identify_media(&mut clip, "path", hash);
+    clip
 }
 
 fn without(item: &Value, keys: &[&str]) -> Value {
@@ -382,10 +387,10 @@ pub fn fingerprint(project: &Value, index: usize, hash: ContentHash<'_>) -> Resu
     let cosmetic = ["name", "color", "selected", "collapsed", "editorOpen", "windowFrame", "viewState", "id", "plugins", "frozen", "volume", "pan", "mute", "solo", "delaySend", "reverbSend"];
     let volatile = ["parameters", "latency", "latencyFrames", "tailTime", "stateError", "name", "editorOpen", "windowFrame", "state"];
     let plugins: Vec<Value> = project["audioPlugins"].as_array().unwrap_or(&empty).iter().filter(|plugin| plugin["owner"].as_str().is_some() && plugin["owner"].as_str() == owner.as_deref()).map(|plugin| without(plugin, &volatile)).collect();
-    let clips: Vec<Value> = project["audioClips"].as_array().unwrap_or(&empty).iter().filter(|clip| whole(&clip["track"], 0) == index as i64).map(|clip| with_media_identities(&without(clip, &["id", "name"]), hash)).collect();
+    let clips: Vec<Value> = project["audioClips"].as_array().unwrap_or(&empty).iter().filter(|clip| whole(&clip["track"], 0) == index as i64).map(|clip| clip_identity(&without(clip, &["id", "name"]), hash)).collect();
     let payload = json!({
         "track": without(track, &cosmetic),
-        "instruments": referenced.iter().map(|instrument| instruments.get(*instrument as usize).map_or(Value::Null, |item| with_media_identities(&without(item, &["name", "id", "plugin"]), hash))).collect::<Vec<_>>(),
+        "instruments": referenced.iter().map(|instrument| instruments.get(*instrument as usize).map_or(Value::Null, |item| instrument_identity(&without(item, &["name", "id", "plugin"]), hash))).collect::<Vec<_>>(),
         "plugins": plugins,
         "clips": clips,
         "patterns": patterns,

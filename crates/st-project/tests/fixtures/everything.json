@@ -46,6 +46,7 @@
    "delaySend": 0,
    "reverbSend": 0.38,
    "routingID": "fx0006",
+   "voiceMode": "legato",
    "frozen": {
     "id": "frz-1",
     "path": "/Prints/pad.wav",
@@ -343,8 +344,7 @@
    "midiOutput": 0,
    "midiInputChannel": 0,
    "midiChannel": 1,
-   "monitor": false,
-   "voiceMode": "legato"
+   "monitor": false
   },
   {
    "id": 3,
@@ -408,12 +408,6 @@
     0.5,
     0.75
    ],
-   "slices": [
-    0,
-    0.25,
-    0.5,
-    0.75
-   ],
    "zones": [
     {
      "samplePath": "/Samples/Kick soft.wav",
@@ -428,7 +422,6 @@
     },
     {
      "samplePath": "/Samples/Kick hard.wav",
-     "path": "/Samples/Kick hard.wav",
      "keyLow": 0,
      "keyHigh": 127,
      "velocityLow": 64,
@@ -3098,7 +3091,6 @@
   {
    "id": "clip-2",
    "track": 0,
-   "samplePath": "/Audio/Loop.wav",
    "path": "/Audio/Loop.wav",
    "startBeat": 0,
    "durationBeats": 16

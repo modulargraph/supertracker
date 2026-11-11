@@ -328,8 +328,8 @@ fn test_mono_legato_choke_and_mute() {
     e.begin_update();
     let mut p = default_instrument();
     p.type_ = ST_INSTRUMENT_MIDI;
-    p.voice_mode = 2;
     e.set_instrument(0, p);
+    assert!(e.set_track_voice(0, 0, 0, 2));
     e.commit_update();
     e.note_on(0, 0, 60, 100);
     let ev = note_events(render_events(&mut e, 128));
@@ -356,10 +356,9 @@ fn test_mono_legato_choke_and_mute() {
     e.panic();
     render_events(&mut e, 1);
     e.begin_update();
-    p.voice_mode = 0;
     e.set_instrument(0, p);
     e.set_instrument(1, p);
-    assert!(e.set_track_voice(0, 2, 0, -1) && e.set_track_voice(1, 2, 0, -1));
+    assert!(e.set_track_voice(0, 2, 0, 0) && e.set_track_voice(1, 2, 0, 0));
     e.commit_update();
     e.note_on(0, 0, 60, 100);
     e.note_on(1, 1, 65, 100);

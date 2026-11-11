@@ -85,18 +85,6 @@ string_enum! {
     }
 }
 
-string_enum! {
-    /// How many notes sound at once.
-    pub enum VoiceMode {
-        /// Every note gets a voice.
-        Poly = "poly",
-        /// One voice; a new note retriggers.
-        Mono = "mono",
-        /// One voice; overlapping notes glide without retriggering.
-        Legato = "legato",
-    }
-}
-
 model! {
     /// One sample of a multisample instrument, with its key and velocity range.
     /// Created by the sampler page (`sampler.js`): `{samplePath, keyLow: 0, keyHigh: 127,
@@ -104,8 +92,6 @@ model! {
     pub struct Zone {
         /// The sample file (media path).
         "samplePath" => sample_path: String,
-        /// Alias of `samplePath` written by imports; both are media paths and are kept in step.
-        "path" => path: String,
         /// Lowest key (MIDI note) the zone answers.
         "keyLow" => key_low: i64 = 0,
         /// Highest key the zone answers.
@@ -124,9 +110,9 @@ model! {
 }
 
 impl Zone {
-    /// The zone's sample file: `samplePath`, else `path`.
+    /// The zone's sample file, when it names one.
     pub fn file(&self) -> Option<&str> {
-        self.sample_path.as_deref().filter(|path| !path.is_empty()).or(self.path.as_deref().filter(|path| !path.is_empty()))
+        self.sample_path.as_deref().filter(|path| !path.is_empty())
     }
 }
 
@@ -216,8 +202,6 @@ model! {
         "sliceCount" => slice_count: i64 = 16,
         /// Slice markers, 0..1 of the sample, ascending. Empty or absent: `sliceCount` equal slices.
         "slicePoints" => slice_points: Vec<f64>,
-        /// Mirror of `slicePoints` the sampler page writes alongside it.
-        "slices" => slices: Vec<f64>,
         /// Grain length, seconds.
         "grainSize" => grain_size: f64 = 0.08,
         /// Grain position, 0..1 of the sample.
@@ -240,8 +224,6 @@ model! {
         "wavetableFrameSize" => wavetable_frame_size: i64 = 0,
         /// Multisample zones (up to 128). With none, the main sample plays across the keyboard.
         "zones" => zones: Vec<Zone>,
-        /// Voice mode. A track's own `voiceMode` overrides it.
-        "voiceMode" => voice_mode: VoiceMode = VoiceMode::Poly,
         /// The plug-in of a plug-in instrument that no track plays: its descriptor without owner
         /// and instance, kept so the instrument can be assigned to a track again with its settings.
         /// Absent otherwise: while a track plays the instrument, the plug-in is that track's
@@ -280,14 +262,9 @@ impl Instrument {
         }
     }
 
-    /// The slice markers in effect: `slicePoints`, else `slices`.
+    /// The slice markers (`slicePoints`); none when the instrument has no list.
     pub fn slice_markers(&self) -> &[f64] {
-        match (&self.slice_points, &self.slices) {
-            (Some(points), _) if !points.is_empty() => points,
-            (_, Some(points)) => points,
-            (Some(points), None) => points,
-            (None, None) => &[],
-        }
+        self.slice_points.as_deref().unwrap_or(&[])
     }
 }
 

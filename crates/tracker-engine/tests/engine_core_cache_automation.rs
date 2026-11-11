@@ -540,11 +540,11 @@ fn test_step_preview_ownership() {
             configure(engine, TONE);
             engine.begin_update();
             let mut p = test_tone_instrument(TEST_SINE);
-            p.voice_mode = 2;
             p.attack = 0.0;
             p.sustain = 1.0;
             p.release = 0.01;
             engine.set_instrument(0, p);
+            assert!(engine.set_track_voice(0, 0, 0, 2));
             engine.commit_update();
         }
         let mut step = default_step();

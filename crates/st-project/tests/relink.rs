@@ -23,7 +23,7 @@ fn text(path: &Path) -> String {
 fn fixture(sample: &str, zone: Option<&str>, clip: Option<&str>) -> Project {
     let mut instrument = json!({ "id": 0, "name": "Drums", "type": "sample", "samplePath": sample, "cutoff": 1234 });
     if let Some(zone) = zone {
-        instrument["zones"] = json!([{ "samplePath": zone, "rootNote": 42, "keyLow": 20, "keyHigh": 80, "volume": 0.7 }, { "path": sample, "rootNote": 64 }]);
+        instrument["zones"] = json!([{ "samplePath": zone, "rootNote": 42, "keyLow": 20, "keyHigh": 80, "volume": 0.7 }, { "samplePath": sample, "rootNote": 64 }]);
     }
     let mut project = json!({
         "version": 2, "name": "Relink fixture", "bpm": 120.0, "linesPerBeat": 4, "tracks": [{ "id": 0, "routingID": "t0" }], "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
@@ -76,8 +76,8 @@ fn moved_root_and_transactional_apply() {
     assert_eq!(source, source_before, "fingerprinting must not change the caller's project");
     let project = result.project;
     let inventory = inspect(&project, None, &Limits::default());
-    assert_eq!((inventory.present_count, inventory.missing_count, inventory.reference_count), (4, 0, 4), "sample, two zone aliases and the clip are inventoried");
-    assert_eq!(inventory.references.iter().map(|row| row.id.as_str()).collect::<Vec<_>>(), vec!["/instruments/0/samplePath", "/instruments/0/zones/0/samplePath", "/instruments/0/zones/1/path", "/audioClips/0/path"]);
+    assert_eq!((inventory.present_count, inventory.missing_count, inventory.reference_count), (4, 0, 4), "sample, two zones and the clip are inventoried");
+    assert_eq!(inventory.references.iter().map(|row| row.id.as_str()).collect::<Vec<_>>(), vec!["/instruments/0/samplePath", "/instruments/0/zones/0/samplePath", "/instruments/0/zones/1/samplePath", "/audioClips/0/path"]);
     assert_eq!(inventory.references[1].label, "Drums · Zone 1");
 
     fs::create_dir_all(relocated.parent().unwrap()).unwrap();
@@ -97,7 +97,7 @@ fn moved_root_and_transactional_apply() {
     let zones = instrument.zones.as_ref().unwrap();
     assert_eq!((instrument.cutoff(), zones[0].root_note(), updated.clip_list()[0].source_offset()), (1234.0, 42, 1.25), "relinking preserves sound and clip edits");
     assert_eq!(instrument.sample_path.as_deref(), Some(text(&relocated.join("Kick.wav")).as_str()));
-    assert_eq!(zones[1].path.as_deref(), instrument.sample_path.as_deref());
+    assert_eq!(zones[1].sample_path.as_deref(), instrument.sample_path.as_deref());
     for (name, data) in [("Kick.wav", &kick_data), ("Zone.aif", &zone_data), ("Recording.caf", &clip_data)] {
         assert_eq!(&fs::read(relocated.join(name)).unwrap(), data, "relinking must not modify {name}");
     }
@@ -253,36 +253,6 @@ fn progress_is_reported() {
 }
 
 #[test]
-fn linked_aliases_move_together() {
-    let root = TempDir::new("relink-alias");
-    let missing = text(&root.join("missing.wav"));
-    let (replacement, other) = (root.join("replacement.wav"), root.join("other.wav"));
-    put(&[1, 2, 3], &replacement);
-    put(&[3, 2, 1], &other);
-    let project = Project::from_value(json!({
-        "version": 2, "bpm": 120.0, "tracks": [{ "id": 0, "routingID": "t0" }], "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
-        "instruments": [{ "id": 0, "zones": [{ "path": missing, "samplePath": missing, "rootNote": 60 }] }],
-        "patterns": [{ "id": 0, "length": 4, "steps": [[]] }], "sequence": [0],
-        "audioClips": [{ "id": "clip", "track": 0, "startBeat": 0.0, "durationBeats": 4.0, "path": missing, "samplePath": missing }]
-    }))
-    .unwrap();
-    let choose = |id: String, to: &Path| Selection { id, from: missing.clone(), to: text(to), allow_different_content: false };
-    for (prefix, pointer) in [("/instruments/0/zones/0/", "/instruments/0/zones/0"), ("/audioClips/0/", "/audioClips/0")] {
-        let before = project.clone();
-        let result = relink(&project, &[choose(format!("{prefix}samplePath"), &replacement)]).unwrap();
-        let item = result.project.to_value().pointer(pointer).unwrap().clone();
-        assert!(item["path"] == text(&replacement).as_str() && item["samplePath"] == text(&replacement).as_str(), "relinking one alias repairs the path the host plays too");
-        assert_eq!(project, before, "the input project (an Undo snapshot) is not changed");
-        let error = relink(&project, &[choose(format!("{prefix}path"), &replacement), choose(format!("{prefix}samplePath"), &other)]).unwrap_err().to_string();
-        assert_eq!(error, "Linked sample or audio clip references must use the same replacement file.");
-        let mut divergent = project.to_value();
-        *divergent.pointer_mut(&format!("{pointer}/samplePath")).unwrap() = json!(format!("{missing}-different"));
-        let error = relink(&Project::from_value(divergent).unwrap(), &[choose(format!("{prefix}path"), &replacement)]).unwrap_err().to_string();
-        assert_eq!(error, "The sample or audio clip aliases refer to different files. Repair the source selection before relinking.");
-    }
-}
-
-#[test]
 fn takes_follow_the_clip() {
     let root = TempDir::new("relink-takes");
     let (first, second, found) = (text(&root.join("gone/take1.wav")), text(&root.join("gone/take2.wav")), root.join("found.wav"));
@@ -304,6 +274,17 @@ fn takes_follow_the_clip() {
     // An inactive take changes alone.
     let inactive = relink(&project, &[choose("/audioClips/0/takeSet/takes/0/path", &first)]).unwrap().project.to_value();
     assert!(inactive["audioClips"][0]["path"] == second.as_str() && inactive["audioClips"][0]["takeSet"]["takes"][0]["path"] == text(&found).as_str());
+    // The clip and its active take get one replacement, and name one file to begin with.
+    let other = root.join("other.wav");
+    put(b"other", &other);
+    let before = project.clone();
+    let error = relink(&project, &[choose("/audioClips/0/path", &second), Selection { to: text(&other), ..choose("/audioClips/0/takeSet/takes/1/path", &second) }]).unwrap_err().to_string();
+    assert_eq!(error, "An audio clip and its active take must use the same replacement file.");
+    assert_eq!(project, before, "the input project (an Undo snapshot) is not changed");
+    let mut divergent = project.to_value();
+    divergent["audioClips"][0]["path"] = json!(format!("{second}-different"));
+    let error = relink(&Project::from_value(divergent).unwrap(), &[choose("/audioClips/0/takeSet/takes/1/path", &second)]).unwrap_err().to_string();
+    assert_eq!(error, "The audio clip and its active take refer to different files. Repair the source selection before relinking.");
 }
 
 /// Collected hashes, relative manifest paths, a moved project folder and recovery from the

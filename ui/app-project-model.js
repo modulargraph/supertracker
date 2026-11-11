@@ -270,9 +270,13 @@
 
      Optional by design, so whoever reads them asks: songLoop (there only while a loop section is set); a
      track's groupID, pad, padNote, chokeGroup, voiceMode, noteColumns, audioInput and frozen, and its name,
-     colour and mixer values (absent is the default); an instrument's plugin and zones; every field of a step
-     but its note; a lane's owner or track; a clip's take set; and what only the host reads and writes
-     (mediaManifest, mediaRelinkHistory, midiImport). */
+     colour and mixer values (absent is the default); an instrument's plugin, zones and slicePoints; every
+     field of a step but its note; a lane's owner or track; a clip's take set; and what only the host reads
+     and writes (mediaManifest, mediaRelinkHistory, midiImport).
+
+     Each of these has one name, and the host refuses a project that uses another: the sample of an
+     instrument and of a zone is its samplePath, the file of a clip and of a take is its path, slice markers
+     are an instrument's slicePoints, and the voice mode (like the choke group) is the track's. */
   function normalize(p) {
     if (!p || typeof p !== 'object') return demoProject();
     p.version = PROJECT_VERSION;

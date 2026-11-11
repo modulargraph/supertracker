@@ -57,8 +57,6 @@ model! {
         "track" => track: i64 = 0,
         /// The audio file (media path).
         "path" => path: String,
-        /// Alias of `path` on imported clips; kept in step with it.
-        "samplePath" => sample_path: String,
         /// Start on the timeline, in quarter-note beats.
         "startBeat" => start_beat: f64 = 0.0,
         /// Length on the timeline, in beats (> 0).
@@ -81,9 +79,9 @@ model! {
 }
 
 impl AudioClip {
-    /// The clip's audio file: `path`, else `samplePath`.
+    /// The clip's audio file, when it names one.
     pub fn file(&self) -> Option<&str> {
-        self.path.as_deref().filter(|path| !path.is_empty()).or(self.sample_path.as_deref().filter(|path| !path.is_empty()))
+        self.path.as_deref().filter(|path| !path.is_empty())
     }
 }
 

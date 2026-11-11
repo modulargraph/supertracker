@@ -490,10 +490,10 @@ async function run(){
   }
   {
     const h=harness(),instrument=h.ST.state.project.instruments[0];
-    Object.assign(instrument,{samplePath:'/old.wav',slicePoints:[0,.3,.7],slices:[0,.5],zones:[{samplePath:'/zone.wav'}]});
+    Object.assign(instrument,{samplePath:'/old.wav',slicePoints:[0,.3,.7],zones:[{samplePath:'/zone.wav'}]});
     h.handlers.set('sample.load',()=>({path:'/new.wav',name:'Fresh sample'}));
     await h.ST.loadSample('/new.wav',0);
-    assert.equal(instrument.samplePath,'/new.wav');assert.equal(instrument.slicePoints.length,0);assert.equal(instrument.zones.length,0);assert.equal(instrument.slices.length,0);
+    assert.equal(instrument.samplePath,'/new.wav');assert.equal(instrument.slicePoints.length,0);assert.equal(instrument.zones.length,0);assert.equal(instrument.slices,undefined);
     h.ST.perform('undo');assert.equal(h.ST.state.project.instruments[0].samplePath,'/old.wav');assert.equal(h.ST.state.project.instruments[0].zones[0].samplePath,'/zone.wav');
     console.log('PASS replacing a sample removes old slice/zone routing and Undo restores it');
   }

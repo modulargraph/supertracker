@@ -37,7 +37,7 @@
     renderBar(inst) {
       const list = pages.list(inst); if (!list.length) return '';
       const current = pages.current(inst);
-      const markers = Array.isArray(inst.slicePoints) && inst.slicePoints.length ? inst.slicePoints.length : Array.isArray(inst.slices) && inst.slices.length ? inst.slices.length : Number(inst.sliceCount) || 16;
+      const markers = inst.slicePoints?.length || Number(inst.sliceCount) || 16;
       const counts = { slices: inst.mode === 'slice' ? markers : 0, zones: (inst.zones || []).length };
       return `<div class="inst-pages" role="tablist" aria-label="Instrument pages · ⌥1–${list.length} or ⌃Tab">${list.map(([id, label], index) => `<button id="inst-page-tab-${id}" role="tab" data-inst-page-tab="${id}" aria-selected="${id === current}" aria-controls="inst-page-${id}" aria-keyshortcuts="Alt+${index + 1}" tabindex="${id === current ? 0 : -1}" class="${id === current ? 'active' : ''}" title="${esc(label)} page · ⌥${index + 1}"><kbd>${index + 1}</kbd>${esc(label)}${counts[id] ? `<span class="inst-page-count">${counts[id]}</span>` : ''}</button>`).join('')}</div>`;
     },
