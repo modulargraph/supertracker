@@ -1,7 +1,5 @@
 //! Drum synthesis voices: Kick, Snare, Hihat, Tom, Perc and Cymbal.
 //!
-//! Ported from the C++ `MaschineDrums.hpp` (namespace `stdrums`).
-//!
 //! Original drum voices inspired by common analog and modal synthesis methods.
 //! These six families are not NI's individual Drum Synth engines or a decoder
 //! for their parameter arrays. Callers must map imported controls explicitly.
@@ -255,8 +253,7 @@ fn blep(phase: f64, dt: f64) -> f64 {
 
 impl Voice {
     /// Triggers the voice. `normalized` holds up to eight normalized controls; missing or
-    /// nonfinite ones use the model defaults. A zero `seed` is replaced by 1 (the C++ default
-    /// seed is also 1).
+    /// nonfinite ones use the model defaults. A zero `seed` is replaced by 1.
     pub fn start(&mut self, kind: i32, sample_rate: f64, normalized: &[f32], seed: u32) {
         *self = Voice::default();
         self.model = if valid_model(kind) { kind } else { NONE };

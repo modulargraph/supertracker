@@ -226,7 +226,7 @@ pub struct STInstrument {
 }
 
 impl STInstrument {
-    /// C++ `STInstrument p{}`: every field zero.
+    /// Every field zero.
     pub const ZERO: STInstrument = STInstrument {
         type_: 0,
         mode: 0,

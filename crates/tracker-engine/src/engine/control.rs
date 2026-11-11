@@ -1,5 +1,5 @@
 //! Control-thread side of the engine: the editable draft, the published
-//! control copy, commit (`commit`, `normalize`, `buildTables`), reclamation (`collect`) and engine
+//! control copy, commit (`commit`, `normalize`, `build_tables`), reclamation (`collect`) and engine
 //! construction/destruction.
 //!
 //! One serial control thread owns everything here. It publishes a complete immutable project

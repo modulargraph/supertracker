@@ -34,7 +34,7 @@ impl Pcm<'_> {
     }
 
     /// Copy into a new sample, sanitizing every value. `None` when memory is exhausted (a failed
-    /// load, as the C++ `catch(...)`, not an abort).
+    /// load, not an abort).
     fn to_sample(self) -> Option<Box<Sample>> {
         let frames = self.left.len();
         let (mut l, mut r) = (Vec::new(), Vec::new());

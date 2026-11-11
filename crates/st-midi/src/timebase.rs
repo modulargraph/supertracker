@@ -123,7 +123,6 @@ impl Timebase {
 
 #[cfg(test)]
 mod tests {
-    //! Ported from tests/AudioMIDITimebaseTests.swift.
     use super::*;
 
     #[test]

@@ -285,7 +285,7 @@ impl<'a> Rt<'a> {
     fn click_sample(&mut self, volume: f32, wet_l: &mut f32, wet_r: &mut f32) {
         let e = &mut *self.e;
         if e.click_age < e.sample_rate * 0.03 {
-            // double * float * float, evaluated in double.
+            // f64 * f32 * f32, evaluated in f64.
             let click = (e.click_phase.sin()
                 * ((-e.click_age / (e.sample_rate * 0.005)) as f32).exp() as f64
                 * volume as f64) as f32;

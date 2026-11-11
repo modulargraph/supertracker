@@ -2,7 +2,7 @@
 //! [`ParameterInfo`]. Platform independent (tested on Linux); the macOS side only reads
 //! the properties and hands them over as a [`RawParameter`].
 //!
-//! Rules carried over from the previous host (`AudioPluginParameterMetadata.swift`):
+//! Rules:
 //! values stay in the unit's own range (min..max); a parameter is *stepped* only when the
 //! unit says so in a way that can be trusted (unit "boolean" starting at 0, unit
 //! "indexed" with integer bounds, or a label list that covers the whole integer range);

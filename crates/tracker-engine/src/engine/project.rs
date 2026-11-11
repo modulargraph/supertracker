@@ -20,8 +20,8 @@ pub struct Sample {
     pub rate: f64,
 }
 
-/// A counted reference to a `Sample` held by project data (C++ `Zone`/`Instrument` copy
-/// constructors and destructors). Cloning and dropping only touch the atomic count, never free:
+/// A counted reference to a `Sample` held by project data (a zone's or an instrument's).
+/// Cloning and dropping only touch the atomic count, never free:
 /// the sample itself is destroyed by `collect()` on the control thread.
 pub struct SampleRef(NonNull<Sample>);
 
@@ -492,16 +492,16 @@ impl Project {
         self.audio_assets.get(asset as u32 as usize)?.sample.as_ref().map(|sample| sample.get())
     }
 
-    /// `patternRows`: the rows of a pattern in even-row units (an odd length ends on a long,
-    /// swung row). The sum is formed in single precision, as in C++ (`int + float`).
+    /// The rows of a pattern in even-row units (an odd length ends on a long, swung row). The
+    /// sum is formed in single precision on purpose: its width decides the last bits of the timing.
     #[inline]
     pub fn pattern_rows(&self, index: i32) -> f64 {
         let n = self.pattern_length(index);
         (n as f32 + if n % 2 != 0 { self.swing } else { 0.0 }) as f64
     }
 
-    /// `beatForRow`: pattern-relative quarter beat of row `r`. Single precision, as in C++
-    /// (`(int + float) / int`).
+    /// Pattern-relative quarter beat of row `r`. Sum and division are single precision on
+    /// purpose: their width decides the last bits of the timing.
     #[inline]
     pub fn beat_for_row(&self, r: i32) -> f64 {
         ((r as f32 + if r % 2 != 0 { self.swing } else { 0.0 }) / self.lpb as f32) as f64

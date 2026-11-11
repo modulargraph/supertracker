@@ -1,13 +1,12 @@
-//! Port of the former C++ test program `engine_benchmark.cpp`: an independent deterministic DSP benchmark with no
-//! absolute timing pass threshold (CPU time distinguishes engine work from competing builds / OS
-//! scheduling).
+//! An independent deterministic DSP benchmark with no absolute timing pass threshold (CPU time
+//! distinguishes engine work from competing builds / OS scheduling).
 //!
-//! * `benchmark` (ignored) is the C++ program: it renders every scene and prints the same table
-//!   (CPU and wall time, PCM hash, RMS). Run it with
+//! * `benchmark` (ignored) renders every scene and prints a table (CPU and wall time, PCM hash,
+//!   RMS). Run it with
 //!   `cargo test --release --test engine_benchmark -- --ignored --nocapture`.
-//! * One test per scene renders it with the program's own assertions (finite, bounded, audible,
-//!   zero render allocations) and compares the PCM hash of the buses with the recorded value, so
-//!   a refactor that changes a single output bit is caught.
+//! * One test per scene renders it, asserts that the output is finite, bounded and audible and
+//!   that the render allocated nothing, and compares the PCM hash of the buses with the recorded
+//!   value, so a refactor that changes a single output bit is caught.
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
@@ -142,7 +141,7 @@ fn scene(s: &Scene) -> Outcome {
     Outcome { cpu_seconds, wall_seconds, hash, rms: (energy / (FRAMES * 2 * buses.len()) as f64).sqrt() }
 }
 
-/// One scene of the regression set: the program's assertions plus the recorded PCM hash.
+/// One scene of the regression set: the scene's assertions plus the recorded PCM hash.
 fn regression(index: usize) {
     let s = &SCENES[index];
     let result = scene(s);
@@ -159,7 +158,7 @@ fn regression(index: usize) {
     }
 }
 
-/// The C++ program's `main`.
+/// Renders every scene and prints the table.
 #[test]
 #[ignore = "benchmark: prints CPU/wall time, PCM hash and RMS of every scene"]
 fn benchmark() {

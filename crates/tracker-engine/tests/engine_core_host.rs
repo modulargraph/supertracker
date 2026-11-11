@@ -1,11 +1,10 @@
-//! Port of the former C++ test program `engine_tests.cpp`, part 4 of 5: what a host finds on the
-//! buses, the gating of external notes, and host automation (destination map, timing, bounds
-//! and protected note-offs).
+//! Engine core suites: what a host finds on the buses, the gating of external notes, and host
+//! automation (destination map, timing, bounds and protected note-offs).
 //!
 //! One `#[test]` per suite, calling the engine through `engine_support_a::Engine`, which renders
 //! it block by block as a host does: the tests read its buses (a plain render gives their sum).
 //! Every test ends with the "zero render-thread allocations" check.
-// The index loops mirror the C++ loops they translate.
+// The tests index their buffers in plain loops.
 #![allow(clippy::needless_range_loop)]
 
 mod engine_support_a;

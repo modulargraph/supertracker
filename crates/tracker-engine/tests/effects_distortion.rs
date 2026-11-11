@@ -1,8 +1,6 @@
-//! Port of the former C++ test program `effects_distortion_tests.cpp`: Distortion, Lofi and Saturator exercised
-//! directly through `effects::distortion` (no C API), including the "no allocation in
-//! process/reset" check. Same checks and tolerances as the C++ program, whose `require` is
-//! called 148742 times.
-// The index loops mirror the C++ loops they translate.
+//! Distortion, Lofi and Saturator exercised directly through `effects::distortion`, including
+//! the "no allocation in process/reset" check. `require` is called 148742 times.
+// The tests index their buffers in plain loops.
 #![allow(clippy::needless_range_loop)]
 
 mod effects_support;
@@ -18,7 +16,7 @@ use tracker_engine::effects::distortion;
 const SAMPLE_RATE: f64 = 48000.0;
 
 fn effect_at(id: &str, sr: f64) -> Effect {
-    // Like the C++ fixture, this relies on the constructors applying the parameter defaults.
+    // This relies on the constructors applying the parameter defaults.
     Effect::raw(descriptor(distortion::descriptors(), id), sr)
 }
 
@@ -324,7 +322,7 @@ fn check_lofi(c: &mut Checks) {
     let original = quantized.clone();
     render(&mut crush, &mut quantized, 17);
     for i in 0..quantized.len() {
-        // The C++ evaluates these in float (`quantized.left[i] * 8`) and `std::round(float)`.
+        // Scaled and rounded in single precision.
         let scaled = quantized.l[i] * 8.0f32;
         c.require(
             ((scaled - scaled.round()) as f64).abs() < 1e-7,
@@ -535,7 +533,7 @@ fn distortion_family() {
     println!("PASS: distortion family metadata, signal behavior, reset/partition invariance, transitions, stability, and render allocation checks ({} checks)", c.count);
     assert_eq!(
         c.count, 148742,
-        "same number of checks as the C++ program effects_distortion_tests.cpp"
+        "the number of checks in this file"
     );
 }
 

@@ -1,7 +1,6 @@
-//! Port of the former C++ test program `engine_many_tracks_tests.cpp`: tracks are sized from the project: 200-track
-//! buses, return bus renumbering when the track count grows past sixteen,
-//! copy-on-write commits, silent-bus history, and zero render allocations. The C++ `--bench`
-//! mode (render CPU and commit latency) is the ignored test `bench`.
+//! Tracks are sized from the project: 200-track buses, return bus renumbering when the track
+//! count grows past sixteen, copy-on-write commits, silent-bus history, and zero render
+//! allocations. The ignored test `bench` prints render CPU and commit latency.
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
@@ -22,7 +21,7 @@ impl Pcm {
         Pcm { l: vec![0.0; n], r: vec![0.0; n] }
     }
 
-    /// C++ `energy(from = 0, to = 0)`: `to == 0` means the end.
+    /// Mean energy of frames `from..to`; `to == 0` means the end.
     fn energy(&self, from: usize, mut to: usize) -> f64 {
         if to == 0 {
             to = self.l.len();
@@ -288,10 +287,10 @@ fn copy_on_write_commits() {
     assert!(render_allocations() == 0);
 }
 
-/// C++ `--bench`: commit latency and render speed for 16, 64 and 200 tracks. Run with
+/// Commit latency and render speed for 16, 64 and 200 tracks. Run with
 /// `cargo test --release --test engine_many_tracks -- --ignored --nocapture`.
 #[test]
-#[ignore = "benchmark (C++ --bench): prints commit latency and render speed"]
+#[ignore = "benchmark: prints commit latency and render speed"]
 fn bench() {
     println!(
         "tracks | full rebuild | reuse+1 pattern | 1-step edit | render all active (x realtime) | render 8 active (x realtime)"

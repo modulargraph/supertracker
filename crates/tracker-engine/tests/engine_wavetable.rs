@@ -1,5 +1,4 @@
-//! Port of the former C++ test program `engine_wavetable_tests.cpp`: sampler Wavetable mode: position parameter,
-//! automation, step FX, frame size and smoothing.
+//! Sampler Wavetable mode: position parameter, automation, step FX, frame size and smoothing.
 #![cfg(feature = "engine")]
 
 mod engine_support_b;

@@ -31,8 +31,8 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// The settings section `mk3` (the old host's `maschine-mk3.json`). Support for the controller is
-/// in development and off unless the user turns it on.
+/// The settings section `mk3`. Support for the controller is in development and off unless the
+/// user turns it on.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Mk3Settings {
@@ -127,7 +127,7 @@ pub struct Mk3Options {
     pub screen_open_timeout: Duration,
     /// The shortest time between two frames on a screen.
     pub frame_interval: Duration,
-    /// Do not connect at start even when support is on (the old host's `SUPERTRACKER_NO_MK3`).
+    /// Do not connect at start even when support is on (`SUPERTRACKER_NO_MK3`).
     pub no_auto_connect: bool,
 }
 

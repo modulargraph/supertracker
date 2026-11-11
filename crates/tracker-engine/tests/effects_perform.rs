@@ -1,7 +1,5 @@
-//! Port of the former C++ test program `effects_perform_tests.cpp`: the Perform processors exercised directly
-//! through `effects::perform` (no C API). Same checks, tolerances and check count (197764)
-//! as the C++ program.
-// The index loops mirror the C++ loops they translate.
+//! The Perform processors exercised directly through `effects::perform`: 197764 checks.
+// The tests index their buffers in plain loops.
 #![allow(clippy::needless_range_loop)]
 
 mod effects_support;
@@ -651,6 +649,6 @@ fn perform_dsp() {
     println!("Perform DSP tests passed ({} checks)", c.count);
     assert_eq!(
         c.count, 197764,
-        "same number of checks as the C++ program effects_perform_tests.cpp"
+        "the number of checks in this file"
     );
 }

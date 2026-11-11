@@ -15,9 +15,9 @@
 //! ```
 //!
 //! The payload is the dictionary serialised as a binary property list. A unit that puts
-//! values a property list cannot hold into its state (the old host failed the whole save
-//! on those) gets a keyed archive instead, which keeps them; only if that fails too are
-//! the offending values dropped, and the frame says so.
+//! values a property list cannot hold into its state gets a keyed archive instead, which
+//! keeps them; only if that fails too are the offending values dropped, and the frame
+//! says so.
 //!
 //! `set_state` also accepts a bare property list (binary or XML), which is what an
 //! `.aupreset` file contains.
@@ -27,7 +27,7 @@
 //! with the same canonical form are the same state even when the serialiser ordered
 //! their dictionaries differently; the backend then returns the earlier bytes, so that
 //! an unchanged plug-in yields byte-identical state and the host can tell "nothing
-//! changed" by comparing bytes (this replaces `AudioAUStateReuse.swift`).
+//! changed" by comparing bytes.
 
 use std::fmt;
 
@@ -36,7 +36,7 @@ use super::ident::{ComponentId, FourCc};
 pub const MAGIC: [u8; 4] = *b"STAU";
 pub const FRAME_VERSION: u8 = 1;
 pub const HEADER_LEN: usize = 28;
-/// Larger states are refused in both directions (the old host's limit).
+/// Larger states are refused in both directions.
 pub const MAX_STATE_BYTES: usize = 128 * 1024 * 1024;
 
 pub const FLAG_FROM_FULL_STATE: u16 = 1;

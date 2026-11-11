@@ -1,5 +1,4 @@
-//! Port of the former C++ test program `engine_granular_tests.cpp`: sampler Granular parameters, live instrument
-//! parameters and the voice playhead snapshot.
+//! Sampler Granular parameters, live instrument parameters and the voice playhead snapshot.
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
@@ -28,7 +27,7 @@ fn sine_hz(frames: usize, hz: f64) -> Vec<f32> {
     (0..frames).map(|i| (0.5 * (2.0 * PI * hz * i as f64 / 48000.0).sin()) as f32).collect()
 }
 
-/// C++ `sine(frames = N, hz = 441)`
+/// A 441 Hz sine.
 fn sine_frames(frames: usize) -> Vec<f32> {
     sine_hz(frames, 441.0)
 }
@@ -46,7 +45,7 @@ fn noise_seeded(frames: usize, mut seed: u32) -> Vec<f32> {
     pcm
 }
 
-/// C++ `noise(frames = N)`: seed 7.
+/// `N` frames of noise, seed 7.
 fn noise() -> Vec<f32> {
     noise_seeded(N, 7)
 }

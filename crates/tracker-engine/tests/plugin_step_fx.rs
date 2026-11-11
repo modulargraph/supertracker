@@ -3,9 +3,9 @@
 //!
 //! Allocations made by the audio callback, including event consumption, are counted (test setup,
 //! result collection and normal control-thread project copies are excluded); every group ends
-//! with the C++ program's "zero render/event-consumer allocations" assertion for its own thread.
+//! with a "zero render/event-consumer allocations" assertion for its own thread.
 #![cfg(feature = "engine")]
-// The index loops mirror the C++ loops they translate.
+// The tests index their buffers in plain loops.
 #![allow(clippy::needless_range_loop)]
 
 mod engine_support_b;
@@ -14,7 +14,7 @@ use engine_support_b::alloc::{realtime, render_allocations};
 use engine_support_b::engine::Engine;
 use tracker_engine::engine::*;
 
-/// C++ `struct Engine`: 8 kHz, exactly 100 samples per row, three tracks, two 8-row patterns and
+/// The fixture: 8 kHz, exactly 100 samples per row, three tracks, two 8-row patterns and
 /// an AU instrument, with the update left open until `play`.
 fn fixture() -> Engine {
     let mut p = Engine::with_rate(8000.0);
@@ -89,7 +89,7 @@ fn render(engine: &mut Engine, frames: usize, base: u64, block: usize) -> Events
     result
 }
 
-/// `render(engine, frames)` with the C++ defaults `base = 0`, `block = 127`.
+/// `render` from frame 0 in blocks of 127 frames.
 fn render_from_zero(engine: &mut Engine, frames: usize) -> Events {
     render(engine, frames, 0, 127)
 }
@@ -425,8 +425,6 @@ fn saturated_queue_retries_active_lock() {
 }
 
 /// "setter validation and step replacement"
-///
-/// Dropped from the C++ group: the call with a null engine handle (it cannot be expressed).
 #[test]
 fn setter_validation_and_step_replacement() {
     let mut engine = fixture();

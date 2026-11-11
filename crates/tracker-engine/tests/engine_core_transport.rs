@@ -1,12 +1,12 @@
-//! Port of the former C++ test program `engine_tests.cpp`, part 5 of 5: pattern loop ranges, queued jumps and mode
-//! switches, count-in, the transport status that follows queued commands, the seek status
-//! revision (with a concurrent status reader), the mod wheel, forgetting external voices with
-//! the sequenced flag, and note columns.
+//! Engine core suites: pattern loop ranges, queued jumps and mode switches, count-in, the
+//! transport status that follows queued commands, the seek status revision (with a concurrent
+//! status reader), the mod wheel, forgetting external voices with the sequenced flag, and note
+//! columns.
 //!
 //! One `#[test]` per suite, calling the engine through `engine_support_a::Engine`, which renders
 //! it block by block as a host does: the tests read its buses (a plain render gives their sum).
 //! Every test ends with the "zero render-thread allocations" check.
-// The index loops mirror the C++ loops they translate.
+// The tests index their buffers in plain loops.
 #![allow(clippy::needless_range_loop, clippy::manual_is_multiple_of, clippy::type_complexity)]
 
 mod engine_support_a;
@@ -580,7 +580,7 @@ fn test_sequenced_flag() {
 // Note columns: each extra column of a track is its own lane on the track's channel
 // (`Control::set_step_column`).
 
-/// C++ `columnNote(note,gate)` (default gate 0).
+/// A step with `note` at velocity 100 and `gate`.
 fn column_note(note: i32, gate: f32) -> STStep {
     let mut s = default_step();
     s.note = note;
@@ -589,7 +589,7 @@ fn column_note(note: i32, gate: f32) -> STStep {
     s
 }
 
-/// C++ `columnEvents(e,frames,type)`: (frame, note) of every note event of one type.
+/// (frame, note) of every note event of one type.
 fn column_events(e: &mut Engine, frames: usize, type_: i32) -> Vec<(u64, i32)> {
     let mut out = Vec::new();
     for v in note_events(render_events(e, frames)) {
@@ -600,7 +600,7 @@ fn column_events(e: &mut Engine, frames: usize, type_: i32) -> Vec<(u64, i32)> {
     out
 }
 
-/// C++ `offFrame(offs,note)`: `u64::MAX` (C++ `UINT64_MAX`) when the note never ended.
+/// The frame at which `note` ended; `u64::MAX` when it never ended.
 fn off_frame(offs: &[(u64, i32)], note: i32) -> u64 {
     for o in offs {
         if o.1 == note {

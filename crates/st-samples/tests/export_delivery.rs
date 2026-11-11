@@ -170,7 +170,6 @@ fn passband_fidelity_alias_rejection_and_one_final_quantisation() {
         20.0 * (tone_error / (0.5 / 2f64.sqrt())).log10(),
         20.0 * (alias.max(1e-30) / (0.5 / 2f64.sqrt())).log10()
     );
-    // The old host's limits were 1e-3 and 3.5e-4 (about -63 dB).
     assert!(tone_error < 1e-6, "1 kHz phase/amplitude error {tone_error}");
     assert!(alias < 1e-6, "23 kHz anti-alias rejection: RMS {alias}");
     for encoding in [ExportEncoding::Pcm16, ExportEncoding::Pcm24] {

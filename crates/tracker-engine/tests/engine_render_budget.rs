@@ -1,14 +1,14 @@
-//! Port of the former C++ test program `engine_render_budget_tests.cpp`: representative projects rendered the way the
-//! host pulls them (every channel bus plus the return, per small quantum), timed in
-//! thread CPU against generous budgets, with zero render allocations. Budgets are a coarse
-//! regression guard that holds under a parallel test run, not a device deadline.
+//! Representative projects rendered the way the host pulls them (every channel bus plus the
+//! return, per small quantum), timed in thread CPU against generous budgets, with zero render
+//! allocations. Budgets are a coarse regression guard that holds under a parallel test run, not a
+//! device deadline.
 //!
-//! The budgets are those of the C++ program (which was built `-O2`); they are enforced in
-//! optimized builds only. An unoptimized (`debug_assertions`) build still renders every scenario,
-//! asserts zero render allocations and the PCM hashes, and prints its CPU share.
+//! The budgets are enforced in optimized builds only. An unoptimized (`debug_assertions`) build
+//! still renders every scenario, asserts zero render allocations and the PCM hashes, and prints
+//! its CPU share.
 //!
-//! The C++ `--bench` mode (20 seconds per scenario, numbers and hashes, no budgets) is the
-//! ignored test `bench`.
+//! The ignored test `bench` renders 20 seconds per scenario and prints numbers and hashes without
+//! enforcing budgets.
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
@@ -207,8 +207,7 @@ struct Case {
     playing: bool,
     tracks: i32,
     budget: f64,
-    /// PCM hashes of the 6-second run in 128- and 512-frame blocks, as rendered by the Rust
-    /// engine on x86-64 Linux when these tests were ported (they equal the C++ engine's).
+    /// PCM hashes of the 6-second run in 128- and 512-frame blocks, recorded on x86-64 Linux.
     pcm: [u64; 2],
 }
 
@@ -246,9 +245,8 @@ const CASES: [Case; 3] = [
 /// recorded on only.
 const HASHES_APPLY: bool = cfg!(all(target_os = "linux", target_arch = "x86_64"));
 
-/// The C++ program measured its scenarios one after the other; the tests of this binary run on
-/// parallel threads, so the timed scenarios take turns instead of timing each other's cache and
-/// core contention.
+/// The tests of this binary run on parallel threads, so the timed scenarios take turns instead
+/// of timing each other's cache and core contention.
 static TIMED: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn scenario(c: &Case) {
@@ -292,11 +290,11 @@ fn sixty_four_tracks() {
     scenario(&CASES[2]);
 }
 
-/// C++ `--bench [seconds]`: prints the numbers and PCM hashes without enforcing budgets. The
+/// Prints the numbers and PCM hashes without enforcing budgets. The
 /// duration comes from `ENGINE_RENDER_BUDGET_SECONDS` (default 20). Run with
 /// `cargo test --release --test engine_render_budget -- --ignored --nocapture`.
 #[test]
-#[ignore = "benchmark (C++ --bench): prints CPU share and PCM hashes for 20-second renders"]
+#[ignore = "benchmark: prints CPU share and PCM hashes for 20-second renders"]
 fn bench() {
     let _turn = TIMED.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let seconds = std::env::var("ENGINE_RENDER_BUDGET_SECONDS").ok().and_then(|text| text.parse().ok()).unwrap_or(20.0);

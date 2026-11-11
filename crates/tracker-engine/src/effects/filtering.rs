@@ -1,6 +1,4 @@
 //! Filtering processors: four-band EQ, multimode filter and cabinet.
-//!
-//! Ported from the C++ `EffectsFiltering.hpp` (namespace `stfx::filtering`).
 
 use super::common::{
     clamp, clean, core_accessors, db_gain, fast_exp, fast_sin_2pi, frame_buffers, max, mix, pole,
@@ -520,8 +518,8 @@ impl Processor for Cabinet {
             || self.designed[2] != p[2]
         {
             self.designed = [cab as f64, mic as f64, p[2]];
-            // The host keeps both selectors inside their ranges; out-of-range values (which the
-            // C++ would index out of bounds with) select the nearest table entry.
+            // The host keeps both selectors inside their ranges; out-of-range values select the
+            // nearest table entry.
             let ci = cab.clamp(0, 3) as usize;
             let mi = mic.clamp(0, 5) as usize;
             for channel in self.b.iter_mut() {
@@ -590,7 +588,7 @@ static DESCRIPTORS: [Descriptor; 3] = [
     ),
 ];
 
-/// `stfx::filteringDescriptors`.
+/// The catalogue entries of the filtering effects.
 pub fn descriptors() -> &'static [Descriptor] {
     &DESCRIPTORS
 }

@@ -1,7 +1,5 @@
 //! Spatial processors: Ice, Metaverb, Reflex and the three reverbs (legacy, algorithmic, plate).
 //!
-//! Ported from the C++ `EffectsSpatial.hpp` (namespace `stfx::spatial`).
-//!
 //! Original implementations informed by NI's public effect descriptions. These
 //! are deliberately not described as bit-compatible NI algorithms or presets.
 
@@ -160,7 +158,7 @@ fn clean_fast(x: f32) -> f32 {
     }
 }
 
-/// `Network::kChunk`: the largest sub-block the network renders at once.
+/// The largest sub-block the network renders at once.
 pub const CHUNK: usize = 64;
 
 /// Eight-line orthogonal feedback network: per-line T60 gains avoid a decay
@@ -310,7 +308,7 @@ impl Network {
         self.lp = if freeze {
             1.0
         } else {
-            // std::pow(x, 2.) is compiled as x*x.
+            // The square is written as x*x, not `powf(x, 2.0)`.
             let open = 1.0 - bounded(damping, 0.0, 100.0) * 0.01;
             pole(1200.0 + (open * open) * 17000.0, sr)
         };
@@ -662,7 +660,7 @@ impl WetEq {
     }
 }
 
-/// The default cutoff of `WetEQ::set` in the C++ signature.
+/// The cutoff `WetEq::set` gets where the effect has no cutoff control.
 const WET_EQ_OPEN: f64 = 20000.0;
 
 /// Which parameter layout a `Reverb` instance serves.
@@ -695,7 +693,7 @@ impl Reverb {
         }
     }
 
-    /// `Reverb::tailForParameters` for the given layout.
+    /// `tail_for_parameters` without the processor, for the given layout.
     pub fn tail_estimate(kind: ReverbKind, values: &[f64; MAX_PARAMETERS]) -> f64 {
         match kind {
             ReverbKind::Legacy => {
@@ -857,7 +855,7 @@ impl Metaverb {
         }
     }
 
-    /// `Metaverb::tailForParameters`.
+    /// `tail_for_parameters` without the processor.
     pub fn tail_estimate(values: &[f64; MAX_PARAMETERS]) -> f64 {
         (1.0 + values[0] * 0.09) * 1.9 + 0.5
     }
@@ -957,7 +955,7 @@ impl Ice {
         }
     }
 
-    /// `Ice::tailForParameters`.
+    /// `tail_for_parameters` without the processor.
     pub fn tail_estimate(values: &[f64; MAX_PARAMETERS]) -> f64 {
         let ice = bounded(values[1] * 0.01, 0.0, 1.0);
         let size = bounded(values[2] * 0.01, 0.0, 1.0);
@@ -1136,7 +1134,7 @@ impl Reflex {
         }
     }
 
-    /// `Reflex::tailForParameters`.
+    /// `tail_for_parameters` without the processor.
     pub fn tail_estimate(values: &[f64; MAX_PARAMETERS]) -> f64 {
         let size = bounded(values[2] * 0.01, 0.0, 1.0);
         let feedback = 0.72 + size * 0.265;
@@ -1377,7 +1375,7 @@ static DESCRIPTORS: [Descriptor; 6] = [
     ),
 ];
 
-/// `stfx::spatialDescriptors`.
+/// The catalogue entries of the spatial effects.
 pub fn descriptors() -> &'static [Descriptor] {
     &DESCRIPTORS
 }

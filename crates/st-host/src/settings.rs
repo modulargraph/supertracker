@@ -7,7 +7,7 @@
 //! |---|---|---|
 //! | `window` | `st-app` | size, position and maximised state of the main window |
 //! | `interface` | the page, through `settings.get` / `settings.set` | preferences the interface wants to keep across launches and transports |
-//! | `audio.devices`, `midi.clock`, `mk3`, `agent`, `templates`, ... | the area's crate | that area's preferences (the old host kept these in `audio-devices.json`, `midi-clock.json`, `maschine-mk3.json`, `ai-control.json` and `ProjectTemplates.json`) |
+//! | `audio.devices`, `midi.clock`, `mk3`, `agent`, `templates`, ... | the area's crate | that area's preferences |
 //!
 //! Every change is written at once, atomically (a temporary file renamed over the old one), so a
 //! crash leaves either the previous or the new settings, never half a file.

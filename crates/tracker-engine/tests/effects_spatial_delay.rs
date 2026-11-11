@@ -1,8 +1,6 @@
-//! Port of the former C++ test program `builtin_spatial_delay_tests.cpp`: offline audio-property tests of the spatial
-//! and delay processors, exercised directly through `effects::spatial` / `effects::delay` (no
-//! C API). Same checks, tolerances and check count (362) as the C++ program. The optional WAV
-//! comparison export of the C++ program is not part of its checks and is not ported.
-// The index loops mirror the C++ loops they translate.
+//! Offline audio-property tests of the spatial and delay processors, exercised directly through
+//! `effects::spatial` / `effects::delay`: 362 checks.
+// The tests index their buffers in plain loops.
 #![allow(clippy::needless_range_loop)]
 
 mod effects_support;
@@ -547,6 +545,6 @@ fn spatial_and_delay() {
     );
     assert_eq!(
         c.count, 362,
-        "same number of checks as the C++ program builtin_spatial_delay_tests.cpp"
+        "the number of checks in this file"
     );
 }

@@ -1,5 +1,4 @@
-//! Port of the former C++ test program `engine_parameter_bounds_tests.cpp`: native finite-but-out-of-range inputs must
-//! saturate before float->int conversion.
+//! Native finite-but-out-of-range inputs must saturate before float->int conversion.
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
@@ -66,8 +65,7 @@ fn scene(test: i32, value: f32) -> Audio {
     out
 }
 
-/// One iteration of the C++ `main` loop: `test` saturates finite extremes before integer
-/// conversion.
+/// Case `test` saturates finite extremes before integer conversion.
 fn saturates(test: i32) {
     let lo: f32 = if test == 0 {
         2.0
@@ -87,7 +85,7 @@ fn saturates(test: i32) {
     };
     for value in [-f32::MAX, -1e20f32, 1e20f32, f32::MAX, hi + 0.75f32, lo - 0.75f32] {
         let actual = scene(test, value);
-        // std::max(lo, std::min(hi, value))
+        // max(lo, min(hi, value))
         let limited = if hi < value { hi } else { value };
         let limited = if lo < limited { limited } else { lo };
         let bounded = scene(test, limited);

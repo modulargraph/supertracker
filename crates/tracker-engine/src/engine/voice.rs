@@ -1,11 +1,12 @@
-//! Voices (ported from the C++ engine's `TrackerEngine.cpp`): note start (`noteOn`, zones, slices, voice
-//! modes, choke groups), note end (`externalOff`, `kill`, `release`, `allOff`), live parameters,
-//! and the per-sample DSP (`voiceSample`): envelopes, two LFOs, sampler modes (one-shot, loops,
-//! ping-pong, slices), wavetable and granular playback, the state-variable filter, drive, bit
-//! reduction and panning. Also the playhead snapshot for the sample editor.
+//! Voices: note start (`note_on`, zones, slices, voice modes, choke groups), note end
+//! (`external_off`, `kill`, `release`, `all_off`), live parameters, and the per-sample DSP
+//! (`voice_sample`): envelopes, two LFOs, sampler modes (one-shot, loops, ping-pong, slices),
+//! wavetable and granular playback, the state-variable filter, drive, bit reduction and panning.
+//! Also the playhead snapshot for the sample editor.
 //!
-//! Arithmetic keeps the C++ operand types (`float` vs `double`) and operation order so the PCM is
-//! bit-identical; comments mark the places where C++ integer/float promotion decides the type.
+//! The width (`f32` or `f64`) each expression is formed in and the order of its operations are
+//! deliberate: the tests compare rendered audio against recorded PCM hashes, and changing either
+//! changes the last bits. Comments mark the places where the width is not the obvious one.
 
 use super::abi::*;
 use super::project::{sample_ptr, Sample};
@@ -14,7 +15,7 @@ use super::tables::TrackState;
 use super::util::{clamp, cmax, cmin, finite, lowest_bit, midi_frequency, random_bipolar, PI};
 use std::sync::atomic::{fence, Ordering};
 
-/// `noteOn`'s arguments.
+/// `note_on`'s arguments.
 #[derive(Clone, Copy)]
 pub struct NoteOn {
     pub track: i32,
@@ -38,7 +39,7 @@ pub struct NoteOn {
 }
 
 impl NoteOn {
-    /// A live (keyboard/MIDI input) note: `noteOn(track,instrument,note,velocity,-1,0,-1,0,0)`.
+    /// A live (keyboard/MIDI input) note.
     pub fn live(track: i32, instrument: i32, note: i32, velocity: i32) -> NoteOn {
         NoteOn {
             track,
@@ -68,7 +69,7 @@ pub struct VoiceSink<'s> {
 }
 
 impl VoiceSink<'_> {
-    /// `externalOff`: an AU/MIDI voice sends its note-off exactly once.
+    /// An AU/MIDI voice sends its note-off exactly once.
     #[inline]
     pub fn external_off(&mut self, v: &mut Voice) {
         if v.external && !v.off_sent {
@@ -154,7 +155,7 @@ fn read_sample(a: &[f32], pos: f64) -> f32 {
     }
 }
 
-/// `readSample` on both channels of a timeline asset, scaled by `gain`.
+/// `read_sample` on both channels of a timeline asset, scaled by `gain`.
 #[inline]
 pub fn read_stereo(sample: &Sample, pos: f64, gain: f32) -> (f32, f32) {
     (read_sample(&sample.l, pos) * gain, read_sample(&sample.r, pos) * gain)
@@ -326,7 +327,7 @@ fn loop_read2(s: &Sample, v: &Voice, x: f64, fade: f64) -> (f32, f32) {
     (l, r)
 }
 
-/// `instrumentAutomation`: apply the channel's automated instrument targets to a voice.
+/// Apply the channel's automated instrument targets to a voice.
 /// `geometry` also moves the sample region of a sounding voice.
 fn instrument_automation(v: &mut Voice, ts: &TrackState, geometry: bool) {
     if ts.instrument_mask == 0 {
@@ -767,7 +768,7 @@ impl<'a> Rt<'a> {
         }
     }
 
-    /// `allOff`: end every voice (`playback_only`: sequenced voices only), at once or through
+    /// End every voice (`playback_only`: sequenced voices only), at once or through
     /// its release.
     pub fn all_off(&mut self, immediate: bool, playback_only: bool) {
         let e = &mut *self.e;
@@ -1289,7 +1290,7 @@ impl<'a> Rt<'a> {
         let count = cmin(count, ST_VOICE_POSITION_CAPACITY);
         // SAFETY: the render thread is the only writer of the snapshot. Readers copy it without
         // forming references and discard the copy unless `voice_seq` was even and unchanged
-        // around it (seqlock, as in the C++ engine), so a concurrent read is never used.
+        // around it (seqlock), so a concurrent read is never used.
         unsafe {
             std::ptr::copy_nonoverlapping(
                 self.e.voice_stage.as_ptr(),
@@ -1302,7 +1303,7 @@ impl<'a> Rt<'a> {
         sh.voice_seq.store(seq.wrapping_add(2), Ordering::Release);
     }
 
-    /// `voiceSample`: one stereo sample of one voice. Returns silence for external voices (which
+    /// One stereo sample of one voice. Returns silence for external voices (which
     /// only track their gate here).
     #[inline]
     pub fn voice_sample(&mut self, index: usize) -> (f32, f32) {
@@ -1331,7 +1332,7 @@ impl<'a> Rt<'a> {
         }
         let m = modulation(v, sample_rate, p.bpm);
         let bend = self.tb.pitch_bend.get(track).copied().unwrap_or(0.0);
-        // The pitch sum is single precision (`int + float + ...`), widened afterwards.
+        // The pitch sum is single precision, widened afterwards.
         let mut pitch = (v.note as f32 + v.p.tune + t.pitch + bend + m.pitch) as f64;
         if v.glide != 0.0 {
             pitch += v.glide * (1.0 - (-v.lifetime / (sample_rate * 0.1)).exp());

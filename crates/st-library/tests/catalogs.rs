@@ -1,7 +1,5 @@
 //! The NKS preset catalogue, product artwork, product registrations, and the kit index,
 //! kit browser and kit commands of the library service.
-//! Ported from `NKSMetadata.selfTest` (catalogue part), `NKSArtwork.selfTest` and
-//! `tests/KitLibraryIndexTests.swift`.
 
 mod common;
 

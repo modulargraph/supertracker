@@ -35,7 +35,7 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// The settings section `agent` (the old host's `ai-control.json`).
+/// The settings section `agent`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AgentSettings {

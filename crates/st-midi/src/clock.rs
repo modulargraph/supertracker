@@ -214,7 +214,6 @@ impl ClockSettings {
 
 #[cfg(test)]
 mod tests {
-    //! Ported from tests/MIDIClockOutputTests.swift.
     use super::*;
     use serde_json::json;
 

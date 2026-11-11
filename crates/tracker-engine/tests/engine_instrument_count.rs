@@ -1,5 +1,4 @@
-//! Port of the former C++ test program `engine_instrument_count_tests.cpp`: instruments are sized per project, like
-//! tracks: more than 64 instruments, bounded indices.
+//! Instruments are sized per project, like tracks: more than 64 instruments, bounded indices.
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
@@ -8,7 +7,7 @@ use engine_support_b::engine::Engine;
 use engine_support_b::tone::*;
 use tracker_engine::engine::*;
 
-/// C++ `energy`: one render call of `frames`, mean square of the left channel.
+/// One render call of `frames`, mean square of the left channel.
 fn energy(e: &mut Engine, frames: usize) -> f64 {
     let (mut l, mut r) = (vec![0.0f32; frames], vec![0.0f32; frames]);
     e.render(&mut l, &mut r);

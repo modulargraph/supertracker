@@ -1,6 +1,4 @@
 //! Delay processors: Beat Delay, Grain Delay, Grain Stretch and Resochord.
-//!
-//! Ported from the C++ `EffectsDelay.hpp` (namespace `stfx::delay`).
 
 use super::common::{
     core_accessors, frame_buffers, max, min, pow2, Core, Descriptor, Label, ParameterInfo as P,
@@ -37,7 +35,7 @@ pub fn at(line: &Line, position: f64, length: usize) -> f32 {
     let b = if a + 1 == length { 0 } else { a + 1 };
     let f = (position - a as f64) as f32;
     // Rounding in wrap_position can return exactly `length`; where that is the end of the
-    // buffer (an out-of-bounds read in the C++), the missing samples read as silence.
+    // buffer, the missing samples read as silence.
     let xa = line.data.get(a).copied().unwrap_or(0.0);
     let xb = line.data.get(b).copied().unwrap_or(0.0);
     xa + (xb - xa) * f
@@ -83,7 +81,7 @@ impl BeatDelay {
         }
     }
 
-    /// `BeatDelay::tailForParameters`.
+    /// `tail_for_parameters` without the processor.
     pub fn tail_estimate(sr: f64, values: &[f64; MAX_PARAMETERS], tempo_bpm: f64) -> f64 {
         let duration = max(
             1.0 / sr,
@@ -143,7 +141,7 @@ impl Processor for BeatDelay {
         let split = p[5] * 0.01;
         let mix = bounded(p[7] * 0.01, 0.0, 1.0);
         let width = p[6] * 0.01;
-        // std::pow(x, 2.) is compiled as x*x.
+        // The square is written as x*x, not `powf(x, 2.0)`.
         let color = p[4] * 0.01;
         let cut = 250.0 + (color * color) * 18000.0;
         let a = [
@@ -229,7 +227,7 @@ impl GrainDelay {
         }
     }
 
-    /// `GrainDelay::tailForParameters`.
+    /// `tail_for_parameters` without the processor.
     pub fn tail_estimate(values: &[f64; MAX_PARAMETERS]) -> f64 {
         let size = values[1] * 0.001 * (1.0 + values[2] * 0.005);
         let space = values[4] * 0.001;
@@ -774,7 +772,7 @@ static DESCRIPTORS: [Descriptor; 4] = [
     ),
 ];
 
-/// `stfx::delayDescriptors`.
+/// The catalogue entries of the delay effects.
 pub fn descriptors() -> &'static [Descriptor] {
     &DESCRIPTORS
 }

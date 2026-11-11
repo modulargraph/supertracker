@@ -1,6 +1,4 @@
 //! Modulation processors: chorus, flanger, audio-rate FM, frequency shifter and phaser.
-//!
-//! Ported from the C++ `EffectsModulation.hpp` (namespace `stfx::modulation`).
 
 use super::common::{
     clamp, clean, core_accessors, fast_cos_2pi, fast_exp, fast_sin_2pi, fast_tanh, frame_buffers,
@@ -669,7 +667,7 @@ static DESCRIPTORS: [Descriptor; 5] = [
     ),
 ];
 
-/// `stfx::modulationDescriptors`.
+/// The catalogue entries of the modulation effects.
 pub fn descriptors() -> &'static [Descriptor] {
     &DESCRIPTORS
 }

@@ -1,9 +1,9 @@
 //! The MIDI host against in-memory ports: selection by id, parsing, channel filter, output bytes
-//! (tests/MIDILoopbackTests.swift) and hot-plug (tests/MIDIHotplugTests.swift).
+//! and hot-plug.
 //!
-//! The Swift tests used private CoreMIDI endpoints. This machine has no MIDI service (no ALSA
-//! sequencer device), so the same assertions run against `st_midi::memory::MemoryPorts`; the code
-//! under test is everything above the device layer.
+//! The tests need no MIDI service (a test machine may have none: no ALSA sequencer device). They
+//! run against `st_midi::memory::MemoryPorts`; the code under test is everything above the device
+//! layer.
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};

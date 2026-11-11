@@ -1,4 +1,4 @@
-//! The engine as a Rust host owns it: [`Engine`], its two thread halves and the status handle.
+//! The engine as a host owns it: [`Engine`], its two thread halves and the status handle.
 //!
 //! # One engine, three handles
 //!

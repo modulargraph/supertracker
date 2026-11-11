@@ -22,8 +22,8 @@
 //!   rendered here with the engine's drum models, [`render_drum`]). They are small and take
 //!   milliseconds, so a lookup waits for the worker for up to [`BUILTIN_WAIT`] before it
 //!   answers `Pending`: a wavetable synth sounds on the very next note after its project is
-//!   published, as it did when the Swift host generated the tables in place. The host also
-//!   generates the built-in wavetables ahead of time ([`DecodedSamples::prewarm`]).
+//!   published. The host also generates the built-in wavetables ahead of time
+//!   ([`DecodedSamples::prewarm`]).
 //! * **Explicit loads** ([`DecodedSamples::load`], for `sample.load` and friends) run on the
 //!   caller's thread, which must be a worker of its own (a blocking command), share a decode
 //!   that is already in flight, and can be cancelled.

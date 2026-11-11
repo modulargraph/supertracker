@@ -264,8 +264,7 @@ fn bus_at(buses: &AUAudioUnitBusArray, index: usize) -> Retained<AUAudioUnitBus>
 
 /// Configures every bus of `unit` for the host's layout at `sample_rate` and proves the
 /// configuration by allocating render resources once (a unit judges the combination of
-/// its bus formats only then; the old host learned of a refusal as an opaque engine error
-/// later). Leaves the unit unallocated.
+/// its bus formats only then). Leaves the unit unallocated.
 pub(super) fn configure(
     unit: &AUAudioUnit,
     kind: ComponentKind,

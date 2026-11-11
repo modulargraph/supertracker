@@ -1,7 +1,5 @@
 //! Distortion processors: Distortion (feedback fuzz / analog), Lofi and Saturator.
 //!
-//! Ported from the C++ `EffectsDistortion.hpp` (namespace `stfx::distortion_detail`).
-//!
 //! Independently written algorithms. The parameter vocabulary follows familiar
 //! studio effects; these processors do not model or reproduce proprietary DSP.
 
@@ -828,7 +826,7 @@ pub struct Saturator {
     memory_pole: f64,
     charge_pole: f64,
     dc_pole: f64,
-    /// `fastTanhf(0.18f)`: the tube shaper's bias point.
+    /// `fast_tanh_f32(0.18)`: the tube shaper's bias point.
     tube_bias: f32,
     mode_weights: [f64; 3],
     weight_mode: i32,
@@ -1183,7 +1181,7 @@ static DESCRIPTORS: [Descriptor; 3] = [
     ),
 ];
 
-/// `stfx::distortionDescriptors`.
+/// The catalogue entries of the distortion effects.
 pub fn descriptors() -> &'static [Descriptor] {
     &DESCRIPTORS
 }

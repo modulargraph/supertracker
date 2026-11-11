@@ -1646,7 +1646,7 @@ mod tests {
     }
 
     /// Deterministic interleavings of a header read finishing around a user edit and around a
-    /// changed file (`metadataCompletionSelfTest`).
+    /// changed file.
     #[test]
     fn header_lengths_land_on_the_latest_labels_of_the_same_file() {
         let folder = std::env::temp_dir().join(format!("st-library-completion-{}-{}", std::process::id(), util::unique_id()));

@@ -133,7 +133,7 @@ impl Engine {
         let _ = self.commit_update_checked();
     }
 
-    /// `commit_update_checked`: the error text instead of `0` + buffer.
+    /// `Control::commit` with its result: the error text of a rejected draft.
     pub fn commit_update_checked(&mut self) -> Result<(), String> {
         let (c, sh, _) = self.control();
         c.commit(sh)
@@ -200,8 +200,7 @@ impl Engine {
         self.control().0.reuse_pattern(index)
     }
 
-    /// `set_step(e, pattern, track, row, step, chord, count)`: an empty `chord` is the
-    /// C call's `nullptr, 0`.
+    /// `Control::set_step`; an empty `chord` is no chord.
     pub fn set_step(&mut self, pattern: i32, track: i32, row: i32, step: STStep, chord: &[i32]) {
         self.control().0.set_step(pattern, track, row, step, chord_list(chord));
     }
@@ -242,13 +241,13 @@ impl Engine {
 
     // ---- samples, zones and timeline audio ----
 
-    /// `set_sample(e, instrument, left, right, frames, rate)` with PCM.
+    /// `Control::set_sample` with PCM.
     pub fn set_sample(&mut self, instrument: i32, left: &[f32], right: Option<&[f32]>, rate: f64) -> bool {
         let (c, sh, _) = self.control();
         c.set_sample(sh, instrument, Some(Pcm { left, right, rate }))
     }
 
-    /// `set_sample(e, instrument, nullptr, nullptr, 0, rate)`: clears the sample.
+    /// `Control::set_sample` without PCM: clears the sample.
     pub fn clear_sample(&mut self, instrument: i32) -> bool {
         let (c, sh, _) = self.control();
         c.set_sample(sh, instrument, None)
@@ -273,7 +272,7 @@ impl Engine {
         c.set_audio_asset(sh, asset, Some(Pcm { left, right, rate }))
     }
 
-    /// `set_audio_asset(e, asset, nullptr, nullptr, 0, rate)`: clears the slot.
+    /// `Control::set_audio_asset` without PCM: clears the slot.
     pub fn clear_audio_asset(&mut self, asset: i32) -> bool {
         let (c, sh, _) = self.control();
         c.set_audio_asset(sh, asset, None)
@@ -317,7 +316,7 @@ impl Engine {
         self.control().0.add_song_tail_clip(asset, track, start_frame, gain);
     }
 
-    /// `duration(e, songMode)`
+    /// `Control::duration`.
     pub fn duration(&mut self, song_mode: bool) -> f64 {
         self.control().0.duration(song_mode)
     }
@@ -388,7 +387,7 @@ impl Engine {
         c.input_note(sh, request_id, edge, track, instrument, note, velocity, apply_note)
     }
 
-    /// `preview_step(e, track, step, chord, count, seconds)`
+    /// `Control::preview_step`; an empty `chord` is no chord.
     pub fn preview_step(&mut self, track: i32, step: STStep, chord: &[i32], duration_seconds: f32) {
         let (c, sh, _) = self.control();
         c.preview_step(sh, track, step, chord_list(chord), duration_seconds);

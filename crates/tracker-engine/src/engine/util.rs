@@ -8,10 +8,10 @@ use std::cell::UnsafeCell;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-/// The C++ engine's `pi` constant (3.1415926535897932384626433832795 rounds to this double).
+/// Pi.
 pub const PI: f64 = std::f64::consts::PI;
 
-/// `std::min(a, b)`: returns `a` unless `b < a` (so a NaN `b` yields `a`, a NaN `a` yields `a`).
+/// Returns `a` unless `b < a` (so a NaN `b` yields `a`, a NaN `a` yields `a`).
 #[inline(always)]
 pub fn cmin<T: PartialOrd>(a: T, b: T) -> T {
     if b < a {
@@ -21,7 +21,7 @@ pub fn cmin<T: PartialOrd>(a: T, b: T) -> T {
     }
 }
 
-/// `std::max(a, b)`: returns `a` unless `a < b`.
+/// Returns `a` unless `a < b`.
 #[inline(always)]
 pub fn cmax<T: PartialOrd>(a: T, b: T) -> T {
     if a < b {
@@ -31,14 +31,14 @@ pub fn cmax<T: PartialOrd>(a: T, b: T) -> T {
     }
 }
 
-/// The engine's `clamp(x, a, b) = std::max(a, std::min(b, x))`. A NaN `x` yields `b`; when
+/// The engine's `clamp(x, a, b) = cmax(a, cmin(b, x))`. A NaN `x` yields `b`; when
 /// `a > b` the result is `a`. Rust's `f32::clamp` differs on both counts, so it is not used.
 #[inline(always)]
 pub fn clamp<T: PartialOrd>(x: T, a: T, b: T) -> T {
     cmax(a, cmin(b, x))
 }
 
-/// `finite(float x, float fallback)`
+/// `x`, or `fallback` when `x` is not finite.
 #[inline(always)]
 pub fn finite(x: f32, fallback: f32) -> f32 {
     if x.is_finite() {
@@ -48,7 +48,7 @@ pub fn finite(x: f32, fallback: f32) -> f32 {
     }
 }
 
-/// `finite(double x, double fallback)`
+/// `x`, or `fallback` when `x` is not finite.
 #[inline(always)]
 pub fn finite64(x: f64, fallback: f64) -> f64 {
     if x.is_finite() {
@@ -58,13 +58,13 @@ pub fn finite64(x: f64, fallback: f64) -> f64 {
     }
 }
 
-/// `midiFrequency`
+/// The frequency in Hz of a MIDI note (69 is 440 Hz).
 #[inline]
 pub fn midi_frequency(note: f64) -> f32 {
     (440.0 * ((note - 69.0) / 12.0).exp2()) as f32
 }
 
-/// `randomBipolar`: xorshift32 step, mapped to [-1, 1).
+/// One xorshift32 step, mapped to [-1, 1).
 #[inline(always)]
 pub fn random_bipolar(state: &mut u32) -> f32 {
     let mut s = *state;
@@ -75,7 +75,7 @@ pub fn random_bipolar(state: &mut u32) -> f32 {
     (s as f64 / 2147483648.0 - 1.0) as f32
 }
 
-/// `std::nextafter(x, -infinity)` for a finite `x`.
+/// The next representable value below a finite `x`.
 pub fn next_down(x: f64) -> f64 {
     if x.is_nan() || x == f64::NEG_INFINITY {
         return x;
@@ -87,13 +87,13 @@ pub fn next_down(x: f64) -> f64 {
     f64::from_bits(if x > 0.0 { bits - 1 } else { bits + 1 })
 }
 
-/// Index of the lowest set bit (`__builtin_ctzll`); callers pass a nonzero word.
+/// Index of the lowest set bit; callers pass a nonzero word.
 #[inline(always)]
 pub fn lowest_bit(word: u64) -> usize {
     word.trailing_zeros() as usize
 }
 
-/// Bounded single-producer/single-consumer queue (C++ `Ring<T,N>`): one slot stays empty, the
+/// Bounded single-producer/single-consumer queue: one slot stays empty, the
 /// producer owns `write`, the consumer owns `read`. Neither side blocks or allocates.
 pub struct Ring<T> {
     data: Box<[UnsafeCell<T>]>,

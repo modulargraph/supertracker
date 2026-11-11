@@ -1,7 +1,5 @@
 //! The library service: scanning, the cache, search with every filter and facet, paging,
 //! favorites, labels, offline roots and nested roots.
-//! Ported from the self-tests of `LibraryService.swift` (`selfTest`, `filterSelfTest`,
-//! `browsingSelfTest`) and `tests/LibraryMetadataTests.swift`.
 
 mod common;
 

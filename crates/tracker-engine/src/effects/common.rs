@@ -1,18 +1,15 @@
-//! Shared DSP building blocks for the built-in effects.
+//! Shared DSP building blocks for the built-in effects: math helpers, the fast transcendental
+//! approximations, memoization, the processor interface, parameter metadata, biquads, delay
+//! lines and parameter smoothing.
 //!
-//! Ported from the C++ `BuiltinEffectsCommon.hpp` (namespace `stfx`): math helpers,
-//! the fast transcendental approximations, memoization, the processor interface, parameter
-//! metadata, biquads, delay lines and parameter smoothing.
-//!
-//! The translation is deliberately literal. Floating-point expressions keep the C++ operand
-//! order and association, `min`/`max`/`clamp` reproduce `std::min`/`std::max` exactly (including
-//! which operand is returned for NaN and signed zero), and `f32`/`f64` follow the C++ `float`/
-//! `double` types, so that on the same machine and libm the output is bit-identical to the C++
-//! implementation.
+//! The arithmetic is fixed on purpose. Every floating-point expression has a fixed operand
+//! order and association, `min`/`max`/`clamp` return a defined operand for NaN and signed zero,
+//! and each value is deliberately `f32` or `f64`: changing any of these changes the last bits
+//! of the output.
 
 use std::ffi::CStr;
 
-/// `stfx::pi`.
+/// Pi.
 pub const PI: f64 = 3.1415926535897932384626433832795; // the same double as std::f64::consts::PI
 
 /// Parameter flag: the normalized value maps logarithmically onto the range.
@@ -188,15 +185,15 @@ impl EffectInfo {
     }
 }
 
-/// Number of parameter slots every processor carries (`std::array<double,64> p`).
+/// Number of parameter slots every processor carries (`Core::p`).
 pub const MAX_PARAMETERS: usize = 64;
 
 /// Pure control-side tail estimate: `(sample rate, physical parameter targets, tempo) -> seconds`.
-/// This is `Processor::tailForParameters` without the processor, so the control thread can call
+/// This is `Processor::tail_for_parameters` without the processor, so the control thread can call
 /// it while the render thread owns the processor.
 pub type TailFn = fn(f64, &[f64; MAX_PARAMETERS], f64) -> f64;
 
-/// `stfx::Descriptor`: catalogue entry plus the processor factory.
+/// Catalogue entry plus the processor factory.
 pub struct Descriptor {
     pub info: EffectInfo,
     pub params: &'static [ParameterInfo],
@@ -225,7 +222,7 @@ impl Descriptor {
     }
 }
 
-/// `std::max(a, b)`: returns `a` unless `a < b` (so `a` for NaN operands and equal zeros).
+/// Returns `a` unless `a < b` (so `a` for NaN operands and equal zeros).
 #[inline(always)]
 pub fn max(a: f64, b: f64) -> f64 {
     if a < b {
@@ -235,7 +232,7 @@ pub fn max(a: f64, b: f64) -> f64 {
     }
 }
 
-/// `std::min(a, b)`: returns `a` unless `b < a`.
+/// Returns `a` unless `b < a`.
 #[inline(always)]
 pub fn min(a: f64, b: f64) -> f64 {
     if b < a {
@@ -245,38 +242,38 @@ pub fn min(a: f64, b: f64) -> f64 {
     }
 }
 
-/// `stfx::clamp`: `std::max(lo, std::min(hi, x))`. A NaN `x` yields `hi`.
+/// `max(lo, min(hi, x))`. A NaN `x` yields `hi`.
 #[inline(always)]
 pub fn clamp(x: f64, lo: f64, hi: f64) -> f64 {
     max(lo, min(hi, x))
 }
 
-/// `std::pow(2., x)`. clang lowers a power of the constant base two to `exp2`, whose result
-/// differs from `pow(2, x)` in the last bit for some arguments, so the call is spelled out.
+/// Two to the power `x`, computed with `exp2`. Its result differs from `2.0f64.powf(x)` in the
+/// last bit for some arguments, so the two are not interchangeable.
 #[inline(always)]
 pub fn pow2(x: f64) -> f64 {
     x.exp2()
 }
 
-/// `stfx::dbGain`.
+/// The linear gain of a level in dB.
 #[inline]
 pub fn db_gain(db: f64) -> f64 {
     10.0f64.powf(db / 20.0)
 }
 
-/// `stfx::gainDB`.
+/// The level in dB of a linear gain; gains below 1e-12 give -240 dB.
 #[inline(always)]
 pub fn gain_db(x: f64) -> f64 {
     20.0 * max(x, 1.0e-12).log10()
 }
 
-/// `stfx::pole`: one-pole smoothing coefficient for a time constant in milliseconds.
+/// One-pole smoothing coefficient for a time constant in milliseconds.
 #[inline]
 pub fn pole(milliseconds: f64, sr: f64) -> f64 {
     (-1.0 / (max(milliseconds, 0.001) * 0.001 * sr)).exp()
 }
 
-/// `stfx::clean`: nonfinite and tiny values become 0, everything else is clamped to +-1e6.
+/// Nonfinite and tiny values become 0, everything else is clamped to +-1e6.
 #[inline(always)]
 pub fn clean(x: f64) -> f64 {
     if x.is_finite() && x.abs() > 1e-30 {
@@ -294,13 +291,13 @@ pub fn select(condition: bool, a: f64, b: f64) -> f64 {
     std::hint::select_unpredictable(condition, a, b)
 }
 
-/// `stfx::mix`: linear crossfade from `dry` to `wet`.
+/// Linear crossfade from `dry` to `wet`.
 #[inline(always)]
 pub fn mix(dry: f64, wet: f64, amount: f64) -> f64 {
     dry + (wet - dry) * amount
 }
 
-/// `stfx::wrap`: fractional part in [0, 1).
+/// Fractional part in [0, 1).
 #[inline(always)]
 pub fn wrap(p: f64) -> f64 {
     p - p.floor()
@@ -313,7 +310,7 @@ calls with these is sound-equivalent:
   fast_tanh    absolute error < 1e-12
   fast_sin_2pi sin(2*pi*phase), absolute error < 1e-11 for any finite phase */
 
-/// `stfx::fastExp`.
+/// Approximate `exp(x)`; `x` is limited to [-700, 700].
 #[inline(always)]
 pub fn fast_exp(x: f64) -> f64 {
     let x = max(-700.0, min(700.0, x));
@@ -335,14 +332,14 @@ pub fn fast_exp(x: f64) -> f64 {
     y * f64::from_bits(bits as u64)
 }
 
-/// `stfx::fastTanh`.
+/// Approximate `tanh(x)`.
 #[inline(always)]
 pub fn fast_tanh(x: f64) -> f64 {
     let e = fast_exp(-2.0 * min(x.abs(), 40.0));
     ((1.0 - e) / (1.0 + e)).copysign(x)
 }
 
-/// `stfx::fastSin2pi`: sin(2*pi*phase).
+/// Approximate sin(2*pi*phase).
 #[inline(always)]
 pub fn fast_sin_2pi(phase: f64) -> f64 {
     let mut p = phase - phase.round_ties_even(); // [-0.5, 0.5]
@@ -359,20 +356,20 @@ pub fn fast_sin_2pi(phase: f64) -> f64 {
     x + x * x2 * y
 }
 
-/// `stfx::fastCos2pi`: cos(2*pi*phase).
+/// Approximate cos(2*pi*phase).
 #[inline(always)]
 pub fn fast_cos_2pi(phase: f64) -> f64 {
     fast_sin_2pi(phase + 0.25)
 }
 
-/// `stfx::fastDbGain`: `db_gain` for per-sample paths, no libm call
+/// `db_gain` for per-sample paths, no libm call
 /// (relative error < 3e-13; exactly 1 at 0 dB).
 #[inline(always)]
 pub fn fast_db_gain(db: f64) -> f64 {
     fast_exp(db * 0.11512925464970229)
 }
 
-/// `stfx::fastTanhf`: single-precision tanh for vectorized shapers: |error| < 2e-7 (float
+/// Single-precision tanh for vectorized shapers: |error| < 2e-7 (float
 /// resolution near 1), exactly 0 at 0 and odd-symmetric.
 #[inline(always)]
 pub fn fast_tanh_f32(x: f32) -> f32 {
@@ -391,9 +388,9 @@ pub fn fast_tanh_f32(x: f32) -> f32 {
     ((1.0 - e) / (1.0 + e)).copysign(x)
 }
 
-/// `stfx::Memo`: exact memoization of a pure per-sample derivation (dB->gain, pole, tan...):
+/// Exact memoization of a pure per-sample derivation (dB->gain, pole, tan...):
 /// while its inputs are unchanged (settled smoothing), reuse the result. Results are
-/// bit-identical. Unused key slots are 0, as with the C++ default arguments.
+/// bit-identical. Unused key slots are 0.
 #[derive(Clone, Copy, Default)]
 pub struct Memo {
     key: [f64; 6],
@@ -432,7 +429,7 @@ impl Memo {
     }
 }
 
-/// The data members of the C++ `stfx::Processor` base class.
+/// The state every processor carries: sample rate, tempo and parameter values.
 #[derive(Clone)]
 pub struct Core {
     /// Sample rate in Hz; immutable after construction.
@@ -453,7 +450,7 @@ impl Core {
     }
 }
 
-/// `stfx::Processor`: one effect instance. `process` and `reset` belong to the render owner
+/// One effect instance. `process` and `reset` belong to the render owner
 /// and must not allocate, lock or block.
 pub trait Processor: Send {
     fn core(&self) -> &Core;
@@ -530,7 +527,7 @@ pub fn frame_buffers<'a, 'b>(
     )
 }
 
-/// `stfx::ParameterCache`: recomputes derived control targets only when the raw parameters
+/// Recomputes derived control targets only when the raw parameters
 /// change (keeps pow/exp10 out of the steady-state render path).
 #[derive(Clone)]
 pub struct ParameterCache<const N: usize> {
@@ -565,7 +562,7 @@ impl<const N: usize> ParameterCache<N> {
     }
 }
 
-/// `Biquad::Type`.
+/// The responses a `Biquad` can be set to.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BiquadType {
     LowPass,
@@ -577,7 +574,7 @@ pub enum BiquadType {
     HighShelf,
 }
 
-/// `stfx::Biquad`: DF2T biquad, double state; normalized RBJ coefficients. Coefficients may be
+/// DF2T biquad, double state; normalized RBJ coefficients. Coefficients may be
 /// set per block; zero-gain shelves/peaks use exact identity coefficients.
 #[derive(Clone, Copy)]
 pub struct Biquad {
@@ -692,7 +689,7 @@ impl Biquad {
     }
 }
 
-/// `stfx::DelayLine`: circular buffer of doubles with linear-interpolated reads.
+/// Circular buffer of doubles with linear-interpolated reads.
 #[derive(Clone)]
 pub struct DelayLine {
     data: Vec<f64>,
@@ -806,7 +803,7 @@ impl Allpass {
     }
 }
 
-/// `stfx::Smoother`: one-pole parameter smoothing.
+/// One-pole parameter smoothing.
 #[derive(Clone, Copy, Default)]
 pub struct Smoother {
     pub value: f64,

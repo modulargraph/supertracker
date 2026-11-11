@@ -1,6 +1,6 @@
-//! Test tones for the engine: this batch's copy of the C++ tests' `engine_test_tone.hpp`. The built-in
-//! synth is retired; tests that need a plain sustained tone use a sampler in Wavetable mode on a
-//! generated single cycle, which is also what migrated projects play.
+//! Test tones for the engine. The built-in synth is retired; tests that need a plain sustained
+//! tone use a sampler in Wavetable mode on a generated single cycle, which is also what migrated
+//! projects play.
 
 use super::engine::Engine;
 use tracker_engine::engine::*;

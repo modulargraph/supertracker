@@ -24,7 +24,7 @@ pub const MAX_SCHEDULED: usize = 8192;
 pub const VOICE_GROUPS: usize = MAX_VOICES / 64;
 pub const SCHEDULED_GROUPS: usize = MAX_SCHEDULED / 64;
 
-/// An `f64` published through an atomic (C++ `std::atomic<double>`).
+/// An `f64` published through an atomic.
 pub struct AtomicF64(AtomicU64);
 impl AtomicF64 {
     pub fn new(value: f64) -> Self {
@@ -40,7 +40,7 @@ impl AtomicF64 {
     }
 }
 
-/// A queued control command (`Command`). `kind` values match the C++ `type` numbers.
+/// A queued control command.
 #[derive(Clone, Copy)]
 pub struct Command {
     pub kind: i32,
@@ -173,7 +173,7 @@ pub struct Voice {
     pub looped: bool,
     pub declick_in: bool,
     pub p: STInstrument,
-    /// Counted by hand like the C++ voice: `note_on` takes a reference, `kill` returns it.
+    /// Counted by hand: `note_on` takes a reference, `kill` returns it.
     pub sample: *const Sample,
     pub phase: f64,
     pub pos: f64,
@@ -223,7 +223,7 @@ pub struct Voice {
 }
 
 impl Voice {
-    /// C++ `Voice{}`.
+    /// An idle voice.
     pub const NEW: Voice = Voice {
         cycle_width: ST_WAVETABLE_DEFAULT_FRAME as usize,
         position_smooth: 0.0,
@@ -596,7 +596,7 @@ impl Shared {
             // SAFETY: seqlock read. The copy goes straight into the caller's storage without
             // forming a reference to the snapshot, which the render thread may be rewriting; a
             // copy that raced with a write is rejected below because `voice_seq` changed (or was
-            // odd), exactly as in the C++ engine.
+            // odd).
             unsafe {
                 std::ptr::copy_nonoverlapping(self.voice_snapshot.get() as *const STVoicePosition, out.as_mut_ptr(), count);
             }
@@ -640,7 +640,7 @@ pub struct EventOut {
     pub(crate) frame_offset: i32,
 }
 
-/// `EngineCore::emit`. Returns false when the event was dropped.
+/// Queues an event for the host. Returns false when the event was dropped.
 ///
 /// Reserve one termination for every possible external voice. Automation and fresh notes may be
 /// dropped under extreme pressure; accepted notes always retain enough room for note-off, so an
@@ -667,7 +667,7 @@ pub struct Render {
     /// The project in use. Owned by the render thread from adoption (`pending`) until it pushes
     /// it onto `retired`; only `adopt_project` replaces it.
     pub(crate) current: *mut Project,
-    /// Render view of `current->tables`; replaced only when a project is swapped in.
+    /// Render view of the tables of `current`; replaced only when a project is swapped in.
     pub(crate) tb: *mut TablesState,
     pub(crate) pending_input_acks: Box<[STInputAck]>,
     pub(crate) pending_input_count: usize,

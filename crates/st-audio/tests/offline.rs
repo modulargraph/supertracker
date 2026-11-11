@@ -336,10 +336,9 @@ fn the_metronome_goes_through_the_master() {
 
 #[test]
 fn a_new_plan_while_playing_keeps_tails_delays_and_insert_state() {
-    // Ported in spirit from tests/AudioRoutingIncrementalTests.swift: changing the mixer under
-    // a playing song must not disturb what is already sounding. Here the change is one that
-    // cannot be heard (a new, unconnected return bus), so the render must be bit-identical to an
-    // undisturbed one although the plan was replaced in the middle.
+    // Changing the mixer under a playing song must not disturb what is already sounding. Here
+    // the change is one that cannot be heard (a new, unconnected return bus), so the render must
+    // be bit-identical to an undisturbed one although the plan was replaced in the middle.
     let mut playing = project(3);
     playing["routing"]["buses"] = json!([bus("g", "group", 0.7)]);
     playing["routing"]["outputs"] = json!({ "track:a": "bus:g" });

@@ -375,7 +375,7 @@ mod tests {
         assert!(matches!(ComponentId::parse("aufx:de%2:appl"), Err(IdError::BadEscape(_))));
         assert!(matches!(ComponentId::parse("aufx:de%zz:appl"), Err(IdError::BadEscape(_))));
         assert!(matches!(ComponentId::parse("aufx:d\tly:appl"), Err(IdError::BadCharacter(_))));
-        // The old host's decimal form is not an id here.
+        // Three decimal numbers are not an id.
         assert!(ComponentId::parse("1635083896:1684368505:1634758764").is_err());
         let message = ComponentId::parse("nonsense").unwrap_err().to_string();
         assert!(message.contains("type:subtype:manufacturer"), "{message}");

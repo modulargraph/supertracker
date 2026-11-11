@@ -1,11 +1,11 @@
 //! The built-in effects and drum models that Maschine modules are mapped onto: their persistent
 //! ids, their parameter ids in address order, and each parameter's range, default and scaling.
 //!
-//! This is a copy of the engine's catalogue (`tracker-engine`, `effects::capi`, declared in
-//! `Sources/TrackerEngine/include/STBuiltinEffects.h`): the tables below were generated from
-//! it and the ids are carried over exactly. This crate does not depend on the engine, so the
-//! mapping code reads ranges and scaling from here; `normalized` and `physical` are the
-//! engine's conversions between displayed (physical) and normalized 0..1 values.
+//! This is a copy of the engine's catalogue (`tracker-engine`, `effects::catalogue`): the tables
+//! below were generated from it and the ids are carried over exactly. This crate does not depend
+//! on the engine, so the mapping code reads ranges and scaling from here; `normalized` and
+//! `physical` are the engine's conversions between displayed (physical) and normalized 0..1
+//! values.
 //!
 //! When an effect gains, loses or reorders parameters in the engine, regenerate these tables
 //! (the host can assert equality at start-up, since it links both crates).

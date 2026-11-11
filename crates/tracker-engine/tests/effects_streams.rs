@@ -1,11 +1,10 @@
 //! Randomized streams through the effect handle (`effects::Effect`), meant to run in debug
 //! builds (overflow and bounds checks on) so that any panic in a render path fails the test.
 //!
-//! The scenario generator is the one of the differential driver that compared this crate
-//! against the C++ implementation it replaced, sample by sample: random parameters, automation
-//! mid-stream, bypass toggles, resets, tempo changes, block sizes from 0 to beyond the block
-//! limit, optional sidechains (both, one side, or the main input itself) and silence / impulse /
-//! noise / sine / hostile (nonfinite, denormal, huge) inputs.
+//! The scenarios have random parameters, automation mid-stream, bypass toggles, resets, tempo
+//! changes, block sizes from 0 to beyond the block limit, optional sidechains (both, one side, or
+//! the main input itself) and silence / impulse / noise / sine / hostile (nonfinite, denormal,
+//! huge) inputs.
 // The index loops read as the scenario generator is specified.
 #![allow(clippy::needless_range_loop)]
 

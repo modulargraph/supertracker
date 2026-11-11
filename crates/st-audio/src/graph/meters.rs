@@ -118,7 +118,6 @@ impl MeterDisplay {
 mod tests {
     use super::*;
 
-    // Ported from tests/AudioMetersTests.swift.
     #[test]
     fn peaks_accumulate_until_read_and_then_decay_per_reading() {
         let bank = MeterBank::new(vec!["track:a".into(), "master".into()]);

@@ -1,14 +1,11 @@
-//! Shared helpers for the engine integration tests `tests/engine_core_*.rs` and
-//! `tests/engine_timing_*.rs`: ports of the former C++ programs `engine_tests.cpp` and
-//! `engine_timing_tests.cpp`.
+//! Shared helpers for the engine integration tests `tests/engine_core_*.rs`.
 //!
 //! * `Engine`: an owned engine (`tracker_engine::engine::Engine`), rendered block by block as a
-//!   host renders it; its methods carry the names and argument order the C++ tests used, each a
-//!   forward to the engine's Rust API.
-//! * `realtime` and `assert_zero_render_allocations`: the C++ tests' replaced `operator new`
-//!   with its thread-local "render in progress" flag.
-//! * `tone`: the C++ tests' `engine_test_tone.hpp`.
-//! * `core_helpers`: the fixtures and helpers of the core test programs.
+//!   host renders it; each of its methods is a forward to the engine's API.
+//! * `realtime` and `assert_zero_render_allocations`: a counting `#[global_allocator]` with a
+//!   thread-local "render in progress" flag.
+//! * `tone`: test tones.
+//! * `core_helpers`: the fixtures and helpers that more than one suite uses.
 #![allow(dead_code, clippy::too_many_arguments)]
 
 pub mod core_helpers;
@@ -22,21 +19,19 @@ use tracker_engine::engine::tables::MAX_BLOCK;
 use tracker_engine::engine::{STEvent, STInstrument, STStatus, STStep, STTrack};
 
 // ---------------------------------------------------------------------------------------------
-// Allocation counting: the C++ tests' `operator new` with `thread_local bool realtime`.
+// Allocation counting.
 // ---------------------------------------------------------------------------------------------
 
 thread_local! {
-    /// C++ `static thread_local bool realtime`.
+    /// Set while this thread runs a render-thread call.
     static REALTIME: Cell<bool> = const { Cell::new(false) };
 }
 
-/// C++ `static std::atomic<unsigned> realtimeAllocations`: allocations made by any thread while
-/// its render-in-progress flag was set.
+/// Allocations made by any thread while its render-in-progress flag was set.
 static REALTIME_ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
 
-/// Blocks freed by any thread while its render-in-progress flag was set. The C++ tests replaced
-/// only `operator new` and so did not see these; the engine's contract ("never blocks, locks,
-/// allocates or frees") covers them, and the count is asserted as well.
+/// Blocks freed by any thread while its render-in-progress flag was set. The engine's contract
+/// ("never blocks, locks, allocates or frees") covers them, so the count is asserted as well.
 static REALTIME_FREES: AtomicU64 = AtomicU64::new(0);
 
 mod allocator {
@@ -79,8 +74,8 @@ mod allocator {
     static ALLOCATOR: CountingAllocator = CountingAllocator;
 }
 
-/// Run `f` as the C++ tests ran an engine call between `realtime=true` and `realtime=false`:
-/// every heap allocation the calling thread makes meanwhile is counted.
+/// Run `f` as a render-thread call: every heap allocation the calling thread makes meanwhile is
+/// counted.
 #[inline]
 pub fn realtime<T>(f: impl FnOnce() -> T) -> T {
     let before = REALTIME.with(|flag| flag.replace(true));
@@ -99,9 +94,9 @@ pub fn realtime_frees() -> u64 {
     REALTIME_FREES.load(Ordering::Relaxed)
 }
 
-/// C++ `assert(realtimeAllocations.load()==0)` at the end of `main`. Every `#[test]` ends with
-/// it, so each suite fails on its own when a render-thread call allocated (the counters are
-/// process-wide, like the C++ one: once a render allocated, every later check fails too).
+/// Every `#[test]` ends with this, so each suite fails on its own when a render-thread call
+/// allocated (the counters are process-wide: once a render allocated, every later check fails
+/// too).
 #[track_caller]
 pub fn assert_zero_render_allocations() {
     assert_eq!(realtime_allocations(), 0, "a render-thread call allocated");
@@ -286,8 +281,7 @@ macro_rules! half_methods {
     };
 }
 
-/// A chord as the setters take it: `None` unless at least one note was passed (C: a null
-/// pointer or a count of zero).
+/// A chord as the setters take it: `None` unless at least one note was passed.
 fn chord_list(chord: &[i32]) -> Option<&[i32]> {
     (!chord.is_empty()).then_some(chord)
 }
@@ -311,8 +305,7 @@ half_methods! { ControlHalf, control_half;
         let (control, shared, sample_rate) = self.half.parts();
         let _ = control.commit(shared);
     }
-    /// `commit_update_checked`: the error is the text the C function wrote into its
-    /// error buffer.
+    /// `Control::commit` with its result: the error text of a rejected draft.
     fn commit_update_checked(&mut self) -> Result<(), String> {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
@@ -379,7 +372,7 @@ half_methods! { ControlHalf, control_half;
         let (control, shared, sample_rate) = self.half.parts();
         control.reuse_pattern(index)
     }
-    /// `set_step`; an empty `chord` is the C call's `nullptr, 0`.
+    /// `set_step`; an empty `chord` is no chord.
     fn set_step(&mut self, pattern: i32, track: i32, row: i32, step: STStep, chord: &[i32]) {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
@@ -403,13 +396,13 @@ half_methods! { ControlHalf, control_half;
 
     // ---- samples, zones and timeline audio ----
 
-    /// `set_sample(e, instrument, left, nullptr, frames, rate)`: mono PCM.
+    /// `set_sample` with mono PCM.
     fn set_sample(&mut self, instrument: i32, left: &[f32], rate: f64) -> bool {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
         control.set_sample(shared, instrument, Some(Pcm { left, right: None, rate }))
     }
-    /// `set_sample(e, instrument, nullptr, nullptr, 0, rate)`: remove the sample.
+    /// `set_sample` without PCM: remove the sample.
     fn clear_sample(&mut self, instrument: i32) -> bool {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
@@ -516,7 +509,7 @@ half_methods! { ControlHalf, control_half;
         let (control, shared, sample_rate) = self.half.parts();
         control.note_off(shared, track, note);
     }
-    /// `preview_step`; an empty `chord` is the C call's null pointer or zero count.
+    /// `preview_step`; an empty `chord` is no chord.
     fn preview_step(&mut self, track: i32, step: STStep, chord: &[i32], duration_seconds: f32) {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();

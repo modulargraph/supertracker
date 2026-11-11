@@ -150,8 +150,7 @@ mod tests {
 
     #[test]
     fn running_status_and_realtime_bytes() {
-        // The stream of tests/MIDILoopbackTests.swift: running status, a clock byte between
-        // messages, sustain, pitch bend and Stop.
+        // Running status, a clock byte between messages, sustain, pitch bend and Stop.
         let mut parser = Parser::new();
         let input = [0x90, 60, 100, 61, 0, 0xF8, 0x90, 62, 90, 0xB0, 64, 127, 0xE0, 0, 64, 0xFC];
         assert_eq!(

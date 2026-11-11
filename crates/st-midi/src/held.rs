@@ -83,8 +83,7 @@ mod tests {
 
     #[test]
     fn an_unplugged_source_owes_one_note_off_and_one_pedal_up() {
-        // tests/MIDIHotplugTests.swift: a key and the pedal held on channel 2, a key pressed and
-        // released on channel 3.
+        // A key and the pedal held on channel 2, a key pressed and released on channel 3.
         let mut held = HeldInputs::new();
         for message in [Message::new(0x91, 62, 90), Message::new(0xB1, 64, 127), Message::new(0x92, 70, 80), Message::new(0x82, 70, 0)] {
             held.track(7, &message);

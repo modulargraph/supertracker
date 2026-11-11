@@ -1,16 +1,15 @@
-//! The fixtures and helpers of the former C++ program `engine_tests.cpp` that more than one suite uses. Each
-//! function keeps the C++ helper's name (in snake case), statements and assertions.
+//! The fixtures and helpers that more than one of the engine core suites uses.
 
 use super::tone::{load_test_tone, test_tone_instrument, TEST_SINE};
 use super::Engine;
 use std::f64::consts::PI;
 use tracker_engine::engine::*;
 
-/// `configure(e)` without a type argument (C++ default `type=-1`): instrument 0 is a sustained
-/// sine (sampler in Wavetable mode on one cycle).
+/// The instrument type that makes `configure` set instrument 0 to a sustained sine (sampler in
+/// Wavetable mode on one cycle).
 pub const TONE: i32 = -1;
 
-/// C++ `struct Audio`.
+/// A stereo buffer.
 #[derive(Clone)]
 pub struct Audio {
     pub l: Vec<f32>,
@@ -22,7 +21,7 @@ impl Audio {
         Audio { l: vec![0.0; n], r: vec![0.0; n] }
     }
 
-    /// C++ `energy(start,end)`; an `end` of zero means the whole buffer.
+    /// Mean energy of frames `start..end`; an `end` of zero means the end of the buffer.
     pub fn energy_in(&self, start: usize, end: usize) -> f64 {
         let end = if end == 0 { self.l.len() } else { end };
         let mut sum = 0.0f64;
@@ -33,7 +32,7 @@ impl Audio {
         sum / (end - start) as f64
     }
 
-    /// C++ `energy()`.
+    /// Mean energy of the whole buffer.
     pub fn energy(&self) -> f64 {
         self.energy_in(0, 0)
     }
@@ -65,7 +64,7 @@ pub fn bus_render_many(e: &mut Engine, buses: &[i32], time: u64, outs: &mut [&mu
     }
 }
 
-/// C++ `configure(e,type)`: two tracks at 120 BPM, 4 lines per beat, master 0.7. `TONE` (-1)
+/// Two tracks at 120 BPM, 4 lines per beat, master 0.7. `TONE` (-1)
 /// makes instrument 0 the sine test tone; any other value is the instrument type.
 pub fn configure(e: &mut Engine, type_: i32) {
     e.begin_update();
@@ -86,14 +85,14 @@ pub fn configure(e: &mut Engine, type_: i32) {
     e.commit_update();
 }
 
-/// C++ `struct Timed`: an event with its absolute frame.
+/// An event with its absolute frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Timed {
     pub frame: u64,
     pub e: STEvent,
 }
 
-/// C++ `renderEvents(e,frames,block)`.
+/// Renders `frames` in blocks of `block` frames and returns the events with their frames.
 pub fn render_events_block(e: &mut Engine, frames: usize, block: usize) -> Vec<Timed> {
     let mut result = Vec::new();
     let mut at = 0usize;
@@ -108,19 +107,18 @@ pub fn render_events_block(e: &mut Engine, frames: usize, block: usize) -> Vec<T
     result
 }
 
-/// C++ `renderEvents(e,frames)` with its default block of 256 frames.
+/// `render_events_block` in blocks of 256 frames.
 pub fn render_events(e: &mut Engine, frames: usize) -> Vec<Timed> {
     render_events_block(e, frames, 256)
 }
 
-/// C++ `noteEvents`: only note-on and note-off events.
+/// Only note-on and note-off events.
 pub fn note_events(mut events: Vec<Timed>) -> Vec<Timed> {
     events.retain(|e| e.e.type_ == ST_EVENT_NOTE_ON || e.e.type_ == ST_EVENT_NOTE_OFF);
     events
 }
 
-/// C++ `parameterChanges(events,target,track,address)`: the last value per frame of one native
-/// parameter.
+/// The last value per frame of one native parameter.
 pub fn parameter_changes_at(events: &[Timed], target: i32, track: i32, address: u64) -> Vec<Timed> {
     let mut result: Vec<Timed> = Vec::new();
     for event in events {
@@ -138,19 +136,18 @@ pub fn parameter_changes_at(events: &[Timed], target: i32, track: i32, address: 
     result
 }
 
-/// C++ `parameterChanges(events,target)` (track 0, address 0).
+/// `parameter_changes_at` for track 0, address 0.
 pub fn parameter_changes(events: &[Timed], target: i32) -> Vec<Timed> {
     parameter_changes_at(events, target, 0, 0)
 }
 
-/// C++ `hostEvents`: only host-parameter events.
+/// Only host-parameter events.
 pub fn host_events(mut events: Vec<Timed>) -> Vec<Timed> {
     events.retain(|e| e.e.type_ == ST_EVENT_HOST_PARAMETER);
     events
 }
 
-/// C++ `modulationAudio(instrument,frames,block)` (defaults: 48000 frames, blocks of 512): note
-/// 69 on a fresh engine with `instrument`, rendered in blocks.
+/// Note 69 on a fresh engine with `instrument`, rendered in blocks.
 pub fn modulation_audio(instrument: STInstrument, frames: usize, block: usize) -> Audio {
     let mut e = Engine::new();
     configure(&mut e, instrument.type_);
@@ -175,7 +172,7 @@ pub fn modulation_audio(instrument: STInstrument, frames: usize, block: usize) -
     result
 }
 
-/// C++ `modulationInstrument`.
+/// The sine test tone with an instant attack, full sustain and a 2-second release.
 pub fn modulation_instrument() -> STInstrument {
     let mut p = test_tone_instrument(TEST_SINE);
     p.attack = 0.0;
@@ -186,7 +183,7 @@ pub fn modulation_instrument() -> STInstrument {
     p
 }
 
-/// C++ `syncedPanInstrument(slot)`: a forward sampler whose LFO 1 (slot 0) or LFO 2 is a
+/// A forward sampler whose LFO 1 (slot 0) or LFO 2 is a
 /// tempo-synced square on the pan.
 pub fn synced_pan_instrument(slot: i32) -> STInstrument {
     let mut p = modulation_instrument();
@@ -206,7 +203,7 @@ pub fn synced_pan_instrument(slot: i32) -> STInstrument {
     p
 }
 
-/// C++ `configureSyncedLfo(e,p,bpm)` (default 120 BPM).
+/// `p` on a constant sample at `bpm`, with note 60 held.
 pub fn configure_synced_lfo(e: &mut Engine, p: STInstrument, bpm: f64) {
     configure(e, ST_INSTRUMENT_SAMPLE);
     let sample = vec![0.2f32; 2048];
@@ -218,7 +215,7 @@ pub fn configure_synced_lfo(e: &mut Engine, p: STInstrument, bpm: f64) {
     e.note_on(0, 0, 60, 127);
 }
 
-/// C++ `assertPanSwitch(a,expected)`: the left channel starts at `expected` (within a frame)
+/// The left channel starts at `expected` (within a frame)
 /// while the right channel is silent there.
 pub fn assert_pan_switch(a: &Audio, expected: usize) {
     let mut first = 0usize;
@@ -232,7 +229,7 @@ pub fn assert_pan_switch(a: &Audio, expected: usize) {
     }
 }
 
-/// C++ `configureLoopMusic(e,swing)`: rows 0..15 each carry note 60+row; one row is 6000
+/// Rows 0..15 each carry note 60+row; one row is 6000
 /// frames at 120 BPM, 4 lines per beat.
 pub fn configure_loop_music(e: &mut Engine, swing: f32) {
     configure(e, ST_INSTRUMENT_AU);
@@ -250,7 +247,7 @@ pub fn configure_loop_music(e: &mut Engine, swing: f32) {
     e.commit_update();
 }
 
-/// C++ `noteOns(e,frames)`.
+/// The note-on events of a render of `frames`.
 pub fn note_ons(e: &mut Engine, frames: usize) -> Vec<Timed> {
     let mut on = Vec::new();
     for v in render_events(e, frames) {
@@ -261,7 +258,7 @@ pub fn note_ons(e: &mut Engine, frames: usize) -> Vec<Timed> {
     on
 }
 
-/// C++ `assertNotes(on,{{frame,note},...})`: the first note-ons are exactly `expected`.
+/// The first note-ons are exactly `expected` (frame, note).
 pub fn assert_notes(on: &[Timed], expected: &[(u64, i32)]) {
     assert!(on.len() >= expected.len());
     for (n, &(frame, note)) in expected.iter().enumerate() {
@@ -270,7 +267,7 @@ pub fn assert_notes(on: &[Timed], expected: &[(u64, i32)]) {
     }
 }
 
-/// C++ `configureQueueMusic(e,order)`: pattern 0 = 16 rows (notes 60+row), pattern 1 = 4 rows
+/// Pattern 0 = 16 rows (notes 60+row), pattern 1 = 4 rows
 /// (notes 80+row); 6000 frames per row.
 pub fn configure_queue_music(e: &mut Engine, order: &[i32]) {
     configure_loop_music(e, 0.0);
@@ -286,7 +283,7 @@ pub fn configure_queue_music(e: &mut Engine, order: &[i32]) {
     e.commit_update();
 }
 
-/// A step effect, C++ `{type,value}`.
+/// A step effect.
 pub fn fx(type_: i32, value: f32) -> STStepFX {
     STStepFX { type_, value }
 }

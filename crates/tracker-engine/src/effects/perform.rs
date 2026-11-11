@@ -1,9 +1,6 @@
 //! Performance effects: Perform Filter, Perform Flanger, Burst Echo, Reso Echo, Ring, Stutter,
 //! Tremolo and Scratcher.
 //!
-//! Ported from the C++ `EffectsPerform.hpp` (namespace `stfx::perform_detail` and
-//! the `Perform*` classes).
-//!
 //! Original performance DSP, informed by the public NI effect-reference feature
 //! descriptions, not by NI code or presets. Parameter order is persistent and
 //! grouped into successive banks of eight controls for keyboard/hardware pages.
@@ -15,7 +12,7 @@ use super::common::{
     PARAMETER_TOGGLE as TOGGLE, PI,
 };
 
-/// Shared state of the Perform processors (`perform_detail::Base`).
+/// Shared state of the Perform processors.
 ///
 /// Per-sample control derivations (dB gains, poles, pow/tan of smoothed
 /// values) are memoized: once smoothing has settled they cost a comparison.
@@ -85,7 +82,7 @@ fn low_pole(frequency: f64, rate: f64) -> f64 {
     (-2.0 * PI * clamp(frequency, 5.0, rate * 0.45) / rate).exp()
 }
 
-/// `perform_detail::bounded`: clamp to +-16; nonfinite values become 0.
+/// Clamp to +-16; nonfinite values become 0.
 #[inline(always)]
 fn bounded(x: f64) -> f64 {
     if x.is_finite() {
@@ -519,7 +516,7 @@ impl PerformFilter {
         }
     }
 
-    /// `PerformFilter::tailForParameters`.
+    /// `tail_for_parameters` without the processor.
     pub fn tail_estimate(sr: f64, v: &[f64; MAX_PARAMETERS], _tempo: f64) -> f64 {
         let release = 0.001 * clamp(v[7], 1.0, 100.0) * 16.0 + 0.1;
         if v[0] < 0.5 {
@@ -641,7 +638,7 @@ impl PerformFlanger {
         }
     }
 
-    /// `PerformFlanger::tailForParameters`.
+    /// `tail_for_parameters` without the processor.
     pub fn tail_estimate(_sr: f64, v: &[f64; MAX_PARAMETERS], _tempo: f64) -> f64 {
         if v[0] < 0.5 {
             return 0.25;
@@ -763,7 +760,7 @@ fn time_mode_factor(mode: f64) -> f64 {
     }
 }
 
-/// `std::pow(128., position) / 32.`: clang lowers the power of the constant 128 to `exp2(7 x)`.
+/// `128^position / 32`, with the power formed as `exp2(7 * position)`.
 #[inline(always)]
 fn position_beats(position: f64) -> f64 {
     pow2(position * 7.0) / 32.0
@@ -820,7 +817,7 @@ impl BurstEcho {
         }
     }
 
-    /// `BurstEcho::tailForParameters`.
+    /// `tail_for_parameters` without the processor.
     pub fn tail_estimate(_sr: f64, v: &[f64; MAX_PARAMETERS], bpm: f64) -> f64 {
         let assignment = clamp(v[2], 0.0, 1.0);
         let position = clamp(v[1], 0.0, 1.0);
@@ -997,7 +994,7 @@ impl ResoEcho {
         }
     }
 
-    /// `ResoEcho::tailForParameters`.
+    /// `tail_for_parameters` without the processor.
     pub fn tail_estimate(_sr: f64, v: &[f64; MAX_PARAMETERS], bpm: f64) -> f64 {
         let damping = 0.12 + 1.6 * (1.0 - clamp(v[7], 0.0, 1.0));
         let gain = clamp(v[3], 0.0, 0.98) * db_gain(clamp(v[8], 0.0, 24.0) * 0.5) / damping;
@@ -1151,7 +1148,7 @@ impl PerformRing {
         }
     }
 
-    /// `PerformRing::tailForParameters`.
+    /// `tail_for_parameters` without the processor.
     pub fn tail_estimate(_sr: f64, v: &[f64; MAX_PARAMETERS], _tempo: f64) -> f64 {
         // Plate decay is T60; twice that covers T120 plus the longest line.
         clamp(v[4], 0.1, 15.0) * 2.0 + 0.25
@@ -2056,7 +2053,7 @@ static DESCRIPTORS: [Descriptor; 8] = [
     ),
 ];
 
-/// `stfx::performDescriptors`.
+/// The catalogue entries of the performance effects.
 pub fn descriptors() -> &'static [Descriptor] {
     &DESCRIPTORS
 }

@@ -9,8 +9,7 @@
 //! UPDATE_EFFECT_METADATA=1 cargo test -p tracker-engine --test effects_metadata
 //! ```
 //!
-//! The format is the one of the C++ program that used to print this file (numbers as C's
-//! `%.17g`), so the bytes did not change when the engine moved to Rust.
+//! Numbers are written as C's `%.17g` writes them.
 #![cfg(feature = "effects")]
 
 use std::ffi::CStr;

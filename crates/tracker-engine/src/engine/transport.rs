@@ -82,7 +82,7 @@ impl Render {
         }
     }
 
-    /// The first half of C++ `refresh()`: swap in a newly published project, keeping the musical
+    /// Swap in a newly published project, keeping the musical
     /// position, and retire the previous one for `collect()`.
     fn adopt_project(&mut self, sh: &Shared, next_ptr: *mut Project) {
         let old_ptr = self.current;
@@ -269,7 +269,7 @@ impl<'a> Rt<'a> {
         }
     }
 
-    /// The second half of C++ `refresh()`: drain the command ring.
+    /// Drain the command ring.
     ///
     /// A concurrent producer may refill the command ring while it is drained; the batch is
     /// bounded by the input acknowledgements one block can hold.
@@ -445,7 +445,8 @@ impl<'a> Rt<'a> {
         }
     }
 
-    /// `current->sequence[index]` (the sequence is never empty and `index` is kept in range).
+    /// The pattern at `index` of the sequence (the sequence is never empty and `index` is kept in
+    /// range).
     #[inline]
     pub fn sequence_pattern(&self, index: i32) -> i32 {
         self.p.sequence.get(index as u32 as usize).copied().unwrap_or(0)
@@ -706,7 +707,8 @@ impl<'a> Rt<'a> {
                 self.e.pattern = pattern;
                 let mut local = self.e.transport_frames - cursor;
                 for r in 0..p.pattern_length(pattern) {
-                    // `1 + sign * swing` is formed in single precision, as in C++.
+                    // `1 + sign * swing` is formed in single precision on purpose: its width
+                    // decides the last bits of the row length.
                     let length = base * (1.0f32 + (if r & 1 != 0 { -1.0f32 } else { 1.0f32 }) * p.swing) as f64;
                     if local < length - 1e-7 {
                         self.e.row = r;

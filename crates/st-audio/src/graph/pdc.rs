@@ -136,7 +136,7 @@ impl DelayLine {
 mod tests {
     use super::*;
 
-    // Ported from tests/audio_routing_tests.swift ("pure routing validation and DAG timing").
+    // Pure routing validation and DAG timing.
     #[test]
     fn inputs_of_different_latency_are_aligned_on_their_edges() {
         // a (64) and b (257) meet in mix (0), which feeds out (64).

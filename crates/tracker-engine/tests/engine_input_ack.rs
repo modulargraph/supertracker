@@ -1,9 +1,9 @@
-//! Port of the former C++ test program `engine_input_ack_tests.cpp`: acknowledged input notes (`input_note` /
-//! `pop_input_ack`): where the render thread applied each edge, run identity across transport
-//! and project changes, early placement, capacity, and concurrent delivery.
+//! Acknowledged input notes (`input_note` / `pop_input_ack`): where the render thread applied
+//! each edge, run identity across transport and project changes, early placement, capacity, and
+//! concurrent delivery.
 //!
-//! Renders marked `realtime` in the C++ run as the render thread here; every group ends with the
-//! program's "zero measured render-thread allocations" assertion for its own thread.
+//! Renders inside `realtime` run as the render thread; every group ends with a "zero measured
+//! render-thread allocations" assertion for its own thread.
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
@@ -49,17 +49,17 @@ fn fixture(e: &mut Engine) {
     fixture_with(e, 4, false, 0.0);
 }
 
-/// C++ `edge(e, id, type = ST_INPUT_NOTE_ON, apply = false)`.
+/// Queues one edge of input note `id`: note 60, velocity 100 for a note-on.
 fn edge_with(e: &mut Engine, id: u64, kind: i32, apply: bool) -> bool {
     e.input_note(id, kind, 0, 0, 60, if kind == ST_INPUT_NOTE_ON { 100 } else { 0 }, apply)
 }
 
-/// `edge(e, id)`: a note-on that is only acknowledged.
+/// A note-on that is only acknowledged.
 fn edge(e: &mut Engine, id: u64) -> bool {
     edge_with(e, id, ST_INPUT_NOTE_ON, false)
 }
 
-/// `edge(e, id, ST_INPUT_NOTE_OFF)`
+/// A note-off that is only acknowledged.
 fn edge_off(e: &mut Engine, id: u64) -> bool {
     edge_with(e, id, ST_INPUT_NOTE_OFF, false)
 }
@@ -87,7 +87,7 @@ fn peak(e: &mut Engine, frames: usize) -> f32 {
     l.iter().fold(0.0f32, |m, x| m.max(x.abs()))
 }
 
-/// The program's final `assert(rtAllocations==0)`.
+/// A group's final check: its renders allocated nothing.
 fn zero_render_allocations() {
     assert!(render_allocations() == 0);
 }
@@ -264,7 +264,7 @@ fn ordinary_publication_retains_the_run_and_timeline_edits_break_it() {
     zero_render_allocations();
 }
 
-/// `memcmp` over two float buffers: equal bit patterns.
+/// Whether two float buffers hold equal bit patterns.
 fn same_bits(a: &[f32], b: &[f32]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits())
 }
@@ -454,8 +454,8 @@ impl Drop for Finish<'_> {
 
 /// The engine's own threading model, through `engine::host::split`: the render half moves to
 /// an audio thread while this thread, holding the control half, queues the edges and consumes
-/// their ACKs (the C++ test's "single-producer/audio-consumer"; in the Rust API the ACK ring's
-/// single consumer is the control half, which is where the host reads them).
+/// their ACKs (the ACK ring's single consumer is the control half, which is where the host reads
+/// them).
 #[test]
 fn concurrent_single_producer_audio_consumer_20000_edge_delivery_without_lost_acks() {
     let halves = host::split(48000.0);

@@ -1,12 +1,12 @@
-//! Port of the former C++ test program `engine_tests.cpp`, part 2 of 5: timeline audio clips, live arrangement
-//! extension and long gates, the independent filter envelope, the LFO routing matrix,
-//! independent LFOs with automation, modulation lifecycle and input sanitizing, and the
-//! tempo-synced LFOs (periods, live edits, automation).
+//! Engine core suites: timeline audio clips, live arrangement extension and long gates, the
+//! independent filter envelope, the LFO routing matrix, independent LFOs with automation,
+//! modulation lifecycle and input sanitizing, and the tempo-synced LFOs (periods, live edits,
+//! automation).
 //!
 //! One `#[test]` per suite, calling the engine through `engine_support_a::Engine`, which renders
 //! it block by block as a host does: the tests read its buses (a plain render gives their sum).
 //! Every test ends with the "zero render-thread allocations" check.
-// The index loops mirror the C++ loops they translate.
+// The tests index their buffers in plain loops.
 #![allow(clippy::needless_range_loop)]
 
 mod engine_support_a;
@@ -170,7 +170,7 @@ fn test_independent_filter_envelope() {
     p.filter_sustain = 1.0;
     p.cutoff = 200.0;
     p.filter_release = 0.01;
-    // The C++ lambda captured `p` by reference and left the last duration in it.
+    // The closure leaves the last duration in `p`.
     let release_energy = |p: &mut STInstrument, duration: f32| -> f64 {
         let mut e = Engine::new();
         configure(&mut e, TONE);

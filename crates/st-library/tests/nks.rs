@@ -1,5 +1,4 @@
 //! NKS preset files: metadata, plug-in identity, controller pages and state bytes.
-//! Ported from `NKSMetadata.selfTest` and `tests/NKSHostPresetTests.swift`.
 
 mod common;
 

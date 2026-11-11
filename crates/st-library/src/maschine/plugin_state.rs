@@ -5,7 +5,7 @@
 //! size, opaque bytes), the selected preset index, then parameter mapping and window members
 //! that are not read. The state stays opaque: nothing here loads a plug-in or converts state.
 //!
-//! Maschine hosts VST2 plug-ins. The Rust host does not load VST2, so an imported group keeps
+//! Maschine hosts VST2 plug-ins. SuperTracker does not load VST2, so an imported group keeps
 //! the identity and the state bytes for inspection (and for a vendor's VST2-compatible VST3),
 //! and reports the pad as needing its plug-in replaced.
 

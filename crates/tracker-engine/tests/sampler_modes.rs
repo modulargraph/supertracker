@@ -1,8 +1,8 @@
-//! Port of the former C++ test program `sampler_modes_tests.cpp`: behavioural PCM checks for the Polyend-style sample
-//! play modes. A ramp sample encodes the read position in its value, so the rendered output
-//! reveals where (and in which direction) the voice is reading.
+//! Behavioural PCM checks for the Polyend-style sample play modes. A ramp sample encodes the read
+//! position in its value, so the rendered output reveals where (and in which direction) the voice
+//! is reading.
 #![cfg(feature = "engine")]
-// The index loops mirror the C++ loops they translate.
+// The tests index their buffers in plain loops.
 #![allow(clippy::needless_range_loop)]
 
 mod engine_support_b;

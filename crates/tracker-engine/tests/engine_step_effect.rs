@@ -1,7 +1,7 @@
-//! Port of the former C++ test program `engine_step_effect_tests.cpp`: step effect playback regressions (sticky
-//! ratchets, gateless note lifetime, probability, sample commands, live tempo changes).
+//! Step effect playback regressions (sticky ratchets, gateless note lifetime, probability, sample
+//! commands, live tempo changes).
 #![cfg(feature = "engine")]
-// The index loops mirror the C++ loops they translate.
+// The tests index their buffers in plain loops.
 #![allow(clippy::needless_range_loop)]
 
 mod engine_support_b;
@@ -34,7 +34,7 @@ impl Fixture {
         Fixture { e }
     }
 
-    /// C++ `step(row,note,fx=0,value=0,fx2=0,value2=0,gate=32)` with every argument given.
+    /// Writes the step of `row`: a note with its gate and both step effects.
     #[allow(clippy::too_many_arguments)]
     fn step_full(&mut self, row: i32, note: i32, fx: i32, value: f32, fx2: i32, value2: f32, gate: f32) {
         let mut s = default_step();
@@ -45,12 +45,12 @@ impl Fixture {
         self.e.set_step(0, 0, row, s, &[]);
     }
 
-    /// `step(row, note, fx, value)`
+    /// A note with one step effect and a gate of 32.
     fn step_fx(&mut self, row: i32, note: i32, fx: i32, value: f32) {
         self.step_full(row, note, fx, value, 0, 0.0, 32.0);
     }
 
-    /// `step(row, note)`
+    /// A note with a gate of 32 and no step effect.
     fn step(&mut self, row: i32, note: i32) {
         self.step_full(row, note, 0, 0.0, 0, 0.0, 32.0);
     }

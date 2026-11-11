@@ -1,7 +1,10 @@
-//! The tracker sequencer (ported from the C++ engine's `TrackerEngine.cpp`): row triggering (`triggerRow`,
-//! `triggerStep`, `triggerColumns`), step effects and row locks (`applyFX`), delayed hits and
-//! ratchets (`schedule*`, `repeatRatchet`), parameter locks of the host, and automation lanes
-//! (`laneValue`, `emitLaneAutomation`, `automation`, `emitMixState`).
+//! The tracker sequencer: row triggering (`trigger_row`, `trigger_step`, `trigger_columns`), step
+//! effects and row locks (`apply_fx`), delayed hits and ratchets (`schedule*`, `repeat_ratchet`),
+//! parameter locks of the host, and automation lanes (`lane_value`, `emit_lane_automation`,
+//! `automation`, `emit_mix_state`).
+//!
+//! Where a comment says an expression is formed in single precision, that is on purpose: the
+//! tests compare rendered audio against recorded PCM hashes, and the width changes the last bits.
 
 use super::abi::*;
 use super::project::{lane_track, Lane, Pattern, PluginStepFX, Step, EXTRA_COLUMNS};
@@ -31,7 +34,7 @@ impl RowFX {
         RowFX { probability: 1.0, offset: 0.0, micro: 0.0, glide: 0.0, ratchet: 1, reverse: -1, arp: 0, slice: -1, roll: -1 };
 }
 
-/// One note (or chord) to schedule over a row: `scheduleHits`' arguments.
+/// One note (or chord) to schedule over a row: `schedule_hits`' arguments.
 struct Hits<'s> {
     lane: i32,
     channel: i32,
@@ -88,7 +91,7 @@ fn lane_value(l: &Lane, mut pos: f64) -> f64 {
     a.value * (1.0 - fraction) + b.value * fraction
 }
 
-/// `emitLaneAutomation`: stepped lanes emit each change at its exact sample (retrying dropped
+/// Stepped lanes emit each change at its exact sample (retrying dropped
 /// deliveries every 32 frames); linear lanes emit on the 32-frame control interval.
 #[allow(clippy::too_many_arguments)]
 fn emit_lane_automation(
@@ -144,7 +147,7 @@ impl<'a> Rt<'a> {
         self.e.automation_pattern = -1;
     }
 
-    /// `projectChannelEnabled(*current, channel)`
+    /// Whether `channel` is a track of the project in use.
     #[inline(always)]
     pub fn channel_enabled(&self, channel: i32) -> bool {
         channel >= 0 && channel < self.p.track_count
@@ -477,7 +480,7 @@ impl<'a> Rt<'a> {
         }
     }
 
-    /// `current->tracks[t].instrument`
+    /// The instrument of track `t`; 0 when the project has no such track.
     #[inline]
     fn track_instrument(&self, t: i32) -> i32 {
         self.p.tracks.get(t as u32 as usize).map_or(0, |track| track.instrument)
@@ -663,7 +666,7 @@ impl<'a> Rt<'a> {
         let sp = hits.step;
         let (ratchet, micro) = (hits.ratchet, hits.micro);
         let row_duration = self.e.row_duration;
-        // `1 - micro` is formed in single precision, as in C++.
+        // `1 - micro` is formed in single precision.
         let spacing = row_duration * (1.0 - micro) as f64 / ratchet as f64;
         let open = !(sp.gate > 0.0) && ratchet <= 1;
         let gate = if sp.gate > 0.0 { clamp(sp.gate as f64, 0.01, 256.0) } else { 1.0 };

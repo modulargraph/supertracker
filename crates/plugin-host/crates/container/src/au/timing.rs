@@ -2,8 +2,8 @@
 //! what the protocol carries (frames). Platform independent (tested on Linux).
 //!
 //! Third-party units report `NaN`, infinities and absurd magnitudes here ("infinite tail"
-//! is common, and legitimate). The old host learned that one such value poisons everything
-//! that serialises it; nothing non-finite leaves this module.
+//! is common, and legitimate). One such value poisons everything that serialises it, so
+//! nothing non-finite leaves this module.
 
 /// Latency above this is treated as this (a unit claiming more is wrong, and delay
 /// compensation buffers are sized from the value).

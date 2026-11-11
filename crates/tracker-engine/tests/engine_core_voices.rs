@@ -1,12 +1,12 @@
-//! Port of the former C++ test program `engine_tests.cpp`, part 1 of 5: tone and release, chords/ratchets/microtiming,
-//! song swing and seek, probability, automation, sample modes, sample replacement
-//! under a concurrent render, zones and slices, mono/legato/choke/mute, effects-only cells, the
-//! long maximum-voice render, pitch bend/metronome/locks and the sampler/MIDI regressions.
+//! Engine core suites: tone and release, chords/ratchets/microtiming, song swing and seek,
+//! probability, automation, sample modes, sample replacement under a concurrent render, zones and
+//! slices, mono/legato/choke/mute, effects-only cells, the long maximum-voice render, pitch
+//! bend/metronome/locks and the sampler/MIDI regressions.
 //!
 //! One `#[test]` per suite, calling the engine through `engine_support_a::Engine`, which renders
 //! it block by block as a host does: the tests read its buses (a plain render gives their sum).
 //! Every test ends with the "zero render-thread allocations" check.
-// The index loops mirror the C++ loops they translate.
+// The tests index their buffers in plain loops.
 #![allow(clippy::needless_range_loop, clippy::manual_range_contains)]
 
 mod engine_support_a;

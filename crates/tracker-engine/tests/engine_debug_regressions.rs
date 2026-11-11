@@ -1,6 +1,5 @@
-//! Port of the former C++ test program `engine_debug_regressions.cpp`: targeted regressions from the 660cfb9 engine
-//! audit. Renders and transport restores run as the render thread; every group ends with the C++
-//! program's final "zero render allocations" check for its own thread.
+//! Targeted regressions from the 660cfb9 engine audit. Renders and transport restores run as the
+//! render thread; every group ends with a "zero render allocations" check for its own thread.
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
@@ -9,13 +8,13 @@ use engine_support_b::alloc::{realtime, render_allocations};
 use engine_support_b::engine::Engine;
 use tracker_engine::engine::*;
 
-/// C++ `require`: fails the group with `message`.
+/// Fails the group with `message`.
 #[track_caller]
 fn require(ok: bool, message: &str) {
     assert!(ok, "{message}");
 }
 
-/// The C++ `run("zero render allocations", ...)` group, applied to each group's own thread.
+/// The "zero render allocations" check, applied to each group's own thread.
 fn zero_render_allocations() {
     require(render_allocations() == 0, "Render/restore allocated");
 }

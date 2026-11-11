@@ -1,6 +1,5 @@
 //! A synthetic index of 150,000 entries: search, deep paging, cached filters, a burst of
-//! superseded searches, and the cache file. Ported from `LibraryService.stressTest`
-//! (`tests/LibraryStressTests.swift`); the numbers it prints are the crate's measured
+//! superseded searches, and the cache file. The numbers it prints are the crate's measured
 //! performance (run with `--release -- --nocapture` for the figures quoted in the docs).
 
 mod common;

@@ -1,19 +1,14 @@
-//! Port of the former C++ test program `builtin_effects_tests.cpp`: the built-in effect catalogue and the effect
-//! handle's contract (bypass, reset, parameter extremes, block partitioning), measured responses,
-//! silence gating, zero mix, concurrent parameter changes, tail estimates and a throughput smoke
-//! test.
+//! The built-in effect catalogue and the effect handle's contract (bypass, reset, parameter
+//! extremes, block partitioning), measured responses, silence gating, zero mix, concurrent
+//! parameter changes, tail estimates and a throughput smoke test.
 //!
-//! The C++ program counted its `check(...)` calls and printed "Builtin effects: N checks,
-//! F failures, P processors". Each group here counts the same way on its own thread, prints its
-//! own line and fails if any check failed.
+//! Each group counts its `check(...)` calls on its own thread, prints "Builtin effects [group]:
+//! N checks, F failures, P processors" and fails if any check failed.
 //!
 //! The catalogue is `tracker_engine::effects`; the effect handle is `effects::Effect` behind
 //! `engine_support_b::fx`.
-//!
-//! Dropped from the C++ program (C pointer mechanics): the lookup of a null id inside the
-//! "invalid catalogue lookup" check (the other two lookups of that check are kept).
 #![cfg(feature = "effects")]
-// The index loops mirror the C++ loops they translate.
+// The tests index their buffers in plain loops.
 #![allow(clippy::needless_range_loop)]
 
 mod engine_support_b;
@@ -34,7 +29,7 @@ thread_local! {
     static FAILURES: Cell<u32> = const { Cell::new(0) };
 }
 
-/// C++ `check`: counts, and reports a failed check without stopping.
+/// Counts, and reports a failed check without stopping.
 fn check(value: bool, name: &str) {
     CHECKS.with(|checks| checks.set(checks.get() + 1));
     if !value {
@@ -43,7 +38,7 @@ fn check(value: bool, name: &str) {
     }
 }
 
-/// The end of a group: the program's summary line and its exit status.
+/// The end of a group: its summary line, and a failure if any check failed.
 fn finish(group: &str) {
     let (checks, failures) = (CHECKS.with(|checks| checks.get()), FAILURES.with(|failures| failures.get()));
     println!("Builtin effects [{group}]: {checks} checks, {failures} failures, {} processors", catalogue().count());
@@ -54,14 +49,14 @@ fn id_of(d: &Descriptor) -> &'static str {
     d.info.id().to_str().expect("effect id")
 }
 
-/// C++ `struct FX`.
+/// An effect by id, with its instance if one could be created.
 struct FX {
     id: String,
     p: Option<Fx>,
 }
 
 impl FX {
-    /// `FX fx(id, sr = 48000, block = 256)`
+    /// The effect `id` at `sr`, for blocks of at most `block` frames.
     fn with(id: &str, sr: f64, block: u32) -> FX {
         let p = Fx::create(id, sr, block);
         check(p.is_some(), &format!("{id} creates"));
@@ -135,7 +130,7 @@ fn difference(a: &[f32], b: &[f32]) -> f64 {
     peak
 }
 
-/// `memcmp` of two float buffers.
+/// Whether two float buffers hold the same bit patterns.
 fn same_bits(a: &[f32], b: &[f32]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits())
 }
@@ -499,7 +494,7 @@ fn tail_restore_tests() {
     finish("tail restore");
 }
 
-/// C++ `peakOf(v, from = 0, to = 0)`: `to == 0` means the end.
+/// The peak of `v[from..to]`; `to == 0` means the end.
 fn peak_of(v: &[f32], from: usize, mut to: usize) -> f64 {
     if to == 0 {
         to = v.len();

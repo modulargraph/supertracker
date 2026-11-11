@@ -16,9 +16,9 @@
 //!   order: a key released before the pedal went down is released before it for the plug-in
 //!   too, however close the two were. The plug-in's
 //!   stereo output, times the instrument's volume and balanced by its pan, is **added** to
-//!   the strip's signal (the engine's own channel: clips and sample voices of the track), as
-//!   the previous host mixed both sources of a channel. The strip's signal is delayed by the
-//!   plug-in's latency first, so both stay aligned. A lost instrument is silent.
+//!   the strip's signal (the engine's own channel: clips and sample voices of the track), so
+//!   a channel carries both sources. The strip's signal is delayed by the plug-in's latency
+//!   first, so both stay aligned. A lost instrument is silent.
 //!
 //! Deadline: a block may take what is left of the render call it belongs to
 //! ([`BlockInfo::cycle_end_ns`], set by the renderer from the device callback's length), but

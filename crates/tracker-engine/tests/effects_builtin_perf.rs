@@ -1,9 +1,8 @@
-//! Port of the former C++ test program `builtin_effects_perf_tests.cpp`: the built-in effect CPU budget check and
-//! benchmark.
+//! The built-in effect CPU budget check and benchmark.
 //!
-//! * `budget`: the program's default mode (budget assertions).
-//! * `bench` (ignored): `--bench`, the full per-effect table with more trials and no assertions.
-//! * `dump` (ignored): `--dump DIR`, every case's output (drum loop and impulse response) as raw
+//! * `budget`: the budget assertions.
+//! * `bench` (ignored): the full per-effect table with more trials and no assertions.
+//! * `dump` (ignored): every case's output (drum loop and impulse response) as raw
 //!   float32 stereo for before/after sound comparisons; the directory is taken from
 //!   `BUILTIN_EFFECTS_PERF_DUMP_DIR`.
 //!
@@ -11,13 +10,13 @@
 //! (decaying noise/kick bursts and silence), at default parameters and at a typical Maschine-kit
 //! setting.
 //!
-//! The ceilings are those of the C++ program (built `-O2`) and are enforced in optimized builds
-//! only; an unoptimized (`debug_assertions`) build runs every case once, prints the numbers and
-//! still asserts the functional half of the silence-gating check (exact silence, resumes).
+//! The ceilings are enforced in optimized builds only; an unoptimized (`debug_assertions`) build
+//! runs every case once, prints the numbers and still asserts the functional half of the
+//! silence-gating check (exact silence, resumes).
 //!
 //! The effect handle is `effects::Effect` behind `engine_support_b::fx`.
 #![cfg(feature = "effects")]
-// `s % 4 == 0` next to `s % 8 == 4`: the C++ drum pattern, spelled the same way.
+// `s % 4 == 0` next to `s % 8 == 4`: the two tests of the drum pattern are spelled the same way.
 #![allow(clippy::manual_is_multiple_of)]
 
 mod engine_support_b;
@@ -210,7 +209,8 @@ fn file_name(c: &Case) -> String {
         .collect()
 }
 
-/// C++ `bench(assertBudget)`; returns the number of failed budget checks.
+/// Measures every case, against the budgets when `assert_budget`; returns the number of failed
+/// budget checks.
 fn run_bench(assert_budget: bool) -> usize {
     // Timing an unoptimized build against the ceilings says nothing: it runs each case once.
     let enforce = assert_budget && cfg!(not(debug_assertions));
@@ -297,23 +297,23 @@ fn run_bench(assert_budget: bool) -> usize {
     failures
 }
 
-/// The program's default mode: budget assertions.
+/// The budget assertions.
 #[test]
 fn budget() {
     assert!(run_bench(true) == 0);
 }
 
-/// `--bench`: the full per-effect table with more trials; nothing is asserted.
+/// The full per-effect table with more trials; nothing is asserted.
 #[test]
-#[ignore = "benchmark (C++ --bench): prints the per-effect CPU table"]
+#[ignore = "benchmark: prints the per-effect CPU table"]
 fn bench() {
     run_bench(false);
 }
 
-/// `--dump DIR`: writes every case's output (drum loop and impulse response) as raw float32
+/// Writes every case's output (drum loop and impulse response) as raw float32
 /// stereo into `$BUILTIN_EFFECTS_PERF_DUMP_DIR`.
 #[test]
-#[ignore = "C++ --dump DIR: set BUILTIN_EFFECTS_PERF_DUMP_DIR"]
+#[ignore = "writes every case's output: set BUILTIN_EFFECTS_PERF_DUMP_DIR"]
 fn dump() {
     let dir = std::env::var("BUILTIN_EFFECTS_PERF_DUMP_DIR").expect("set BUILTIN_EFFECTS_PERF_DUMP_DIR to a directory");
     let dir = std::path::Path::new(&dir);

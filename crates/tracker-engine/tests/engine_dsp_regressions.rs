@@ -1,6 +1,5 @@
-//! Port of the former C++ test program `engine_dsp_regressions.cpp`: behaviour preserved by render-loop optimizations.
-//! Every render runs as the render thread; each group ends with the C++ program's "zero render
-//! allocations" assertion for its own thread.
+//! Behaviour preserved by render-loop optimizations. Every render runs as the render thread; each
+//! group ends with a "zero render allocations" assertion for its own thread.
 #![cfg(feature = "engine")]
 
 mod engine_support_b;

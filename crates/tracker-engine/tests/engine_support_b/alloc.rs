@@ -1,16 +1,14 @@
-//! The Rust stand-in for the C++ test programs' replaced `operator new` / `operator delete`.
+//! The counting and failing allocator of the integration tests.
 //!
 //! Every test binary that includes this module gets a `#[global_allocator]` that
 //!
 //! * counts the allocations (and, separately, the deallocations) made by the current thread while
-//!   its "render in progress" flag is set (`realtime=true; ...; realtime=false;` in the C++), and
-//! * fails exactly one allocation on request (`failAllocation=true;` in the C++), by returning
+//!   its "render in progress" flag is set ([`realtime`]), and
+//! * fails exactly one allocation on request ([`fail_next_allocation`]), by returning
 //!   null from the allocator, which is what a Rust `try_reserve` reports as an error.
 //!
-//! The C++ programs used a `thread_local` flag and one process-wide counter, and ran their groups
-//! one after the other. Here the flag, the counters and the failure request are all per thread,
-//! because the test harness runs the groups (one `#[test]` each) on parallel threads; every group
-//! asserts its own counters.
+//! The flag, the counters and the failure request are all per thread, because the test harness
+//! runs the groups (one `#[test]` each) on parallel threads; every group asserts its own counters.
 
 use std::cell::Cell;
 
@@ -81,7 +79,7 @@ impl Drop for Section {
     }
 }
 
-/// Runs `f` as the render thread: `realtime=true; f(); realtime=false;`. Allocations and
+/// Runs `f` as the render thread. Allocations and
 /// deallocations made by this thread inside `f` are counted.
 pub fn realtime<T>(f: impl FnOnce() -> T) -> T {
     let _section = Section(REALTIME.with(|realtime| realtime.replace(true)));
@@ -98,13 +96,13 @@ pub fn render_deallocations() -> usize {
     DEALLOCATIONS.with(|count| count.get())
 }
 
-/// `allocations=0;`
+/// Zeroes this thread's counters.
 pub fn reset_render_allocations() {
     ALLOCATIONS.with(|count| count.set(0));
     DEALLOCATIONS.with(|count| count.set(0));
 }
 
-/// `failAllocation=true;`: the next allocation this thread asks for fails once (the allocator
+/// The next allocation this thread asks for fails once (the allocator
 /// returns null). Call it immediately before the engine call under test, with nothing that
 /// allocates in between.
 pub fn fail_next_allocation() {

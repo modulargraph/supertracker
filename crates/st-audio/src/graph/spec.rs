@@ -516,8 +516,8 @@ mod tests {
         json!({ "owner": owner, "kind": "effect", "slot": slot, "instanceID": instance, "component": "stfx:eq" })
     }
 
-    // Ported from tests/MixerChannelTests.swift: a track channel runs its instrument's chain
-    // ahead of its own inserts, each in slot order, one instance of the chain per track.
+    // A track channel runs its instrument's chain ahead of its own inserts, each in slot order,
+    // one instance of the chain per track.
     #[test]
     fn a_track_runs_its_instruments_chain_before_its_own_inserts() {
         let spec = spec(json!({

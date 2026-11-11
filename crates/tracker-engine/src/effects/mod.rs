@@ -87,9 +87,8 @@ pub fn normalized(parameter: &ParameterInfo, physical: f64) -> f64 {
     parameter.normalized(physical)
 }
 
-/// The parameter mapping under the path it had while this crate exported a C interface. The
-/// mixer crate imports it from here; new code uses [`ParameterInfo::physical`] and
-/// [`ParameterInfo::normalized`].
+/// The parameter mapping under the path the mixer crate imports it from. Other code uses
+/// [`ParameterInfo::physical`] and [`ParameterInfo::normalized`].
 pub mod capi {
     pub use super::{normalized, physical};
 }

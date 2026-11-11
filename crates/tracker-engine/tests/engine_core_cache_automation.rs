@@ -1,12 +1,11 @@
-//! Port of the former C++ test program `engine_tests.cpp`, part 3 of 5: long renders that must
-//! keep note-offs, exact stepped automation, timed mix defaults and the automation refresh
-//! (also as a concurrent mailbox), live notes across automatic playback changes, the explicit
-//! slice effect and step preview ownership.
+//! Engine core suites: long renders that must keep note-offs, exact stepped automation, timed
+//! mix defaults and the automation refresh (also as a concurrent mailbox), live notes across
+//! automatic playback changes, the explicit slice effect and step preview ownership.
 //!
 //! One `#[test]` per suite, calling the engine through `engine_support_a::Engine`, which renders
 //! it block by block as a host does: the tests read its buses (a plain render gives their sum).
 //! Every test ends with the "zero render-thread allocations" check.
-// The index loops mirror the C++ loops they translate.
+// The tests index their buffers in plain loops.
 #![allow(clippy::needless_range_loop)]
 
 mod engine_support_a;
@@ -445,8 +444,7 @@ fn test_live_notes_survive_automatic_playback_changes() {
     assert_zero_render_allocations();
 }
 
-/// C++ `sliceFXAudio(note,selector,manual,chord,chordCount)` (defaults: automatic slices, no
-/// chord): 5000 frames of a four-slice sample whose slices differ in level.
+/// 5000 frames of a four-slice sample whose slices differ in level.
 fn slice_fx_audio(note: i32, selector: i32, manual: bool, chord: &[i32]) -> Audio {
     let mut e = Engine::new();
     configure(&mut e, ST_INSTRUMENT_SAMPLE);
@@ -577,7 +575,7 @@ fn test_step_preview_ownership() {
         render_events(&mut e, 1);
         let mut step = default_step();
         step.note = 60;
-        // C++ passed a one-note array with a count of zero: no chord.
+        // An empty slice of a one-note array: no chord.
         let ignored = [12];
         e.preview_step(0, step, &ignored[..0], 0.35);
         assert!(note_events(render_events(&mut e, 1)).is_empty());

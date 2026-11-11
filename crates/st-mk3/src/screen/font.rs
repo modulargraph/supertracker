@@ -1,10 +1,9 @@
 //! Text for the screens.
 //!
-//! The old host drew text with the system's interface font. This one loads the same kind of font
-//! from the system's font files at run time ([`Fonts::system`]) and rasterizes it with `ab_glyph`,
-//! so no font is shipped with the application. Where no font file is found, and in tests, a
-//! built-in 5 × 7 bitmap font is used ([`Fonts::builtin`]): plain, but complete for ASCII and
-//! deterministic everywhere.
+//! Text is drawn with the system's interface font, loaded from the system's font files at run
+//! time ([`Fonts::system`]) and rasterized with `ab_glyph`, so no font is shipped with the
+//! application. Where no font file is found, and in tests, a built-in 5 × 7 bitmap font is used
+//! ([`Fonts::builtin`]): plain, but complete for ASCII and deterministic everywhere.
 
 use std::path::{Path, PathBuf};
 
@@ -54,8 +53,8 @@ impl FontFile {
     }
 }
 
-/// Where each platform keeps the fonts closest to the old host's (the system interface font and
-/// its fixed-pitch companion), in order of preference.
+/// Where each platform keeps its interface font and a fixed-pitch companion, in order of
+/// preference.
 fn candidates(bold: bool, mono: bool) -> Vec<FontFile> {
     let weight = if bold { 700.0 } else { 400.0 };
     let pick = |regular: &str, bolder: &str| if bold { bolder.to_string() } else { regular.to_string() };

@@ -1,15 +1,14 @@
-//! Shared helpers for the integration tests ported from the former C++ test programs (the engine
-//! feature tests, `clock_tests.cpp`, `unit_range_tests.cpp`, `builtin_effects*_tests.cpp` and the
-//! two engine benchmarks). The other engine ports (`engine_core_*`, `engine_timing_*`) have their
-//! own support module; nothing here is shared with them.
+//! Shared helpers for the engine feature tests, the two `effects_builtin*` tests and the engine
+//! benchmarks. The `engine_core_*` tests have their own support module; nothing here is shared
+//! with them.
 //!
-//! * [`alloc`]: the counting / failing `#[global_allocator]` that stands in for the C++ tests'
-//!   replaced `operator new` ("zero render-thread allocations", injected allocation failure).
-//! * [`engine`]: an owned engine with one method per operation the C++ programs called, each
-//!   forwarding to the engine's handles.
-//! * [`tone`]: this batch's copy of the C++ tests' `engine_test_tone.hpp`.
-//! * [`fx`]: the built-in effect handle in the shape the test programs were written against
-//!   (status codes, optional callbacks).
+//! * [`alloc`]: the counting / failing `#[global_allocator]` ("zero render-thread allocations",
+//!   injected allocation failure).
+//! * [`engine`]: an owned engine with one method per operation, each forwarding to the engine's
+//!   handles.
+//! * [`tone`]: test tones.
+//! * [`fx`]: the built-in effect handle with the id and catalogue entry the tests print next to
+//!   it.
 #![allow(dead_code)]
 
 pub mod alloc;
@@ -20,7 +19,7 @@ pub mod fx;
 #[cfg(feature = "engine")]
 pub mod tone;
 
-/// FNV-1a offset basis used by the C++ benchmarks' PCM hashes.
+/// FNV-1a offset basis of the PCM hashes.
 pub const FNV_OFFSET: u64 = 1469598103934665603;
 /// FNV-1a prime.
 pub const FNV_PRIME: u64 = 1099511628211;
@@ -37,7 +36,7 @@ pub fn hash_f32(hash: u64, value: f32) -> u64 {
     hash_word(hash, value.to_bits())
 }
 
-/// `hashDouble`: low word, then high word.
+/// The hash of one double: low word, then high word.
 #[inline]
 pub fn hash_f64(hash: u64, value: f64) -> u64 {
     let bits = value.to_bits();

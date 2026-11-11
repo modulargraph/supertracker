@@ -42,9 +42,8 @@
 //! Release ([`Mk3Driver::disconnect`]) and shutdown ([`Mk3Driver::shutdown`]) switch every LED
 //! off, blank both screens, release the display interface and start the vendor's agents again. A
 //! take-over that fails half way does the same. A crash while the agents are stopped is repaired
-//! at the next launch from a record written before they were stopped. The old host also restored
-//! the agents from signal handlers; a library does not install those: the executable must call
-//! [`Mk3Service::shutdown`] on termination signals.
+//! at the next launch from a record written before they were stopped. The library installs no
+//! signal handlers: the executable must call [`Mk3Service::shutdown`] on termination signals.
 //!
 //! # What is verified and what is not
 //!
@@ -57,18 +56,17 @@
 //!
 //! - that `async-hid` delivers the controller's input reports with their report id as the first
 //!   byte on each system (a missing id is restored from the report's size), and that its shared
-//!   open on macOS coexists with the vendor's agents as IOHIDManager did in the old host;
-//! - that output reports written through `async-hid` light the LEDs (the old host used
-//!   `IOHIDDeviceSetReport`, which `async-hid` also uses on macOS; on Linux it writes to hidraw);
-//! - that `nusb` can claim interface 5 once the agents are stopped. The old host fell back to
-//!   seizing the interface after four seconds; `nusb` has no seize, so here the attempt fails with
-//!   a message instead;
+//!   open on macOS coexists with the vendor's agents;
+//! - that output reports written through `async-hid` light the LEDs (on macOS it uses
+//!   `IOHIDDeviceSetReport`; on Linux it writes to hidraw);
+//! - that `nusb` can claim interface 5 once the agents are stopped. `nusb` has no seize, so an
+//!   interface that stays held makes the attempt fail with a message;
 //! - the look of text: glyphs come from the system's font files through `ab_glyph`, not from
-//!   CoreText, so metrics differ slightly from the old host's screens. Set
+//!   CoreText, so metrics differ slightly from text the system draws. Set
 //!   `SUPERTRACKER_MK3_SCREEN_DUMP=<folder>` to see every frame as PNG without the device;
-//! - the old host asked the controller for its current state when it connected (a GET_REPORT of the
-//!   button report); `async-hid` cannot, so knob baselines and held buttons are learned from the
-//!   first report the controller sends by itself.
+//! - the controller's state at connection: `async-hid` cannot ask for it (a GET_REPORT of the
+//!   button report), so knob baselines and held buttons are learned from the first report the
+//!   controller sends by itself.
 //!
 //! The macOS code type-checks from Linux (`cargo check -p st-mk3 --target aarch64-apple-darwin`).
 

@@ -1,6 +1,5 @@
-//! Ownership of the controller in every order: the scenarios of scripts/test-mk3-lifecycle.sh
-//! (tests/MaschineMK3LifecycleTests.swift), with the hardware and the vendor's agents replaced by
-//! `st_mk3::fake`. No hardware and no Native Instruments process is touched.
+//! Ownership of the controller in every order, with the hardware and the vendor's agents
+//! replaced by `st_mk3::fake`. No hardware and no Native Instruments process is touched.
 
 use std::sync::{Arc, Mutex};
 use std::thread;

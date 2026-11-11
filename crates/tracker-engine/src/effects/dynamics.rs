@@ -1,6 +1,4 @@
 //! Dynamics processors: compressor, gate, transient shaper, peak limiter and maximizer.
-//!
-//! Ported from the C++ `EffectsDynamics.hpp` (namespace `stfx::dynamics`).
 
 use super::common::{
     clamp, clean, core_accessors, db_gain, fast_db_gain, frame_buffers, gain_db, max, min, mix,
@@ -719,7 +717,7 @@ static DESCRIPTORS: [Descriptor; 5] = [
     ),
 ];
 
-/// `stfx::dynamicsDescriptors`.
+/// The catalogue entries of the dynamics effects.
 pub fn descriptors() -> &'static [Descriptor] {
     &DESCRIPTORS
 }

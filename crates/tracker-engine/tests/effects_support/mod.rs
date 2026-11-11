@@ -1,5 +1,6 @@
-//! Shared helpers for the effects integration tests (`tests/effects_*.rs`), which are ports
-//! of the C++ test programs that include the engine's internal headers.
+//! Shared helpers for the effects integration tests that use the processors directly
+//! (`tests/effects_distortion.rs`, `effects_drum_synth.rs`, `effects_perform.rs` and
+//! `effects_spatial_delay.rs`).
 #![allow(dead_code)]
 
 use std::cell::Cell;
@@ -10,8 +11,7 @@ thread_local! {
     static ALLOCATIONS: Cell<usize> = const { Cell::new(0) };
 }
 
-/// Counts heap allocations made on the current thread while counting is switched on: the
-/// equivalent of the C++ tests' replaced `operator new`.
+/// Counts heap allocations made on the current thread while counting is switched on.
 mod allocator {
     use super::{ALLOCATIONS, COUNTING};
     use std::alloc::{GlobalAlloc, Layout, System};
@@ -66,7 +66,7 @@ pub fn reset_allocations() {
     ALLOCATIONS.with(|count| count.set(0));
 }
 
-/// Check counter in the style of the C++ tests' `require`: counts, and fails on the spot.
+/// Check counter: counts, and fails on the spot.
 #[derive(Default)]
 pub struct Checks {
     pub count: usize,

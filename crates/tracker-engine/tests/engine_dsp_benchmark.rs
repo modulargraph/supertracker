@@ -1,13 +1,11 @@
-//! Port of the former C++ test program `engine_dsp_benchmark.cpp`: the offline engine performance and bit-exact
-//! differential fixture. No devices or plug-ins.
+//! The offline engine performance and bit-exact regression fixture. No devices or plug-ins.
 //!
-//! * `benchmark` (ignored) is the C++ program: it renders every scenario and prints the same JSON
-//!   line per scenario (timings, PCM hash, render allocations). The repetition count
-//!   and the scenario filter (`argv[1]`, `argv[2]`) are `ENGINE_DSP_BENCHMARK_REPETITIONS` and
-//!   `ENGINE_DSP_BENCHMARK_SCENARIO`. Run it with
+//! * `benchmark` (ignored) renders every scenario and prints one JSON line per scenario (timings,
+//!   PCM hash, render allocations). The repetition count and the scenario filter are
+//!   `ENGINE_DSP_BENCHMARK_REPETITIONS` and `ENGINE_DSP_BENCHMARK_SCENARIO`. Run it with
 //!   `cargo test --release --test engine_dsp_benchmark -- --ignored --nocapture`.
-//! * One test per scenario renders it with the program's own assertions (finite, bounded,
-//!   audible, zero render allocations) and compares the PCM hash with the recorded value.
+//! * One test per scenario renders it, asserts that the output is finite, bounded and audible
+//!   and that the render allocated nothing, and compares the PCM hash with the recorded value.
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
@@ -208,7 +206,7 @@ fn scene(scenario: &Scenario) -> Outcome {
     }
 }
 
-/// One scenario of the regression set: the program's assertions plus the recorded hashes.
+/// One scenario of the regression set: the scenario's assertions plus the recorded hashes.
 fn regression(name: &str) {
     let scenario = SCENARIOS.iter().find(|scenario| scenario.name == name).expect("scenario");
     let result = scene(scenario);
@@ -218,7 +216,7 @@ fn regression(name: &str) {
     }
 }
 
-/// The C++ program's `main`.
+/// Renders every scenario and prints its JSON line.
 #[test]
 #[ignore = "benchmark: prints one JSON line of timings and hashes per scenario"]
 fn benchmark() {

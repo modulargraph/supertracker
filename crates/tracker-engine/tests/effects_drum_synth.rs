@@ -1,7 +1,6 @@
-//! Port of the former C++ test program `drum_synth_tests.cpp`: the drum voices, their metadata and the offline
-//! one-hit render (`effects::drums`). Same checks, tolerances and check count (5514) as the
-//! C++ program.
-// The index loops mirror the C++ loops they translate.
+//! The drum voices, their metadata and the offline one-hit render (`effects::drums`): 5514
+//! checks.
+// The tests index their buffers in plain loops.
 #![allow(clippy::needless_range_loop)]
 
 mod effects_support;
@@ -121,7 +120,7 @@ fn drum_synthesis() {
             );
             c.check(
                 (meta.map_or(0.0, |m| m.default_normalized()) - p[i as usize] as f64).abs() < 1e-7,
-                "native default equals C++ default",
+                "metadata default equals the model default",
             );
             for n in 0..=100 {
                 let physical = meta.map_or(0.0, |m| m.physical_or_default(n as f64 / 100.0));
@@ -293,6 +292,6 @@ fn drum_synthesis() {
     assert!(c.failures.is_empty(), "failed checks: {:?}", c.failures);
     assert_eq!(
         c.checks, 5514,
-        "same number of checks as the C++ program drum_synth_tests.cpp"
+        "the number of checks in this file"
     );
 }
