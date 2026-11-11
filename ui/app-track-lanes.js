@@ -84,12 +84,12 @@
     const scope = hideScope(p), keep = new Set([state.track, state.selection?.track]);
     p.tracks.forEach((_, index) => {
       if (keep.has(index)) return;
-      const group = G()?.ofTrack(p, index);
+      const group = G().ofTrack(p, index);
       if (group && (group.collapsed || revealed.has(group.id))) return;
       if (!trackUsed(p, index, scope)) hidden.add(index);
     });
     // An expanded group keeps one column, so its header (and “+N hidden”) stays reachable.
-    for (const group of G()?.list(p) || []) {
+    for (const group of G().list(p)) {
       const members = G().members(p, group);
       if (members.length && members.every(index => hidden.has(index))) hidden.delete(members[0]);
     }
@@ -180,7 +180,7 @@
 
   function toggleTrackCollapsed(index = state.track) {
     if (!state.project.tracks[index]) return false;
-    const group = G()?.ofTrack(state.project, index);
+    const group = G().ofTrack(state.project, index);
     if (group?.collapsed) return app.toggleCollapse(group.id);
     return setTrackCollapsed(index, !isCollapsed(index));
   }
@@ -206,7 +206,7 @@
     const s = pattern().steps[i]?.[r],
       active = r === state.row && i === state.track,
       isSel = sel && r >= sel.r0 && r <= sel.r1 && i >= sel.t0 && i <= sel.t1;
-    const played = app.playedCells?.(s) || [], more = played.length > 1 || s?.chord?.length > 1 ? '+' : '';
+    const played = app.playedCells(s) || [], more = played.length > 1 || s?.chord?.length > 1 ? '+' : '';
     const text = !s ? '·' : played.length ? noteText(played[0].cell.note) + more : s.note < -2 ? 'fx' : noteText(s.note);
     return `<td data-cell="${i}:${r}" class="track-slim-cell ${active ? 'selected' : ''} ${isSel ? 'selection' : ''}`
         + ` ${silenced[i] ? 'track-silenced' : ''}"><span class="slim-hit ${s ? 'has-note' : ''}">${esc(text)}</span></td>`;
@@ -304,7 +304,7 @@
     const p = state.project;
     if (!p) return false;
     if (!indices) {
-      const group = G()?.ofTrack(p, state.track);
+      const group = G().ofTrack(p, state.track);
       if (group?.collapsed && !(state.selection && state.selection.track !== state.track)) return deleteGroup(group.id);
       indices = laneSelection();
     }
@@ -328,7 +328,7 @@
   /* A group: delete it with its tracks, or ungroup (the tracks stay and route to Master; the group bus with its
      inserts and sends goes). Resolves to 'delete', 'ungroup' or false. */
   function deleteGroup(groupID) {
-    const p = state.project, group = G()?.byID(p, groupID);
+    const p = state.project, group = G().byID(p, groupID);
     if (!group) {
       toast('Move the cursor to a group to delete it.');
       return Promise.resolve(false);
@@ -376,7 +376,7 @@
   function deleteMixerSelection() {
     const owner = String(state.mixerOwner || '');
     if (owner.startsWith('bus:')) {
-      const group = G()?.groupOfBus(state.project, owner);
+      const group = G().groupOfBus(state.project, owner);
       return group ? deleteGroup(group.id) : (toast('Only tracks and groups can be deleted here.'), Promise.resolve(false));
     }
     return deleteTracks([state.track]);
@@ -464,7 +464,7 @@
       return true;
     },
     deleteGroup: () => {
-      const group = window.STGroups?.ofTrack(app.state.project, app.state.track);
+      const group = window.STGroups.ofTrack(app.state.project, app.state.track);
       if (!group) return app.toast('Move the cursor to a group to delete it.');
       void app.deleteGroup(group.id);
       return true;

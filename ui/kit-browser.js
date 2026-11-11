@@ -264,7 +264,7 @@
     const item = current();
     if (!item) return '<div class="browser-empty browser-detail-empty"><h3>Select a kit</h3><p>← → move between expansions, filters and kits<br>Space previews the group · Return adds the kit<br>Shift Return adds it and opens its sounds</p></div>';
     const meta = metadata(item), path = previewPath(item), playing = local.previewPath && local.previewPath === path;
-    const blocked = !canImport(item), projectKits = window.STGroups?.list(S().state.project) || [], laneKit = window.STKitGroups?.cursorGroup?.();
+    const blocked = !canImport(item), projectKits = window.STGroups.list(S().state.project), laneKit = window.STKitGroups?.cursorGroup?.();
     const tags = [...(item.types || []).filter(type => !(item.subtypes || []).some(sub => sub.startsWith(type + SEPARATOR))).map(value => ['types', value, value]),
       ...(item.subtypes || []).map(value => ['subtypes', value, subtypeLabel(value)]), ...(item.characters || []).map(value => ['characters', value, value])];
     const tint = safeColor(item.color) || (item.art ? '' : nameColor(item.product || item.name));
@@ -510,7 +510,7 @@
     const boundProject = S().state.project;
     on('kitb-replacement-target', event => {
       if (local.busy || S().state.project !== boundProject) return;
-      const members = window.STGroups?.members(boundProject, event.target.value) || [];
+      const members = window.STGroups.members(boundProject, event.target.value);
       if (members.length) { S().state.track = members[0]; S().state.instrument = boundProject.tracks[members[0]].instrument || 0; }
       replaceDetail();
     }, 'change');

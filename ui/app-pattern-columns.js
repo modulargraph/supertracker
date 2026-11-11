@@ -7,7 +7,7 @@
   const { clamp, esc, noteText, colors, state, pattern } = app;
 
   function trackSilenced(p, i) {
-    const group = window.STGroups?.ofTrack(p, i),
+    const group = window.STGroups.ofTrack(p, i),
       bus = group && p.routing.buses.find(item => item.id === group.busID);
     if (bus?.mute || bus && !bus.solo && p.routing.buses.some(item => item.type === 'group' && item.solo)
         && !p.tracks[i]?.solo) return true;
@@ -56,7 +56,7 @@
     const p = state.project,
       src = trackSource(t),
       num = String(i + 1).padStart(2, '0'),
-      group = window.STGroups?.ofTrack(p, i),
+      group = window.STGroups.ofTrack(p, i),
       // The cursor track's header buttons are in the Tab order; the others are reached with arrows (block navigation).
       // Stable ids keep keyboard focus on a button when it re-renders the grid (refresh restores focus by id).
       tab = i === state.track ? 0 : -1;
@@ -68,7 +68,7 @@
         + ` id="track-${i}-mute" tabindex="${tab}" aria-pressed="${!!t.mute}" aria-label="Mute ${esc(t.name)}" title="Mute track · ⌥M">M</button>`
         + `<button class="track-ms ${t.solo ? 'on solo' : ''}" data-track-toggle="solo" data-toggle-index="${i}"`
         + ` id="track-${i}-solo" tabindex="${tab}" aria-pressed="${!!t.solo}" aria-label="Solo ${esc(t.name)}"`
-        + ` title="Solo track · ⌥S">S</button></span>${app.headerActions?.(t, i) || ''}${app.noteColumnButtons?.(t, i) || ''}</div><button class="track-source" data-track-source="${i}"`
+        + ` title="Solo track · ⌥S">S</button></span>${app.headerActions?.(t, i) || ''}${app.noteColumnButtons(t, i) || ''}</div><button class="track-source" data-track-source="${i}"`
         + ` data-source-type="${src.type}" id="track-${i}-source" tabindex="${tab}" aria-label="${esc(src.full)} · change instrument"`
         + ` title="${esc(src.full)} · click to change the assigned instrument (F6 → Note destination)">`
         + `<span class="source-badge">${src.badge}</span>${src.slot ? `<span class="source-slot">${src.slot}</span>` : ''}<span `
@@ -77,7 +77,7 @@
 
   // Sub-column labels; a track with several note columns shows NOTE INS VEL for each, then FX, then a GATE for each.
   function trackColumnLabels(i) {
-    const count = app.noteColumnCount?.(i) || 1,
+    const count = app.noteColumnCount(i) || 1,
       gate = n => `<span${n ? ` class="note-column-label" data-note-column="${n}"` : ''} title="Note length in pattern rows (— none: plays until the `
           + `next note, OFF or CUT); edit Gate below">GATE</span>`;
     if (count === 1) return `<div class="track-columns"><span>NOTE</span><span>INS</span><span>VEL</span><span>FX 1</span>`
@@ -128,7 +128,7 @@
      empty tracks drop out and collapsed tracks are slim columns ({ slim: true }, app-track-lanes.js). */
   function patternColumns() {
     const p = state.project,
-      columns = window.STGroups ? window.STGroups.columns(p) : p.tracks.map((track, index) => ({ track, index, group: null }));
+      columns = window.STGroups.columns(p);
     return app.laneColumns ? app.laneColumns(columns) : columns;
   }
 
@@ -137,7 +137,7 @@
     return columns.findIndex(c => c.index === track || c.members?.includes(track));
   }
 
-  const showsGroupRow = p => !!window.STGroups?.list(p).length;
+  const showsGroupRow = p => !!window.STGroups.list(p).length;
 
   // The row above the track headers: one cell per group spanning its columns.
   function patternGroupHeaders(columns = patternColumns(), segments = null) {
@@ -198,7 +198,7 @@
       isSel = sel && r >= sel.r0 && r <= sel.r1 && members.some(m => m >= sel.t0 && m <= sel.t1),
       hits = members.flatMap(m => steps[m]?.[r] ? [[m, steps[m][r]]] : []);
     const chips = hits.map(([m, step]) => {
-      const track = p.tracks[m], played = app.playedCells?.(step) || [], note = played[0]?.cell.note ?? step.note,
+      const track = p.tracks[m], played = app.playedCells(step) || [], note = played[0]?.cell.note ?? step.note,
         pitch = (note < 0 || note !== (track.padNote ?? 60) ? ' ' + noteText(note) : '') + (played.length > 1 ? '+' : '');
       return `<button class="group-hit ${active && state.track === m ? 'is-selected' : ''}" data-member-track="${m}" tabindex="-1"`
           + ` style="--lane:${esc(track.color || colors[m % 8])}" title="${esc(track.name)} · ${noteText(step.note)} · v${esc(step.velocity ?? 100)} · click to edit">`
@@ -221,7 +221,7 @@
       isSel = sel && r >= sel.r0 && r <= sel.r1 && i >= sel.t0 && i <= sel.t1;
     return `<td data-cell="${i}:${r}" class="${active ? 'selected' : ''} ${isSel ? 'selection' : ''} ${silenced[i] ? 'track-silenced' : ''}`
         + ` ${s?.chord?.length > 1 ? 'has-chord' : ''}"${s?.chord?.length > 1 ? ' title="Chord ' + esc(patternHitNotes(s)) + '"' : ''}>`
-        + `<div class="tracker-cell"${app.cellGridStyle?.(i) || ''}>${app.renderPatternCellContent(s, t, i, active)}</div></td>`;
+        + `<div class="tracker-cell"${app.cellGridStyle(i) || ''}>${app.renderPatternCellContent(s, t, i, active)}</div></td>`;
   }
 
   Object.assign(app, {

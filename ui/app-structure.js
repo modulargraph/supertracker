@@ -84,8 +84,8 @@
     if (state.project.tracks.length === 1) return toast('Keep at least one track in a session.');
     const index = state.track;
     mutate('remove track', p => {
-      const group = window.STGroups?.ofTrack(p, index),
-        removedOwner = window.STRoutingProject?.trackOwner(p.tracks[index]),
+      const group = window.STGroups.ofTrack(p, index),
+        removedOwner = window.STRoutingProject.trackOwner(p.tracks[index]),
         ownsPlugin = x => x.owner === removedOwner,
         // A lane names its channel by owner, or (the engine's own track parameters) its track by index.
         ownsLane = x => x.owner ? x.owner === removedOwner : x.track === index;
@@ -116,7 +116,7 @@
     if (state.project.instruments.length === 1) return toast('Keep at least one instrument in a session.');
     const index = state.instrument;
     mutate('remove instrument', p => {
-      const affected = new Set(p.tracks.filter(t => t.instrument === index).map(t => window.STRoutingProject?.trackOwner(t)));
+      const affected = new Set(p.tracks.filter(t => t.instrument === index).map(t => window.STRoutingProject.trackOwner(t)));
       p.audioPlugins = p.audioPlugins.filter(x => !(x.kind === 'instrument' && affected.has(x.owner)));
       // The removed instrument's insert chain goes with it; later instruments' chains follow their new index.
       window.STInstrumentEffects?.reindexAfterRemoval(p, index);

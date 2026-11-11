@@ -176,7 +176,7 @@
     };
     if (current.column === 1 || current.column === 2) {
       if (!current.text) return options.render !== false ? (refresh(), false) : false;
-      const n = current.noteColumn || 0, cell = n ? app.noteCell(step, n) : app.isColumnHolder?.(step) ? null : step;
+      const n = current.noteColumn || 0, cell = n ? app.noteCell(step, n) : app.isColumnHolder(step) ? null : step;
       if (!cell) return reject(`Enter a note on this row first (NOTE column), then type its ${current.column === 1 ? 'instrument' : 'velocity'}.`);
       // An extra note column's cell (app-note-columns.js), or the step itself.
       const write = values => n ? app.setColumnCell(steps, current.row, n, { ...cell, ...values }) : steps[current.row] = { ...steps[current.row], ...values };
@@ -229,9 +229,9 @@
     const target = e.target;
     if (!(target?.id === 'tracker' || target === document.body || target?.closest?.('.tracker'))) return false;
     if (e.metaKey || e.ctrlKey || e.altKey) return finishOn(e);
-    if (window.STGroups?.ofTrack(state.project, state.track)?.collapsed) return false;
+    if (window.STGroups.ofTrack(state.project, state.track)?.collapsed) return false;
     const column = state.column, key = e.key, upper = key.length === 1 ? key.toUpperCase() : '';
-    const noteColumn = app.cursorNoteColumn?.() || 0;
+    const noteColumn = app.cursorNoteColumn() || 0;
     const here = entry && entry.column === column && (entry.noteColumn || 0) === noteColumn && entry.track === state.track && entry.row === state.row
         && entry.patternID === pattern().id;
     if (entry && !here) finishEntry({ advance: false, render: false });

@@ -9,7 +9,7 @@
   // A collapsed group is one column: a selection edge inside it covers all of its members.
   function widenToGroups(b) {
     const groups = window.STGroups, p = state.project;
-    if (!b || !groups?.list(p).length) return b;
+    if (!b || !groups.list(p).length) return b;
     const first = groups.ofTrack(p, b.t0), last = groups.ofTrack(p, b.t1);
     if (first?.collapsed) b.t0 = Math.min(b.t0, groups.span(p, first).first);
     if (last?.collapsed) b.t1 = Math.max(b.t1, groups.span(p, last).last);
@@ -45,7 +45,7 @@
   // instrument plays the destination member's instrument (a kick pasted onto the snare plays the snare).
   const pastedStep = (cell, index, column) => {
     const step = clone(cell), track = state.project.tracks[index];
-    if (step && track && window.STGroups?.ofTrack(state.project, index)
+    if (step && track && window.STGroups.ofTrack(state.project, index)
         && step.instrument !== undefined && step.instrument === state.clipboardInstruments?.[column]) step.instrument = track.instrument;
     return step;
   };
@@ -59,7 +59,7 @@
         const row = state.row + r;
         if (row >= pattern().length) return;
         const step = app.tidyStep ? app.tidyStep(pastedStep(s, index, t)) : pastedStep(s, index, t);
-        app.growNoteColumns?.(state.project, index, step);
+        app.growNoteColumns(state.project, index, step);
         pattern().steps[index][row] = step;
       });
     }));
@@ -69,7 +69,7 @@
      an extra note column's cell, or column 0's note and FX (other note columns stay; app-note-columns.js). */
   function clearSelection() {
     if (!state.selection && app.clearCell && (state.project.tracks[state.track]?.noteColumns || 1) > 1
-        && !window.STGroups?.ofTrack(state.project, state.track)?.collapsed) {
+        && !window.STGroups.ofTrack(state.project, state.track)?.collapsed) {
       return mutate('clear steps', () => app.clearCell(pattern().steps[state.track], state.row, app.cursorNoteColumn()));
     }
     mutate('clear steps', () => eachSelected((a, r) => { a[r] = null; }));

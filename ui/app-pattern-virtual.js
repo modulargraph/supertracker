@@ -51,7 +51,7 @@
   // A collapsed track group's overview column: a little wider than a track column so a row's pad hits fit as
   // compact chips. Used by the virtual grid and, as a fixed <col> width, by the ordinary grid.
   const GROUP_OVERVIEW_WIDTH = 260;
-  const patternColumnWidth = c => c.collapsed ? GROUP_OVERVIEW_WIDTH : c.slim ? app.SLIM_WIDTH || 58 : 182 + (app.noteColumnExtraWidth?.(c.index) || 0);
+  const patternColumnWidth = c => c.collapsed ? GROUP_OVERVIEW_WIDTH : c.slim ? app.SLIM_WIDTH || 58 : 182 + (app.noteColumnExtraWidth(c.index) || 0);
 
   const patternCursorColumn = columns => columnFor(columns, state.track);
 

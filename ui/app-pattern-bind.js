@@ -180,7 +180,7 @@
     if ($('#step-cut')) $('#step-cut').onclick = () => app.perform('noteCut');
     app.bindPatternGroups();
     app.bindTrackLanes?.();
-    app.bindNoteColumns?.();
+    app.bindNoteColumns();
     updatePlayhead(state.status);
   }
 

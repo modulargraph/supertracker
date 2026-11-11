@@ -576,7 +576,7 @@
         buses: p.routing.buses.map(bus => ({ channel: `bus:${bus.id}`, name: bus.name, type: busChannel(bus).type,
           effects: channelEffects(p, busChannel(bus)).map(plugin => plugin.nks?.name || plugin.name) }))
       },
-      performance: { scale: s.scale, root: SHARP[s.root || 0], chord: s.chord, chordSet: s.chordSet || null, summary: S().performanceSummary?.() },
+      performance: { scale: s.scale, root: SHARP[s.root || 0], chord: s.chord, chordSet: s.chordSet || null, summary: S().performanceSummary() },
       history: { undo: s.undo.length, redo: s.redo.length, last: s.undo[s.undo.length - 1]?.label || null }
     };
   });
@@ -1952,7 +1952,7 @@
         if (pan !== undefined) entity.pan = pan;
         for (const key of ['mute', 'solo']) if (params[key] !== undefined) entity[key] = params[key];
         // A track group's bus carries the group's name (track-groups.js renames both).
-        if (name !== undefined) { if (entity.groupID && window.STGroups?.byID(draft, entity.groupID)) window.STGroups.rename(draft, entity.groupID, name); else entity.name = name; }
+        if (name !== undefined) { if (entity.groupID && window.STGroups.byID(draft, entity.groupID)) window.STGroups.rename(draft, entity.groupID, name); else entity.name = name; }
         if (output !== undefined) draft.routing.outputs[ch.owner] = output;
       }
       return {};
@@ -2155,9 +2155,9 @@
       if (!isInt(params.octave) || params.octave < 0 || params.octave > 8) fail('octave must be 0–8.');
       changes.octave = params.octave;
     }
-    if (!Object.keys(changes).length) return { options: { scales: Object.keys(scales), chords: Object.fromEntries(Object.entries(chords).map(([k, v]) => [k, v.notes])), chordSets: sets.map(set => ({ id: set.id, name: set.name, mood: set.mood, minor: !!set.minor })), scaleModes: ['snap', 'degrees'] }, current: S().performanceSummary?.() };
+    if (!Object.keys(changes).length) return { options: { scales: Object.keys(scales), chords: Object.fromEntries(Object.entries(chords).map(([k, v]) => [k, v.notes])), chordSets: sets.map(set => ({ id: set.id, name: set.name, mood: set.mood, minor: !!set.minor })), scaleModes: ['snap', 'degrees'] }, current: S().performanceSummary() };
     S().setPerformance(changes, false);
-    return { changed: true, performance: S().performanceSummary?.() };
+    return { changed: true, performance: S().performanceSummary() };
   });
 
   // ---------------------------------------------------------------- transport
@@ -2296,7 +2296,7 @@
         trackName: p.tracks[s.track]?.name,
         row: s.row,
         column: COLUMNS[s.column] || s.column,
-        ...(window.STApp?.cursorNoteColumn?.() ? { noteColumn: window.STApp.cursorNoteColumn() } : {}),
+        ...(window.STApp?.cursorNoteColumn() ? { noteColumn: window.STApp.cursorNoteColumn() } : {}),
         step: pat.steps[s.track]?.[s.row] ? describeStep(pat.steps[s.track][s.row], s.row) : null
       },
       selection: sel ? { tracks: [sel.t0, sel.t1], rows: [sel.r0, sel.r1] } : null,
@@ -2306,7 +2306,7 @@
       editStep: s.editStep,
       keyboardPiano: !!s.keyboardPlay,
       follow: !!s.follow,
-      performance: S().performanceSummary?.()
+      performance: S().performanceSummary()
     };
   });
   const VIEWS = ['pattern', 'instrument', 'browser', 'mixer', 'automation', 'song'];

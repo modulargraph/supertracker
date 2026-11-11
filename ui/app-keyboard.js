@@ -387,7 +387,7 @@
         if (!e.repeat) perform(e.code === 'KeyJ' ? 'toggleGroup' : 'padKeys');
         return;
       }
-      if (e.key === 'Enter' && !cmd && !e.altKey && !e.shiftKey && window.STGroups?.ofTrack(state.project, state.track)?.collapsed) {
+      if (e.key === 'Enter' && !cmd && !e.altKey && !e.shiftKey && window.STGroups.ofTrack(state.project, state.track)?.collapsed) {
         e.preventDefault();
         app.toggleCollapse();
         return;

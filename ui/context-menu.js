@@ -276,7 +276,7 @@
       { title: 'Add track', key: '⌘T', action: () => app.perform('addTrack') },
       { title: 'Move left', key: '⌘⇧←', enabled: index > 0, action: () => app.perform('moveTrackLeft') },
       { title: 'Move right', key: '⌘⇧→', enabled: index < state.project.tracks.length - 1, action: () => app.perform('moveTrackRight') },
-      window.STGroups?.ofTrack?.(state.project, index)
+      window.STGroups.ofTrack(state.project, index)
           ? { title: 'Take out of group', key: '⌘⇧G', action: () => app.perform('ungroupTrack') }
           : { title: inSelection ? `Group ${lanes.length} tracks` : 'Group track', key: '⌘G', action: () => app.perform('groupTracks') },
       L.deleteGroup && header.dataset.groupOverview !== undefined

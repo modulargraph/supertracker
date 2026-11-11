@@ -12,14 +12,14 @@
     try { return localStorage.getItem('st.padKeys') === '1'; } catch { return false; }
   })();
 
-  const cursorGroup = () => G()?.ofTrack(state.project, state.track) || null;
+  const cursorGroup = () => G().ofTrack(state.project, state.track) || null;
 
   /* Collapse state is a display preference: it is saved with the session but adds no Undo
      step, and it is written into the Undo/Redo snapshots so Undo never flips the view. */
   function setViewPreference(groupID, key, value) {
     let changed = false;
     for (const p of [state.project, ...state.undo.map(x => x.project), ...state.redo.map(x => x.project)]) {
-      const group = G()?.byID(p, groupID);
+      const group = G().byID(p, groupID);
       if (group && group[key] !== value) {
         group[key] = value;
         if (p === state.project) changed = true;
@@ -34,7 +34,7 @@
   }
 
   function setCollapsed(groupID, collapsed, options = {}) {
-    const group = G()?.byID(state.project, groupID);
+    const group = G().byID(state.project, groupID);
     if (!group) return false;
     setViewPreference(groupID, 'collapsed', !!collapsed);
     const members = G().members(state.project, group);
@@ -46,13 +46,13 @@
   }
 
   function toggleCollapse(groupID = cursorGroup()?.id) {
-    const group = G()?.byID(state.project, groupID);
+    const group = G().byID(state.project, groupID);
     if (!group) return toast('Move the cursor to a group to collapse or expand it.');
     return setCollapsed(group.id, !group.collapsed);
   }
 
   function toggleBus(groupID, property) {
-    const group = G()?.byID(state.project, groupID);
+    const group = G().byID(state.project, groupID);
     if (!group || !['mute', 'solo'].includes(property)) return false;
     return mutate(`${property} group`, p => {
       const bus = G().ensureBus(p, G().byID(p, groupID));
@@ -61,7 +61,7 @@
   }
 
   function renameGroup(groupID = cursorGroup()?.id) {
-    const group = G()?.byID(state.project, groupID);
+    const group = G().byID(state.project, groupID);
     if (!group) return toast('Move the cursor to a group to rename it.');
     const project = state.project;
     app.textPrompt('Group name', group.name, name => state.project === project
@@ -87,7 +87,7 @@
   }
 
   function ungroupTrack(index = state.track) {
-    if (!G()?.ofTrack(state.project, index)) return toast('The selected track is not in a group.');
+    if (!G().ofTrack(state.project, index)) return toast('The selected track is not in a group.');
     return mutate('ungroup track', p => {
       const map = G().removeTrack(p, index);
       state.track = map[index];
@@ -97,7 +97,7 @@
   }
 
   function dissolveGroup(groupID = cursorGroup()?.id) {
-    if (!G()?.byID(state.project, groupID)) return toast('Move the cursor to a group to dissolve it.');
+    if (!G().byID(state.project, groupID)) return toast('Move the cursor to a group to dissolve it.');
     return mutate('dissolve group', p => G().dissolve(p, groupID));
   }
 
@@ -118,7 +118,7 @@
 
   // A new empty sampler track at the end of the cursor's group (a new pad).
   function addGroupTrack(groupID = cursorGroup()?.id) {
-    const group = G()?.byID(state.project, groupID);
+    const group = G().byID(state.project, groupID);
     if (!group) return toast('Move the cursor to a group to add a track to it.');
     const id = state.project.instruments.length;
     return mutate('add track to group', p => {
@@ -179,7 +179,7 @@
 
   // Entering notes on a collapsed group needs Pad keys (or expanding it): the overview is read-only.
   function blocksRecording(track = state.track) {
-    const group = G()?.ofTrack(state.project, track);
+    const group = G().ofTrack(state.project, track);
     return !!group?.collapsed && !state.padKeys;
   }
 

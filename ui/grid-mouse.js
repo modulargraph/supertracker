@@ -23,7 +23,7 @@
       cell.classList.toggle('selected', active);
       cell.classList.toggle('selection', covers(b, t, r));
       cell.querySelectorAll('[data-column]').forEach(column => column.classList.toggle('active-column',
-          active && Number(column.dataset.column) === state.column && Number(column.dataset.noteColumn || 0) === (window.STApp?.cursorNoteColumn?.() || 0)));
+          active && Number(column.dataset.column) === state.column && Number(column.dataset.noteColumn || 0) === (window.STApp?.cursorNoteColumn() || 0)));
     });
   }
   function current(done) {
@@ -50,7 +50,7 @@
   // A step that played its source track's own instrument plays the destination member's.
   function moved(step, from, to) {
     const project = S().state.project, copy = window.STUtil.clone(step), source = project.tracks[from], target = project.tracks[to];
-    if (copy && source && target && from !== to && window.STGroups?.ofTrack(project, to) && copy.instrument === source.instrument) copy.instrument = target.instrument ?? 0;
+    if (copy && source && target && from !== to && window.STGroups.ofTrack(project, to) && copy.instrument === source.instrument) copy.instrument = target.instrument ?? 0;
     return copy;
   }
 
@@ -133,7 +133,7 @@
       for (let t = b.t0; t <= b.t1; t++) block.push(steps[t].slice(b.r0, b.r1 + 1).map(step => step ? moved(step, t, t + dt) : null));
       if (!copy) for (let t = b.t0; t <= b.t1; t++) for (let r = b.r0; r <= b.r1; r++) steps[t][r] = null;
       block.forEach((column, i) => column.forEach((step, j) => {
-        window.STApp?.growNoteColumns?.(app.state.project, b.t0 + dt + i, step);
+        window.STApp?.growNoteColumns(app.state.project, b.t0 + dt + i, step);
         steps[b.t0 + dt + i][b.r0 + dr + j] = step;
       }));
     });

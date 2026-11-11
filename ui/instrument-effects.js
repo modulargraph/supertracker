@@ -16,7 +16,7 @@
   const owner = index => `instrument:${Number(index)}`;
   const indexOf = value => { const match = OWNER.exec(String(value ?? '')); return match ? Number(match[1]) : -1; };
   const isOwner = value => OWNER.test(String(value ?? ''));
-  const uid = () => window.STUtil?.uid?.() || (globalThis.crypto?.randomUUID?.() || `ifx-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
+  const uid = () => globalThis.crypto?.randomUUID?.() || `ifx-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   const clone = value => JSON.parse(JSON.stringify(value));
 
   /** The instrument's effects in chain order (project descriptors). */

@@ -147,7 +147,7 @@
         : null;
     if (gridScope) gridScope.remaining++;
     // Several note columns: a single note takes a free note column (held notes keep theirs), see app-note-columns.js.
-    const columns = (app.noteColumnCount?.(track, project) || 1) > 1 && notes.length === 1,
+    const columns = (app.noteColumnCount(track, project) || 1) > 1 && notes.length === 1,
       noteColumn = columns ? app.claimColumn(track, inputOwner, app.cursorNoteColumn(track)) : null,
       columnCursor = { columns: columns && noteColumn !== null, held: columns && noteColumn !== null && app.heldColumnCount(track) > 1 };
     const capture = {
@@ -304,7 +304,7 @@
       if (on && capture.gridScope) app.finishStoppedGridItem(capture.gridScope);
       if (!on) {
         if (capture.record) capture.record.group.active.delete(capture.record.token);
-        app.releaseColumn?.(capture.track, capture.inputOwner);
+        app.releaseColumn(capture.track, capture.inputOwner);
         capture.finished = true;
         inputCaptures.delete(capture);
         if (midiInputCaptures.get(capture.inputOwner) === capture) midiInputCaptures.delete(capture.inputOwner);
@@ -341,7 +341,7 @@
 
   function discardInputCaptures() {
     app.inputCursorLineage = null;
-    app.clearHeldColumns?.();
+    app.clearHeldColumns();
     for (const scope of stoppedGridScopes) scope.invalid = true;
     stoppedGridScopes.clear();
     app.stoppedGridScope = null;

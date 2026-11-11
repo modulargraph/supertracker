@@ -76,7 +76,7 @@
         + `<button id="gate-column" class="${app.gateColumnShown() ? 'active' : ''}" aria-pressed="${app.gateColumnShown()}"`
         + ` title="Show the Gate column: an optional note length in rows. Without a gate a note plays until the next note,`
         + ` OFF or CUT on its track · ⌘K “Gate column”">Gate</button>`
-        + `${app.hideEmptyControls?.() || ''}${window.STGroups?.list(p).length ? app.padKeysButton() : ''}`
+        + `${app.hideEmptyControls?.() || ''}${window.STGroups.list(p).length ? app.padKeysButton() : ''}`
         + `</div><div class="toolbar-group perf-group ${app.perfToolbarOpen ? 'is-open' : ''} ${app.performanceIsDefault() ? '' : 'is-custom'}"`
         + ` role="group" aria-label="Keyboard performance"><button type="button" class="perf-chip" id="perf-toggle"`
         + ` aria-expanded="${app.perfToolbarOpen}" aria-controls="perf-controls" title="Keyboard performance: octave, `
@@ -116,7 +116,7 @@
   }
 
   function renderPatternCellContent(s, t, i, active) {
-    if ((app.noteColumnCount?.(i) || 1) > 1) return renderNoteColumnsContent(s, t, i, active);
+    if ((app.noteColumnCount(i) || 1) > 1) return renderNoteColumnsContent(s, t, i, active);
     return `${[noteText(s?.note),
         s ? String(s.instrument ?? t.instrument).padStart(2, '0') : '··',
         s ? String(s.velocity ?? 100).padStart(3, '0') : '···', fxText(s?.fx1), fxText(s?.fx2)].map((v, c) => `<span data-column="${c}"${c >= 3 && s?.['fx' + (c - 2)] && app.fxTitle
@@ -158,7 +158,7 @@
     if (state.view !== 'pattern' || pattern() !== pat) return;
     // A note on a track hidden as empty (app-track-lanes.js) brings it back: the grid renders again.
     if (app.wasHidden?.(track)) return refresh();
-    const group = window.STGroups?.ofTrack(state.project, track);
+    const group = window.STGroups.ofTrack(state.project, track);
     if (group?.collapsed) {
       const column = patternColumns().find(c => c.collapsed && c.group.id === group.id),
         node = column && $(`[data-cell="${column.index}:${row}"]`);
@@ -191,8 +191,8 @@
 
   function renderStepEditor() {
     // Note, Ins, Vel and Gate edit the cursor's note column; the FX belong to the row (column 0).
-    const s = pattern().steps[state.track]?.[state.row], n = app.cursorNoteColumn?.() || 0,
-      cell = n ? app.noteCell(s, n) && { ...app.noteCell(s, n), gate: app.noteCell(s, n).gate ?? 0 } : app.isColumnHolder?.(s) ? null : s;
+    const s = pattern().steps[state.track]?.[state.row], n = app.cursorNoteColumn() || 0,
+      cell = n ? app.noteCell(s, n) && { ...app.noteCell(s, n), gate: app.noteCell(s, n).gate ?? 0 } : app.isColumnHolder(s) ? null : s;
     return `<div class="step-editor"><span class="step-heading">STEP ${String(state.row).padStart(2, '0')}${n ? ` · N${n + 1}` : ''}</span><label>Note `
         + `<input id="step-note" type="number" min="-3" max="127" title="MIDI note, -1 off, -2 cut, -3 ${n ? 'empty' : 'effects only'}"`
         + ` value="${esc(cell?.note ?? 60)}"></label><label>Ins <input id="step-instrument" type="text" list="step-instrument-list" autocomplete="off"`

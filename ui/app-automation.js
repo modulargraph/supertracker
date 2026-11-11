@@ -20,10 +20,10 @@
     const p = state.project,
       ownerArgument = typeof track === 'string'
           && (track === 'master' || track.startsWith('track:') || track.startsWith('bus:') || track.startsWith('instrument:'));
-    const owner = ownerArgument ? track : window.STRoutingProject?.trackOwner(p.tracks[Number(track)]);
+    const owner = ownerArgument ? track : window.STRoutingProject.trackOwner(p.tracks[Number(track)]);
     const index = ownerArgument
         ? owner.startsWith('track:')
-            ? p.tracks.findIndex(item => window.STRoutingProject?.trackOwner(item) === owner)
+            ? p.tracks.findIndex(item => window.STRoutingProject.trackOwner(item) === owner)
             : -1
         : Number(track);
     const validOwner = owner === 'master'

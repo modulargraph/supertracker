@@ -47,7 +47,7 @@
      Group buttons A–H, Home columns, pads and the CHANNEL / PLUG-IN levels read groups from the project. */
   const G = () => window.STGroups;
   const app = () => window.STApp;
-  const groupOf = (track = st().track, p = P()) => G()?.ofTrack(p, track) || null;
+  const groupOf = (track = st().track, p = P()) => G().ofTrack(p, track) || null;
   const membersOf = (group, p = P()) => group ? G().members(p, group) : [];
   const busOf = (group, p = P()) => group ? p?.routing.buses.find(bus => bus.id === group.busID) || null : null;
   /* Entries: what the group buttons show, in track order. Each ungrouped track is one entry and each group one
@@ -55,7 +55,7 @@
   function entries(p = P()) {
     const list = [], byGroup = new Map();
     (p?.tracks || []).forEach((track, index) => {
-      const id = track?.groupID, group = id ? G()?.byID(p, id) : null;
+      const id = track?.groupID, group = id ? G().byID(p, id) : null;
       if (!group) { list.push({ group: null, index, members: [index] }); return; }
       let entry = byGroup.get(id);
       if (!entry) { entry = { group, index, members: [] }; byGroup.set(id, entry); list.push(entry); }

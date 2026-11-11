@@ -52,7 +52,7 @@
   const duplicateTrack = () => window.STTrackDuplicate?.duplicate();
   // The cursor's group (a kit) in the mixer: its bus strip, members shown.
   function revealGroup() {
-    const group = window.STGroups?.ofTrack(state.project, state.track);
+    const group = window.STGroups.ofTrack(state.project, state.track);
     if (!group) return toast('Move the cursor to a group (kit) to show it in the Mixer.');
     app.setViewPreference(group.id, 'mixerCollapsed', false);
     setView('mixer');

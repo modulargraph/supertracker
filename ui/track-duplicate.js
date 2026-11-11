@@ -101,7 +101,7 @@
         state.track = proposal.trackIndex;
         // A copied group member stays in its group, right after its source track.
         const groups = window.STGroups;
-        if (groups?.ofTrack(project, proposal.trackIndex)) {
+        if (groups.ofTrack(project, proposal.trackIndex)) {
           const order = project.tracks.map((_, i) => i).filter(i => i !== proposal.trackIndex);
           order.splice(order.indexOf(proposal.sourceTrackIndex) + 1, 0, proposal.trackIndex);
           state.track = groups.reorder(project, order)[proposal.trackIndex];
@@ -112,7 +112,7 @@
   /* Duplicate a whole track group (a kit): every member track and the group bus with its inserts, sends and
      automation, as a new group right after the source group (Maschine's DUPLICATE + group). One Undo step. */
   function duplicateGroup(groupID) {
-    const state = app().state, owner = state.project, groups = window.STGroups, group = groups?.byID(owner, groupID);
+    const state = app().state, owner = state.project, groups = window.STGroups, group = groups.byID(owner, groupID);
     if (!group) return Promise.resolve(false);
     const members = groups.members(owner, group).map(i => owner.tracks[i]), cursor = Math.max(0, groups.members(owner, group).indexOf(state.track));
     return run({

@@ -435,7 +435,7 @@
     const p=project(), bus=ownerEntity(owner,p);if(!bus||!owner.startsWith('bus:'))return;
     // A track group's bus goes with its group (Ungroup or Delete group): removing only the bus would leave the
     // group, its pattern header and its mute / solo without a channel.
-    const group=window.STGroups?.groupOfBus?.(p,owner);
+    const group=window.STGroups.groupOfBus(p,owner);
     if(group){
       if(window.STApp?.deleteGroup)void window.STApp.deleteGroup(group.id);
       else S().toast(`${bus.name} is the bus of the track group ${group.name}. Ungroup or delete the group to remove it.`);

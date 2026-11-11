@@ -5,11 +5,11 @@
   let assigning=null,arming=null,playing=null;
   const grid=()=>{const node=document.getElementById('tracker');node?.focus({preventScroll:true});};
   function laneLabel(lane,index,p){
-    const group=window.STGroups?.ofTrack(p,index);
+    const group=window.STGroups.ofTrack(p,index);
     return `${String(index+1).padStart(2,'0')} · ${lane.name} · ${group?'Group '+group.name:p.instruments[lane.instrument]?.name||'Instrument'}`;
   }
   function instruction(){
-    if(window.STGroups?.ofTrack(state().project,state().track)&&state().padKeys)return 'Pad keys: Z S X D C V … play and enter the group’s tracks on this row. ⌥Z turns them off.';
+    if(window.STGroups.ofTrack(state().project,state().track)&&state().padKeys)return 'Pad keys: Z S X D C V … play and enter the group’s tracks on this row. ⌥Z turns them off.';
     return 'Arm notes, then type Z–M on the grid. ↑↓ chooses a step; Space plays and Escape stops. Existing notes keep their instrument numbers.';
   }
   function render(){

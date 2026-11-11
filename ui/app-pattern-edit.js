@@ -85,7 +85,7 @@
 
   // The cell under the cursor's note column, created when missing (app-note-columns.js): the step for column 0.
   function ensureCell(note = 60) {
-    const n = app.cursorNoteColumn?.() || 0;
+    const n = app.cursorNoteColumn() || 0;
     if (!n) return ensureStep(note);
     const steps = pattern().steps[state.track], existing = app.noteCell(steps[state.row], n);
     if (existing) return existing;
@@ -135,7 +135,7 @@
   function insertNoteOff(cut = false) {
     if (state.view !== 'pattern') setView('pattern');
     return mutate(cut ? 'note cut' : 'note off', () => {
-      const pat = pattern(), selected = pat.steps[state.track][state.row], n = app.cursorNoteColumn?.() || 0;
+      const pat = pattern(), selected = pat.steps[state.track][state.row], n = app.cursorNoteColumn() || 0;
       // In an extra note column the OFF / CUT ends only that column's notes.
       if (n) app.setColumnCell(pat.steps[state.track], state.row, n, { note: cut ? -2 : -1 });
       else pat.steps[state.track][state.row] = {
@@ -254,7 +254,7 @@
         state.noteColumn = 0;
         state.column = 0;
       } else {
-        state.noteColumn = Math.min(state.noteColumn || 0, (app.noteColumnCount?.(state.track) || 1) - 1);
+        state.noteColumn = Math.min(state.noteColumn || 0, (app.noteColumnCount(state.track) || 1) - 1);
       }
     }
     // Song scroll (app-song-scroll.js): moving past a pattern edge continues in the neighbouring song slot.

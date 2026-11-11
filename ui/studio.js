@@ -51,7 +51,7 @@
   // Tracks in track order; a track group shows its bus strip followed by its member strips
   // (hidden while the group is collapsed in the mixer). Other buses and Master follow.
   function channels(p = project()) {
-    const groups = window.STGroups?.list(p) || [],
+    const groups = window.STGroups.list(p),
       groupBuses = new Set(groups.map(group => group.busID)),
       result = [];
     p.tracks.forEach((track, index) => {
@@ -831,7 +831,7 @@
     bindMixerViewport();
     window.STMixerSplitter?.bind();
     document.querySelectorAll('[data-group-mixer-expand]').forEach(button => button.onclick = () => {
-      const group = window.STGroups?.byID(project(), button.dataset.groupMixerExpand);
+      const group = window.STGroups.byID(project(), button.dataset.groupMixerExpand);
       if (group) window.STApp?.setViewPreference?.(group.id, 'mixerCollapsed', !group.mixerCollapsed);
       S().refresh();
       focusMixerControl(button.id); // the strip is re-rendered: keep the keyboard on Show / Hide
