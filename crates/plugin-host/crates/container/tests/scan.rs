@@ -170,7 +170,7 @@ fn scan_lists_plugins_caches_them_and_survives_broken_files() {
             format: "vst3".into(),
             id: vst3_plug::GAIN_CLASS_ID.into(),
             name: vst3_plug::GAIN_NAME.into(),
-            vendor: vst3_plug::VENDOR.into(),
+            manufacturer: vst3_plug::VENDOR.into(),
             version: vst3_plug::VERSION.into(),
             category: "Fx|Dynamics".into(),
             subcategories: vec!["Fx".into(), "Dynamics".into()],
@@ -188,7 +188,7 @@ fn scan_lists_plugins_caches_them_and_survives_broken_files() {
     );
     let clap_gain = &report.plugins[0];
     assert_eq!(
-        (clap_gain.format.as_str(), clap_gain.id.as_str(), clap_gain.vendor.as_str(), clap_gain.version.as_str()),
+        (clap_gain.format.as_str(), clap_gain.id.as_str(), clap_gain.manufacturer.as_str(), clap_gain.version.as_str()),
         ("clap", clap_plug::GAIN_ID, "SuperTracker Tests", "1.2.3")
     );
     assert_eq!(clap_gain.subcategories, ["audio-effect", "stereo"]);
@@ -375,14 +375,14 @@ fn scan_results_are_what_an_instance_is_created_from() {
             env.sup(),
             InstanceConfig {
                 options: plugin.path.clone(),
-                manufacturer: plugin.vendor.clone(),
+                manufacturer: plugin.manufacturer.clone(),
                 name: plugin.name.clone(),
                 deadline: Some(LONG),
                 ..base
             },
         );
         let info = instance.info();
-        assert_eq!((info.name.as_str(), info.vendor.as_str()), (plugin.name.as_str(), plugin.vendor.as_str()));
+        assert_eq!((info.name.as_str(), info.manufacturer.as_str()), (plugin.name.as_str(), plugin.manufacturer.as_str()));
         assert_eq!(info.flags & INFO_INSTRUMENT != 0, instrument);
         if instrument {
             let block = run(&instance, &[], 2, 64, &[Event::note_on(0, 0, 69, 100)]);

@@ -87,7 +87,7 @@ struct AuPlugin {
     host: HostHandle,
     v2: Option<V2>,
     name: String,
-    vendor: String,
+    manufacturer: String,
     version: String,
     takes_midi: bool,
     bypass_supported: bool,
@@ -195,16 +195,16 @@ impl AuPlugin {
         )?;
 
         // SAFETY: property reads.
-        let (name, vendor, version, takes_midi) = guard("describing itself", || unsafe {
+        let (name, manufacturer, version, takes_midi) = guard("describing itself", || unsafe {
             let name = unit
                 .audioUnitName()
                 .or_else(|| unit.componentName())
                 .map(|name| name.to_string())
                 .filter(|name| !name.is_empty())
                 .unwrap_or_else(|| request.name.to_string());
-            let vendor = unit.manufacturerName().map(|name| name.to_string()).unwrap_or_default();
+            let manufacturer = unit.manufacturerName().map(|name| name.to_string()).unwrap_or_default();
             let version = ident::version_string(unit.componentVersion());
-            (name, vendor, version, !unit.scheduleMIDIEventBlock().is_null())
+            (name, manufacturer, version, !unit.scheduleMIDIEventBlock().is_null())
         })?;
         let is_effect = matches!(kind, ComponentKind::Effect | ComponentKind::MusicEffect);
         let bypass_supported = is_effect && v2.is_none_or(|v2| v2.supports_bypass());
@@ -218,7 +218,7 @@ impl AuPlugin {
             host,
             v2,
             name,
-            vendor,
+            manufacturer,
             version,
             takes_midi,
             bypass_supported,
@@ -489,7 +489,7 @@ impl Plugin for AuPlugin {
         self.reported = Reported::new(latency, tail, self.sample_rate);
         InstanceInfo {
             name: self.name.clone(),
-            vendor: self.vendor.clone(),
+            manufacturer: self.manufacturer.clone(),
             version: self.version.clone(),
             flags,
             latency: self.reported.latency,

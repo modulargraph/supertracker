@@ -223,15 +223,19 @@ fn plug_in_descriptors() {
     assert_eq!(rejected(|p| { p["audioPlugins"] = json!([insert("track:t0", 0), insert("track:t0", 0)]); p["audioPlugins"][1]["instanceID"] = json!("other"); }), "Two plug-ins occupy the same routing slot.");
     assert_eq!(rejected(|p| { p["audioPlugins"] = json!([insert("track:t0", 0)]); p["audioPlugins"][0]["kind"] = json!("generator"); }), "Unknown plug-in slot kind.");
     assert_eq!(rejected(|p| { p["audioPlugins"] = json!([insert("track:t0", 0)]); p["audioPlugins"][0]["instanceID"] = json!("no spaces"); }), "Plug-in instance ID must contain 1–128 letters, digits, hyphens, underscores, or periods.");
-    assert_eq!(rejected(|p| { p["audioPlugins"] = json!([insert("bus:g", 0)]); p["audioPlugins"][0]["kind"] = json!("instrument"); }), "Instruments require a track's instrument slot.");
+    let synth = |owner: &str| json!({ "owner": owner, "kind": "instrument", "slot": 0, "instanceID": "synth", "component": "clap:x", "format": "CLAP" });
+    assert_eq!(rejected(|p| p["audioPlugins"] = json!([synth("bus:g")])), "Instruments require a track's instrument slot.");
+    assert_eq!(rejected(|p| { p["audioPlugins"] = json!([synth("track:t0")]); p["audioPlugins"][0]["slot"] = json!(1); }), "Instruments require a track's instrument slot.");
     // The owner is the only way a descriptor names its channel: a track index is an unknown key.
     assert_eq!(rejected(|p| p["audioPlugins"] = json!([{ "track": 0, "kind": "effect", "slot": 0 }])), "A plug-in has no owner.");
     assert_eq!(rejected(|p| p["audioPlugins"] = json!([{ "owner": 0, "kind": "effect", "slot": 0 }])), "Plug-in owner must be text.");
     assert_eq!(rejected(|p| p["audioPlugins"] = json!([{ "owner": "instrument:0", "kind": "instrument", "slot": 0 }])), "Instruments require a track's instrument slot.");
     // An instrument and an effect share slot 0 of a track; an instrument's insert chain has its own slots.
-    accepted(|p| {
-        p["audioPlugins"] = json!([insert("track:t0", 0), insert("instrument:0", 0), insert("instrument:9", 0), { "owner": "track:t0", "kind": "instrument", "slot": 0, "instanceID": "synth", "component": "clap:x", "format": "CLAP" }]);
-    });
+    accepted(|p| p["audioPlugins"] = json!([insert("track:t0", 0), insert("instrument:0", 0), synth("track:t0")]));
+    // Every owner exists: a track by its routingID, a bus, master, an instrument by its index.
+    for owner in ["instrument:1", "instrument:9", "bus:gone", "track:0", "instrument:x", "Master", "nobody"] {
+        assert_eq!(rejected(|p| p["audioPlugins"] = json!([insert(owner, 0)])), format!("Plug-in owner {owner} does not exist."));
+    }
     assert_eq!(rejected(|p| p["audioPlugins"] = json!({})), "Project plug-ins must be an array of objects.");
     // Every descriptor has the identity the host gave its instance and the format it was loaded as.
     let one = |change: fn(&mut Value)| move |p: &mut Value| { p["audioPlugins"] = json!([insert("track:t0", 0)]); change(&mut p["audioPlugins"][0]); };
@@ -240,6 +244,86 @@ fn plug_in_descriptors() {
     assert_eq!(rejected(one(|plugin| { plugin.as_object_mut().unwrap().remove("format"); })), "A plug-in has no format.");
     assert_eq!(rejected(one(|plugin| plugin["format"] = json!(""))), "A plug-in has no format.");
     assert_eq!(rejected(one(|plugin| plugin["format"] = json!(3))), "Plug-in format must be text.");
+    // What is loaded is `<format>:<id>`, in one spelling, and `format` is the format it names.
+    assert_eq!(rejected(one(|plugin| { plugin.as_object_mut().unwrap().remove("component"); })), "A plug-in has no component.");
+    assert_eq!(rejected(one(|plugin| plugin["component"] = json!(["stfx:eq"]))), "Plug-in component must be text.");
+    for component in ["com.vendor.synth", "eq", "builtin:eq", "STFX:eq", "CLAP:com.vendor.synth", "vst2:ABCD", "vst2:4e694d61", "vst1:4E694D61", "clap:", "clap: x", "vst3:ABCD", "vst3:abcdef0123456789abcdef0123456789", "vst3:{ABCDEF01-2345-6789-ABCD-EF0123456789}"] {
+        assert_eq!(
+            rejected(one2(component, "CLAP")),
+            format!("Plug-in component {component} is not <format>:<id> with the format stfx, clap, vst3, au or vst2 (a VST3 id is 32 upper-case hex digits, a VST2 id 8).")
+        );
+    }
+    for (component, format) in [("stfx:eq", "Builtin"), ("clap:com.vendor.synth", "CLAP"), ("vst3:ABCDEF0123456789ABCDEF0123456789", "VST3"), ("au:aufx:dely:appl", "AU"), ("vst2:4E694D61", "VST2")] {
+        accepted(one2(component, format));
+        for other in ["Builtin", "CLAP", "VST3", "AU", "VST2", "clap", "VST"].into_iter().filter(|other| *other != format) {
+            assert_eq!(rejected(one2(component, other)), format!("Plug-in format {other} does not match its component {component}, whose format is {format}."));
+        }
+    }
+    assert_eq!(rejected(|p| { p["audioPlugins"] = json!([synth("track:t0")]); p["audioPlugins"][0]["component"] = json!("stfx:eq"); p["audioPlugins"][0]["format"] = json!("Builtin"); }), "Built-in effects are insert effects, not instruments.");
+}
+
+/// The valid project with one insert on track 1 that loads `component` as `format`.
+fn one2(component: &'static str, format: &'static str) -> impl FnOnce(&mut Value) {
+    move |p: &mut Value| {
+        p["audioPlugins"] = json!([insert("track:t0", 0)]);
+        p["audioPlugins"][0]["component"] = json!(component);
+        p["audioPlugins"][0]["format"] = json!(format);
+    }
+}
+
+/// The parameter pages the user arranged are kept by plug-in instance, for instances there are.
+#[test]
+fn plug_in_parameter_pages() {
+    let pages = json!({ "name": "EQ", "pages": [{ "name": "Main", "addresses": ["1", null] }] });
+    accepted(|p| { p["audioPlugins"] = json!([insert("track:t0", 0)]); p["pluginPages"] = json!({ "track-t0-0": pages.clone() }); });
+    accepted(|p| p["pluginPages"] = json!({}));
+    assert_eq!(rejected(|p| p["pluginPages"] = json!({ "gone": pages.clone() })), "Plug-in parameter pages are kept for gone, which is no plug-in of the project.");
+    assert_eq!(
+        rejected(|p| { p["audioPlugins"] = json!([insert("track:t0", 0)]); p["pluginPages"] = json!({ "track-t0-0": pages.clone(), "track-t0-1": pages.clone() }); }),
+        "Plug-in parameter pages are kept for track-t0-1, which is no plug-in of the project."
+    );
+    assert_eq!(rejected(|p| p["pluginPages"] = json!([])), "Plug-in parameter pages must be an object of pages by plug-in instance.");
+}
+
+/// Track groups: a group has its identity, a name, tracks next to each other and a group bus of
+/// its own; what names a group names one there is.
+#[test]
+fn track_groups() {
+    let grouped = |p: &mut Value| {
+        p["tracks"] = json!([{ "id": 0, "routingID": "t0" }, { "id": 1, "routingID": "t1", "groupID": "kit" }, { "id": 2, "routingID": "t2", "groupID": "kit" }, { "id": 3, "routingID": "t3" }]);
+        p["patterns"][0]["steps"] = json!([[], [], [], []]);
+        p["groups"] = json!([{ "id": "kit", "name": "Kit", "color": "#e2a44f", "collapsed": false, "mixerCollapsed": true, "busID": "g" }]);
+        p["routing"]["buses"][0]["groupID"] = json!("kit");
+    };
+    accepted(grouped);
+    accepted(|p| p["groups"] = json!([]));
+    // A group bus without a track group is a bus like any other.
+    accepted(|_| {});
+    let change = |edit: fn(&mut Value)| move |p: &mut Value| { grouped(p); edit(p); };
+    assert_eq!(rejected(|p| p["groups"] = json!({})), "Track groups must be an array of objects.");
+    assert_eq!(rejected(change(|p| { p["groups"][0].as_object_mut().unwrap().remove("id"); })), "Group ID is missing.");
+    assert_eq!(rejected(change(|p| p["groups"][0]["id"] = json!(7))), "Group ID must be text.");
+    assert_eq!(rejected(change(|p| p["groups"][0]["id"] = json!(""))), "Group ID must contain 1–128 letters, digits, hyphens, underscores, or periods.");
+    assert_eq!(rejected(change(|p| { p["groups"][0].as_object_mut().unwrap().remove("name"); })), "Group name must be text.");
+    assert_eq!(rejected(change(|p| p["groups"][0]["name"] = json!(" "))), "Group name must be valid non-control text.");
+    assert_eq!(rejected(change(|p| p["groups"][0]["collapsed"] = json!("yes"))), "Group Kit has an unreadable setting.");
+    assert_eq!(rejected(change(|p| p["groups"][0]["color"] = json!(3))), "Group Kit has an unreadable setting.");
+    assert_eq!(rejected(change(|p| { let copy = p["groups"][0].clone(); p["groups"].as_array_mut().unwrap().push(copy); })), "Duplicate group ID: kit.");
+    // The group's bus: there, a group bus, and the group's own.
+    let no_bus = "Group Kit has no group bus of its own.";
+    assert_eq!(rejected(change(|p| { p["groups"][0].as_object_mut().unwrap().remove("busID"); })), no_bus);
+    assert_eq!(rejected(change(|p| p["groups"][0]["busID"] = json!("gone"))), no_bus);
+    assert_eq!(rejected(change(|p| p["groups"][0]["busID"] = json!("r"))), no_bus);
+    assert_eq!(rejected(change(|p| { p["routing"]["buses"][0].as_object_mut().unwrap().remove("groupID"); })), no_bus);
+    assert_eq!(rejected(change(|p| p["routing"]["buses"][1]["groupID"] = json!("other"))), "Bus Return belongs to a track group that does not exist.");
+    assert_eq!(rejected(|p| p["routing"]["buses"][0]["groupID"] = json!("kit")), "Bus Group belongs to a track group that does not exist.");
+    // Membership: a group there is, at least one track, the tracks next to each other.
+    assert_eq!(rejected(change(|p| p["tracks"][3]["groupID"] = json!("gone"))), "Track 4 belongs to a track group that does not exist (gone).");
+    assert_eq!(rejected(|p| p["tracks"][0]["groupID"] = json!("kit")), "Track 1 belongs to a track group that does not exist (kit).");
+    assert_eq!(rejected(change(|p| p["tracks"][1]["groupID"] = json!(1))), "Track 2: the group it belongs to must be named by its ID.");
+    assert_eq!(rejected(change(|p| { for track in [1, 2] { p["tracks"][track].as_object_mut().unwrap().remove("groupID"); } })), "Group Kit has no tracks.");
+    assert_eq!(rejected(change(|p| { p["tracks"][2].as_object_mut().unwrap().remove("groupID"); p["tracks"][3]["groupID"] = json!("kit"); })), "The tracks of group Kit must be next to each other.");
+    accepted(change(|p| { p["tracks"][2].as_object_mut().unwrap().remove("groupID"); }));
 }
 
 #[test]
@@ -259,6 +343,15 @@ fn automation_lanes() {
         lane("instrument:0", "plugin:effect:2:1", json!([{ "row": 1, "value": 0.5 }])),
     ])));
     assert_eq!(rejected(with(json!([lane("track:gone", "send:s1", json!([]))]))), "Host automation requires an existing owner and a target.");
+    assert_eq!(rejected(with(json!([lane("bus:gone", "plugin:effect:0:1", json!([]))]))), "Host automation requires an existing owner and a target.");
+    // A lane of an instrument's chain: the instrument is there, and the lane controls an effect of the chain.
+    assert_eq!(rejected(with(json!([lane("instrument:1", "plugin:effect:0:1", json!([]))]))), "Automation lane owner instrument:1 does not exist.");
+    assert_eq!(rejected(with(json!([lane("instrument:9", "plugin:effect:0:1", json!([]))]))), "Automation lane owner instrument:9 does not exist.");
+    for target in ["volume", "plugin:instrument:0:1", "plugin:effect:16:1", "send:s1"] {
+        assert_eq!(rejected(with(json!([lane("instrument:0", target, json!([]))]))), format!("An instrument's automation lanes control parameters of its effects, not {target}."));
+    }
+    assert_eq!(rejected(with(json!([lane("instrument:0", "plugin:effect:0:1", json!([{ "row": 1, "value": 1.5 }]))]))), "Automation value must be a finite number in 0...1.");
+    assert_eq!(rejected(with(json!([lane("instrument:0", "plugin:effect:0:1", json!([])), lane("instrument:0", "plugin:effect:0:1", json!([]))]))), "Two automation lanes of a pattern control the same destination.");
     assert_eq!(rejected(with(json!([lane("master", "pan", json!([]))]))), "Master pan automation is unsupported.");
     assert_eq!(rejected(with(json!([lane("bus:g", "cutoff", json!([]))]))), "Unknown host automation target: cutoff.");
     assert_eq!(rejected(with(json!([lane("track:t1", "send:s1", json!([]))]))), "Send automation owner does not match its source.");
@@ -437,7 +530,7 @@ fn the_recording_input_of_an_instrument() {
 fn built_in_effect_components() {
     use st_project::model::plugin::{builtin_effect_id, BUILTIN_EFFECT_PREFIX};
     assert_eq!(BUILTIN_EFFECT_PREFIX, "stfx:");
-    assert_eq!((builtin_effect_id("stfx:eq"), builtin_effect_id("builtin:eq"), builtin_effect_id("com.vendor.eq")), (Some("eq"), None, None));
+    assert_eq!((builtin_effect_id("stfx:eq"), builtin_effect_id("builtin:eq"), builtin_effect_id("clap:com.vendor.eq")), (Some("eq"), None, None));
     let project = Project::from_value(json!({ "audioPlugins": [{ "component": "stfx:reverb" }, { "component": "builtin:reverb" }, {}] })).unwrap();
     assert_eq!(project.plugin_list().iter().map(|plugin| plugin.is_builtin()).collect::<Vec<_>>(), [true, false, false]);
 }
@@ -446,7 +539,7 @@ fn built_in_effect_components() {
 /// while none does, and then without an owner or an instance.
 #[test]
 fn the_plug_in_an_instrument_keeps() {
-    let kept = json!({ "kind": "instrument", "slot": 0, "component": "com.vendor.synth", "format": "VST3", "name": "Synth", "state": "AA==" });
+    let kept = json!({ "kind": "instrument", "slot": 0, "component": "clap:com.vendor.synth", "format": "CLAP", "name": "Synth", "state": "AA==" });
     let unplayed = |p: &mut Value| {
         p["instruments"] = json!([{ "id": 0, "type": "sample" }, { "id": 1, "type": "plugin", "plugin": kept.clone() }]);
     };
@@ -455,7 +548,7 @@ fn the_plug_in_an_instrument_keeps() {
     let played = |p: &mut Value| {
         unplayed(p);
         p["tracks"][1]["instrument"] = json!(1);
-        p["audioPlugins"] = json!([{ "owner": "track:t1", "kind": "instrument", "slot": 0, "instanceID": "synth-1", "component": "com.vendor.synth", "format": "VST3" }]);
+        p["audioPlugins"] = json!([{ "owner": "track:t1", "kind": "instrument", "slot": 0, "instanceID": "synth-1", "component": "clap:com.vendor.synth", "format": "CLAP" }]);
     };
     assert_eq!(rejected(played), "Instrument 2 keeps a second copy of the plug-in a track plays it with.");
     accepted(|p| { played(p); p["instruments"][1].as_object_mut().unwrap().remove("plugin"); });
@@ -463,6 +556,24 @@ fn the_plug_in_an_instrument_keeps() {
     assert_eq!(rejected(|p| { unplayed(p); p["instruments"][1]["plugin"]["owner"] = json!("track:t0"); }), "Instrument 2: a plug-in kept by its instrument has no owner and no instance.");
     assert_eq!(rejected(|p| { unplayed(p); p["instruments"][1]["plugin"]["instanceID"] = json!("synth-1"); }), "Instrument 2: a plug-in kept by its instrument has no owner and no instance.");
     assert_eq!(rejected(|p| { unplayed(p); p["instruments"][1]["plugin"] = Value::Null; }), "Instrument 2: the plug-in it keeps must be an object.");
+    // In everything else it is the descriptor a track would play the instrument with.
+    let kept_with = |edit: fn(&mut Value)| move |p: &mut Value| { unplayed(p); edit(&mut p["instruments"][1]["plugin"]); };
+    let message = |rule: &str| format!("Instrument 2, the plug-in it keeps: {rule}");
+    assert_eq!(rejected(kept_with(|plugin| { plugin.as_object_mut().unwrap().remove("format"); })), message("A plug-in has no format."));
+    assert_eq!(rejected(kept_with(|plugin| plugin["format"] = json!("VST3"))), message("Plug-in format VST3 does not match its component clap:com.vendor.synth, whose format is CLAP."));
+    assert_eq!(rejected(kept_with(|plugin| { plugin.as_object_mut().unwrap().remove("component"); })), message("A plug-in has no component."));
+    assert_eq!(
+        rejected(kept_with(|plugin| plugin["component"] = json!("com.vendor.synth"))),
+        message("Plug-in component com.vendor.synth is not <format>:<id> with the format stfx, clap, vst3, au or vst2 (a VST3 id is 32 upper-case hex digits, a VST2 id 8).")
+    );
+    assert_eq!(rejected(kept_with(|plugin| { plugin["component"] = json!("stfx:eq"); plugin["format"] = json!("Builtin"); })), message("Built-in effects are insert effects, not instruments."));
+    let instrument_only = message("It must be an instrument plug-in (kind instrument, slot 0).");
+    assert_eq!(rejected(kept_with(|plugin| plugin["kind"] = json!("effect"))), instrument_only);
+    assert_eq!(rejected(kept_with(|plugin| { plugin.as_object_mut().unwrap().remove("kind"); })), instrument_only);
+    assert_eq!(rejected(kept_with(|plugin| plugin["slot"] = json!(1))), instrument_only);
+    assert_eq!(rejected(kept_with(|plugin| plugin["kind"] = json!("generator"))), message("Unknown plug-in slot kind."));
+    assert_eq!(rejected(kept_with(|plugin| plugin["slot"] = json!(16))), message("Plug-in slot must be a whole number from 0 to 15."));
+    assert_eq!(rejected(kept_with(|plugin| *plugin = json!({}))), instrument_only);
 }
 
 #[test]

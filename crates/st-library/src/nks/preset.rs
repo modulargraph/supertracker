@@ -29,9 +29,9 @@ pub struct PluginIdentity {
     /// Plug-in name, when the preset states it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// Plug-in vendor, when the preset states it.
+    /// The plug-in's manufacturer, when the preset states it (NKS: `pluginVendor`).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub vendor: Option<String>,
+    pub manufacturer: Option<String>,
 }
 
 /// One of the eight controls of a controller page.
@@ -190,7 +190,7 @@ fn identity(fields: &Map<String, Value>) -> Result<PluginIdentity> {
         vst3_class_id: class_id,
         vst2_magic: magic,
         name: nonempty(fields.get("pluginName")).or_else(|| nonempty(fields.get("VST3.plugin_name"))),
-        vendor: nonempty(fields.get("pluginVendor")),
+        manufacturer: nonempty(fields.get("pluginVendor")),
     })
 }
 

@@ -109,7 +109,7 @@ fn audelay_metadata_parameters_and_audio() {
     let instance = env.sup().create_instance(au_effect(DELAY)).unwrap();
     let info = instance.info();
     println!("{info:?}");
-    assert_eq!((info.name.as_str(), info.vendor.as_str()), ("AUDelay", "Apple"));
+    assert_eq!((info.name.as_str(), info.manufacturer.as_str()), ("AUDelay", "Apple"));
     assert_eq!(info.flags & INFO_INSTRUMENT, 0);
     assert_ne!(info.flags & INFO_HAS_EDITOR, 0);
     assert_eq!((info.inputs.len(), info.outputs.len()), (1, 1));

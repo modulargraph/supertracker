@@ -125,16 +125,20 @@ fn the_catalogue_lists_built_in_effects_and_scanned_plug_ins() {
         assert!(ready["commands"].as_array().unwrap().contains(&json!(command)), "{command} is implemented");
     }
     assert_eq!(ready["pluginRecovery"]["suspects"], json!([]));
-    assert!(ready["plugins"].as_array().unwrap().iter().any(|plugin| plugin["format"] == "Builtin" && plugin["type"] == "effect" && plugin["id"].as_str().unwrap().starts_with("stfx:")));
+    assert!(ready["plugins"].as_array().unwrap().iter().any(|plugin| plugin["format"] == "Builtin" && plugin["kind"] == "effect" && plugin["component"].as_str().unwrap().starts_with("stfx:")));
 
     let done = fixture.request("plugins.scan", json!({ "wait": true, "retryFailed": true }));
     assert_eq!((done["scanning"].clone(), done["result"]["total"].clone(), done["result"]["plugins"].clone(), done["blocklist"].clone()), (json!(false), json!(2), json!(5), json!([])));
     let list = fixture.request("plugins.list", json!({}));
-    let entry = |id: &str| list.as_array().unwrap().iter().find(|plugin| plugin["id"] == id).unwrap_or_else(|| panic!("{id} is listed")).clone();
+    let entry = |component: &str| list.as_array().unwrap().iter().find(|plugin| plugin["component"] == component).unwrap_or_else(|| panic!("{component} is listed")).clone();
     let gain = entry(&format!("clap:{CLAP_GAIN}"));
-    assert_eq!((gain["name"].clone(), gain["format"].clone(), gain["type"].clone(), gain["manufacturer"].clone()), (json!("ST Test Gain"), json!("CLAP"), json!("effect"), json!("SuperTracker Tests")));
+    assert_eq!((gain["name"].clone(), gain["format"].clone(), gain["kind"].clone(), gain["manufacturer"].clone()), (json!("ST Test Gain"), json!("CLAP"), json!("effect"), json!("SuperTracker Tests")));
     assert_eq!(PathBuf::from(gain["bundlePath"].as_str().unwrap()), fixture.installed.clap);
-    assert_eq!((entry(&format!("clap:{CLAP_SINE}"))["type"].clone(), entry(&format!("vst3:{VST3_GAIN}"))["format"].clone()), (json!("instrument"), json!("VST3")));
+    // An entry says each thing once, under the name a descriptor has for it.
+    let keys = |entry: &Value| entry.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+    assert_eq!(keys(&gain), ["bundlePath", "category", "component", "format", "kind", "manufacturer", "name", "version"]);
+    assert_eq!(keys(&entry("stfx:compressor")), ["category", "component", "format", "kind", "manufacturer", "name", "sidechain"]);
+    assert_eq!((entry(&format!("clap:{CLAP_SINE}"))["kind"].clone(), entry(&format!("vst3:{VST3_GAIN}"))["format"].clone()), (json!("instrument"), json!("VST3")));
     assert!(fixture.host.wait_for_event("plugins.catalogue", Duration::from_secs(5)).is_some(), "scan progress is an event");
     // A file that is no plug-in fails its scan and is visible, with the reason; nothing else suffers.
     std::fs::write(fixture.installed.folder.join("Broken.clap"), b"not a library").unwrap();
@@ -238,6 +242,41 @@ fn inserts_are_loaded_changed_moved_saved_and_restored_through_the_bridge() {
     let error = fixture.host.request("plugin.load", json!({ "owner": "master", "kind": "effect", "slot": 0, "component": "clap:org.example.missing" })).unwrap_err();
     assert!(error.contains("is not installed"), "{error}");
     assert_eq!(fixture.insert("master"), Value::Null);
+    // A component has one spelling, the plug-in list's: an id alone, another case of the prefix
+    // or of a VST3 class id, and a format beside the id, are no component.
+    let lower = VST3_GAIN.to_ascii_lowercase();
+    for component in [CLAP_GAIN.to_string(), format!("CLAP:{CLAP_GAIN}"), format!("vst3:{lower}"), "eq".to_string(), "vst2:4E694D61".to_string()] {
+        let error = fixture.host.request("plugin.load", json!({ "owner": "master", "kind": "effect", "slot": 0, "component": component, "format": "CLAP" })).unwrap_err();
+        assert!(error.contains("is not a plug-in this version can host"), "{component}: {error}");
+    }
+    let error = fixture.host.request("plugin.load", json!({ "owner": "master", "kind": "effect", "slot": 0, "id": format!("clap:{CLAP_GAIN}") })).unwrap_err();
+    assert!(error.contains("Choose a plug-in to load"), "{error}");
+    assert_eq!(fixture.insert("master"), Value::Null);
+    // And a project that names one otherwise is not published.
+    let mut project = fixture.request("engine.snapshot", json!({}));
+    let gain = project["audioPlugins"].as_array().unwrap().iter().position(|plugin| plugin["component"] == json!(format!("clap:{CLAP_GAIN}"))).expect("the gain plug-in of the project");
+    assert_eq!(project["audioPlugins"][gain]["format"], "CLAP");
+    fixture.publish(&project);
+    project["audioPlugins"][gain]["component"] = json!(CLAP_GAIN);
+    let error = fixture.host.request("engine.project", json!({ "project": project.clone() })).unwrap_err();
+    assert!(error.contains(&format!("Plug-in component {CLAP_GAIN} is not <format>:<id>")), "{error}");
+    project["audioPlugins"][gain]["component"] = json!(format!("clap:{CLAP_GAIN}"));
+    project["audioPlugins"][gain]["format"] = json!("VST3");
+    let error = fixture.host.request("engine.project", json!({ "project": project })).unwrap_err();
+    assert!(error.contains("Plug-in format VST3 does not match its component"), "{error}");
+
+    // The parameter pages arranged for a plug-in belong to it: they leave the engine's project
+    // with the plug-in, and a project that keeps pages for a plug-in it does not have is refused.
+    let mut project = fixture.request("engine.snapshot", json!({}));
+    let (instance, owner, slot) = (project["audioPlugins"][gain]["instanceID"].as_str().unwrap().to_string(), project["audioPlugins"][gain]["owner"].clone(), project["audioPlugins"][gain]["slot"].clone());
+    project["pluginPages"] = json!({ instance.clone(): { "name": "Gain", "pages": [{ "name": "Main", "addresses": ["0", null] }] } });
+    fixture.publish(&project);
+    assert!(fixture.request("engine.snapshot", json!({}))["pluginPages"].get(&instance).is_some());
+    assert_eq!(fixture.request("plugin.remove", json!({ "owner": owner, "kind": "effect", "slot": slot }))["removed"], true);
+    assert_eq!(fixture.request("engine.snapshot", json!({}))["pluginPages"], json!({}));
+    project["audioPlugins"].as_array_mut().unwrap().remove(gain);
+    let error = fixture.host.request("engine.project", json!({ "project": project })).unwrap_err();
+    assert!(error.contains(&format!("Plug-in parameter pages are kept for {instance}, which is no plug-in of the project.")), "{error}");
 }
 
 // The catalogue's scan runs in the background from the start of the host: a load that comes
@@ -335,7 +374,7 @@ fn a_plug_in_that_crashes_while_playing_is_reported_and_retry_restores_it() {
     assert!(error["lost"] == true && error["instanceID"] == loaded["instanceID"] && error["error"].as_str().unwrap().contains("ST Test Gain stopped working"), "{error}");
     let report = fixture.host.wait_for_event("plugins.recovery", Duration::from_secs(5)).expect("the recovery report follows");
     let suspect = &report["suspects"][0];
-    assert_eq!((suspect["requiresReview"].clone(), suspect["identity"]["name"].clone(), suspect["identity"]["componentID"].clone()), (json!(true), json!("ST Test Gain"), json!(format!("clap:{CLAP_GAIN}"))));
+    assert_eq!((suspect["requiresReview"].clone(), suspect["identity"]["name"].clone(), suspect["identity"]["component"].clone()), (json!(true), json!("ST Test Gain"), json!(format!("clap:{CLAP_GAIN}"))));
     let key = suspect["identity"]["key"].as_str().unwrap().to_string();
     // The song plays on, the track passes through its insert, and everyone says so.
     let row = fixture.status_where("playback continues", |status| status["playing"] == true && status["peakL"].as_f64().unwrap() > 0.05)["row"].clone();

@@ -217,7 +217,7 @@ impl RecoveryStore {
         self.lock().iter().filter(|(_, entry)| entry.requires_review()).map(|(key, _)| key.clone()).collect()
     }
 
-    /// `plugins.recovery`: `{suspects: [{identity: {key, format, componentID, name,
+    /// `plugins.recovery`: `{suspects: [{identity: {key, format, component, name,
     /// bundlePath?}, reasons, requiresReview, retryAuthorized, acknowledged, attribution,
     /// loadCrashes, lostInstances}], warnings, enabled, pendingInstances, ...}`.
     pub fn report(&self) -> Value {
@@ -244,7 +244,7 @@ impl RecoveryStore {
 }
 
 fn identity_value(identity: &Identity) -> Value {
-    let mut value = json!({ "format": identity.format_label(), "componentID": identity.component(), "name": identity.display_name(), "manufacturer": identity.manufacturer });
+    let mut value = json!({ "format": identity.format_label(), "component": identity.component(), "name": identity.display_name(), "manufacturer": identity.manufacturer });
     if !identity.path.is_empty() {
         value["bundlePath"] = json!(identity.path);
     }
@@ -290,7 +290,7 @@ mod tests {
         let report = store.report();
         let suspect = &report["suspects"][0];
         assert_eq!((suspect["requiresReview"].clone(), suspect["identity"]["key"].clone(), suspect["identity"]["name"].clone()), (json!(true), json!(x.key()), json!("X")));
-        assert_eq!(suspect["identity"]["componentID"], "clap:x");
+        assert_eq!(suspect["identity"]["component"], "clap:x");
         assert_eq!(store.pending_keys(), [x.key()]);
         // Retry authorizes one attempt; success clears everything.
         assert_eq!(store.authorize(&[x.key(), "unknown".into()]), std::slice::from_ref(&x));

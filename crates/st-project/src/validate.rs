@@ -4,7 +4,7 @@
 
 use crate::error::{Error, Result};
 use crate::json::Json;
-use crate::model::plugin::INSERT_SLOTS;
+use crate::model::plugin::{parse_component, INSERT_SLOTS};
 use crate::model::*;
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -198,7 +198,8 @@ pub fn validate(project: &Project) -> Result<()> {
     }
 
     validate_performance(project)?;
-    let owners = validate_routing(project, tracks)?;
+    let owners = validate_routing(project, tracks, instruments.len())?;
+    validate_groups(project, tracks)?;
     validate_plugins(project, &owners)?;
     validate_patterns(patterns, &owners)?;
     for (index, track) in tracks.iter().enumerate() {
@@ -239,9 +240,45 @@ fn validate_performance(project: &Project) -> Result<()> {
     Ok(())
 }
 
+/// The kind and slot of a plug-in descriptor, wherever it is kept.
+fn descriptor_kind(plugin: &PluginDescriptor) -> Result<PluginKind> {
+    if plugin.extra.contains_key("kind") {
+        return fail("Unknown plug-in slot kind.");
+    }
+    if plugin.extra.contains_key("slot") || !(0..INSERT_SLOTS).contains(&plugin.slot()) {
+        return fail(format!("Plug-in slot must be a whole number from 0 to {}.", INSERT_SLOTS - 1));
+    }
+    Ok(plugin.kind())
+}
+
+/// What a plug-in descriptor loads, wherever it is kept: `component` is `<format>:<id>` in its
+/// one spelling ([`parse_component`]), and `format` is the format the component names.
+fn descriptor_component(plugin: &PluginDescriptor, kind: PluginKind) -> Result<()> {
+    let Some(component) = plugin.component.as_deref() else {
+        return fail(if plugin.extra.contains_key("component") { "Plug-in component must be text." } else { "A plug-in has no component." });
+    };
+    let Some(parsed) = parse_component(component) else {
+        return fail(format!(
+            "Plug-in component {component} is not <format>:<id> with the format stfx, clap, vst3, au or vst2 (a VST3 id is 32 upper-case hex digits, a VST2 id 8)."
+        ));
+    };
+    match plugin.format.as_deref() {
+        None | Some("") => return fail(if plugin.extra.contains_key("format") { "Plug-in format must be text." } else { "A plug-in has no format." }),
+        Some(format) if format != parsed.format => {
+            return fail(format!("Plug-in format {format} does not match its component {component}, whose format is {}.", parsed.format));
+        }
+        Some(_) => {}
+    }
+    if parsed.prefix == "stfx" && kind == PluginKind::Instrument {
+        return fail("Built-in effects are insert effects, not instruments.");
+    }
+    Ok(())
+}
+
 /// The plug-in of a plug-in instrument is in one place: on the tracks that play it
 /// (`audioPlugins`, kind `instrument`). Only an instrument that no track plays with its plug-in
-/// keeps the descriptor itself (`instruments[i].plugin`), without an owner or an instance.
+/// keeps the descriptor itself (`instruments[i].plugin`), without an owner or an instance; in
+/// everything else it is the descriptor a track would play the instrument with.
 fn validate_kept_plugin(project: &Project, tracks: &[Track], index: usize, instrument: &Instrument) -> Result<()> {
     let name = format!("Instrument {}", index + 1);
     if instrument.extra.contains_key("plugin") {
@@ -253,6 +290,15 @@ fn validate_kept_plugin(project: &Project, tracks: &[Track], index: usize, instr
     }
     if kept.owner.is_some() || kept.instance_id.is_some() || kept.extra.contains_key("owner") || kept.extra.contains_key("instanceID") {
         return fail(format!("{name}: a plug-in kept by its instrument has no owner and no instance."));
+    }
+    let described = descriptor_kind(kept).and_then(|kind| {
+        if kind != PluginKind::Instrument || kept.slot() != 0 {
+            return fail("It must be an instrument plug-in (kind instrument, slot 0).");
+        }
+        descriptor_component(kept, kind)
+    });
+    if let Err(error) = described {
+        return fail(format!("{name}, the plug-in it keeps: {}", error.message()));
     }
     let played = tracks.iter().any(|track| {
         track.instrument() == index as i64
@@ -297,13 +343,15 @@ enum Channel {
 
 struct Owners {
     channels: BTreeMap<String, Channel>,
+    /// How many instruments there are: `instrument:<index>` owns an insert chain for each.
+    instruments: usize,
     /// Route id -> source owner, for sends and sidechains.
     routes: BTreeMap<String, String>,
 }
 
 /// The mixer channels and the routes between them: every track has its identity, the routing
 /// table is there, and what it names exists.
-fn validate_routing(project: &Project, tracks: &[Track]) -> Result<Owners> {
+fn validate_routing(project: &Project, tracks: &[Track], instruments: usize) -> Result<Owners> {
     let mut channels = BTreeMap::new();
     for (index, track) in tracks.iter().enumerate() {
         let name = format!("Track {}", index + 1);
@@ -436,7 +484,7 @@ fn validate_routing(project: &Project, tracks: &[Track]) -> Result<Owners> {
     if let Some(cycle) = find_cycle(&edges) {
         return fail(format!("Routing feedback is unsupported. Cycle includes: {}.", cycle.join(", ")));
     }
-    Ok(Owners { channels, routes })
+    Ok(Owners { channels, routes, instruments })
 }
 
 /// The owners on a loop of outputs and sends, or `None` when there is none: what is left after
@@ -455,8 +503,9 @@ fn find_cycle(edges: &[(String, String)]) -> Option<Vec<String>> {
     (!left.is_empty()).then(|| left.into_iter().map(str::to_string).collect())
 }
 
-/// Plug-in descriptors: each names an existing owner, has its instance identity and its format, and
-/// no two share a slot.
+/// Plug-in descriptors: each names an existing owner, has its instance identity, its component and
+/// the component's format, and no two share a slot. The parameter pages the user arranged
+/// (`pluginPages`) belong to the instances there are.
 fn validate_plugins(project: &Project, owners: &Owners) -> Result<()> {
     if project.extra.contains_key("audioPlugins") {
         return fail("Project plug-ins must be an array of objects.");
@@ -464,13 +513,7 @@ fn validate_plugins(project: &Project, owners: &Owners) -> Result<()> {
     let mut instance_ids = BTreeSet::new();
     let mut slots = BTreeSet::new();
     for plugin in project.plugin_list() {
-        if plugin.extra.contains_key("kind") {
-            return fail("Unknown plug-in slot kind.");
-        }
-        let kind = plugin.kind();
-        if plugin.extra.contains_key("slot") || !(0..INSERT_SLOTS).contains(&plugin.slot()) {
-            return fail(format!("Plug-in slot must be a whole number from 0 to {}.", INSERT_SLOTS - 1));
-        }
+        let kind = descriptor_kind(plugin)?;
         if plugin.extra.contains_key("instanceID") {
             return fail("Plug-in instance ID must be text.");
         }
@@ -479,12 +522,13 @@ fn validate_plugins(project: &Project, owners: &Owners) -> Result<()> {
         };
         let owner: String = match Owner::parse(owner) {
             // An instrument's insert chain runs on the tracks that play it; with none it has no instance.
-            Some(Owner::Instrument(_)) => {
+            Some(Owner::Instrument(index)) if index < owners.instruments => {
                 if kind != PluginKind::Effect {
                     return fail("Instruments require a track's instrument slot.");
                 }
                 owner.to_string()
             }
+            Some(Owner::Instrument(_)) => return fail(format!("Plug-in owner {owner} does not exist.")),
             _ if owners.channels.contains_key(owner) => owner.to_string(),
             _ => return fail(format!("Plug-in owner {owner} does not exist.")),
         };
@@ -495,15 +539,76 @@ fn validate_plugins(project: &Project, owners: &Owners) -> Result<()> {
         if !instance_ids.insert(id.clone()) {
             return fail(format!("Invalid or duplicate plug-in layout: {id}."));
         }
-        if plugin.format.as_deref().unwrap_or("").is_empty() {
-            return fail(if plugin.extra.contains_key("format") { "Plug-in format must be text." } else { "A plug-in has no format." });
-        }
+        descriptor_component(plugin, kind)?;
         if kind == PluginKind::Instrument && (!matches!(owners.channels.get(&owner), Some(Channel::Track(_))) || plugin.slot() != 0) {
             return fail("Instruments require a track's instrument slot.");
         }
         if !slots.insert((owner, kind, plugin.slot())) {
             return fail("Two plug-ins occupy the same routing slot.");
         }
+    }
+    if project.extra.contains_key("pluginPages") {
+        return fail("Plug-in parameter pages must be an object of pages by plug-in instance.");
+    }
+    if let Some(instance) = project.plugin_pages.iter().flatten().map(|(instance, _)| instance).find(|instance| !instance_ids.contains(*instance)) {
+        return fail(format!("Plug-in parameter pages are kept for {instance}, which is no plug-in of the project."));
+    }
+    Ok(())
+}
+
+/// Track groups: every group has its identity, a name and at least one member, its members are
+/// next to each other, and its bus is a group bus that names it. A track's `groupID` names a
+/// group there is, and a bus's `groupID` likewise.
+fn validate_groups(project: &Project, tracks: &[Track]) -> Result<()> {
+    if project.extra.contains_key("groups") {
+        return fail("Track groups must be an array of objects.");
+    }
+    let buses = project.routing.as_ref().and_then(|routing| routing.buses.as_deref()).unwrap_or(&[]);
+    let mut groups: BTreeMap<&str, &str> = BTreeMap::new();
+    for group in project.groups.iter().flatten() {
+        let id = identifier(group.id.as_deref(), &group.extra, "id", "Group ID")?;
+        let name = match &group.name {
+            Some(name) => {
+                text(name, "Group name", false)?;
+                name.as_str()
+            }
+            None => return fail("Group name must be text."),
+        };
+        if ["color", "collapsed", "mixerCollapsed"].iter().any(|key| group.extra.contains_key(*key)) {
+            return fail(format!("Group {name} has an unreadable setting."));
+        }
+        let Some(group_id) = group.id.as_deref() else { return fail("Group ID is missing.") };
+        if groups.insert(group_id, name).is_some() {
+            return fail(format!("Duplicate group ID: {id}."));
+        }
+        let bus = group.bus_id.as_deref().and_then(|bus_id| buses.iter().find(|bus| bus.id.as_deref() == Some(bus_id)));
+        if !bus.is_some_and(|bus| bus.kind == Some(BusKind::Group) && bus.group_id.as_deref() == Some(group_id)) {
+            return fail(format!("Group {name} has no group bus of its own."));
+        }
+    }
+    if let Some(bus) = buses.iter().find(|bus| bus.extra.contains_key("groupID") || bus.group_id.as_deref().is_some_and(|id| !groups.contains_key(id))) {
+        return fail(format!("Bus {} belongs to a track group that does not exist.", bus.name.as_deref().unwrap_or("?")));
+    }
+    // Members are next to each other: a group's run of tracks begins once.
+    let mut begun: BTreeSet<&str> = BTreeSet::new();
+    let mut previous: Option<&str> = None;
+    for (index, track) in tracks.iter().enumerate() {
+        if track.extra.contains_key("groupID") {
+            return fail(format!("{}: the group it belongs to must be named by its ID.", track.display_name(index)));
+        }
+        let group = track.group_id.as_deref();
+        if let Some(id) = group {
+            let Some(name) = groups.get(id) else {
+                return fail(format!("{} belongs to a track group that does not exist ({id}).", track.display_name(index)));
+            };
+            if previous != group && !begun.insert(id) {
+                return fail(format!("The tracks of group {name} must be next to each other."));
+            }
+        }
+        previous = group;
+    }
+    if let Some((_, name)) = groups.iter().find(|(id, _)| !begun.contains(*id)) {
+        return fail(format!("Group {name} has no tracks."));
     }
     Ok(())
 }
@@ -573,12 +678,19 @@ fn validate_patterns(patterns: &[Pattern], owners: &Owners) -> Result<()> {
             if lane.extra.contains_key("interpolation") {
                 return fail("Unknown automation interpolation.");
             }
-            if let Some(Owner::Instrument(_)) = Owner::parse(owner) {
-                // One lane per track that plays the instrument; only its effect parameters are automated.
-                if let Some(AutomationTarget::Plugin { instrument: false, slot, .. }) = lane.target.as_deref().and_then(AutomationTarget::parse) {
-                    if slot < INSERT_SLOTS {
-                        validate_points(lane, length, (0.0, 1.0))?;
-                    }
+            if let Some(Owner::Instrument(index)) = Owner::parse(owner) {
+                if index >= owners.instruments {
+                    return fail(format!("Automation lane owner {owner} does not exist."));
+                }
+                // The lane plays on every track that plays the instrument; it controls a parameter
+                // of an effect of the instrument's chain, and nothing else.
+                let target = lane.target.as_deref().unwrap_or("");
+                match AutomationTarget::parse(target) {
+                    Some(AutomationTarget::Plugin { instrument: false, slot, .. }) if slot < INSERT_SLOTS => validate_points(lane, length, (0.0, 1.0))?,
+                    _ => return fail(format!("An instrument's automation lanes control parameters of its effects, not {target}.")),
+                }
+                if !destinations.insert((owner.to_string(), target.to_string())) {
+                    return fail("Two automation lanes of a pattern control the same destination.");
                 }
                 continue;
             }

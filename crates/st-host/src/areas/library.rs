@@ -30,7 +30,7 @@
 //!
 //! | Need | Call | Until it is registered |
 //! |---|---|---|
-//! | which plug-ins are installed, for `kit.detail`'s `missingPlugins` | `plugins.list` (`st-plugin-*`): the `id` of every entry is a component | plug-in availability is not judged (no warning, `missingPlugins: []`) |
+//! | which plug-ins are installed, for `kit.detail`'s `missingPlugins` | `plugins.list` (`st-plugin-*`): the `component` of every entry | plug-in availability is not judged (no warning, `missingPlugins: []`) |
 //! | the file to audition for a kit in the browser | [`kit_preview_path`], for the preview player of `sample.preview` | |
 //! | `plugin.loadNKS` | [`LibraryArea::library`] and `Library::nks_preset(path)` give the plug-in identity, state and pages of a preset | |
 //!
@@ -122,9 +122,8 @@ impl LibraryArea {
     fn kit_detail(&self, mut payload: Value) -> Result<KitDetail> {
         if payload.get("availableComponents").is_none_or(Value::is_null) {
             if let Ok(Some(plugins)) = self.call_if_present("plugins.list", json!({})) {
-                let list = plugins.as_array().or_else(|| plugins.get("plugins").and_then(Value::as_array));
-                if let (Some(list), Some(object)) = (list, payload.as_object_mut()) {
-                    let components: Vec<&str> = list.iter().filter_map(|plugin| plugin.get("id").and_then(Value::as_str)).collect();
+                if let (Some(list), Some(object)) = (plugins.as_array(), payload.as_object_mut()) {
+                    let components: Vec<&str> = list.iter().filter_map(|plugin| plugin.get("component").and_then(Value::as_str)).collect();
                     object.insert("availableComponents".to_string(), json!(components));
                 }
             }

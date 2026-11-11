@@ -228,7 +228,7 @@ pub enum ContainerState {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ContainerInfo {
     pub id: ContainerId,
-    /// The grouping key ("shared", "vendor:…", "plugin:…", "instance:…").
+    /// The grouping key ("shared", "manufacturer:…", "plugin:…", "instance:…").
     pub key: String,
     pub state: ContainerState,
     /// Process id while running, else 0.
@@ -533,7 +533,7 @@ impl SupInner {
     fn key_for(&self, config: &InstanceConfig, id: InstanceId) -> String {
         match *self.policy.lock().unwrap() {
             GroupingPolicy::Shared => "shared".to_string(),
-            GroupingPolicy::PerManufacturer => format!("vendor:{}", config.manufacturer),
+            GroupingPolicy::PerManufacturer => format!("manufacturer:{}", config.manufacturer),
             GroupingPolicy::PerPlugin => format!("plugin:{}:{}", config.format, config.plugin_id),
             GroupingPolicy::PerInstance => format!("instance:{id}"),
         }

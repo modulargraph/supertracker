@@ -82,7 +82,7 @@ fn a_line_input_runs_through_its_tracks_inserts_fader_and_meter() {
     project["tracks"][0]["pan"] = json!(-0.5);
     project["tracks"][1]["audioInput"] = line(&[5], 1.0);
     project["tracks"][1]["mute"] = json!(true);
-    project["audioPlugins"] = json!([{ "owner": "track:a", "kind": "effect", "slot": 0, "instanceID": "g", "component": "test:gain", "format": "Test", "state": "0.75" }]);
+    project["audioPlugins"] = json!([{ "owner": "track:a", "kind": "effect", "slot": 0, "instanceID": "g", "component": "clap:test.gain", "format": "CLAP", "state": "0.75" }]);
     rig.engine.publish(&parse(&project)).unwrap();
     assert_eq!((row(&rig.engine, 0)["state"].clone(), row(&rig.engine, 0)["monitoring"].clone(), row(&rig.engine, 0)["latencyFrames"].clone()), (json!("live"), json!(true), json!(BLOCK)));
     assert_eq!(row(&rig.engine, 2), Value::Null, "a track without an input has no row");
@@ -152,7 +152,7 @@ fn the_mixer_compensates_for_a_line_inputs_latency_and_its_inserts() {
     let mut project = project(2);
     // Track a also takes channel 1 in, and has an insert that is 200 frames late.
     project["tracks"][0]["audioInput"] = line(&[1], 1.0);
-    project["audioPlugins"] = json!([effect("track:a", 0, "late", "test:latency:200")]);
+    project["audioPlugins"] = json!([effect("track:a", 0, "late", "clap:test.latency.200")]);
     rig.engine.publish(&parse(&project)).unwrap();
     rig.engine.play(&PlayOptions { song: false, from_start: true, ..PlayOptions::default() });
     rig.run(40);
@@ -204,7 +204,7 @@ fn a_tap_carries_the_strip_before_its_fader_with_each_blocks_place_in_the_song()
     project["tracks"][1]["mute"] = json!(true);
     project["tracks"][0]["volume"] = json!(0.5);
     project["tracks"][0]["audioInput"] = line(&[4], 1.0);
-    project["audioPlugins"] = json!([effect("track:a", 0, "late", "test:latency:100")]);
+    project["audioPlugins"] = json!([effect("track:a", 0, "late", "clap:test.latency.100")]);
     rig.engine.publish(&parse(&project)).unwrap();
     assert!(rig.engine.set_strip_tap(Some((7, Arc::new(StripTap::new(48_000))))).unwrap_err().contains("no mixer strip"));
     let tap = Arc::new(StripTap::new(48_000));

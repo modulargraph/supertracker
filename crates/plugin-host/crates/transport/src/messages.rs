@@ -58,7 +58,7 @@ wire_struct! {
 wire_struct! {
     pub struct InstanceInfo {
         pub name: String,
-        pub vendor: String,
+        pub manufacturer: String,
         pub version: String,
         pub flags: u32,
         /// Processing latency in frames. The transport adds none.
@@ -158,7 +158,7 @@ wire_struct! {
         /// "type:subtype:manufacturer" four-character codes.
         pub id: String,
         pub name: String,
-        pub vendor: String,
+        pub manufacturer: String,
         pub version: String,
         /// The category as the format states it (VST3 subcategories "Fx|Dynamics", CLAP
         /// features joined with "|", AU type name).

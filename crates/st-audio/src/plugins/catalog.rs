@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
-use stpc_client::{FileOutcome, PluginDescription, ScanEvent, ScanOptions, ScanStatus, Scanner, ScannerConfig, SCAN_INSTRUMENT};
+use stpc_client::{FileOutcome, PluginDescription, ScanEvent, ScanOptions, ScanStatus, Scanner, ScannerConfig};
 
 /// How the catalogue is set up.
 #[derive(Debug, Clone, Default)]
@@ -113,7 +113,7 @@ impl Catalog {
 
     /// The installed plug-in with this format and id.
     pub fn find(&self, format: &str, id: &str) -> Option<PluginDescription> {
-        self.plugins().into_iter().find(|plugin| plugin.format == format && plugin.id.eq_ignore_ascii_case(id))
+        self.plugins().into_iter().find(|plugin| plugin.format == format && plugin.id == id)
     }
 
     /// Files that are not listed: failed ones and the blocklist.
@@ -197,9 +197,4 @@ impl Catalog {
         progress(&done);
         Some(done)
     }
-}
-
-/// Whether a scanned plug-in is an instrument (else it is listed as an effect).
-pub fn is_instrument(plugin: &PluginDescription) -> bool {
-    plugin.flags & SCAN_INSTRUMENT != 0
 }

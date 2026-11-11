@@ -162,7 +162,7 @@ fn stems_stay_aligned_with_the_mix_under_delay_compensation() {
     // Track b has an insert with 200 frames of latency: the mixer delays track a to match, and
     // the output lags by 200 frames. Every exported stream starts at the engine's frame 0.
     let mut project = project(2);
-    project["audioPlugins"] = json!([effect("track:b", 0, "lat", "test:latency:200")]);
+    project["audioPlugins"] = json!([effect("track:b", 0, "lat", "clap:test.latency.200")]);
     project["tracks"][1]["pan"] = json!(1.0);
     project["tracks"][0]["pan"] = json!(-1.0);
     let folder = std::env::temp_dir().join(format!("st-audio-export-pdc-{}", std::process::id()));

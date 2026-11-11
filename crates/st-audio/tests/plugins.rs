@@ -11,6 +11,7 @@ mod common;
 use common::*;
 use serde_json::{json, Value};
 use st_audio::plugins::testing::{artifacts, clap_gain, clap_sine, vst3_gain, vst3_sine, Installed, CLAP_GAIN, CLAP_NOTE_SINE, CLAP_SINE, VST3_GAIN, VST3_SINE};
+use st_audio::plugins::client::SCAN_INSTRUMENT;
 use st_audio::plugins::{Catalog, CatalogOptions, PluginEvent, PluginManager, PluginOptions};
 use st_audio::{AudioEngine, PlayOptions};
 use std::path::PathBuf;
@@ -798,8 +799,8 @@ fn the_catalogue_lists_the_test_plug_ins_without_loading_them_into_this_process(
     let plugins = catalog.plugins();
     let found = |format: &str, id: &str| plugins.iter().find(|plugin| plugin.format == format && plugin.id == id).unwrap_or_else(|| panic!("{format}:{id} is listed"));
     assert_eq!(found("clap", CLAP_GAIN).name, "ST Test Gain");
-    assert!(st_audio::plugins::catalog::is_instrument(found("clap", CLAP_SINE)) && !st_audio::plugins::catalog::is_instrument(found("vst3", VST3_GAIN)));
-    assert_eq!(found("vst3", VST3_SINE).vendor, "SuperTracker Tests");
+    assert!(found("clap", CLAP_SINE).flags & SCAN_INSTRUMENT != 0 && found("vst3", VST3_GAIN).flags & SCAN_INSTRUMENT == 0);
+    assert_eq!(found("vst3", VST3_SINE).manufacturer, "SuperTracker Tests");
     assert_eq!(std::path::Path::new(&found("vst3", VST3_GAIN).path), fixture.installed.vst3);
     // The plug-in libraries were read by container processes, never mapped into this one.
     let maps = std::fs::read_to_string("/proc/self/maps").unwrap_or_default();

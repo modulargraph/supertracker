@@ -142,7 +142,7 @@ fn host_preset_identity_state_and_pages() {
     let file = temp.write("Fixture.nksf", &Fixture::default().bytes());
     let preset = NksHostPreset::read(&file).unwrap();
     assert_eq!(preset.identity.vst3_class_id.as_deref(), Some("5653544E6924486D6173736976652078"), "class ID word order");
-    assert_eq!((preset.identity.vst2_magic, preset.identity.name.as_deref(), preset.identity.vendor.as_deref()), (None, Some("Fixture Synth"), Some("Fixture Vendor")));
+    assert_eq!((preset.identity.vst2_magic, preset.identity.name.as_deref(), preset.identity.manufacturer.as_deref()), (None, Some("Fixture Synth"), Some("Fixture Vendor")));
     assert_eq!((preset.state.as_slice(), preset.state_version), (&NATIVE_STATE[..], 1), "only the PCHK version word is removed; vendor bytes are preserved");
     assert_eq!((preset.controller_pages.len(), preset.controller_pages[0].name.as_str()), (1, "Tone"));
     assert_eq!(preset.controller_pages[0].slots[0].parameter_id, Some(0), "zero is a valid parameter ID");
@@ -161,7 +161,7 @@ fn host_preset_identity_state_and_pages() {
     assert!(summary.get("state").is_none(), "the summary excludes binary state");
     assert_eq!(summary["stateBytes"], 13);
     assert_eq!(summary["stateEncoding"], "nativePluginState");
-    assert_eq!(summary["identity"], json!({ "format": "vst3", "vst3ClassID": "5653544E6924486D6173736976652078", "name": "Fixture Synth", "vendor": "Fixture Vendor" }));
+    assert_eq!(summary["identity"], json!({ "format": "vst3", "vst3ClassID": "5653544E6924486D6173736976652078", "name": "Fixture Synth", "manufacturer": "Fixture Vendor" }));
     assert_eq!(summary["controllerPages"][0]["parameters"][1], json!({ "slot": 1, "name": "Resonance", "parameterID": 9001 }));
     assert_eq!(serde_json::to_value(&bindings).unwrap()[0]["parameters"][0], json!({ "slot": 0, "name": "Cutoff", "section": "Tone", "parameterID": 0, "mapped": true, "mappingStatus": "mapped" }));
 

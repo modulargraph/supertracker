@@ -156,11 +156,11 @@ fn opaque_state_and_unknown_fields_are_never_treated_as_media() {
     fs::write(&opaque, [9u8, 8, 7]).unwrap();
     let state = json!({ "path": opaque.to_string_lossy(), "nested": { "samplePath": "opaque-relative.wav" }, "binary": "opaque untouched" });
     let mut value = minimal(Some(&source)).to_value();
-    value["audioPlugins"] = json!([{ "owner": "master", "instanceID": "vendor-1", "format": "VST3", "id": "vendor", "state": state }]);
+    value["audioPlugins"] = json!([{ "owner": "master", "instanceID": "vendor-1", "component": "clap:com.vendor.effect", "format": "CLAP", "state": state }]);
     value["extensions"] = json!({ "future": { "path": opaque.to_string_lossy(), "samplePath": "unknown.wav" } });
     value["mediaRelinkHistory"] = json!([{ "path": opaque.to_string_lossy(), "samplePath": "historical.wav" }]);
     // A plug-in instrument no track plays keeps its descriptor; its state is opaque too.
-    value["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "plugin", "plugin": { "state": state } }));
+    value["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "plugin", "plugin": { "kind": "instrument", "slot": 0, "component": "clap:com.vendor.synth", "format": "CLAP", "state": state } }));
     let destination = root.join("Opaque.supertracker");
     let saved = write_project(&Project::from_value(value.clone()).unwrap(), &destination, None, true).unwrap().project.to_value();
     let opened = read_project(&destination).unwrap().to_value();

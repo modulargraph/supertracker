@@ -935,15 +935,15 @@
   {
    "name": "list_plugins",
    "method": "listPlugins",
-   "description": "List installed plug-ins (AU, VST3, CLAP). One entry per plug-in (AU preferred) unless allFormats.",
+   "description": "List installed plug-ins (AU, VST3, CLAP) and built-in effects: {component, name, manufacturer, format, kind, version}. One entry per plug-in (AU preferred) unless allFormats.",
    "properties": {
     "query": {
      "type": "string",
      "description": "Filter words (name/manufacturer)."
     },
-    "type": {
+    "kind": {
      "type": "string",
-     "description": "Plug-in type.",
+     "description": "Plug-in kind.",
      "enum": [
       "instrument",
       "effect"
@@ -973,11 +973,11 @@
   {
    "name": "load_plugin",
    "method": "loadPlugin",
-   "description": "Load a plug-in on a track: kind \"instrument\" (plays the track's notes) or \"effect\" (insert slot 0–15). channel instead of track loads an insert effect on a bus or the master channel (\"master\", bus name or \"bus:<id>\"). Plug-in names (built-in effects such as \"Reverb\" or \"Peak Limiter\" too) are matched like list_plugins; use the id when ambiguous.",
+   "description": "Load a plug-in on a track: kind \"instrument\" (plays the track's notes) or \"effect\" (insert slot 0–15). channel instead of track loads an insert effect on a bus or the master channel (\"master\", bus name or \"bus:<id>\"). Plug-in names (built-in effects such as \"Reverb\" or \"Peak Limiter\" too) are matched like list_plugins; use the component when ambiguous.",
    "properties": {
     "plugin": {
      "type": "string",
-     "description": "Plug-in name or id."
+     "description": "Plug-in name or component."
     },
     "track": {
      "type": [

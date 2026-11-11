@@ -43,8 +43,8 @@ fn a_project_with_inserts_sends_and_automation_is_deterministic_across_block_siz
     project["routing"]["outputs"] = json!({ "track:a": "bus:g", "track:b": "bus:g" });
     project["routing"]["sends"] = json!([{ "id": "s", "source": "track:c", "tap": "preFader", "destination": "bus:r", "gain": 0.5 }]);
     project["audioPlugins"] = json!([
-        effect("track:a", 0, "lat", "test:latency:300"), effect("bus:r", 0, "limit", "stfx:limiter"),
-        effect("bus:g", 0, "comp", "stfx:compressor"), effect("master", 0, "gain", "test:gain"),
+        effect("track:a", 0, "lat", "clap:test.latency.300"), effect("bus:r", 0, "limit", "stfx:limiter"),
+        effect("bus:g", 0, "comp", "stfx:compressor"), effect("master", 0, "gain", "clap:test.gain"),
     ]);
     project["tracks"][2]["delaySend"] = json!(0.4);
     project["tracks"][1]["reverbSend"] = json!(0.3);
@@ -106,7 +106,7 @@ fn a_refused_project_leaves_the_engine_and_the_mixer_as_they_were() {
     // Routing loops are refused by project validation already; a plan that cannot be compensated
     // is refused by the compiler: more than ten seconds of latency.
     let mut heavy = project(1);
-    heavy["audioPlugins"] = json!([effect("track:a", 0, "lat", "test:latency:600000")]);
+    heavy["audioPlugins"] = json!([effect("track:a", 0, "lat", "clap:test.latency.600000")]);
     let project = st_project::Project::from_value(heavy).unwrap();
     assert!(engine.publish(&project).unwrap_err().contains("compensation capacity"));
     let (after, _) = engine.render_offline(4_800, 512);
@@ -288,7 +288,7 @@ fn the_snapshot_carries_the_project_with_built_in_effect_state() {
     let engine = engine();
     assert_eq!(engine.snapshot(), json!({ "audioPlugins": [] }));
     let mut project = project(1);
-    project["audioPlugins"] = json!([effect("track:a", 0, "comp", "stfx:compressor"), effect("master", 1, "vendor", "com.vendor.eq")]);
+    project["audioPlugins"] = json!([effect("track:a", 0, "comp", "stfx:compressor"), effect("master", 1, "vendor", "clap:com.vendor.eq")]);
     project["audioPlugins"][1]["state"] = json!("b3BhcXVl");
     engine.publish(&parse(&project)).unwrap();
     assert!(engine.set_insert_parameter("comp", 0, 0.75));

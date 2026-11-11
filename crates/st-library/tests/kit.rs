@@ -49,7 +49,7 @@ fn session(sample: &str, zone: &str) -> Value {
         ],
         "groups": [ { "id": "g1", "name": "Fixture kit", "color": "#e2a44f", "collapsed": true, "busID": "kitbus", "libraryPath": "/Users/x/Kits/Fixture kit.stkit", "importNotes": ["A note"] } ],
         "audioPlugins": [
-            { "instanceID": "p-synth", "owner": "track:synth", "kind": "instrument", "slot": 0, "component": "vst3:ABCD", "format": "VST3", "name": "Fixture Synth",
+            { "instanceID": "p-synth", "owner": "track:synth", "kind": "instrument", "slot": 0, "component": "vst3:ABCDABCDABCDABCDABCDABCDABCDABCD", "format": "VST3", "name": "Fixture Synth",
               "state": "AAECAwQFAP/+", "opaqueVendorState": { "samplePath": "/vendor/opaque/do-not-copy.wav", "path": "/vendor/data" } },
             { "instanceID": "p-kick-fx", "owner": "instrument:2", "kind": "effect", "slot": 0, "component": "stfx:eq", "format": "Builtin", "state": "e30=" },
             { "instanceID": "p-bus", "owner": "bus:kitbus", "kind": "effect", "slot": 0, "component": "stfx:compressor", "format": "Builtin" },

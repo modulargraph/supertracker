@@ -698,7 +698,7 @@ impl Plugin for Vst3Plugin {
         let (latency, tail) = unsafe { (self.processor.getLatencySamples(), self.processor.getTailSamples()) };
         InstanceInfo {
             name: self.class.name.clone(),
-            vendor: self.class.vendor.clone(),
+            manufacturer: self.class.vendor.clone(),
             version: self.class.version.clone(),
             flags,
             latency,

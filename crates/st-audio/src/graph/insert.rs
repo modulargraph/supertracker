@@ -420,29 +420,37 @@ pub fn builtin_effects_metadata() -> serde_json::Value {
 pub mod testing {
     use super::*;
 
-    /// A factory that knows the `test:` components below and otherwise asks [`BuiltinFactory`].
+    /// A factory that plays the plug-ins below itself, in place of a plug-in manager, and
+    /// otherwise asks [`BuiltinFactory`]. Their components are CLAP ids no plug-in has:
     ///
-    /// * `test:latency:<frames>`: a pure delay that reports its length as latency;
-    /// * `test:gain`: multiplies by twice parameter 0 (default 0.5: unity);
-    /// * `test:key`: multiplies by the sidechain's absolute left sample (silence without one).
+    /// * `clap:test.latency.<frames>`: a pure delay that reports its length as latency;
+    /// * `clap:test.gain`: multiplies by twice parameter 0 (default 0.5: unity);
+    /// * `clap:test.key`: multiplies by the sidechain's absolute left sample (silence without one).
     pub struct TestFactory;
+
+    /// What follows `clap:test.` in a component of [`TestFactory`].
+    fn test_plugin(insert: &InsertSpec) -> Option<&str> {
+        insert.component.strip_prefix("clap:test.")
+    }
 
     impl InsertFactory for TestFactory {
         fn create(&self, insert: &InsertSpec, sample_rate: f64) -> Result<Box<dyn InsertProcessor>, String> {
-            let parts: Vec<&str> = insert.component.split(':').collect();
-            match parts.as_slice() {
-                ["test", "latency", frames] => Ok(Box::new(LatencyInsert { line: crate::graph::pdc::DelayLine::new(frames.parse().map_err(|_| "bad latency")?), bypass: false })),
-                ["test", "gain"] => Ok(Box::new(GainInsert { gain: 1.0, bypass: false })),
-                ["test", "key"] => Ok(Box::new(KeyInsert)),
-                _ => BuiltinFactory.create(insert, sample_rate),
+            match test_plugin(insert) {
+                Some("gain") => Ok(Box::new(GainInsert { gain: 1.0, bypass: false })),
+                Some("key") => Ok(Box::new(KeyInsert)),
+                Some(other) => match other.strip_prefix("latency.").and_then(|frames| frames.parse().ok()) {
+                    Some(frames) => Ok(Box::new(LatencyInsert { line: crate::graph::pdc::DelayLine::new(frames), bypass: false })),
+                    None => Err(format!("{} is no test plug-in.", insert.component)),
+                },
+                None => BuiltinFactory.create(insert, sample_rate),
             }
         }
 
         fn base_parameters(&self, insert: &InsertSpec) -> Result<Vec<(u64, f64)>, String> {
-            match insert.component.as_str() {
-                "test:gain" => Ok(vec![(0, insert.state.as_deref().and_then(|state| state.parse().ok()).unwrap_or(0.5))]),
-                component if component.starts_with("test:") => Ok(Vec::new()),
-                _ => BuiltinFactory.base_parameters(insert),
+            match test_plugin(insert) {
+                Some("gain") => Ok(vec![(0, insert.state.as_deref().and_then(|state| state.parse().ok()).unwrap_or(0.5))]),
+                Some(_) => Ok(Vec::new()),
+                None => BuiltinFactory.base_parameters(insert),
             }
         }
     }
@@ -570,7 +578,7 @@ mod tests {
         assert_eq!(base[0], (0, 0.25));
         assert_eq!(base.len(), descriptor.params.len());
         assert!(decode_builtin_state("another", &state).is_err());
-        assert!(BuiltinFactory.create(&insert("com.vendor.plugin", None), 48_000.0).err().unwrap().contains("not hosted yet"));
+        assert!(BuiltinFactory.create(&insert("clap:com.vendor.plugin", None), 48_000.0).err().unwrap().contains("not hosted yet"));
         assert!(BuiltinFactory.create(&insert("stfx:no-such-effect", None), 48_000.0).is_err());
     }
 }

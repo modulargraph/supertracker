@@ -193,7 +193,7 @@ fn the_snapshot_and_the_mixer_report_follow_the_project() {
     project["routing"] = json!({ "buses": [], "outputs": {}, "sends": [], "sidechains": [] });
     project["audioPlugins"] = json!([
         { "owner": "track:t0", "kind": "effect", "slot": 0, "instanceID": "comp", "component": "stfx:compressor", "format": "Builtin", "name": "Compressor" },
-        { "owner": "master", "kind": "effect", "slot": 0, "instanceID": "vendor", "component": "com.vendor.eq", "format": "VST2", "name": "Vendor EQ", "state": "b3BhcXVl" },
+        { "owner": "master", "kind": "effect", "slot": 0, "instanceID": "vendor", "component": "vst2:56454551", "format": "VST2", "name": "Vendor EQ", "state": "b3BhcXVl" },
     ]);
     let project_tracks = project["tracks"].as_array().unwrap().len();
     host.request("engine.project", json!({ "project": project })).unwrap();

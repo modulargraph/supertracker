@@ -99,7 +99,7 @@ fn line_inputs_and_a_strip_tap_do_not_allocate_on_the_input_or_the_render_thread
     let line = |channels: &[u32]| json!({ "enabled": true, "deviceUID": st_audio::inputs::NULL_MANUAL_INPUT, "channels": channels, "gain": 0.8 });
     project["tracks"][0]["audioInput"] = line(&[0, 1]);
     project["tracks"][2]["audioInput"] = line(&[5]);
-    project["audioPlugins"] = json!([effect("track:t0", 0, "lat", "test:latency:200"), effect("track:t0", 1, "comp", "stfx:compressor")]);
+    project["audioPlugins"] = json!([effect("track:t0", 0, "lat", "clap:test.latency.200"), effect("track:t0", 1, "comp", "stfx:compressor")]);
     engine.publish(&parse(&project)).unwrap();
     assert_eq!(engine.line_inputs().0.iter().filter(|row| row["state"] == "live").count(), 2);
     engine.play(&PlayOptions { song: true, from_start: true, ..Default::default() });
@@ -290,7 +290,7 @@ fn rendering_never_allocates_or_frees_even_across_project_and_plan_changes() {
     });
     project["audioPlugins"] = json!([
         effect("track:t0", 0, "comp", "stfx:compressor"), effect("bus:space", 0, "lim", "stfx:limiter"),
-        effect("track:t2", 0, "lat", "test:latency:200"), effect("master", 0, "gain", "test:gain"), effect("instrument:1", 0, "igain", "test:gain"),
+        effect("track:t2", 0, "lat", "clap:test.latency.200"), effect("master", 0, "gain", "clap:test.gain"), effect("instrument:1", 0, "igain", "clap:test.gain"),
     ]);
     project["patterns"][0]["automation"].as_array_mut().unwrap().extend([
         json!({ "id": "a", "owner": "bus:drums", "target": "volume", "interpolation": "linear", "points": [{ "row": 0, "value": 0.5 }, { "row": 63, "value": 1.0 }] }),

@@ -263,7 +263,7 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the hand
 | `note.off` | `{note, track?, instrument?, applyNote?, captureInput?, …}` | {ok: true, sustained?, inputAcknowledgement?} | implemented | track is the place the key's note.on named: the release ends the note that key started there and nothing else. A key whose track a publication has moved or removed since was released by the host before that publication; its note.off then ends nothing. With captureInput the reply waits for the audio thread and carries inputAcknowledgement. sustained: true when the interface's sustain pedal is down (midi.expression): the note sounds on until the pedal comes up. A plug-in or external MIDI instrument still gets the note-off (it sustains by itself); the note-off of one of the engine's own instruments is held back by the host. The interface keeps the recording of such a note open and closes it with a capture-only edge (applyNote: false) when its pedal comes up. |
 | `note.on` | `{note, velocity?, track?, instrument?, captureInput?, …}` | {ok: true, inputAcknowledgement?} | implemented | Quick command: order with note.off and midi.expression matters, and is kept all the way to the instrument (a plug-in, a device, the engine's voices). track is the track's place in the list (default: that of the last note); the host keeps the key with that place until its note.off. With captureInput (and inputOwner) the reply waits for the audio thread and carries inputAcknowledgement {status, applied, pattern, row, sequence, recordingClock?, …}. |
 | `plugin.editor` | `{owner, kind, slot, instanceID?, open?: false to close}` | {shown, open, name, custom, width, height, windowID} | implemented | Opens the plug-in's own window in its container process, or brings the open one to the front. Built-in effects have none. On Linux only CLAP plug-ins with floating windows have editors; macOS windows (and yielding activation to the container) are type-checked only. |
-| `plugin.load` | `{owner, kind: "instrument" or "effect", slot, component (or id): "clap:<id>", "vst3:<class id>", "au:<type:subtype:manufacturer>" or "stfx:<effect>", bundlePath?, state?, name?, bypass?, instanceID?, nks?}` | the descriptor {owner, kind, slot, instanceID, component, format, bundlePath, name, manufacturer, bypass, latency, tailTime, presets, hostStatus, parameters} | implemented | Long. Creates the instance in a container (or the built-in effect), replaces what the slot held in the engine's project, and answers once it is audible; the interface stores the descriptor and publishes. A failed load leaves the engine as it was. |
+| `plugin.load` | `{owner, kind: "instrument" or "effect", slot, component: "clap:<id>", "vst3:<class id, 32 upper-case hex digits>", "au:<type>:<subtype>:<manufacturer>" or "stfx:<effect>" (as plugins.list names it), bundlePath?, state?, name?, manufacturer?, bypass?, instanceID?, nks?}` | the descriptor {owner, kind, slot, instanceID, component, format, bundlePath, name, manufacturer, bypass, latency, tailTime, presets, hostStatus, parameters} | implemented | Long. Creates the instance in a container (or the built-in effect), replaces what the slot held in the engine's project, and answers once it is audible; the interface stores the descriptor and publishes. A failed load leaves the engine as it was. |
 | `plugin.loadNKS` | `plugin.load target + {path of the .nksf / .nksfx preset}` | the descriptor, with nks: {name, path, identity, pages, warnings} | implemented | Long. The preset's VST3 class (or the VST3 a vendor ships for its VST2 identity) is looked up in the catalogue, loaded with the preset's exact state bytes, and the controller pages are bound to the parameters the plug-in has. |
 | `plugin.move` | `{owner, fromSlot, toSlot}` | {moved: true, owner, fromSlot, toSlot, previousPlugins, plugins, slotMap: [{fromSlot, toSlot, instanceID}], audioPlugins, routing} | implemented | The effect in fromSlot takes the chain position of toSlot; the effects between shift, the slot numbers in use stay. Automation lanes of the owner follow their effect. previousPlugins carry the states captured before the move. No instance is reloaded. |
 | `plugin.parameter` | `{owner, kind, slot, address, value, normalized?: true} or {…, bypass: bool}` | the parameter {address, name, value, normalized, display, written, …}; for bypass the descriptor | implemented | Values are normalized 0..1 unless normalized is false. An effect of an instrument's chain is set on every track that plays it. Bypass is applied to the engine's project at once. |
@@ -298,8 +298,8 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the hand
 
 | Command | Payload | Result | State | Notes |
 |---|---|---|---|---|
-| `plugins.list` | `{details?: bool}` | [{id, name, manufacturer, vendor, version, format: "CLAP" or "VST3" or "AU" or "Builtin", kind, type, category, isInstrument, bundlePath?}]; with details {plugins, scanning, progress, blocklist: [{format, path, status, reason, blocklisted}], folders, error} | implemented | Part of the ready handshake (`plugins`). Answers from the scan cache and the built-in effects: no plug-in is loaded and no process started. |
-| `plugins.recovery` | `{}` | {suspects: [{identity: {key, format, componentID, name, bundlePath?}, reasons, requiresReview, retryAuthorized, loadCrashes, lostInstances, heldBack}], warnings, pendingInstances, …} | implemented | Part of the ready handshake (`pluginRecovery`). Lists plug-ins held back after crashing twice in a row while loading (plugin-recovery.json) and plug-ins lost while running; also sent as the event plugins.recovery when a plug-in is lost. |
+| `plugins.list` | `{details?: bool}` | [{component, name, manufacturer, version?, format: "CLAP" or "VST3" or "AU" or "Builtin", kind: "instrument" or "effect", category, sidechain? (built-in effects), bundlePath?}]; with details {plugins, scanning, progress, blocklist: [{format, path, status, reason, blocklisted}], folders, error} | implemented | Part of the ready handshake (`plugins`). Answers from the scan cache and the built-in effects: no plug-in is loaded and no process started. An entry names each fact as a project's plug-in descriptor does: component is what plugin.load takes, and format is the format its prefix names. |
+| `plugins.recovery` | `{}` | {suspects: [{identity: {key, format, component, name, manufacturer, bundlePath?}, reasons, requiresReview, retryAuthorized, loadCrashes, lostInstances, heldBack}], warnings, pendingInstances, …} | implemented | Part of the ready handshake (`pluginRecovery`). Lists plug-ins held back after crashing twice in a row while loading (plugin-recovery.json) and plug-ins lost while running; also sent as the event plugins.recovery when a plug-in is lost. |
 | `plugins.recovery.retry` | `{keys?: [identity key]}` | the recovery report + retryErrors: [{name, message}] | implemented | Long. Restores lost instances with their last state and loads held-back plug-ins of the project again. |
 | `plugins.scan` | `{rescan?, retryFailed?, folders?: [path], wait?}` | {scanning: true}; with wait {scanning: false, result, plugins, blocklist}; progress in plugins.catalogue events {scanning, completed, total, path, scanned, cached, failed, plugins, blocklist} | implemented | Each plug-in file is read by a short-lived container process; one that crashes or hangs is blocklisted. folders replaces the user's folders (settings section plugins). Also runs once at start for what changed. |
 
@@ -530,7 +530,12 @@ Behaviour worth knowing:
   the host, nothing fills in a missing part. The comment above `normalize` lists what every project
   in the page therefore has (every top-level collection, `viewState`, the keyboard performance
   settings, a track's instrument, a lane's points) and what stays optional; the rest of the page
-  reads those parts without asking whether they are there.
+  reads those parts without asking whether they are there. Completing is not repairing: a plug-in,
+  an automation lane or parameter pages that belong to nothing, and track groups that do not hold
+  together (a group without tracks or without its group bus, members apart, a `groupID` that names
+  no group), are left as they are and refused by the host with the reason. The page's edits keep
+  them consistent: the edit that removes a track, bus or instrument removes its plug-ins and lanes,
+  and every edit ends by dropping the parameter pages of plug-ins that are gone.
 - An instrument's `type` is `sample`, `plugin` (a CLAP, VST3 or Audio Unit instrument) or `midi`.
 - The keyboard performance settings (`project.performance`: key, scale, scale mode, chord, chord
   set, whether a MIDI keyboard uses them) are the page's: it expands keys itself and sends the
@@ -571,9 +576,17 @@ Behaviour worth knowing:
   measures (`st_audio::asrc`, `st_audio::inputs`); one device with one clock passes its frames
   through unchanged. A take of the input is a file at the engine's rate on the output's clock.
 - Plug-ins: every plug-in runs in a `supertracker-plugin-container` process (CLAP, VST3, Audio
-  Units; no VST2, no in-process hosting). Components are named `clap:<id>`, `vst3:<class id>`,
-  `au:<type>:<subtype>:<manufacturer>`; a descriptor with any other identity or state encoding is
-  reported as not installed or not readable, per plug-in, and keeps its bytes. The interface owns
+  Units; no VST2, no in-process hosting). A component is `<format>:<id>` in one spelling:
+  `clap:<id>`, `vst3:<class id, 32 upper-case hex digits>`, `au:<type>:<subtype>:<manufacturer>`,
+  `stfx:<effect>` for a built-in effect, as `plugins.list` names them, and a descriptor's `format`
+  is the format its component names (`CLAP`, `VST3`, `AU`, `Builtin`); a project that spells one
+  otherwise is refused when it is published or opened. `vst2:<unique id, 8 hex digits>` (`VST2`)
+  is the component of a plug-in a Maschine group import kept: it is never loaded and is reported
+  as a format this version does not host. A plug-in that is not installed, or whose state cannot
+  be read, is reported per plug-in and keeps its bytes. A plug-in, an automation lane and the
+  parameter pages of a plug-in belong to something that exists (the owner: a track by its
+  `routingID`, a bus, an instrument by its index, `master`; pages: a plug-in of the project);
+  the host refuses a project where one does not. The interface owns
   the project: `plugin.load`, `.remove` and `.move` change the engine's copy and answer with
   descriptors; the host pushes no plug-in list of its own. A descriptor, a plug-in command and a
   plug-in event name the channel by `owner` (`track:<routingID>`, `bus:<id>`, `master`,

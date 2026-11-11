@@ -678,7 +678,7 @@ impl Plugin for ClapPlugin {
             }
             InstanceInfo {
                 name: string(desc.name),
-                vendor: string(desc.vendor),
+                manufacturer: string(desc.vendor),
                 version: string(desc.version),
                 flags,
                 latency: self.latency.as_ref().and_then(|l| l.get).map_or(0, |get| get(self.plugin)),

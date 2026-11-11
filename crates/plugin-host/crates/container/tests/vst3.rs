@@ -74,7 +74,7 @@ fn gain_effect_metadata_audio_parameters_and_state() {
     let info = instance.info();
     // The class states no vendor: the factory's applies.
     assert_eq!(
-        (info.name.as_str(), info.vendor.as_str(), info.version.as_str()),
+        (info.name.as_str(), info.manufacturer.as_str(), info.version.as_str()),
         (plug::GAIN_NAME, plug::VENDOR, plug::VERSION)
     );
     assert_eq!(info.flags, INFO_HAS_BYPASS | if cfg!(target_os = "macos") { INFO_HAS_EDITOR } else { 0 });

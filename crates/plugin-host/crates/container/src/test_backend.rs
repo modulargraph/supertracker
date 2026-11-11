@@ -292,7 +292,7 @@ impl Plugin for TestPlugin {
         };
         InstanceInfo {
             name: self.name.clone(),
-            vendor: "SuperTracker Tests".into(),
+            manufacturer: "SuperTracker Tests".into(),
             version: env!("CARGO_PKG_VERSION").into(),
             flags,
             latency,

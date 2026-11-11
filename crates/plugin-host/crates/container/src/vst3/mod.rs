@@ -142,7 +142,7 @@ pub fn scan(path: &str) -> Result<Vec<PluginDescription>, PluginError> {
                 format: "vst3".into(),
                 id: cid_to_hex(&class.cid),
                 name: class.name,
-                vendor: class.vendor,
+                manufacturer: class.vendor,
                 // The class's own version; the bundle's where a class states none.
                 version: if class.version.is_empty() { bundle_version.clone() } else { class.version },
                 category: class.sub_categories,

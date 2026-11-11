@@ -52,7 +52,7 @@ fn gain_effect_metadata_audio_parameters_and_state() {
 
     let info = instance.info();
     assert_eq!(
-        (info.name.as_str(), info.vendor.as_str(), info.version.as_str()),
+        (info.name.as_str(), info.manufacturer.as_str(), info.version.as_str()),
         ("ST Test Gain", "SuperTracker Tests", "1.2.3")
     );
     assert_eq!(info.flags, INFO_HAS_BYPASS | INFO_HAS_EDITOR);

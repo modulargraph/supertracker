@@ -166,7 +166,7 @@ impl Importer<'_> {
         let mut summary = state.summary();
         summary["warnings"] = json!(["Vendor content paths are unchanged; missing ensembles or samples may require repair inside the plug-in."]);
         Ok(json!({
-            "instanceID": unique_id(), "kind": if instrument { "instrument" } else { "effect" }, "slot": 0, "component": component, "id": component, "format": "VST2",
+            "instanceID": unique_id(), "kind": if instrument { "instrument" } else { "effect" }, "slot": 0, "component": component, "format": "VST2",
             "name": state.plugin_name, "state": base64_encode(&state.payload), "bypass": !enabled, "missing": true, "maschinePluginState": summary,
         }))
     }

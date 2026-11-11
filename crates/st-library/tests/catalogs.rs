@@ -290,7 +290,7 @@ fn session(group: &str, names: &[&str], sample: &str) -> Value {
         "instruments": names.iter().enumerate().map(|(index, name)| json!({ "id": index, "type": "sample", "name": name, "samplePath": sample })).collect::<Vec<_>>(),
         "groups": [{ "id": "g", "name": group, "busID": "gb", "tags": ["Warm"] }],
         "routing": { "buses": [{ "id": "gb", "name": group, "type": "group", "groupID": "g" }], "outputs": {}, "sends": [], "sidechains": [] },
-        "audioPlugins": [{ "instanceID": "p1", "owner": "bus:gb", "kind": "effect", "slot": 0, "component": "vst3:MISSING", "format": "VST3", "name": "Rare Reverb" },
+        "audioPlugins": [{ "instanceID": "p1", "owner": "bus:gb", "kind": "effect", "slot": 0, "component": "vst3:0000000000000000000000000000DEAD", "format": "VST3", "name": "Rare Reverb" },
                          { "instanceID": "p2", "owner": "bus:gb", "kind": "effect", "slot": 1, "component": "stfx:eq", "format": "Builtin", "name": "EQ" }]
     })
 }
@@ -360,7 +360,7 @@ fn kits_are_saved_indexed_read_and_browsed() {
     assert!(library.kit_read(serde_json::from_value(json!({ "path": "relative.stkit" })).unwrap()).is_err());
 
     // kit.detail: pads and what to expect.
-    let detail = serde_json::to_value(library.kit_detail(serde_json::from_value(json!({ "path": kit, "availableComponents": ["vst3:OTHER"] })).unwrap()).unwrap()).unwrap();
+    let detail = serde_json::to_value(library.kit_detail(serde_json::from_value(json!({ "path": kit, "availableComponents": ["vst3:00000000000000000000000000000FED"] })).unwrap()).unwrap()).unwrap();
     assert_eq!((detail["name"].as_str(), detail["path"].as_str(), detail["kitFormat"].as_str(), detail["soundCount"].as_u64()), (Some("Warm homemade kit"), Some(kit.as_str()), Some("supertracker-kit"), Some(2)), "Save names the kit after its group");
     assert_eq!(detail["sounds"][0], json!({ "slot": 0, "id": "t0", "name": "Kick renamed", "type": "sample", "plugin": "", "empty": false, "missing": false }));
     assert_eq!(detail["compatibility"], json!({ "summary": "Review import notes", "loadable": true, "warnings": ["Plug-in unavailable on this computer: Rare Reverb"], "missingPlugins": ["Rare Reverb"] }));

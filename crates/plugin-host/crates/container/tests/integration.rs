@@ -528,9 +528,9 @@ fn each_policy_yields_the_expected_number_of_processes() {
         assert_eq!(env.sup().policy(), policy);
         let instances: Vec<Instance> = plan
             .iter()
-            .map(|(vendor, plugin)| {
+            .map(|(manufacturer, plugin)| {
                 let mut config = if *plugin == "sine" { instrument(plugin) } else { effect(plugin) };
-                config.manufacturer = vendor.to_string();
+                config.manufacturer = manufacturer.to_string();
                 active(env.sup(), config)
             })
             .collect();
@@ -547,11 +547,11 @@ fn each_policy_yields_the_expected_number_of_processes() {
         // Same plug-in, same container, exactly when the policy says so.
         let same = instances[0].container() == instances[1].container();
         assert_eq!(same, policy != GroupingPolicy::PerInstance);
-        let cross_vendor = instances[0].container() == instances[3].container();
-        assert_eq!(cross_vendor, policy == GroupingPolicy::Shared);
-        let same_vendor_other_plugin = instances[0].container() == instances[2].container();
+        let other_manufacturer = instances[0].container() == instances[3].container();
+        assert_eq!(other_manufacturer, policy == GroupingPolicy::Shared);
+        let same_manufacturer_other_plugin = instances[0].container() == instances[2].container();
         assert_eq!(
-            same_vendor_other_plugin,
+            same_manufacturer_other_plugin,
             matches!(policy, GroupingPolicy::Shared | GroupingPolicy::PerManufacturer)
         );
         // All of them process audio.

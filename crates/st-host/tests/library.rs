@@ -179,7 +179,7 @@ fn session(sample: &Path) -> Value {
             { "id": 1, "type": "plugin", "name": "Synth" }
         ],
         "groups": [ { "id": "g1", "name": "Bridge kit", "busID": "kitbus" } ],
-        "audioPlugins": [ { "instanceID": "p-synth", "owner": "track:synth", "kind": "instrument", "slot": 0, "component": "vst3:ABCD", "format": "VST3", "name": "Fixture Synth", "state": "AAEC" } ],
+        "audioPlugins": [ { "instanceID": "p-synth", "owner": "track:synth", "kind": "instrument", "slot": 0, "component": "vst3:ABCDABCDABCDABCDABCDABCDABCDABCD", "format": "VST3", "name": "Fixture Synth", "state": "AAEC" } ],
         "routing": { "buses": [ { "id": "kitbus", "name": "Bridge kit", "type": "group", "groupID": "g1" } ],
             "outputs": { "track:kick": "bus:kitbus", "track:synth": "bus:kitbus", "bus:kitbus": "master" }, "sends": [], "sidechains": [] },
         "patterns": [ { "id": 0, "length": 4, "steps": [[null, null, null, null], [null, null, null, null]] } ],
@@ -216,7 +216,7 @@ fn a_kit_is_saved_from_the_payloads_project_and_read_back() {
     assert_eq!(detail["compatibility"]["summary"], "Ready to load");
     assert_eq!(detail["sounds"].as_array().unwrap().len(), 2);
     // The request can name the components itself.
-    let judged = host.request("kit.detail", json!({ "path": path, "availableComponents": ["vst3:OTHER"] })).unwrap();
+    let judged = host.request("kit.detail", json!({ "path": path, "availableComponents": ["vst3:00000000000000000000000000000FED"] })).unwrap();
     assert_eq!(judged["compatibility"]["missingPlugins"], json!(["Fixture Synth"]));
 
     // The saved kit is in the library (kit.save rescans the kit folder).
@@ -237,7 +237,7 @@ fn kits_use_the_plug_in_list_of_the_plug_in_area_once_it_exists() {
     let support = folder.path().join("support");
     let sample = folder.path().join("Sounds/Kick.wav");
     write_wav(&sample, 4_410, 60.0);
-    let installed = Arc::new(Mutex::new(vec![json!({ "id": "vst3:ABCD", "name": "Fixture Synth" })]));
+    let installed = Arc::new(Mutex::new(vec![json!({ "component": "vst3:ABCDABCDABCDABCDABCDABCDABCDABCD", "name": "Fixture Synth" })]));
     let fixture = start(&support, {
         let installed = installed.clone();
         // A stand-in for the plug-in area.

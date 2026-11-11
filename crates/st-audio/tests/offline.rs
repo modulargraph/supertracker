@@ -136,7 +136,7 @@ fn a_latent_insert_is_compensated_so_parallel_paths_stay_aligned() {
     let (reference, _) = reference();
     // Track a runs through 257 frames of latency, track b does not: the mixer delays b.
     let mut latent = project(2);
-    latent["audioPlugins"] = json!([effect("track:a", 0, "lat", "test:latency:257")]);
+    latent["audioPlugins"] = json!([effect("track:a", 0, "lat", "clap:test.latency.257")]);
     let engine = engine();
     engine.publish(&parse(&latent)).unwrap();
     engine.play(&st_audio::PlayOptions { from_start: true, ..Default::default() });
@@ -150,7 +150,7 @@ fn a_latent_insert_is_compensated_so_parallel_paths_stay_aligned() {
     let mut wet = project(1);
     wet["routing"]["buses"] = json!([bus("r", "return", 1.0)]);
     wet["routing"]["sends"] = json!([{ "id": "s", "source": "track:a", "tap": "postFader", "destination": "bus:r", "gain": 0.5 }]);
-    wet["audioPlugins"] = json!([effect("bus:r", 0, "lat", "test:latency:100")]);
+    wet["audioPlugins"] = json!([effect("bus:r", 0, "lat", "clap:test.latency.100")]);
     assert_signal(&render(&wet, FRAMES).0, |i| if i < 100 { 0.0 } else { reference[i - 100] * 1.5 }, 1e-6, "dry and wet aligned");
 
     // Latency inside a group: the group's other track is delayed at the group's input, and a
@@ -158,7 +158,7 @@ fn a_latent_insert_is_compensated_so_parallel_paths_stay_aligned() {
     let mut grouped = project(3);
     grouped["routing"]["buses"] = json!([bus("g", "group", 1.0)]);
     grouped["routing"]["outputs"] = json!({ "track:a": "bus:g", "track:b": "bus:g" });
-    grouped["audioPlugins"] = json!([effect("track:a", 0, "lat", "test:latency:64"), effect("bus:g", 0, "lat2", "test:latency:36")]);
+    grouped["audioPlugins"] = json!([effect("track:a", 0, "lat", "clap:test.latency.64"), effect("bus:g", 0, "lat2", "clap:test.latency.36")]);
     assert_signal(&render(&grouped, FRAMES).0, |i| if i < 100 { 0.0 } else { reference[i - 100] * 3.0 }, 2e-6, "three paths aligned at 100 frames");
 }
 
@@ -172,7 +172,7 @@ fn a_sidechain_reaches_its_insert_and_is_not_heard_by_itself() {
         "id": "k", "source": "track:b", "tap": "postFader", "gain": 1, "enabled": true,
         "destination": "key",
     }]);
-    keyed["audioPlugins"] = json!([effect("track:a", 0, "key", "test:key")]);
+    keyed["audioPlugins"] = json!([effect("track:a", 0, "key", "clap:test.key")]);
     assert_signal(&render(&keyed, FRAMES).0, |i| reference[i] * reference[i].abs(), 1e-6, "keyed by track b");
     // Solo on a: the detector still hears b, although b's audible paths are closed.
     keyed["tracks"][0]["solo"] = json!(true);
@@ -255,28 +255,28 @@ fn insert_parameters_follow_lanes_and_step_locks_and_return_to_their_base() {
     let (reference, _) = reference();
     // The test gain insert multiplies by twice parameter 0; its base value 0.5 is unity.
     let mut lane = project(1);
-    lane["audioPlugins"] = json!([effect("track:a", 0, "gain", "test:gain")]);
+    lane["audioPlugins"] = json!([effect("track:a", 0, "gain", "clap:test.gain")]);
     lane["patterns"][0]["automation"] = json!([{ "id": "l", "owner": "track:a", "target": "plugin:effect:0:0", "interpolation": "step", "points": [{ "row": 0, "value": 0.5 }, { "row": 1, "value": 0.25 }, { "row": 2, "value": 1.0 }] }]);
     let (left, _) = render(&lane, FRAMES);
     assert_signal(&left, |i| reference[i] * if i < ROW { 1.0 } else if i < 2 * ROW { 0.5 } else { 2.0 }, 1e-6, "insert parameter lane");
 
     // A step lock holds for its row; the next row returns to the base value.
     let mut lock = project(1);
-    lock["audioPlugins"] = json!([effect("track:a", 0, "gain", "test:gain")]);
+    lock["audioPlugins"] = json!([effect("track:a", 0, "gain", "clap:test.gain")]);
     lock["patterns"][0]["steps"][0][1] = json!({ "fx1": { "type": "plugin", "instanceID": "gain", "address": "0", "value": 0.125 } });
     let (left, _) = render(&lock, FRAMES);
     assert_signal(&left, |i| reference[i] * if (ROW..2 * ROW).contains(&i) { 0.25 } else { 1.0 }, 1e-6, "plug-in step lock");
 
     // An instrument's insert runs on every track that plays the instrument, and its lane reaches each.
     let mut chain = project(2);
-    chain["audioPlugins"] = json!([effect("instrument:0", 0, "igain", "test:gain")]);
+    chain["audioPlugins"] = json!([effect("instrument:0", 0, "igain", "clap:test.gain")]);
     chain["patterns"][0]["automation"] = json!([{ "id": "l", "owner": "instrument:0", "target": "plugin:effect:0:0", "interpolation": "step", "points": [{ "row": 0, "value": 0.25 }] }]);
     let (left, _) = render(&chain, FRAMES);
     assert_signal(&left, |i| reference[i] * 1.0, 2e-6, "two tracks at half gain each");
 
     // Bypass, and a saved state as the base value.
     let mut bypassed = project(1);
-    bypassed["audioPlugins"] = json!([effect("track:a", 0, "gain", "test:gain")]);
+    bypassed["audioPlugins"] = json!([effect("track:a", 0, "gain", "clap:test.gain")]);
     bypassed["audioPlugins"][0]["state"] = json!("0.25");
     assert_signal(&render(&bypassed, FRAMES).0, |i| reference[i] * 0.5, 1e-6, "saved state");
     bypassed["audioPlugins"][0]["bypass"] = json!(true);
@@ -311,7 +311,7 @@ fn built_in_effects_are_heard_and_plug_ins_pass_through_as_unavailable() {
     assert!(total > 10 && changed * 2 > total, "{changed} of {total} built-in effects change the tone at their defaults");
 
     let mut plugin = project(1);
-    plugin["audioPlugins"] = json!([effect("track:a", 0, "p", "com.vendor.reverb")]);
+    plugin["audioPlugins"] = json!([effect("track:a", 0, "p", "clap:com.vendor.reverb")]);
     let engine = engine();
     engine.publish(&parse(&plugin)).unwrap();
     engine.play(&st_audio::PlayOptions { from_start: true, ..Default::default() });
@@ -345,7 +345,7 @@ fn a_new_plan_while_playing_keeps_tails_delays_and_insert_state() {
     playing["tracks"][0]["delaySend"] = json!(0.5);
     playing["tracks"][1]["reverbSend"] = json!(0.5);
     playing["delay"] = json!({ "time": 0.11, "feedback": 0.6, "mix": 0.5 });
-    playing["audioPlugins"] = json!([effect("track:b", 0, "lat", "test:latency:333"), effect("bus:g", 0, "comp", "stfx:compressor"), effect("master", 0, "phase", "stfx:phaser")]);
+    playing["audioPlugins"] = json!([effect("track:b", 0, "lat", "clap:test.latency.333"), effect("bus:g", 0, "comp", "stfx:compressor"), effect("master", 0, "phase", "stfx:phaser")]);
     playing["patterns"][0]["automation"] = json!([{ "id": "l", "owner": "bus:g", "target": "volume", "interpolation": "linear", "points": [{ "row": 0, "value": 0.2 }, { "row": 8, "value": 0.9 }] }]);
     let undisturbed = render(&playing, 2 * FRAMES);
 

@@ -40,8 +40,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use st_audio::graph::insert::builtin_effects_metadata;
 use st_audio::graph::spec::track_owner;
-use st_audio::plugins::catalog::is_instrument;
-use st_audio::plugins::client::{ParameterInfo, PARAM_AUTOMATABLE, PARAM_BOOLEAN, PARAM_HIDDEN, PARAM_READ_ONLY, PARAM_STEPPED};
+use st_audio::plugins::client::{ParameterInfo, PARAM_AUTOMATABLE, PARAM_BOOLEAN, PARAM_HIDDEN, PARAM_READ_ONLY, PARAM_STEPPED, SCAN_INSTRUMENT};
+use st_audio::plugins::ident::{parse_component, Identity};
 use st_audio::plugins::manager::{default_socket_dir, grouping_policy, yield_activation};
 
 /// The window layer installs the macOS call that lets a container's editor take the keyboard.
@@ -55,6 +55,8 @@ use crate::commands::{Commands, NoPayload};
 use crate::{fail, Error, EventSink, Result, Settings};
 
 const SETTINGS_SECTION: &str = "plugins";
+/// Who makes the built-in effects, as the plug-in list and their descriptors say it.
+const BUILTIN_MANUFACTURER: &str = "SuperTracker";
 /// Insert slots per channel.
 const INSERT_SLOTS: i64 = 16;
 /// Parameters whose text the plug-in is asked for in one `plugin.parameters`.
@@ -262,6 +264,11 @@ impl Plugins {
             value["audioPlugins"] = json!([]);
         }
         change(&mut value)?;
+        // The parameter pages of a plug-in that left the project go with it.
+        let instances: HashSet<String> = value["audioPlugins"].as_array().into_iter().flatten().filter_map(|plugin| text(plugin, "instanceID").map(String::from)).collect();
+        if let Some(pages) = value.get_mut("pluginPages").and_then(Value::as_object_mut) {
+            pages.retain(|instance, _| instances.contains(instance));
+        }
         let next = Project::from_value(value)?;
         self.engine.publish_with(&next, false).map_err(Error::new)?;
         Ok(next)
@@ -325,18 +332,21 @@ impl Plugins {
 
     // ---- catalogue -----------------------------------------------------------------------
 
+    /// The plug-in list: what can be loaded, each entry under the names a descriptor has for
+    /// the same facts (`component`, `format`, `kind`, `name`, `manufacturer`, `bundlePath`).
     fn catalog_entries(&self) -> Vec<Value> {
         let mut entries: Vec<Value> = builtin_effects_metadata()
             .as_array()
             .into_iter()
             .flatten()
-            .map(|effect| json!({ "id": effect["id"], "name": effect["name"], "manufacturer": "SuperTracker", "vendor": "SuperTracker", "format": "Builtin", "kind": "effect", "type": "effect", "category": effect["category"], "isInstrument": false, "sidechain": effect["sidechain"] }))
+            .map(|effect| json!({ "component": effect["id"], "name": effect["name"], "manufacturer": BUILTIN_MANUFACTURER, "format": "Builtin", "kind": "effect", "category": effect["category"], "sidechain": effect["sidechain"] }))
             .collect();
         for plugin in self.catalog.iter().flat_map(|catalog| catalog.plugins()) {
-            let kind = if is_instrument(&plugin) { "instrument" } else { "effect" };
+            let identity = Identity { format: plugin.format, id: plugin.id, ..Identity::default() };
+            let kind = if plugin.flags & SCAN_INSTRUMENT != 0 { "instrument" } else { "effect" };
             let mut entry = json!({
-                "id": format!("{}:{}", plugin.format, plugin.id), "name": plugin.name, "manufacturer": plugin.vendor, "vendor": plugin.vendor, "version": plugin.version,
-                "format": plugin.format.to_ascii_uppercase(), "kind": kind, "type": kind, "category": plugin.category, "isInstrument": kind == "instrument",
+                "component": identity.component(), "name": plugin.name, "manufacturer": plugin.manufacturer, "version": plugin.version,
+                "format": identity.format_label(), "kind": kind, "category": plugin.category,
             });
             if !plugin.path.is_empty() {
                 entry["bundlePath"] = json!(plugin.path);
@@ -417,10 +427,10 @@ impl Plugins {
 
     /// The descriptor `plugin.load` puts into the project.
     fn new_descriptor(&self, target: &Target, payload: &Value) -> Result<Value> {
-        let Some(component) = text(payload, "component").or_else(|| text(payload, "id")) else { fail!("Choose a plug-in to load.") };
+        let Some(component) = text(payload, "component") else { fail!("Choose a plug-in to load: its component, as the plug-in list names it.") };
         let mut descriptor = Map::new();
         // What the interface stored with the descriptor travels on (pages, NKS binding).
-        for key in ["nks", "state", "name", "manufacturer", "format", "bundlePath", "bypass"] {
+        for key in ["nks", "state", "name", "manufacturer", "bundlePath", "bypass"] {
             if let Some(value) = payload.get(key).filter(|value| !value.is_null()) {
                 descriptor.insert(key.to_string(), value.clone());
             }
@@ -435,20 +445,18 @@ impl Plugins {
             if target.instrument {
                 fail!("Built-in effects are insert effects, not instruments.");
             }
-            let id = format!("stfx:{}", component.split_once(':').map_or(component, |(_, id)| id));
             let effects = builtin_effects_metadata();
-            let Some(effect) = effects.as_array().into_iter().flatten().find(|effect| effect["id"] == json!(id)) else { fail!("This version has no built-in effect named {component}.") };
-            descriptor.insert("component".into(), json!(id));
+            let Some(effect) = effects.as_array().into_iter().flatten().find(|effect| effect["id"] == json!(component)) else { fail!("This version has no built-in effect named {component}.") };
             descriptor.insert("format".into(), json!("Builtin"));
-            descriptor.insert("manufacturer".into(), json!("SuperTracker"));
+            descriptor.insert("manufacturer".into(), json!(BUILTIN_MANUFACTURER));
             descriptor.entry("name").or_insert(effect["name"].clone());
             return Ok(Value::Object(descriptor));
         }
-        let Some((format, id)) = st_audio::plugins::ident::parse_component(component, text(payload, "format")) else {
-            fail!("{component} is not a plug-in this version can host (CLAP, VST3 or Audio Unit).");
+        let Some((format, id)) = parse_component(component) else {
+            fail!("{component} is not a plug-in this version can host: a component is clap:<id>, vst3:<class id> or au:<type>:<subtype>:<manufacturer>, as the plug-in list names it.");
         };
-        descriptor.insert("component".into(), json!(format!("{format}:{id}")));
-        descriptor.insert("format".into(), json!(format.to_ascii_uppercase()));
+        let identity = Identity { format: format.clone(), id: id.clone(), ..Identity::default() };
+        descriptor.insert("format".into(), json!(identity.format_label()));
         // The catalogue knows the plug-in's file, name and maker, once its scan has listed the
         // plug-in. A descriptor it leaves unnamed is named by the loaded instance ([`Plugins::place`]).
         if let Some(found) = self.catalog.as_ref().and_then(|catalog| catalog.find(&format, &id)) {
@@ -457,8 +465,8 @@ impl Plugins {
                 descriptor.insert("bundlePath".into(), json!(found.path));
             }
             descriptor.entry("name").or_insert(json!(found.name));
-            descriptor.entry("manufacturer").or_insert(json!(found.vendor));
-            if is_instrument(&found) != target.instrument && text(payload, "state").is_none() {
+            descriptor.entry("manufacturer").or_insert(json!(found.manufacturer));
+            if (found.flags & SCAN_INSTRUMENT != 0) != target.instrument && text(payload, "state").is_none() {
                 fail!("{} is {}, not {}.", found.name, if target.instrument { "an effect" } else { "an instrument" }, if target.instrument { "an instrument" } else { "an effect" });
             }
         }
@@ -548,7 +556,7 @@ impl Plugins {
         request["component"] = json!(format!("vst3:{}", plugin.id));
         request["bundlePath"] = json!(plugin.path);
         request["name"] = json!(plugin.name);
-        request["manufacturer"] = json!(plugin.vendor);
+        request["manufacturer"] = json!(plugin.manufacturer);
         // The preset holds the component's own state: framed as the container stores VST3 state.
         request["state"] = json!(base64(&vst3_component_state(&plugin.id, &preset.state)?));
         let target = self.target(&request)?;

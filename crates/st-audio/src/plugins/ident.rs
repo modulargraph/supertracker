@@ -1,9 +1,9 @@
 //! Which plug-in a descriptor names.
 //!
-//! A descriptor's `component` is `<format>:<id>`: `vst3:<class id, 32 hex digits>`,
-//! `clap:<plug-in id>` or `au:<type>:<subtype>:<manufacturer>` (the container's Audio Unit id).
-//! `bundlePath` is the plug-in's file (VST3 bundle, CLAP file); Audio Units have none. A
-//! component without a known prefix is read with the descriptor's `format` field.
+//! A descriptor's `component` is `<format>:<id>`: `vst3:<class id, 32 upper-case hex digits>`,
+//! `clap:<plug-in id>` or `au:<type>:<subtype>:<manufacturer>` (the container's Audio Unit id),
+//! in the one spelling `st_project::model::plugin::parse_component` reads. `bundlePath` is the
+//! plug-in's file (VST3 bundle, CLAP file); Audio Units have none.
 
 /// The identity of an installed plug-in, as the container needs it to create an instance.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -21,17 +21,11 @@ pub struct Identity {
 /// The formats the container hosts.
 pub const FORMATS: [&str; 3] = ["vst3", "clap", "au"];
 
-/// `(format, id)` of a component string; `format_hint` is the descriptor's `format` field.
-pub fn parse_component(component: &str, format_hint: Option<&str>) -> Option<(String, String)> {
-    let component = component.trim();
-    if let Some((prefix, id)) = component.split_once(':') {
-        let prefix = prefix.to_ascii_lowercase();
-        if FORMATS.contains(&prefix.as_str()) && !id.is_empty() {
-            return Some((prefix.clone(), if prefix == "vst3" { id.to_ascii_uppercase() } else { id.to_string() }));
-        }
-    }
-    let format = format_hint?.to_ascii_lowercase();
-    (FORMATS.contains(&format.as_str()) && !component.is_empty()).then(|| (format, component.to_string()))
+/// `(format, id)` of a plug-in's component: the container's backend name and the plug-in's id
+/// in that format. `None` for a built-in effect's component and for text that is no component.
+pub fn parse_component(component: &str) -> Option<(String, String)> {
+    let parsed = st_project::model::plugin::parse_component(component)?;
+    FORMATS.contains(&parsed.prefix).then(|| (parsed.prefix.to_string(), parsed.id.to_string()))
 }
 
 impl Identity {
@@ -65,12 +59,15 @@ mod tests {
 
     #[test]
     fn components_name_a_format_and_an_id() {
-        assert_eq!(parse_component("vst3:535456334761696e50726f6300000001", None), Some(("vst3".into(), "535456334761696E50726F6300000001".into())));
-        assert_eq!(parse_component("CLAP:org.example.gain", None), Some(("clap".into(), "org.example.gain".into())));
-        assert_eq!(parse_component("au:aufx:dely:appl", None), Some(("au".into(), "aufx:dely:appl".into())));
-        assert_eq!(parse_component("org.example.gain", Some("CLAP")), Some(("clap".into(), "org.example.gain".into())));
-        assert_eq!(parse_component("org.example.gain", None), None);
-        assert_eq!(parse_component("stfx:eq", Some("Builtin")), None);
+        assert_eq!(parse_component("vst3:535456334761696E50726F6300000001"), Some(("vst3".into(), "535456334761696E50726F6300000001".into())));
+        assert_eq!(parse_component("clap:org.example.gain"), Some(("clap".into(), "org.example.gain".into())));
+        assert_eq!(parse_component("au:aufx:dely:appl"), Some(("au".into(), "aufx:dely:appl".into())));
+        // One spelling: the prefix as written, a VST3 class id in upper case, and never an id alone.
+        for other in ["org.example.gain", "CLAP:org.example.gain", "vst3:535456334761696e50726f6300000001", "vst3:ABCD", "clap:", "stfx:eq"] {
+            assert_eq!(parse_component(other), None, "{other}");
+        }
+        // A component the project format knows and no container hosts.
+        assert_eq!(parse_component("vst2:4E694D61"), None);
         let one = Identity { format: "clap".into(), id: "a".into(), path: "/x".into(), ..Identity::default() };
         let other = Identity { path: "/y".into(), ..one.clone() };
         assert_ne!(one.key(), other.key());

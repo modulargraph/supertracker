@@ -889,8 +889,7 @@ impl PluginManager {
 
     fn identity_of(&self, insert: &InsertSpec, descriptor: Option<&PluginDescriptor>) -> Result<Identity, String> {
         let name = if insert.name.is_empty() { insert.component.clone() } else { insert.name.clone() };
-        let format_hint = descriptor.and_then(|descriptor| descriptor.format.as_deref());
-        let Some((format, id)) = parse_component(&insert.component, format_hint) else {
+        let Some((format, id)) = parse_component(&insert.component) else {
             return Err(format!("{name} names a plug-in format this version does not host ({}).", insert.component));
         };
         let mut identity = Identity {
@@ -909,7 +908,7 @@ impl PluginManager {
                         identity.name = found.name;
                     }
                     if identity.manufacturer.is_empty() {
-                        identity.manufacturer = found.vendor;
+                        identity.manufacturer = found.manufacturer;
                     }
                 }
                 None => return Err(format!("{name} is not installed on this computer. Its settings are kept in the project.")),
@@ -965,8 +964,8 @@ impl PluginManager {
         if !info.name.is_empty() {
             named.name = info.name.clone();
         }
-        if !info.vendor.is_empty() {
-            named.manufacturer = info.vendor.clone();
+        if !info.manufacturer.is_empty() {
+            named.manufacturer = info.manufacturer.clone();
         }
         let hosted = Arc::new(Hosted {
             key: key.to_string(),
@@ -1008,7 +1007,7 @@ impl PluginManager {
         let descriptors = project.plugin_list();
         let mut desired: Vec<Desired<'_>> = Vec::new();
         for strip in &spec.strips {
-            for insert in strip.inserts.iter().filter(|insert| insert.builtin_id().is_none() && !insert.component.is_empty() && !insert.component.starts_with("test:")) {
+            for insert in strip.inserts.iter().filter(|insert| insert.builtin_id().is_none() && !insert.component.is_empty()) {
                 let descriptor = descriptors.iter().find(|descriptor| {
                     if !insert.instance_id.is_empty() {
                         return descriptor.instance_id.as_deref() == Some(insert.instance_id.as_str());
