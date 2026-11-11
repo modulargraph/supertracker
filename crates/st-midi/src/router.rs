@@ -1,5 +1,7 @@
-//! Where incoming MIDI goes: which track and instrument a device plays, what the sustain pedal
-//! holds back, the chord map of the keyboard performance settings, and transport control.
+//! Where incoming MIDI goes: which track and instrument a device plays, the chord map of the
+//! keyboard performance settings, and transport control. Pedals are routed like notes and handed
+//! on as they are: what a pedal holds is decided where the instruments are known
+//! ([`crate::sustain`]).
 //!
 //! Pure state: [`InputRouter::handle`] turns one message into a list of [`InputAction`]s, which
 //! [`crate::MidiService`] carries out (on the engine through [`crate::InputTarget`], on devices
@@ -10,7 +12,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use crate::message::Message;
-use crate::sustain::{Destination, SustainState};
+use crate::sustain::{PEDALS, SUSTAIN};
 
 /// The MIDI side of one instrument of the project.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -114,22 +116,38 @@ pub struct RoutedNote {
     pub instrument: usize,
 }
 
+/// A pedal message with the place it is played to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RoutedPedal {
+    /// 64 (sustain), 66 (sostenuto) or 67 (soft).
+    pub controller: u8,
+    /// 0 to 127.
+    pub value: u8,
+    /// MIDI channel it arrived on, 1 to 16.
+    pub channel: u8,
+    /// Id of the input device.
+    pub source: i32,
+    /// The engine channel and instrument a note of this device and channel would play now;
+    /// `None` when its input is refused there. A pedal is handed on all the same: what it holds
+    /// must be let go when it comes up, also after the selection or the input filter changed.
+    pub destination: Option<(usize, usize)>,
+}
+
 /// One thing to do for an incoming message.
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputAction {
     /// Start a note.
     NoteOn(RoutedNote),
-    /// A key was released. With `sound` false the sustain pedal holds the sound: report the
-    /// release, but do not stop the note.
-    NoteOff {
-        /// The note, at the place its note-on went to.
-        note: RoutedNote,
-        /// Whether the sound stops now.
-        sound: bool,
-    },
-    /// Stop a note the pedal was holding (pedal up, or the input route changed). Not reported to
-    /// the interface.
-    Release(Destination),
+    /// A key was released: the note, at the place its note-on went to.
+    NoteOff(RoutedNote),
+    /// A key is released in its device's name because the input route changed. Not reported
+    /// to the interface.
+    Release(RoutedNote),
+    /// A sustain, sostenuto or soft pedal moved.
+    Pedal(RoutedPedal),
+    /// The input route changed: no pedal-up will arrive through it, so every pedal of a device
+    /// counts as lifted.
+    LiftPedals,
     /// Pass a controller, program change, channel or poly pressure or pitch-bend message on to
     /// the instrument: to its device when it is external, to the engine otherwise (its own
     /// voices and a plug-in instrument on the track). `message.status` carries the kind only
@@ -162,19 +180,14 @@ pub enum InputAction {
     },
 }
 
-/// The source id of notes the application itself plays (computer keyboard, on-screen keys): they
-/// share the sustain bookkeeping with MIDI input.
-pub const APP_SOURCE: i32 = -2;
-
 /// Routing state for incoming MIDI. One instance, used from one thread at a time.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct InputRouter {
     routing: InputRouting,
     track: usize,
     instrument: usize,
     input_channel: u8,
     blocked: bool,
-    sustain: SustainState,
     /// (source, channel 1–16, note) → where its note-on went.
     note_destinations: HashMap<(i32, u8, u8), (usize, usize)>,
     /// (source, channel 0–15, key) → the notes the performance map played for it.
@@ -183,19 +196,9 @@ pub struct InputRouter {
 }
 
 impl InputRouter {
-    /// A router for an engine with `destination_count` channels.
-    pub fn new(destination_count: usize) -> Self {
-        InputRouter {
-            routing: InputRouting::default(),
-            track: 0,
-            instrument: 0,
-            input_channel: 0,
-            blocked: false,
-            sustain: SustainState::new(destination_count),
-            note_destinations: HashMap::new(),
-            expanded: HashMap::new(),
-            performance: None,
-        }
+    /// A router without a project: input plays track 0 with instrument 0.
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// The project's routing.
@@ -232,11 +235,6 @@ impl InputRouter {
     /// While blocked (an export runs, the project cannot be played) input is dropped.
     pub fn set_blocked(&mut self, blocked: bool) {
         self.blocked = blocked;
-    }
-
-    /// The sustain bookkeeping, shared with the application's own notes ([`APP_SOURCE`]).
-    pub fn sustain(&mut self) -> &mut SustainState {
-        &mut self.sustain
     }
 
     /// Sets the chord map of the keyboard performance settings: for each of the 128 keys, the up
@@ -312,39 +310,26 @@ impl InputRouter {
         let kind = status & 0xF0;
         // Releases belong to the input that started the note, also after the selection changed to
         // an instrument that would refuse new notes from it.
-        if kind == 0xB0 && data1 == 64 && data2 < 64 {
-            actions.extend(self.sustain.set_pedal(source, i64::from(channel), false).into_iter().map(InputAction::Release));
-            return;
-        }
         if kind == 0x80 || (kind == 0x90 && data2 == 0) {
             // A release this input never started here owns nothing: dropping it keeps it from
             // cutting the same pitch held on the selected track by another device.
             let Some((track, instrument)) = self.note_destinations.remove(&(source, channel, data1)) else { return };
-            let deferred = self.sustain.defer_note_off(source, i64::from(channel), track as i64, i64::from(data1));
-            actions.push(InputAction::NoteOff { note: RoutedNote { note: data1, velocity: data2, channel, source, track, instrument }, sound: !deferred });
+            actions.push(InputAction::NoteOff(RoutedNote { note: data1, velocity: data2, channel, source, track, instrument }));
             return;
         }
-        if self.input_channel != 0 && self.input_channel != channel {
+        let destination = self.destination_of(source, channel);
+        if kind == 0xB0 && PEDALS.contains(&data1) {
+            // A pedal is handed on whether or not its input is accepted here: what it holds must
+            // be let go when it comes up.
+            actions.push(InputAction::Pedal(RoutedPedal { controller: data1, value: data2, channel, source, destination }));
+            // The sustain pedal is no controller to learn or map; the other two are reported
+            // like any control change.
+            if data1 != SUSTAIN && destination.is_some() {
+                actions.push(InputAction::Control { message, source });
+            }
             return;
         }
-        let (mut track, mut instrument) = (self.track, self.instrument);
-        let claimed = self.routing.instruments.iter().position(|item| {
-            item.external && item.input.as_deref() == Some(source.to_string().as_str()) && (item.input_channel == 0 || item.input_channel == channel)
-        });
-        if let Some(index) = claimed {
-            // An external instrument bound to this device takes its input wherever the cursor is.
-            instrument = index;
-            track = self.routing.tracks.iter().position(|item| item.instrument == index).unwrap_or(self.track);
-        } else if let Some(item) = self.routing.instruments.get(self.instrument) {
-            if let Some(input) = &item.input {
-                if !(input == "all" || input == "0" || *input == source.to_string()) {
-                    return;
-                }
-            }
-            if item.input_channel != 0 && item.input_channel != channel {
-                return;
-            }
-        }
+        let Some((track, instrument)) = destination else { return };
         match kind {
             0x90 => {
                 if self.routing.tracks.get(track).is_some_and(|item| item.frozen) {
@@ -352,11 +337,7 @@ impl InputRouter {
                     return;
                 }
                 self.note_destinations.insert((source, channel, data1), (track, instrument));
-                self.sustain.retrigger(source, i64::from(channel), track as i64, i64::from(data1));
                 actions.push(InputAction::NoteOn(RoutedNote { note: data1, velocity: data2, channel, source, track, instrument }));
-            }
-            0xB0 if data1 == 64 => {
-                self.sustain.set_pedal(source, i64::from(channel), true);
             }
             0xB0 if data1 == 120 || data1 == 123 => actions.push(InputAction::Panic),
             0xA0 | 0xB0 | 0xC0 | 0xD0 | 0xE0 => {
@@ -371,30 +352,58 @@ impl InputRouter {
         }
     }
 
-    /// The input route changed: every note input still holds is released (the notes its keys hold
-    /// and the notes its pedals hold back), and the router forgets them.
+    /// The engine channel and instrument new input of `source` on `channel` (1 to 16) plays: the
+    /// selected ones, or those of an external instrument bound to the device. `None` when the
+    /// input channel filter or the selected instrument's input filter refuses it.
+    fn destination_of(&self, source: i32, channel: u8) -> Option<(usize, usize)> {
+        if self.input_channel != 0 && self.input_channel != channel {
+            return None;
+        }
+        let claimed = self.routing.instruments.iter().position(|item| {
+            item.external && item.input.as_deref() == Some(source.to_string().as_str()) && (item.input_channel == 0 || item.input_channel == channel)
+        });
+        if let Some(index) = claimed {
+            // An external instrument bound to this device takes its input wherever the cursor is.
+            return Some((self.routing.tracks.iter().position(|item| item.instrument == index).unwrap_or(self.track), index));
+        }
+        if let Some(item) = self.routing.instruments.get(self.instrument) {
+            if let Some(input) = &item.input {
+                if !(input == "all" || input == "0" || *input == source.to_string()) {
+                    return None;
+                }
+            }
+            if item.input_channel != 0 && item.input_channel != channel {
+                return None;
+            }
+        }
+        Some((self.track, self.instrument))
+    }
+
+    /// The input route changed: every key input still holds is released in its device's name
+    /// and its pedals count as lifted; the router forgets the keys.
     pub fn release_all(&mut self) -> Vec<InputAction> {
-        let mut held: Vec<Destination> = self.note_destinations.iter().map(|((_, _, note), (track, _))| Destination { track: *track, note: *note }).collect();
-        held.sort();
-        held.dedup();
+        let mut held: Vec<RoutedNote> = self
+            .note_destinations
+            .iter()
+            .map(|((source, channel, note), (track, instrument))| RoutedNote { note: *note, velocity: 0, channel: *channel, source: *source, track: *track, instrument: *instrument })
+            .collect();
+        held.sort_by_key(|note| (note.track, note.note, note.source, note.channel));
         let mut actions: Vec<InputAction> = held.into_iter().map(InputAction::Release).collect();
-        actions.extend(self.sustain.release_all().into_iter().map(InputAction::Release));
+        actions.push(InputAction::LiftPedals);
         self.note_destinations.clear();
         self.expanded.clear();
         actions
     }
 
-    /// A panic silenced everything already: forget held notes and pedals without releasing them.
+    /// A panic silenced everything already: forget held keys without releasing them.
     pub fn clear(&mut self) {
-        self.sustain.clear();
         self.note_destinations.clear();
         self.expanded.clear();
     }
 
-    /// Tracks moved to other engine channels (`Some(to)`) or were removed (`None`): held keys and
-    /// deferred releases follow their track, so later releases reach the right channel.
+    /// Tracks moved to other engine channels (`Some(to)`) or were removed (`None`): held keys
+    /// follow their track, so later releases reach the right channel.
     pub fn remap_tracks(&mut self, moves: &[(usize, Option<usize>)]) {
-        self.sustain.remap_tracks(moves);
         let moves: HashMap<usize, Option<usize>> = moves.iter().copied().collect();
         self.note_destinations.retain(|_, destination| match moves.get(&destination.0) {
             None => true,
@@ -413,7 +422,7 @@ mod tests {
     use serde_json::json;
 
     fn router() -> InputRouter {
-        let mut router = InputRouter::new(64);
+        let mut router = InputRouter::new();
         router.set_routing(InputRouting::from_project(&json!({
             "instruments": [
                 {"type": "sample", "midiInput": 0, "midiInputChannel": 0, "midiOutput": 0, "midiChannel": 1},
@@ -450,7 +459,7 @@ mod tests {
         // The selection moves while the key is down: the release still goes to track 0.
         router.set_destination(1, 2);
         assert_eq!(router.destination(), (1, 2));
-        assert_eq!(router.handle(Message::new(0x80, 60, 40), 5, false), [InputAction::NoteOff { note: note(60, 40, 1, 5, 0, 0), sound: true }]);
+        assert_eq!(router.handle(Message::new(0x80, 60, 40), 5, false), [InputAction::NoteOff(note(60, 40, 1, 5, 0, 0))]);
         assert!(router.handle(Message::new(0x80, 60, 0), 5, false).is_empty(), "a release that owns nothing is dropped");
         assert!(router.handle(Message::new(0x90, 61, 0), 5, false).is_empty(), "also as a note-on with velocity zero");
         // Instrument 2 listens to device 9 on channel 3 only.
@@ -476,29 +485,43 @@ mod tests {
     #[test]
     fn the_input_channel_filter_applies_to_new_input_only() {
         let mut router = router();
+        let pedal = |value: u8, channel: u8, destination: Option<(usize, usize)>| InputAction::Pedal(RoutedPedal { controller: 64, value, channel, source: 5, destination });
         router.handle(Message::new(0x90, 60, 100), 5, false);
-        router.handle(Message::new(0xB0, 64, 127), 5, false);
+        assert_eq!(router.handle(Message::new(0xB0, 64, 127), 5, false), [pedal(127, 1, Some((0, 0)))]);
         router.set_input_channel(4);
         assert_eq!(router.input_channel(), 4);
         assert!(router.handle(Message::new(0x90, 62, 100), 5, false).is_empty());
         assert_eq!(router.handle(Message::new(0x93, 62, 100), 5, false), [InputAction::NoteOn(note(62, 100, 4, 5, 0, 0))]);
-        // What channel 1 owns is still released.
-        assert_eq!(router.handle(Message::new(0x80, 60, 0), 5, false), [InputAction::NoteOff { note: note(60, 0, 1, 5, 0, 0), sound: false }]);
-        assert_eq!(router.handle(Message::new(0xB0, 64, 0), 5, false), [InputAction::Release(Destination { track: 0, note: 60 })]);
+        // What channel 1 owns is still released: its key, and its pedal (which is handed on
+        // without a place to play).
+        assert_eq!(router.handle(Message::new(0x80, 60, 0), 5, false), [InputAction::NoteOff(note(60, 0, 1, 5, 0, 0))]);
+        assert_eq!(router.handle(Message::new(0xB0, 64, 0), 5, false), [pedal(0, 1, None)]);
+        assert_eq!(router.handle(Message::new(0xB0, 64, 90), 5, false), [pedal(90, 1, None)], "a refused pedal is still handed on: it may hold something");
     }
 
     #[test]
-    fn the_pedal_defers_releases_until_it_is_lifted() {
+    fn pedals_are_routed_like_notes_and_handed_on_with_their_values() {
         let mut router = router();
-        assert!(router.handle(Message::new(0xB0, 64, 64), 5, false).is_empty(), "pedal down is state only");
-        router.handle(Message::new(0x90, 60, 100), 5, false);
-        router.handle(Message::new(0x90, 64, 100), 5, false);
-        assert_eq!(router.handle(Message::new(0x80, 60, 0), 5, false), [InputAction::NoteOff { note: note(60, 0, 1, 5, 0, 0), sound: false }]);
-        // Struck again under the pedal: its own deferred release is cancelled.
-        router.handle(Message::new(0x90, 60, 100), 5, false);
-        router.handle(Message::new(0x80, 64, 0), 5, false);
-        assert_eq!(router.handle(Message::new(0xB0, 64, 63), 5, false), [InputAction::Release(Destination { track: 0, note: 64 })]);
-        assert_eq!(router.handle(Message::new(0x80, 60, 0), 5, false), [InputAction::NoteOff { note: note(60, 0, 1, 5, 0, 0), sound: true }]);
+        let pedal = |controller: u8, value: u8, channel: u8, source: i32, destination: Option<(usize, usize)>| InputAction::Pedal(RoutedPedal { controller, value, channel, source, destination });
+        // The sustain pedal, half way and all the way; never reported as a control change.
+        assert_eq!(router.handle(Message::new(0xB0, 64, 50), 5, false), [pedal(64, 50, 1, 5, Some((0, 0)))]);
+        assert_eq!(router.handle(Message::new(0xB0, 64, 127), 5, false), [pedal(64, 127, 1, 5, Some((0, 0)))]);
+        // Sostenuto and soft are pedals too; the interface can learn them like other controllers.
+        for controller in [66, 67] {
+            let message = Message::new(0xB0, controller, 127);
+            assert_eq!(router.handle(message, 5, false), [pedal(controller, 127, 1, 5, Some((0, 0))), InputAction::Control { message, source: 5 }]);
+        }
+        // The keyboard is pointed at another track: the pedal goes where the notes go.
+        router.set_destination(4, 3);
+        assert_eq!(router.handle(Message::new(0xB0, 64, 0), 5, false), [pedal(64, 0, 1, 5, Some((4, 3)))]);
+        // Device 77 on channel 2 belongs to the external instrument 1 on track 2.
+        assert_eq!(router.handle(Message::new(0xB1, 64, 127), 77, false), [pedal(64, 127, 2, 77, Some((2, 1)))]);
+        // Instrument 2 listens to device 9 on channel 3 only: another device's pedal has no place.
+        router.set_destination(1, 2);
+        assert_eq!(router.handle(Message::new(0xB0, 66, 127), 5, false), [pedal(66, 127, 1, 5, None)], "handed on, not reported");
+        assert_eq!(router.handle(Message::new(0xB2, 64, 127), 9, false), [pedal(64, 127, 3, 9, Some((1, 2)))]);
+        router.set_blocked(true);
+        assert!(router.handle(Message::new(0xB2, 64, 0), 9, false).is_empty());
     }
 
     #[test]
@@ -554,7 +577,7 @@ mod tests {
         // The map goes away while the chord is held: the key still releases its three notes.
         assert!(!router.set_performance_map(&Value::Null));
         let off = router.handle(Message::new(0x80, 60, 0), 5, false);
-        assert_eq!(off, [60, 64, 67].map(|pitch| InputAction::NoteOff { note: note(pitch, 0, 1, 5, 0, 0), sound: true }));
+        assert_eq!(off, [60, 64, 67].map(|pitch| InputAction::NoteOff(note(pitch, 0, 1, 5, 0, 0))));
         // Without a map, striking a held key again is an ordinary retrigger.
         router.handle(Message::new(0x90, 62, 100), 5, false);
         assert_eq!(router.handle(Message::new(0x90, 62, 90), 5, false), [InputAction::NoteOn(note(62, 90, 1, 5, 0, 0))]);
@@ -572,8 +595,8 @@ mod tests {
         assert_eq!(
             again,
             [
-                InputAction::NoteOff { note: note(48, 0, 1, 5, 0, 0), sound: true },
-                InputAction::NoteOff { note: note(55, 0, 1, 5, 0, 0), sound: true },
+                InputAction::NoteOff(note(48, 0, 1, 5, 0, 0)),
+                InputAction::NoteOff(note(55, 0, 1, 5, 0, 0)),
                 InputAction::NoteOn(note(48, 80, 1, 5, 0, 0)),
                 InputAction::NoteOn(note(55, 80, 1, 5, 0, 0)),
             ]
@@ -586,21 +609,22 @@ mod tests {
         router.handle(Message::new(0x90, 60, 100), 5, false);
         router.handle(Message::new(0x90, 62, 100), 6, false);
         router.handle(Message::new(0xB0, 64, 127), 5, false);
-        router.handle(Message::new(0x90, 70, 100), 5, false);
-        router.handle(Message::new(0x80, 70, 0), 5, false);
+        router.handle(Message::new(0x91, 70, 100), 5, false);
+        router.handle(Message::new(0x90, 72, 100), 5, false);
+        router.handle(Message::new(0x80, 72, 0), 5, false);
         // Track 0 becomes track 7.
         router.remap_tracks(&[(0, Some(7))]);
-        assert_eq!(router.handle(Message::new(0x80, 62, 0), 6, false), [InputAction::NoteOff { note: note(62, 0, 1, 6, 7, 0), sound: true }]);
+        assert_eq!(router.handle(Message::new(0x80, 62, 0), 6, false), [InputAction::NoteOff(note(62, 0, 1, 6, 7, 0))]);
+        // The keys still down are released in their devices' names; the pedals count as lifted.
         let released = router.release_all();
-        assert_eq!(released, [InputAction::Release(Destination { track: 7, note: 60 }), InputAction::Release(Destination { track: 7, note: 70 })]);
-        assert!(router.release_all().is_empty());
+        assert_eq!(released, [InputAction::Release(note(60, 0, 1, 5, 7, 0)), InputAction::Release(note(70, 0, 2, 5, 7, 0)), InputAction::LiftPedals]);
+        assert_eq!(router.release_all(), [InputAction::LiftPedals]);
         assert!(router.handle(Message::new(0x80, 60, 0), 5, false).is_empty(), "released notes are forgotten");
         router.handle(Message::new(0x90, 60, 100), 5, false);
         router.remap_tracks(&[(0, None)]);
         assert!(router.handle(Message::new(0x80, 60, 0), 5, false).is_empty(), "a removed track's notes are gone with it");
         router.handle(Message::new(0x90, 60, 100), 5, false);
         router.clear();
-        assert!(router.release_all().is_empty(), "a panic forgets without releasing");
-        assert_eq!(router.sustain().set_pedal(APP_SOURCE, 1, false), []);
+        assert_eq!(router.release_all(), [InputAction::LiftPedals], "a panic forgets without releasing");
     }
 }

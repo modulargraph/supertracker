@@ -80,16 +80,21 @@ impl AudioEngine {
         }
     }
 
-    /// A channel message for the plug-in instrument of `track`, for the first frame of its
-    /// next block ([`crate::plugins::manager::Hosted::send_midi`]). False when the track has
-    /// no plug-in instrument, or it is not processing.
-    pub(super) fn plugin_midi(&self, track: i32, bytes: [u8; 3]) -> bool {
-        let Some(manager) = self.plugins.get() else { return false };
+    /// The hosted plug-in instrument of `track`, if the track has one that is loaded.
+    pub(super) fn plugin_instrument(&self, track: i32) -> Option<Arc<crate::plugins::Hosted>> {
+        let manager = self.plugins.get()?;
         let key = {
             let state = self.lock();
             state.core.spec.strips.iter().find(|strip| strip.kind == StripKind::Track(track.max(0) as usize)).and_then(|strip| strip.inserts.iter().find(|insert| insert.instrument.is_some())).map(|insert| insert.key.clone())
         };
-        key.and_then(|key| manager.hosted(&key)).is_some_and(|hosted| hosted.send_midi(bytes))
+        key.and_then(|key| manager.hosted(&key))
+    }
+
+    /// A channel message for the plug-in instrument of `track`, for the first frame of its
+    /// next block ([`crate::plugins::manager::Hosted::send_midi`]). False when the track has
+    /// no plug-in instrument, or it is not processing.
+    pub(super) fn plugin_midi(&self, track: i32, bytes: [u8; 3]) -> bool {
+        self.plugin_instrument(track).is_some_and(|hosted| hosted.send_midi(bytes))
     }
 
     /// Live state of the plug-ins over the compiled mixer's insert report: an insert whose

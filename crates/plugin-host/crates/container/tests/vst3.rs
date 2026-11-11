@@ -347,7 +347,7 @@ fn sine_instrument_notes_are_sample_accurate() {
     assert_eq!(info.flags, INFO_INSTRUMENT | INFO_WANTS_MIDI | INFO_PRODUCES_MIDI);
     // The name comes from the Unicode class info.
     assert_eq!((info.name.as_str(), info.inputs.len(), info.outputs[0].channels), (plug::SINE_NAME, 0, 2));
-    assert_eq!((info.tail, info.latency, info.parameter_count), (u64::MAX, 0, 6));
+    assert_eq!((info.tail, info.latency, info.parameter_count), (u64::MAX, 0, 8));
     let level = plug::PARAM_LEVEL as u64;
     let rate = 48_000.0;
     let script: Vec<(usize, Vec<Event>)> = vec![
@@ -434,6 +434,34 @@ fn sine_instrument_notes_are_sample_accurate() {
     run(&instance, &[], 2, 64, &[Event::note_on(0, 0, 72, 100)]);
     instance.reset().unwrap();
     assert!(run(&instance, &[], 2, 64, &[]).outputs[0].iter().all(|&s| s == 0.0));
+
+    // The sustain pedal (controller 64) is the parameter the plug-in maps it to: a note whose
+    // key is released under it sounds until the pedal comes up, at the pedal's offset.
+    let note_state = plug::PARAM_NOTE_STATE as u64;
+    let events = [Event::note_on(0, 0, 65, 100), Event::midi(8, &[0xB0, 64, 127]), Event::note_off(16, 0, 65)];
+    let block = run(&instance, &[], 2, 64, &events);
+    let expected: Vec<f32> = (0..64).map(|k| plug::sine_sample(65, k, rate, set)).collect();
+    assert_bits_eq(&block.outputs[0], &expected, "the pedal holds the released note");
+    wait_until("the sustained note in the probe", || {
+        instance.parameter(note_state).unwrap() == Some(plug::NOTE_SUSTAINED)
+    });
+    wait_until("the pedal in the controller", || instance.parameter(plug::PARAM_SUSTAIN as u64).unwrap() == Some(1.0));
+    let block = run(&instance, &[], 2, 64, &[Event::midi(48, &[0xB0, 64, 40])]);
+    let expected: Vec<f32> =
+        (0..64).map(|k| if k < 48 { plug::sine_sample(65, 64 + k, rate, set) } else { 0.0 }).collect();
+    assert_bits_eq(&block.outputs[0], &expected, "released when the pedal goes below half");
+    wait_until("the silent note in the probe", || instance.parameter(note_state).unwrap() == Some(plug::NOTE_SILENT));
+    // "All notes off" lets go of the pedal as well (the backend sets the mapped parameter).
+    run(
+        &instance,
+        &[],
+        2,
+        64,
+        &[Event::note_on(0, 0, 67, 100), Event::midi(1, &[0xB0, 64, 127]), Event::note_off(2, 0, 67)],
+    );
+    let block = run(&instance, &[], 2, 64, &[Event::midi(20, &[0xB0, 123, 0])]);
+    assert!(block.outputs[0][..20].iter().any(|&s| s != 0.0));
+    assert!(block.outputs[0][20..].iter().all(|&s| s == 0.0), "the pedal-held note released by CC 123");
 
     // Events out: with "thru" on the plug-in echoes notes (note id included) and turns
     // pitch bend, which arrived as a parameter, into a legacy MIDI event.

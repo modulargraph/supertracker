@@ -313,6 +313,8 @@ pub struct Hosted {
     midi: Ring<[u8; 4]>,
     /// Serializes the senders of `midi`: the ring takes one producer at a time.
     midi_senders: Mutex<()>,
+    /// See [`Hosted::pedal_generation`].
+    pedal_generation: AtomicU64,
     pub(crate) automated: AutomatedSet,
     /// A control thread asks the audio thread to return what automation moved to its base
     /// values with the next block ([`Hosted::return_to_base`]).
@@ -345,6 +347,21 @@ impl Hosted {
     #[inline]
     pub(crate) fn pop_midi(&self) -> Option<[u8; 4]> {
         self.midi.pop()
+    }
+
+    /// A number that changes whenever the plug-in may have lost what it was told about the
+    /// pedals: it is another one for every instance, after a restore, and after the processor
+    /// sent the pedals up with "all notes off" (panic, blocks the plug-in did not answer, the
+    /// end of a bypass). Whoever holds a pedal down for the plug-in sends it again when the
+    /// number is not the one it last sent the pedal under.
+    pub fn pedal_generation(&self) -> u64 {
+        self.pedal_generation.load(Ordering::Acquire)
+    }
+
+    /// The plug-in's pedals are up, whatever it was sent before. Any thread, the audio
+    /// thread included.
+    pub(crate) fn pedals_reset(&self) {
+        self.pedal_generation.store(next_pedal_generation(), Ordering::Release);
     }
 
     /// Queues a channel message for the plug-in: a control change, channel or poly pressure,
@@ -983,6 +1000,7 @@ impl PluginManager {
             table: AtomicPtr::new(Box::into_raw(Box::new(ParamTable::default()))),
             midi: Ring::new(256),
             midi_senders: Mutex::new(()),
+            pedal_generation: AtomicU64::new(next_pedal_generation()),
             automated: AutomatedSet::new(),
             base_requested: AtomicBool::new(false),
             returns_pending: AtomicU32::new(0),
@@ -1212,6 +1230,7 @@ impl PluginManager {
             match hosted.instance.restore() {
                 Ok(()) => {
                     hosted.control().lost = None;
+                    hosted.pedals_reset();
                     self.recovery.restored(&hosted.identity);
                     let _ = hosted.instance.refresh_info();
                     let _ = hosted.refresh_parameters();
@@ -1381,6 +1400,12 @@ impl Drop for PluginManager {
 
 /// Events (notes and parameter changes) an instance accepts per block.
 pub const EVENT_CAPACITY: usize = 2048;
+
+/// The next value of [`Hosted::pedal_generation`]: never the same twice, across all instances.
+fn next_pedal_generation() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
 
 /// Whether a parameter can be automated, for the interface.
 pub fn automatable(info: &ParameterInfo) -> bool {

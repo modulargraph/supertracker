@@ -39,6 +39,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+/// The controllers that are pedals: sustain, sostenuto and soft. An instrument that was told
+/// one is down must be told when it comes up, so everything that silences an instrument sends
+/// them at zero.
+pub const PEDAL_CONTROLLERS: [u8; 3] = [64, 66, 67];
+
 use tracker_engine::engine::abi::{STEvent, ST_EVENT_NOTE_OFF, ST_EVENT_NOTE_ON};
 use tracker_engine::engine::host::StatusHandle;
 

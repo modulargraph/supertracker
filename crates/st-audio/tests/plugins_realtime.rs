@@ -120,10 +120,10 @@ fn rendering_with_plug_ins_never_allocates_also_when_one_of_them_crashes() {
     engine.publish(&parse(&project)).unwrap();
     loudest = loudest.max(render_counted(&engine, 50, 127));
     engine.note_on(2, 1, 72, 100);
-    // Pitch bend, the modulation wheel, another controller, channel and poly pressure, more
-    // of them than one block's queue takes.
+    // Pitch bend, the modulation wheel, another controller, the pedals, channel and poly
+    // pressure, more of them than one block's queue takes.
     for step in 0..100u8 {
-        for message in [[0xE0, step, 64], [0xB0, 1, step], [0xB0, 74, step], [0xD0, step, 0], [0xA0, 72, step]] {
+        for message in [[0xE0, step, 64], [0xB0, 1, step], [0xB0, 74, step], [0xB0, 64, step], [0xB0, 66, 127 - step], [0xD0, step, 0], [0xA0, 72, step]] {
             engine.expression(2, message);
         }
     }

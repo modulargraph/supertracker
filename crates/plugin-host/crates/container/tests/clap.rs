@@ -284,6 +284,56 @@ fn controllers_and_pressure_reach_both_note_dialects() {
     env.finish();
 }
 
+/// The sine instrument has a sustain pedal (MIDI controller 64), so that hosts can be tested
+/// on passing the pedal and the note-offs on to an instrument that sustains by itself.
+#[test]
+fn the_sine_instruments_sustain_pedal_holds_a_released_note() {
+    let env = TestEnv::new(GroupingPolicy::Shared);
+    let rate = 48_000.0;
+    let state = |instance: &Instance| instance.parameter(plug::PARAM_PROBE_NOTE_STATE as u64).unwrap().unwrap();
+    let sine = active(env.sup(), sine_config());
+    assert_eq!(state(&sine), plug::NOTE_SILENT as f64);
+    // Key down, pedal down, key up: the note sounds on.
+    let events = [Event::note_on(0, 0, 60, 100), Event::midi(8, &[0xB0, 64, 127]), Event::note_off(16, 0, 60)];
+    let block = run(&sine, &[], 2, 64, &events);
+    let expected: Vec<f32> = (0..64).map(|k| plug::sine_sample(60, k, rate, 0.5)).collect();
+    assert_bits_eq(&block.outputs[0], &expected, "the pedal holds the released note");
+    assert_eq!(state(&sine), plug::NOTE_SUSTAINED as f64);
+    // "All notes off" releases keys, not what the pedal holds; half way down (64) is down;
+    // pedal-up ends the note at its frame.
+    let events = [Event::midi(4, &[0xB0, 123, 0]), Event::midi(20, &[0xB0, 64, 64]), Event::midi(48, &[0xB0, 64, 63])];
+    let block = run(&sine, &[], 2, 64, &events);
+    let expected: Vec<f32> =
+        (0..64).map(|k| if k < 48 { plug::sine_sample(60, 64 + k, rate, 0.5) } else { 0.0 }).collect();
+    assert_bits_eq(&block.outputs[0], &expected, "released when the pedal comes up");
+    assert_eq!(state(&sine), plug::NOTE_SILENT as f64);
+    // A key that is down is not released by the pedal coming up; then it ends with its key.
+    let events = [Event::note_on(0, 0, 62, 100), Event::midi(8, &[0xB0, 64, 127]), Event::midi(20, &[0xB0, 64, 0])];
+    let block = run(&sine, &[], 2, 64, &events);
+    assert!(block.outputs[0][63] != 0.0);
+    assert_eq!(state(&sine), plug::NOTE_KEY_DOWN as f64);
+    let block = run(&sine, &[], 2, 64, &[Event::note_off(10, 0, 62)]);
+    assert!(block.outputs[0][10..].iter().all(|&sample| sample == 0.0), "no pedal: the note ends with its key");
+    // "All sound off" ends a note the pedal holds; a reset lifts the pedal.
+    run(
+        &sine,
+        &[],
+        2,
+        64,
+        &[Event::note_on(0, 0, 64, 100), Event::midi(1, &[0xB0, 64, 127]), Event::note_off(2, 0, 64)],
+    );
+    assert_eq!(state(&sine), plug::NOTE_SUSTAINED as f64);
+    let block = run(&sine, &[], 2, 64, &[Event::midi(5, &[0xB0, 120, 0])]);
+    assert!(block.outputs[0][5..].iter().all(|&sample| sample == 0.0));
+    sine.reset().unwrap();
+    let block = run(&sine, &[], 2, 64, &[Event::note_on(0, 0, 65, 100), Event::note_off(30, 0, 65)]);
+    assert!(
+        block.outputs[0][29] != 0.0 && block.outputs[0][30..].iter().all(|&sample| sample == 0.0),
+        "the pedal is up after a reset"
+    );
+    env.finish();
+}
+
 #[test]
 fn latency_changes_follow_the_clap_restart_protocol() {
     let env = TestEnv::new(GroupingPolicy::Shared);

@@ -496,8 +496,8 @@ impl RenderOutput {
         true
     }
 
-    /// The engine silenced everything: pedal up and all-notes-off on every external instrument's
-    /// device and channel, now.
+    /// The engine silenced everything: pedals up (sustain, sostenuto, soft) and all-notes-off on
+    /// every external instrument's device and channel, now.
     pub fn all_notes_off(&mut self) {
         let mut done = [0u16; MAX_OUTPUTS];
         for instrument in 0..ROUTE_COUNT {
@@ -508,7 +508,9 @@ impl RenderOutput {
                 continue;
             }
             *seen |= 1 << route.channel;
-            self.push(TimedMessage { time: 0, output, message: Message::new(0xB0 | route.channel, 64, 0) });
+            for controller in crate::sustain::PEDALS {
+                self.push(TimedMessage { time: 0, output, message: Message::new(0xB0 | route.channel, controller, 0) });
+            }
             self.push(TimedMessage { time: 0, output, message: Message::new(0xB0 | route.channel, 123, 0) });
         }
     }

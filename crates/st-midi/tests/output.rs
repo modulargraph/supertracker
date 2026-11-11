@@ -224,15 +224,15 @@ fn all_notes_off_and_panic_reach_every_external_channel_once() {
     let mut midi = service.render_output();
     midi.begin_block(service.clock().now() + 10_000_000_000, 512, 48_000.0);
     midi.all_notes_off();
-    wait_for("the audio thread's all-notes-off", || ports.sent().len() == 4);
-    assert_eq!(ports.sent_messages(500), [[0xB0, 64, 0], [0xB0, 123, 0]], "immediate, whatever the block's time");
-    assert_eq!(ports.sent_messages(600), [[0xB9, 64, 0], [0xB9, 123, 0]]);
+    wait_for("the audio thread's all-notes-off", || ports.sent().len() == 8);
+    assert_eq!(ports.sent_messages(500), [[0xB0, 64, 0], [0xB0, 66, 0], [0xB0, 67, 0], [0xB0, 123, 0]], "the pedals up, then all notes off; immediate, whatever the block's time");
+    assert_eq!(ports.sent_messages(600), [[0xB9, 64, 0], [0xB9, 66, 0], [0xB9, 67, 0], [0xB9, 123, 0]]);
 
     ports.clear_sent();
     service.panic();
-    wait_for("the panic", || ports.sent().len() == 6);
-    assert_eq!(ports.sent_messages(500), [[0xB0, 64, 0], [0xB0, 123, 0], [0xB0, 120, 0]]);
-    assert_eq!(ports.sent_messages(600), [[0xB9, 64, 0], [0xB9, 123, 0], [0xB9, 120, 0]]);
+    wait_for("the panic", || ports.sent().len() == 10);
+    assert_eq!(ports.sent_messages(500), [[0xB0, 64, 0], [0xB0, 66, 0], [0xB0, 67, 0], [0xB0, 123, 0], [0xB0, 120, 0]]);
+    assert_eq!(ports.sent_messages(600), [[0xB9, 64, 0], [0xB9, 66, 0], [0xB9, 67, 0], [0xB9, 123, 0], [0xB9, 120, 0]]);
 
     // Expression for an external instrument goes to its device on its channel.
     ports.clear_sent();
@@ -248,21 +248,26 @@ fn route_changes_clear_the_old_channel_and_a_returning_device() {
     let ports = MemoryPorts::new();
     let service = service(&ports);
     ports.clear_sent();
-    // Instrument 0 moves from channel 1 to channel 5: pedal-up and all-notes-off on the old channel,
-    // and all-notes-off once more a moment later for notes that were already on their way.
+    // Instrument 0 moves from channel 1 to channel 5: the pedals up and all-notes-off on the old
+    // channel, and all-notes-off once more a moment later for notes that were already on their way.
+    let generation = service.route_generation(0);
     let mut changed = project();
     changed["instruments"][0]["midiChannel"] = json!(5);
     service.set_project(&changed);
-    wait_for("the old channel to be cleared", || ports.sent_messages(500).len() == 3);
-    assert_eq!(ports.sent_messages(500), [[0xB0, 64, 0], [0xB0, 123, 0], [0xB0, 123, 0]]);
+    wait_for("the old channel to be cleared", || ports.sent_messages(500).len() == 5);
+    assert_eq!(ports.sent_messages(500), [[0xB0, 64, 0], [0xB0, 66, 0], [0xB0, 67, 0], [0xB0, 123, 0], [0xB0, 123, 0]]);
+    assert_eq!(service.route_generation(0), generation + 1, "what the instrument was told on the old channel is void");
+    service.set_project(&changed);
+    assert_eq!(service.route_generation(0), generation + 1, "an unchanged route keeps its generation");
     let sent = ports.sent();
-    let gap = sent[2].at.duration_since(sent[1].at);
+    let gap = sent[4].at.duration_since(sent[3].at);
     assert!(gap > Duration::from_millis(60) && gap < Duration::from_millis(400), "the repeat comes about 100 ms later: {gap:?}");
     assert!(ports.sent_messages(600).is_empty(), "an unchanged route is left alone");
     assert_eq!(service.host().route(0).channel, 4);
 
     // The device goes away and comes back: its channel is cleared before new notes.
     ports.clear_sent();
+    let unplugged = service.route_generation(3);
     ports.remove_output(600);
     assert!(service.refresh_devices());
     assert_eq!(service.host().route(3).output, None);
@@ -271,18 +276,19 @@ fn route_changes_clear_the_old_channel_and_a_returning_device() {
     assert!(midi.note(3, true, 60, 100, 0), "still an external instrument; the note is dropped, not played by the engine");
     ports.add_output(600, "Synth B");
     assert!(service.refresh_devices());
-    wait_for("the returning device to be cleared", || ports.sent_messages(600).len() == 2);
-    assert_eq!(ports.sent_messages(600), [[0xB9, 64, 0], [0xB9, 123, 0]]);
+    wait_for("the returning device to be cleared", || ports.sent_messages(600).len() == 4);
+    assert_eq!(ports.sent_messages(600), [[0xB9, 64, 0], [0xB9, 66, 0], [0xB9, 67, 0], [0xB9, 123, 0]]);
+    assert!(service.route_generation(3) > unplugged, "a device that is back knows nothing of a pedal it was sent before");
     assert!(service.host().route(3).output.is_some());
     std::thread::sleep(Duration::from_millis(150));
-    assert_eq!(ports.sent_messages(600).len(), 2, "nothing was left scheduled for the device while it was away");
+    assert_eq!(ports.sent_messages(600).len(), 4, "nothing was left scheduled for the device while it was away");
     assert_eq!(service.output_stats().dropped, 0, "and nothing was sent to it while it was away");
 
     // An instrument that stops being external is cleared as well.
     ports.clear_sent();
     changed["instruments"][3]["type"] = json!("sample");
     service.set_project(&changed);
-    wait_for("the former external instrument", || ports.sent_messages(600).len() == 3);
+    wait_for("the former external instrument", || ports.sent_messages(600).len() == 5);
     assert!(!service.host().route(3).external);
     service.set_routing(InputRouting::default());
     assert!(!service.host().route(0).external);

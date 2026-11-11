@@ -12,7 +12,11 @@
 //! * **Instrument.** The first processor of a track strip. The engine's note events of the
 //!   track arrive through [`InsertProcessor::midi`] with their frame offsets; controllers,
 //!   pressure and pitch bend played live ([`Hosted::send_midi`]) arrive at the first frame of
-//!   the next block, after the notes of that frame; the plug-in's
+//!   the next block, after the notes of that frame. The pedals (sustain, sostenuto, soft:
+//!   [`crate::midi::PEDAL_CONTROLLERS`]) arrive at that frame *before* the notes: a key
+//!   released after the pedal went down is released after it for the plug-in too, however
+//!   close the two were (the other way round, a pedal pressed less than a block after a key
+//!   was released can still catch the note). The plug-in's
 //!   stereo output, times the instrument's volume and balanced by its pan, is **added** to
 //!   the strip's signal (the engine's own channel: clips and sample voices of the track), as
 //!   the previous host mixed both sources of a channel. The strip's signal is delayed by the
@@ -24,8 +28,8 @@
 //!
 //! Notes: the processor tracks the notes it sent on. After `reset` (panic), after a block the
 //! client reports as the first one following dropped blocks, and when bypass ends, it sends
-//! "all notes off" and "all sound off" before anything else, and a note-off for every note it
-//! believes held, at frame 0 of the next block.
+//! the pedals up, "all notes off" and "all sound off" before anything else, and a note-off
+//! for every note it believes held, at frame 0 of the next block.
 //!
 //! Base values: a parameter a lane or a step lock moved is remembered ([`Hosted`]'s automated
 //! set) and goes back to the value the user left it at when the graph says so
@@ -41,6 +45,7 @@ use super::manager::{Hosted, Lookup, PluginManager, AUTOMATED_CAPACITY, EVENT_CA
 use crate::graph::insert::{monotonic_ns, BlockInfo, InsertFactory, InsertProcessor, ProcessContext};
 use crate::graph::pdc::DelayLine;
 use crate::graph::spec::InsertSpec;
+use crate::midi::PEDAL_CONTROLLERS;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use stpc_client::{
@@ -52,6 +57,10 @@ use stpc_client::{
 /// volume (0..2) and pan (-1..1), not normalized.
 pub const INSTRUMENT_VOLUME: u64 = u64::MAX - 1;
 pub const INSTRUMENT_PAN: u64 = u64::MAX - 2;
+
+/// Pedal messages a block can take: as many as the queue from the control threads holds, so
+/// that none it delivers is dropped here.
+const PEDAL_CAPACITY: usize = 256;
 
 struct InstrumentState {
     volume: f32,
@@ -74,6 +83,8 @@ pub struct PluginInsert {
     parameters: Vec<Event>,
     /// Notes and controllers of the next block, in arrival order.
     notes: Vec<Event>,
+    /// Pedal messages played live, for the first frame of the next block, before its notes.
+    pedals: Vec<Event>,
     /// Parameters on their way back to their base values: the address, the frame offset,
     /// and whether automation moved the parameter again after the return was queued. They
     /// are sent with every block until the plug-in answers one, so a block it did not
@@ -105,6 +116,7 @@ impl PluginInsert {
             sample_rate: 48_000.0,
             parameters: Vec::new(),
             notes: Vec::new(),
+            pedals: Vec::new(),
             returning: Vec::new(),
             merged: Vec::new(),
             out_events: Vec::new(),
@@ -137,22 +149,29 @@ impl PluginInsert {
         }
     }
 
-    /// Builds the block's event list: note silence first when it is due, then returns to base
-    /// values, parameter changes and notes by frame. On the same frame a return comes before
+    /// Builds the block's event list: note silence first when it is due, then the pedals
+    /// played live, then returns to base values, parameter changes and notes by frame. On the same frame a return comes before
     /// a parameter change (a new start returns a parameter, then the first row's lock sets
     /// it) and a parameter change before a note (a step's lock applies to the step's note).
     fn merge_events(&mut self, frames: u32, silence: bool) {
         self.merged.clear();
         if let (true, Some(instrument)) = (silence, self.instrument.as_mut()) {
-            for controller in [123u8, 120] {
+            // The pedals come up first: "all notes off" does not release what a pedal holds.
+            for controller in PEDAL_CONTROLLERS.into_iter().chain([123, 120]) {
                 self.merged.push(Event::midi(0, &[0xB0, controller, 0]));
             }
+            self.hosted.pedals_reset();
             for note in 0..128u8 {
                 if instrument.held[(note / 64) as usize] & (1 << (note % 64)) != 0 {
                     self.merged.push(Event::note_off(0, 0, note));
                 }
             }
             instrument.held = [0; 2];
+        }
+        for event in self.pedals.drain(..) {
+            if self.merged.len() < self.merged.capacity() {
+                self.merged.push(event);
+            }
         }
         let table = self.hosted.table();
         for (address, offset, _) in &self.returning {
@@ -226,6 +245,7 @@ impl InsertProcessor for PluginInsert {
         self.hosted.planned_latency.store(self.latency, Ordering::Relaxed);
         self.parameters = Vec::with_capacity(EVENT_CAPACITY);
         self.notes = Vec::with_capacity(EVENT_CAPACITY);
+        self.pedals = Vec::with_capacity(PEDAL_CAPACITY);
         self.returning = Vec::with_capacity(AUTOMATED_CAPACITY);
         self.merged = Vec::with_capacity(EVENT_CAPACITY);
         self.out_events = vec![Event::default(); 64];
@@ -277,6 +297,7 @@ impl InsertProcessor for PluginInsert {
             // gets nothing: what was on its way back stays remembered as moved.
             self.parameters.clear();
             self.notes.clear();
+            self.pedals.clear();
             self.returning.clear();
             self.hosted.returns_pending.store(0, Ordering::Release);
             // Controllers played meanwhile are not kept for when the bypass ends.
@@ -285,8 +306,10 @@ impl InsertProcessor for PluginInsert {
         }
         if self.instrument.is_some() {
             while let Some(bytes) = self.hosted.pop_midi() {
-                if self.notes.len() < self.notes.capacity() {
-                    self.notes.push(Event::midi(0, &bytes[..(bytes[3] as usize).min(3)]));
+                let pedal = bytes[0] & 0xF0 == 0xB0 && PEDAL_CONTROLLERS.contains(&bytes[1]);
+                let list = if pedal { &mut self.pedals } else { &mut self.notes };
+                if list.len() < list.capacity() {
+                    list.push(Event::midi(0, &bytes[..(bytes[3] as usize).min(3)]));
                 }
             }
         }
@@ -456,6 +479,7 @@ impl InsertProcessor for PluginInsert {
 
     fn reset(&mut self) {
         self.notes.clear();
+        self.pedals.clear();
         self.parameters.clear();
         self.silence_notes = true;
         if let Some(dry) = self.instrument.as_mut().and_then(|instrument| instrument.dry.as_mut()) {

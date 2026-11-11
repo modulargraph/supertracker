@@ -7,7 +7,7 @@
 //! |---|---|---|
 //! | [`message`] | messages and the byte-stream parser (running status, real-time bytes, system-exclusive skipping) | no |
 //! | [`held`] | what each input holds down, for the releases an unplugged device owes | no |
-//! | [`sustain`] | which note releases each sustain pedal holds back | no |
+//! | [`sustain`] | the pedals played live: which instruments each has reached, which notes each holds | no |
 //! | [`router`] | where input goes: track and instrument, chord map, transport control | no |
 //! | [`timebase`] | the render clock: graph frames and device time | no |
 //! | [`clock`] | MIDI beat clock and Start/Stop/Continue from the transport position; the stored clock settings | no |
@@ -75,10 +75,10 @@ pub use clock::{ClockDevice, ClockRequest, ClockSettings};
 pub use host::{ConfigureRequest, Devices, HostEvent, HostOptions, MidiError, MidiHost, OutputRoute};
 pub use message::Message;
 pub use output::{MidiClock, OutputStats, RenderOutput, Route};
-pub use router::{InputAction, InputRouter, InputRouting, InstrumentRoute, RoutedNote, TrackRoute};
+pub use router::{InputAction, InputRouter, InputRouting, InstrumentRoute, RoutedNote, RoutedPedal, TrackRoute};
 pub use service::{
     ClockOutput, ClockStatus, EventCallback, InputTarget, MidiOptions, MidiService, NoteHandling, PerformanceRequest, PerformanceStatus,
     ReturnCompensation, SaveClockSettings, TransportPosition,
 };
-pub use sustain::{Destination, SustainState};
+pub use sustain::{PedalEffect, PedalTarget, SustainState, APP_SOURCE};
 pub use timebase::{RenderStamp, Timebase};

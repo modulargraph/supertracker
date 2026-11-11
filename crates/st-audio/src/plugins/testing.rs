@@ -29,7 +29,9 @@ pub mod clap_gain {
 }
 
 /// Parameter ids of the CLAP sine instruments. The probes are read-only and show what arrived
-/// last; channel pressure also scales the level by `1 + pressure / 127`.
+/// last; channel pressure also scales the level by `1 + pressure / 127`. The instrument has a
+/// sustain pedal (controller 64, down from 64): a note whose key is released under it sounds
+/// until the pedal comes up.
 pub mod clap_sine {
     /// 0..1.
     pub const LEVEL: u64 = 1;
@@ -41,11 +43,20 @@ pub mod clap_sine {
     pub const POLY_PRESSURE: u64 = 22;
     /// Pitch bend, 0..16383.
     pub const BEND: u64 = 23;
+    /// The note: [`SILENT`], [`KEY_DOWN`] or [`SUSTAINED`].
+    pub const NOTE_STATE: u64 = 24;
+    /// Nothing sounds.
+    pub const SILENT: f64 = 0.0;
+    /// The note sounds and its key is down.
+    pub const KEY_DOWN: f64 = 1.0;
+    /// The note-off arrived; the pedal keeps the note sounding.
+    pub const SUSTAINED: f64 = 2.0;
 }
 
 /// Parameter ids of the VST3 sine instrument (normalized 0..1). Controllers reach it as the
-/// parameters it maps them to: 7 is the level, 74 the brightness, channel pressure the
-/// pressure (which scales the level by `1 + pressure`), pitch bend the bend.
+/// parameters it maps them to: 7 is the level, 74 the brightness, 64 the sustain pedal (down
+/// from 0.5), channel pressure the pressure (which scales the level by `1 + pressure`), pitch
+/// bend the bend.
 pub mod vst3_sine {
     pub const LEVEL: u64 = 1;
     pub const BEND: u64 = 3;
@@ -53,6 +64,16 @@ pub mod vst3_sine {
     pub const BRIGHTNESS: u64 = 5;
     /// Read-only: the last poly pressure event, `(pitch * 128 + pressure 0..127) / 16383`.
     pub const POLY_PRESSURE: u64 = 6;
+    /// The sustain pedal: a note whose key is released under it sounds until it comes up.
+    pub const SUSTAIN: u64 = 7;
+    /// Read-only, the note: [`SILENT`], [`KEY_DOWN`] or [`SUSTAINED`].
+    pub const NOTE_STATE: u64 = 8;
+    /// Nothing sounds.
+    pub const SILENT: f64 = 0.0;
+    /// The note sounds and its key is down.
+    pub const KEY_DOWN: f64 = 0.5;
+    /// The note-off arrived; the pedal keeps the note sounding.
+    pub const SUSTAINED: f64 = 1.0;
 }
 
 /// Parameter ids of the VST3 gain effect (normalized 0..1).

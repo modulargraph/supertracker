@@ -245,8 +245,13 @@ being controlled in Pitch / Mod / Perform modes. Swiping in the default state sc
 ### Analog knobs and pedal
 
 The master, headphone and microphone knobs belong to the MK3's audio interface and are shown on the settings page
-only. The pedal jack acts as sustain for pads and keyboard: the host defers the release of every note the app plays
-until the pedal comes up, whatever the instrument (the pedal itself is not passed on to plug-ins or external MIDI).
+only. The pedal jack is the sustain pedal of the notes the app plays (pads and computer keyboard). It belongs to the
+instrument: a plug-in or an external MIDI instrument gets the pedal (CC 64) and its note-offs as played, and sustains by
+itself; built-in instruments have no pedal, so the host holds back their note-offs until the pedal comes up. A pedal
+that is down follows the pads to another track (each instrument gets it with the first note played to it) and its
+release reaches every instrument it reached. Stop releases everything the pedal holds. While recording, a note
+released under the pedal is recorded as long as it sounded: until the pedal comes up or the same note is struck again.
+The jack reports down and up only, so the controller's pedal does not half-pedal.
 Pad pressure sends channel aftertouch (default) or poly aftertouch with the pad's note to the selected track's
 instrument (a plug-in, or an external MIDI instrument on its channel); choose Off / Channel / Poly on SETTINGS
 (encoder 8, "Pressure"). Built-in instruments ignore aftertouch.
@@ -284,7 +289,8 @@ Interface → audio host commands used by the controller (also available to the 
   message with its next block (as MIDI, or in its format's own terms), an external MIDI instrument gets it on its
   device and channel, built-in instruments get pitch bend (±2 semitones) and CC1 (the mod wheel, filter close) and
   ignore the rest (the reply's `sent` is then false). `value` is −1…1 for pitch bend, 0…1 otherwise; `sustain` (or
-  CC64) holds the app's own notes in the host. The controller drops repeated identical values, quantizes to
+  CC64) is the app's own sustain pedal: passed on to a plug-in or external instrument, held in the host for built-in
+  instruments (see "Analog knobs and pedal"). The controller drops repeated identical values, quantizes to
   MIDI resolution and sends at most one message per stream every 15 ms with a trailing latest value.
 - `transport.queue {pattern}|{sequence}|{clear:true}` — queued jump honoured by the engine at the next pattern (or
   pattern-loop-range) end, sample-accurately (`queue_jump`). Ignored while stopped (`queued:false`).

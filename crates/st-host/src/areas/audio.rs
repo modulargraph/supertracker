@@ -11,7 +11,7 @@
 //! | `transport.play`, `.stop`, `.seek`, `.loop`, `.queue`, `.recordArm` | the reply of the first four is the status |
 //! | `note.on`, `note.off` | with `captureInput` the reply waits for the audio thread's acknowledgement (`inputAcknowledgement`) |
 //! | `step.preview`, `engine.panic`, `engine.instrumentParameter` | |
-//! | `midi.expression` | pitch bend, controllers, channel and poly pressure for a track's instrument: the device of an external MIDI instrument, a plug-in instrument, the engine's own voices (see the handler, `Audio::expression`) |
+//! | `midi.expression` | pitch bend, controllers, the pedals, channel and poly pressure for a track's instrument: the device of an external MIDI instrument, a plug-in instrument, the engine's own voices (see the handler, `Audio::expression`) |
 //! | `engine.snapshot` | the project with built-in effect state captured; plug-in descriptors keep the state they carry |
 //! | `audio.devices`, `audio.configure` | outputs and the input; the choice is remembered in the settings section `audio.devices`. `audio.devices` also reports the line inputs of the published project (`lineInputs`, `lineInputError`) |
 //! | `builtin.effects`, `routing.status` | |
@@ -28,6 +28,31 @@
 //! Samples come from `st-samples` through [`st_audio::DecodedSamples`], which decodes on its own
 //! worker threads; the sample commands and the events of finished decodes are in
 //! [`crate::areas::samples`].
+//!
+//! # The pedals
+//!
+//! The sustain pedal belongs to the instrument. [`Audio`] keeps the one record of the pedals
+//! that are down ([`st_midi::SustainState`]), for the notes and pedals of the interface
+//! (`note.on`, `note.off`, `midi.expression`; their source is [`st_midi::APP_SOURCE`]) and for
+//! those of MIDI devices (the MIDI area calls [`Audio::key_down`], [`Audio::key_up`] and
+//! [`Audio::pedal`] for each of them):
+//!
+//! - a plug-in instrument and an external MIDI instrument get the pedal, with its value
+//!   (controller 64; likewise sostenuto, 66, and soft, 67), and their note-offs as played: the
+//!   instrument sustains;
+//! - the engine's own instruments have no pedal: while a sustain pedal is down (64 or more)
+//!   the host holds back the note-offs of the keys its source releases, until it comes up.
+//!
+//! A pedal acts on what its own source and channel play. It follows them to another track:
+//! the instrument played first keeps sustaining, the next gets the pedal with its first note,
+//! and both are told when the pedal comes up. An instrument several pedals reach hears the
+//! highest of them. `transport.stop` tells every instrument pedal-up and ends what the host
+//! holds, and a pedal still down reaches an instrument again with the next note;
+//! `engine.panic` silences everything and forgets the pedals. An instrument that is replaced
+//! while a pedal is down (another plug-in, a plug-in restored after a crash, another device
+//! or channel) gets the pedal again with the next note played to it.
+//!
+//! Patterns carry notes with gates and no pedal data: all of this is live input only.
 
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -35,7 +60,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use st_audio::graph::insert::{builtin_effects_metadata, BuiltinFactory};
 use st_audio::{AudioEngine, DecodedSamples, DeviceChoice, DeviceRequest, EngineOptions, InputEdge, PlayOptions};
-use st_project::model::Step;
+use st_midi::{PedalEffect, PedalTarget, SustainState, APP_SOURCE};
+use st_project::model::{InstrumentKind, Step};
 use st_project::Project;
 
 use crate::commands::{Commands, NoPayload, Reply};
@@ -90,22 +116,49 @@ pub struct Audio {
     samples: Arc<DecodedSamples>,
     events: EventSink,
     settings: Arc<Settings>,
-    /// Sustain pedal of the interface's keyboard: down, and the notes whose release it holds.
-    sustain: Mutex<(bool, Vec<(i32, i32)>)>,
+    /// The pedals that are down, of the interface and of MIDI devices, and what they hold
+    /// (see the module documentation). Locked while what a message leads to is carried out,
+    /// so that messages of several sources take effect in the order they arrived.
+    pedals: Mutex<SustainState>,
+    /// Told when a note that a sustain pedal kept sounding ends ([`Audio::on_sustained_note_end`]).
+    sustained_note_end: OnceLock<SustainedNoteEnd>,
     /// Sample problems already reported, so a publication repeats none.
     reported: Mutex<Vec<st_audio::SampleProblem>>,
     /// Called on `transport.stop` and `engine.panic`: Stop also cancels a running export.
     stop_hooks: Mutex<Vec<Box<dyn Fn() + Send + Sync>>>,
     /// The state of the project's line inputs as the interface was told last.
     line_inputs: Mutex<Value>,
-    /// The MIDI area's part of `midi.expression`.
-    external_midi: OnceLock<ExternalMidi>,
+    /// The MIDI area's part of `midi.expression` and of the pedals.
+    external_midi: OnceLock<Arc<dyn ExternalInstruments>>,
 }
 
-/// Sends a channel message to the device of an external MIDI instrument, on the instrument's
-/// channel: `(instrument, [status, data1, data2])`. `None` when the instrument is not an
-/// external MIDI instrument; `Some(false)` when it is and its device is absent.
-pub type ExternalMidi = Box<dyn Fn(usize, [u8; 3]) -> Option<bool> + Send + Sync>;
+/// The devices of external MIDI instruments, as the MIDI area offers them to live playing.
+pub trait ExternalInstruments: Send + Sync {
+    /// Sends a channel message (`[status, data1, data2]`) to the device of an external MIDI
+    /// instrument, on the instrument's channel. `None` when the instrument is not an external
+    /// MIDI instrument; `Some(false)` when it is and its device is absent.
+    fn send(&self, instrument: usize, message: [u8; 3]) -> Option<bool>;
+    /// Counts the changes of the instrument's route: another device, another channel, a
+    /// device that came back. A pedal the device was sent before a change is void after it.
+    fn generation(&self, instrument: usize) -> u64;
+}
+
+/// Called with `(source, channel, note, where it sounded)` when a note whose key was released
+/// under a sustain pedal ends.
+pub type SustainedNoteEnd = Box<dyn Fn(i32, u8, u8, PedalTarget) + Send + Sync>;
+
+/// What became of a released key ([`Audio::key_up`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyUp {
+    /// What the note sounds on.
+    pub target: PedalTarget,
+    /// The sustain pedal of the key's source is down: the note goes on sounding until the pedal
+    /// lets go ([`Audio::on_sustained_note_end`]).
+    pub sustained: bool,
+    /// The note-off is to be sent now: always for an instrument with a pedal of its own, and
+    /// for the engine's instruments when no pedal holds the note.
+    pub send_note_off: bool,
+}
 
 impl ProjectAudio for Audio {
     fn prepare(&self, project: &Project, replace: bool) -> Result<Value> {
@@ -229,10 +282,130 @@ impl Audio {
         &self.samples
     }
 
-    /// Where `midi.expression` sends what belongs to an external MIDI instrument (the MIDI
-    /// area sets it; without it external instruments get nothing). Only the first call counts.
-    pub fn set_external_midi(&self, send: ExternalMidi) {
-        let _ = self.external_midi.set(send);
+    /// Where `midi.expression` and the pedals send what belongs to an external MIDI instrument
+    /// (the MIDI area sets it; without it external instruments get nothing). Only the first
+    /// call counts.
+    pub fn set_external_midi(&self, devices: Arc<dyn ExternalInstruments>) {
+        let _ = self.external_midi.set(devices);
+    }
+
+    /// Who hears when a note that a sustain pedal kept sounding ends (the MIDI area: a key it
+    /// is recording gets its length there). Only the first call counts. The receiver is called
+    /// with the pedals locked: it must not call back into the pedal methods.
+    pub fn on_sustained_note_end(&self, receiver: SustainedNoteEnd) {
+        let _ = self.sustained_note_end.set(receiver);
+    }
+
+    // ---- the pedals (see the module documentation) -----------------------------------------
+
+    fn pedals(&self) -> std::sync::MutexGuard<'_, SustainState> {
+        self.pedals.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// What a note played on `track` with `instrument` sounds on, and that instrument's
+    /// generation: a number that changes when what stands there may have lost its pedal.
+    fn pedal_target(&self, track: i32, instrument: i32) -> (PedalTarget, u64) {
+        let (track, instrument) = (track.max(0), instrument.max(0) as usize);
+        match self.engine.instrument_kind(instrument) {
+            Some(InstrumentKind::Plugin) => (PedalTarget::Plugin { track: track as usize }, self.engine.plugin_pedal_generation(track)),
+            Some(InstrumentKind::Midi) => (PedalTarget::External { instrument }, self.external_midi.get().map_or(0, |devices| devices.generation(instrument))),
+            _ => (PedalTarget::Engine { track: track as usize }, 0),
+        }
+    }
+
+    /// Sends a channel message to an instrument with a pedal of its own.
+    fn send_to(&self, target: PedalTarget, message: [u8; 3]) -> bool {
+        match target {
+            PedalTarget::Plugin { track } => self.engine.expression(track as i32, message),
+            PedalTarget::External { instrument } => self.external_midi.get().and_then(|devices| devices.send(instrument, message)).unwrap_or(false),
+            PedalTarget::Engine { .. } => false,
+        }
+    }
+
+    /// Carries out what the pedals answered, in order. `silenced`: the engine is being
+    /// silenced as a whole, so nothing is sent and no note is stopped one by one. Returns the
+    /// instruments a pedal could not be sent to.
+    fn perform(&self, effects: Vec<PedalEffect>, silenced: bool) -> Vec<PedalTarget> {
+        let mut unreached = Vec::new();
+        for effect in effects {
+            match effect {
+                PedalEffect::Send { target, controller, value } => {
+                    if !silenced && !self.send_to(target, [0xB0, controller, value]) {
+                        unreached.push(target);
+                    }
+                }
+                PedalEffect::NoteEnds { source, channel, note, target } => {
+                    if let (PedalTarget::Engine { track }, false) = (target, silenced) {
+                        self.engine.note_off(track as i32, i32::from(note));
+                    }
+                    if let Some(receiver) = self.sustained_note_end.get() {
+                        receiver(source, channel, note, target);
+                    }
+                }
+            }
+        }
+        unreached
+    }
+
+    /// A key of `source` on `channel` (1 to 16) is about to play `note` on `track` with
+    /// `instrument`. Call before the note is started: a pedal of that source that is down
+    /// reaches the instrument first. Returns what the note sounds on.
+    pub fn key_down(&self, source: i32, channel: u8, track: i32, instrument: i32, note: u8) -> PedalTarget {
+        let (target, generation) = self.pedal_target(track, instrument);
+        let mut pedals = self.pedals();
+        let effects = pedals.note_on(source, channel, note, track.max(0) as usize, target, generation);
+        self.perform(effects, false);
+        target
+    }
+
+    /// The key was released. The caller sends the note-off when the answer says so. What the
+    /// note sounds on is what its key-down found; `instrument` only counts for a key that was
+    /// not seen going down.
+    pub fn key_up(&self, source: i32, channel: u8, track: i32, instrument: i32, note: u8) -> KeyUp {
+        let (otherwise, _) = self.pedal_target(track, instrument);
+        let (target, sustained) = self.pedals().note_off(source, channel, note, track.max(0) as usize, otherwise);
+        KeyUp { target, sustained, send_note_off: target.has_pedal() || !sustained }
+    }
+
+    /// A pedal of `source` on `channel` moved: `controller` 64 (sustain), 66 (sostenuto) or 67
+    /// (soft) to `value` (0 to 127). `destination` is the track and instrument a note of that
+    /// source would play now, if its input is accepted there. Returns whether the pedal went
+    /// somewhere: to the instrument it is played to, or into the host's own holding of notes
+    /// for an instrument of the engine (the sustain pedal only).
+    pub fn pedal(&self, source: i32, channel: u8, controller: u8, value: u8, destination: Option<(i32, i32)>) -> bool {
+        let played = destination.map(|(track, instrument)| self.pedal_target(track, instrument));
+        let mut pedals = self.pedals();
+        let effects = pedals.pedal(source, channel, controller, value, played);
+        let unreached = self.perform(effects, false);
+        match played {
+            Some((target, _)) if target.has_pedal() => !unreached.contains(&target),
+            Some(_) => controller == st_midi::sustain::SUSTAIN,
+            None => false,
+        }
+    }
+
+    /// The pedals of the sources `lifted` names come up (their input route was taken down).
+    pub fn lift_pedals(&self, lifted: impl Fn(i32) -> bool) {
+        let mut pedals = self.pedals();
+        let effects = pedals.lift(lifted);
+        self.perform(effects, false);
+    }
+
+    /// The transport stops: every instrument is told pedal-up and what the host holds is let
+    /// go. Call before the engine is stopped: the note-offs go ahead of the stop.
+    pub fn silence_pedals(&self) {
+        let mut pedals = self.pedals();
+        let effects = pedals.silence();
+        self.perform(effects, false);
+    }
+
+    /// A panic: the engine, the plug-ins and the devices are silenced as a whole (and told
+    /// pedal-up there); the pedals are forgotten.
+    pub fn forget_pedals(&self) {
+        let mut pedals = self.pedals();
+        let effects = pedals.silence();
+        self.perform(effects, true);
+        pedals.clear();
     }
 
     /// Tells the interface about samples that cannot be loaded, each once: `sample.error` for an
@@ -283,6 +456,7 @@ impl Audio {
 
     fn stop(&self, _: NoPayload) -> Result<Value> {
         self.run_stop_hooks();
+        self.silence_pedals();
         self.engine.stop();
         Ok(self.engine.status())
     }
@@ -324,7 +498,7 @@ impl Audio {
     }
 
     fn panic(&self, _: NoPayload) -> Result<Value> {
-        *self.sustain.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = (false, Vec::new());
+        self.forget_pedals();
         self.run_stop_hooks();
         self.engine.panic();
         self.engine.live().preview().stop(true);
@@ -335,10 +509,13 @@ impl Audio {
         let (track, instrument) = self.engine.note_destination(whole(payload.track), whole(payload.instrument));
         let note = whole(payload.note).unwrap_or(60).clamp(0, 127) as i32;
         let velocity = whole(payload.velocity).unwrap_or(100).clamp(0, 127) as i32;
-        // A key struck again while the pedal holds its release is no longer waiting to be released.
-        self.sustain.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).1.retain(|held| *held != (track, note));
+        let apply = payload.apply_note.unwrap_or(true);
+        if apply {
+            // A pedal of the interface that is down reaches the instrument before the note.
+            self.key_down(APP_SOURCE, 1, track, instrument, note as u8);
+        }
         if payload.capture_input {
-            let edge = InputEdge { owner: payload.input_owner.unwrap_or_default(), on: true, track, instrument, note, velocity, apply_note: payload.apply_note.unwrap_or(true) };
+            let edge = InputEdge { owner: payload.input_owner.unwrap_or_default(), on: true, track, instrument, note, velocity, apply_note: apply };
             return self.engine.input_edge(edge, Box::new(move |acknowledgement| reply.ok(json!({ "ok": true, "inputAcknowledgement": acknowledgement }))));
         }
         self.engine.note_on(track, instrument, note, velocity);
@@ -349,25 +526,26 @@ impl Audio {
         let (track, instrument) = self.engine.note_destination(whole(payload.track), whole(payload.instrument));
         let note = whole(payload.note).unwrap_or(60).clamp(0, 127) as i32;
         let apply = payload.apply_note.unwrap_or(true);
-        // A held sustain pedal defers the sounding release; the key release is still captured.
-        let sustained = apply && {
-            let mut sustain = self.sustain.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            let down = sustain.0;
-            if down && !sustain.1.contains(&(track, note)) {
-                sustain.1.push((track, note));
+        // With the interface's sustain pedal down the note goes on sounding: an instrument with
+        // a pedal of its own gets the note-off and sustains, the host holds the note-off of an
+        // instrument of the engine. The key release is captured all the same.
+        let up = apply.then(|| self.key_up(APP_SOURCE, 1, track, instrument, note as u8));
+        let (sustained, send_note_off) = up.map_or((false, false), |up| (up.sustained, up.send_note_off));
+        let done = move |mut result: Value| {
+            if sustained {
+                result["sustained"] = json!(true);
             }
-            down
+            reply.ok(result)
         };
         if payload.capture_input {
             let velocity = whole(payload.velocity).unwrap_or(0).clamp(0, 127) as i32;
-            let edge = InputEdge { owner: payload.input_owner.unwrap_or_default(), on: false, track, instrument, note, velocity, apply_note: apply && !sustained };
-            return self.engine.input_edge(edge, Box::new(move |acknowledgement| reply.ok(json!({ "ok": true, "inputAcknowledgement": acknowledgement }))));
+            let edge = InputEdge { owner: payload.input_owner.unwrap_or_default(), on: false, track, instrument, note, velocity, apply_note: send_note_off };
+            return self.engine.input_edge(edge, Box::new(move |acknowledgement| done(json!({ "ok": true, "inputAcknowledgement": acknowledgement }))));
         }
-        if sustained {
-            return reply.ok(json!({ "ok": true, "sustained": true }));
+        if send_note_off {
+            self.engine.note_off(track, note);
         }
-        self.engine.note_off(track, note);
-        reply.ok(json!({ "ok": true }));
+        done(json!({ "ok": true }));
     }
 
     fn preview(&self, payload: PreviewPayload) -> Result<Value> {
@@ -395,9 +573,13 @@ impl Audio {
     /// - the engine's own instruments: pitch bend (two semitones either way) and the
     ///   modulation wheel (controller 1); they have no use for the rest.
     ///
-    /// `sent` tells whether the message went anywhere. The sustain pedal (`sustain`, or
-    /// controller 64) is the host's own: it holds back the release of the notes the
-    /// interface plays, whatever the instrument, and is not passed on.
+    /// `sent` tells whether the message went anywhere.
+    ///
+    /// The pedals (`sustain`, which is controller 64, and controllers 66 and 67) are the
+    /// interface's own pedals: they act on the notes the interface plays (see the module
+    /// documentation). A plug-in or external instrument gets the pedal with its value and
+    /// sustains by itself; for an instrument of the engine the host holds the note-offs while
+    /// the sustain pedal is at a half or more.
     fn expression(&self, payload: ExpressionPayload) -> Result<Value> {
         let Some(value) = payload.value.filter(|value| value.is_finite()) else { fail!("Expression value must be a finite number.") };
         let named = match payload.owner.as_deref() {
@@ -420,16 +602,10 @@ impl Audio {
                 let bend = (((value.clamp(-1.0, 1.0) + 1.0) * 8192.0).round() as u16).min(16_383);
                 [0xE0, (bend & 0x7F) as u8, (bend >> 7) as u8]
             }
-            ("sustain", _) | ("cc", 64) => {
-                let released = {
-                    let mut sustain = self.sustain.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-                    sustain.0 = value >= 0.5;
-                    if sustain.0 { Vec::new() } else { std::mem::take(&mut sustain.1) }
-                };
-                for (track, note) in released {
-                    self.engine.note_off(track, note);
-                }
-                return Ok(json!({ "sent": true, "owner": owner, "instrument": instrument }));
+            (kind @ ("sustain" | "cc"), controller) if kind == "sustain" || st_midi::sustain::PEDALS.contains(&controller) => {
+                let controller = if kind == "sustain" { st_midi::sustain::SUSTAIN } else { controller };
+                let sent = self.pedal(APP_SOURCE, 1, controller, seven, Some((track, instrument)));
+                return Ok(json!({ "sent": sent, "owner": owner, "instrument": instrument }));
             }
             ("cc", 120..) => fail!("Use engine.panic for channel-mode messages."),
             ("cc", controller) => [0xB0, controller, seven],
@@ -440,7 +616,7 @@ impl Audio {
             },
             (other, _) => fail!("Unsupported expression kind: {other}."),
         };
-        let external = self.external_midi.get().and_then(|send| send(instrument.max(0) as usize, message));
+        let external = self.external_midi.get().and_then(|devices| devices.send(instrument.max(0) as usize, message));
         let sent = external.unwrap_or_else(|| self.engine.expression(track, message));
         Ok(json!({ "sent": sent, "owner": owner, "instrument": instrument }))
     }
@@ -586,7 +762,7 @@ pub fn install(commands: &mut Commands, session: &crate::Session, settings: &Arc
         // Choosing the input opens nothing: it is opened when something uses it.
         let _ = engine.live().inputs().configure(&st_audio::inputs::InputRequest { uid: Some(input), ..Default::default() });
     }
-    let audio = Arc::new(Audio { engine, samples, events: events.clone(), settings: settings.clone(), sustain: Mutex::default(), reported: Mutex::default(), stop_hooks: Mutex::default(), line_inputs: Mutex::new(json!([])), external_midi: OnceLock::new()  });
+    let audio = Arc::new(Audio { engine, samples, events: events.clone(), settings: settings.clone(), pedals: Mutex::default(), sustained_note_end: OnceLock::new(), reported: Mutex::default(), stop_hooks: Mutex::default(), line_inputs: Mutex::new(json!([])), external_midi: OnceLock::new() });
     session.attach_audio(audio.clone());
     commands
         .with(&audio)

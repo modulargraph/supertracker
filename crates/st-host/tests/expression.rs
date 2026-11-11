@@ -171,14 +171,14 @@ fn expression_from_the_interface_reaches_every_kind_of_instrument() {
     let replies = sent(SAMPLER);
     assert!(all(&replies[..3], false, SAMPLER) && all(&replies[3..], true, SAMPLER), "{replies:?}");
     assert_eq!(fixture.express(json!({ "owner": owner(SAMPLER), "kind": "cc", "controller": 1, "value": 0.5 }))["sent"], true);
-    // The pedal is the host's own, for every instrument: it holds the release of a note the
-    // interface plays and is not passed on.
+    // The sustain pedal is the instrument's as well: it gets the pedal, with its value, and its
+    // note-offs as played (`tests/pedal.rs` has everything about the pedals).
     assert_eq!(fixture.express(json!({ "owner": owner(EXTERNAL), "kind": "sustain", "value": 1 }))["sent"], true);
     fixture.host.request("note.on", json!({ "note": 72, "velocity": 90, "track": EXTERNAL, "instrument": 0 })).unwrap();
     assert_eq!(fixture.host.request("note.off", json!({ "note": 72, "track": EXTERNAL, "instrument": 0 })).unwrap()["sustained"], true);
-    fixture.synth_gets("the held note", &[&[0x92, 72, 90]]);
+    fixture.synth_gets("the pedal, the note and its release", &[&[0xB2, 64, 127], &[0x92, 72, 90], &[0x82, 72, 0]]);
     assert_eq!(fixture.express(json!({ "owner": owner(EXTERNAL), "kind": "cc", "controller": 64, "value": 0 }))["sent"], true);
-    fixture.synth_gets("the release when the pedal comes up", &[&[0x82, 72, 0]]);
+    fixture.synth_gets("pedal-up", &[&[0xB2, 64, 0]]);
 
     // What is not expression is refused with a reason.
     for (payload, reason) in [

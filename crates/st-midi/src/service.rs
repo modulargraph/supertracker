@@ -17,8 +17,8 @@ use crate::memory::MemoryPorts;
 use crate::message::Message;
 use crate::output::{MidiClock, OutputStats, RenderOutput, Route, ROUTE_COUNT};
 use crate::ports::Backend;
-use crate::router::{InputAction, InputRouter, InputRouting, RoutedNote, APP_SOURCE};
-use crate::sustain::Destination;
+use crate::router::{InputAction, InputRouter, InputRouting, RoutedNote, RoutedPedal};
+use crate::sustain::PEDALS;
 
 /// Where the transport was when a note was played, for the interface's note recording.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -49,10 +49,17 @@ pub enum NoteHandling {
 pub trait InputTarget: Send + Sync {
     /// A key was pressed: start the note on `note.track` with `note.instrument`.
     fn note_on(&self, note: &RoutedNote) -> NoteHandling;
-    /// A key was released. With `sound` false the sustain pedal holds the note: do not stop it.
-    fn note_off(&self, note: &RoutedNote, sound: bool) -> NoteHandling;
-    /// Stop a note the pedal was holding.
-    fn release(&self, track: usize, note: u8);
+    /// A key was released. Whether the note stops is the receiver's to decide: it knows the
+    /// pedals ([`InputTarget::pedal`]) and which instruments have one of their own
+    /// ([`crate::sustain`]).
+    fn note_off(&self, note: &RoutedNote) -> NoteHandling;
+    /// A key is released in its device's name: the input route changed while it was down.
+    fn release(&self, note: &RoutedNote);
+    /// A sustain, sostenuto or soft pedal moved. `pedal.destination` is where a note of the
+    /// same device and channel would play now.
+    fn pedal(&self, pedal: &RoutedPedal);
+    /// The input route changed: every pedal of a MIDI device counts as lifted.
+    fn lift_pedals(&self);
     /// A controller, program change, channel or poly pressure or pitch-bend message for the
     /// instrument of a track that is not an external MIDI instrument: the engine's own voices
     /// take what they use (pitch bend, the modulation wheel), a plug-in instrument gets the
@@ -90,8 +97,6 @@ pub struct MidiOptions {
     /// How often devices are checked for hot-plug; `None` never (tests call
     /// [`MidiService::refresh_devices`]).
     pub poll_interval: Option<Duration>,
-    /// Engine channels a sustained note can sound on (tracks and kit sounds).
-    pub destination_count: usize,
     /// Inputs to connect at start, by device id; `None` connects every input until the interface
     /// publishes its configuration. Naming them avoids listening to unrelated devices meanwhile.
     pub input_ids: Option<Vec<i32>>,
@@ -106,7 +111,6 @@ impl MidiOptions {
             save_clock_settings,
             events,
             poll_interval: Some(Duration::from_millis(500)),
-            destination_count: 1024,
             input_ids: None,
         }
     }
@@ -119,7 +123,6 @@ impl MidiOptions {
             save_clock_settings: Box::new(|_| Ok(())),
             events: Box::new(|_, _| {}),
             poll_interval: None,
-            destination_count: 1024,
             input_ids: None,
         }
     }
@@ -190,6 +193,8 @@ struct Resolved {
     destination: Option<i32>,
     channel: u8,
     output: Option<OutputRoute>,
+    /// Counts the times the instrument's device or channel changed or its device came back.
+    generation: u64,
 }
 
 struct Routes {
@@ -239,7 +244,7 @@ impl MidiService {
         let (sender, receiver) = mpsc::channel();
         let inner = Arc::new(Inner {
             host: OnceLock::new(),
-            router: Mutex::new(InputRouter::new(options.destination_count)),
+            router: Mutex::new(InputRouter::new()),
             routes: Mutex::new(Routes { resolved: vec![Resolved::default(); ROUTE_COUNT], compensation: ReturnCompensation::default(), audio_running: false }),
             clock_settings: Mutex::new(options.clock_settings),
             save_clock_settings: options.save_clock_settings,
@@ -389,9 +394,9 @@ impl MidiService {
         lock(&self.inner.router).set_destination(track, instrument);
     }
 
-    /// Silences every external instrument: pedal up, all notes off and all sound off on each
-    /// device and channel in use, now. Held input notes and pedals are forgotten (the engine was
-    /// silenced by the caller).
+    /// Silences every external instrument: pedals up, all notes off and all sound off on each
+    /// device and channel in use, now. Held input keys are forgotten (the engine was silenced
+    /// by the caller).
     pub fn panic(&self) {
         self.inner.panic_external();
     }
@@ -403,22 +408,11 @@ impl MidiService {
         self.inner.send_to_instrument(instrument, message)
     }
 
-    /// The application's own note started on `track` (computer keyboard, pads): cancels the
-    /// release its sustain pedal was holding for that note.
-    pub fn app_note_on(&self, track: usize, note: u8) {
-        lock(&self.inner.router).sustain().retrigger(APP_SOURCE, 1, track as i64, i64::from(note));
-    }
-
-    /// The application's own note was released. Returns true when the application's sustain pedal
-    /// holds the sound: the caller must not stop the note.
-    pub fn app_note_off(&self, track: usize, note: u8) -> bool {
-        lock(&self.inner.router).sustain().defer_note_off(APP_SOURCE, 1, track as i64, i64::from(note))
-    }
-
-    /// The application's own sustain pedal (`midi.expression` with controller 64). Pedal-up
-    /// returns the notes to stop now.
-    pub fn app_sustain(&self, down: bool) -> Vec<Destination> {
-        lock(&self.inner.router).sustain().set_pedal(APP_SOURCE, 1, down)
+    /// Counts the changes of an external instrument's route: another device, another channel,
+    /// a device that went away and came back. What the device was told before a change (a pedal
+    /// held down) is void after it. 0 for an instrument that never was external.
+    pub fn route_generation(&self, instrument: usize) -> u64 {
+        lock(&self.inner.routes).resolved.get(instrument).map_or(0, |resolved| resolved.generation)
     }
 
     /// Tracks moved to other engine channels or were removed (see
@@ -470,7 +464,7 @@ impl MidiService {
         self.host().output_stats()
     }
 
-    /// Releases every note input still holds (the input route changed).
+    /// Releases every key input still holds and lifts its pedals (the input route changed).
     pub fn release_input_notes(&self) {
         let actions = lock(&self.inner.router).release_all();
         self.inner.perform(actions);
@@ -567,15 +561,25 @@ impl Inner {
                         self.emit("midi.note", Value::Object(event));
                     }
                 }
-                InputAction::NoteOff { note, sound } => {
-                    let handling = target.as_ref().map_or(NoteHandling::Played(None), |target| target.note_off(&note, sound));
+                InputAction::NoteOff(note) => {
+                    let handling = target.as_ref().map_or(NoteHandling::Played(None), |target| target.note_off(&note));
                     if matches!(handling, NoteHandling::Played(_)) {
                         self.emit("midi.note", Value::Object(note_event(false, &note)));
                     }
                 }
-                InputAction::Release(destination) => {
+                InputAction::Release(note) => {
                     if let Some(target) = &target {
-                        target.release(destination.track, destination.note);
+                        target.release(&note);
+                    }
+                }
+                InputAction::Pedal(pedal) => {
+                    if let Some(target) = &target {
+                        target.pedal(&pedal);
+                    }
+                }
+                InputAction::LiftPedals => {
+                    if let Some(target) = &target {
+                        target.lift_pedals();
                     }
                 }
                 InputAction::Forward { track, instrument, message } => {
@@ -633,7 +637,7 @@ impl Inner {
                 continue;
             }
             if let Some(output) = route.output {
-                for controller in [64, 123, 120] {
+                for controller in PEDALS.into_iter().chain([123, 120]) {
                     self.host().send_to(output, Message::new(0xB0 | route.channel, controller, 0), 0);
                 }
             }
@@ -668,20 +672,28 @@ impl Inner {
         let present: BTreeSet<i32> = host.devices().outputs.iter().map(|output| output.id).collect();
         let clock = host.clock();
         for index in 0..ROUTE_COUNT {
-            let next = match routing.instruments.get(index) {
+            let old = routes.resolved[index];
+            let mut next = match routing.instruments.get(index) {
                 Some(item) => Resolved {
                     external: item.external,
                     destination: item.output,
                     channel: item.channel,
                     output: if item.external { host.prepare_destination(item.output) } else { None },
+                    generation: old.generation,
                 },
-                None => Resolved::default(),
+                None => Resolved { generation: old.generation, ..Resolved::default() },
             };
-            let old = std::mem::replace(&mut routes.resolved[index], next);
+            // Another device or channel, or a device that is back, knows nothing of what the
+            // instrument was told before.
+            if next.external && (!old.external || old.channel != next.channel || old.output.map(|route| route.id) != next.output.map(|route| route.id)) {
+                next.generation += 1;
+            }
+            routes.resolved[index] = next;
             if old.external {
                 let clear = |output: OutputRoute, channel: u8, time: u64| {
-                    host.send_to(output, Message::new(0xB0 | channel, 64, 0), time);
-                    host.send_to(output, Message::new(0xB0 | channel, 123, 0), time);
+                    for controller in PEDALS.into_iter().chain([123]) {
+                        host.send_to(output, Message::new(0xB0 | channel, controller, 0), time);
+                    }
                 };
                 if let (None, Some(resumed), true) = (old.output, next.output, next.external && old.destination == next.destination && old.channel == next.channel) {
                     // A returning interface can still drive a synth whose last release was lost

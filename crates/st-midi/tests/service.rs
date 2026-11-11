@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use serde::de::IgnoredAny;
 use serde_json::{json, Value};
 use st_midi::memory::MemoryPorts;
-use st_midi::{InputTarget, Message, MidiOptions, MidiService, NoteHandling, RoutedNote, TransportPosition};
+use st_midi::{InputTarget, Message, MidiOptions, MidiService, NoteHandling, RoutedNote, RoutedPedal, TransportPosition};
 
 fn wait_for(what: &str, mut condition: impl FnMut() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -42,16 +42,23 @@ impl InputTarget for Engine {
             NoteHandling::Played(Some(TransportPosition { pattern: 2, row: 17, position: 4.25 }))
         }
     }
-    fn note_off(&self, note: &RoutedNote, sound: bool) -> NoteHandling {
-        self.push(format!("off t{} n{}{}", note.track, note.note, if sound { "" } else { " (sustained)" }));
+    fn note_off(&self, note: &RoutedNote) -> NoteHandling {
+        self.push(format!("off t{} n{}", note.track, note.note));
         if *self.capture.lock().unwrap() {
             NoteHandling::Captured
         } else {
             NoteHandling::Played(None)
         }
     }
-    fn release(&self, track: usize, note: u8) {
-        self.push(format!("release t{track} n{note}"));
+    fn release(&self, note: &RoutedNote) {
+        self.push(format!("release t{} n{}", note.track, note.note));
+    }
+    fn pedal(&self, pedal: &RoutedPedal) {
+        let place = pedal.destination.map_or("nowhere".to_string(), |(track, instrument)| format!("t{track} i{instrument}"));
+        self.push(format!("pedal {} {} ch{} from {} to {place}", pedal.controller, pedal.value, pedal.channel, pedal.source));
+    }
+    fn lift_pedals(&self) {
+        self.push("lift pedals".into());
     }
     fn message(&self, track: usize, message: Message) {
         self.push(format!("message t{track} {:#04x} {} {}", message.status, message.data1, message.data2));
@@ -149,7 +156,7 @@ fn notes_reach_the_engine_and_the_interface() {
 }
 
 #[test]
-fn controllers_sustain_and_transport() {
+fn controllers_pedals_and_transport() {
     let f = Fixture::new();
     // Controllers, pitch bend, channel and poly pressure and a program change go to the engine
     // as they are (it bends its own voices and passes them to a plug-in instrument).
@@ -157,17 +164,25 @@ fn controllers_sustain_and_transport() {
     assert_eq!(f.engine.take(), ["message t0 0xb0 7 99", "message t0 0xe0 0 96", "message t0 0xd0 30 0", "message t0 0xa0 60 45", "message t0 0xc0 5 0"]);
     assert_eq!(f.events("midi.message"), [json!({"status": 0xB0, "data1": 7, "data2": 99, "source": 11})], "only control changes are reported");
 
+    // The pedals go to the engine's side with the place they are played to and their values;
+    // what they hold is decided there. Key releases are handed on as played.
     f.play(11, &[0xB0, 64, 127, 0x90, 60, 100, 0x80, 60, 0]);
-    assert_eq!(f.engine.take(), ["on t0 i0 n60 v100", "off t0 n60 (sustained)"]);
-    assert_eq!(f.events("midi.note").len(), 2, "the key release is reported although the sound goes on");
-    f.play(11, &[0xB0, 64, 0]);
-    assert_eq!(f.engine.take(), ["release t0 n60"]);
-    assert!(f.events("midi.message").is_empty(), "the pedal is not reported as a control change");
+    assert_eq!(f.engine.take(), ["pedal 64 127 ch1 from 11 to t0 i0", "on t0 i0 n60 v100", "off t0 n60"]);
+    assert_eq!(f.events("midi.note").len(), 2, "the key release is reported");
+    f.play(11, &[0xB0, 64, 40, 0xB0, 64, 0]);
+    assert_eq!(f.engine.take(), ["pedal 64 40 ch1 from 11 to t0 i0", "pedal 64 0 ch1 from 11 to t0 i0"]);
+    assert!(f.events("midi.message").is_empty(), "the sustain pedal is not reported as a control change");
+    f.play(11, &[0xB0, 66, 127, 0xB0, 67, 127]);
+    assert_eq!(f.engine.take(), ["pedal 66 127 ch1 from 11 to t0 i0", "pedal 67 127 ch1 from 11 to t0 i0"]);
+    assert_eq!(f.events("midi.message").len(), 2, "sostenuto and soft are, like other controllers");
+    // The pedal of the external instrument's own keyboard is routed like its notes.
+    f.play(22, &[0xB0, 64, 127]);
+    assert_eq!(f.engine.take(), ["pedal 64 127 ch1 from 22 to t1 i1"]);
 
     f.ports.clear_sent();
     f.play(11, &[0xFA, 0xFC, 0xFB]);
     assert_eq!(f.engine.take(), ["start", "stop", "start"]);
-    wait_for("Stop to silence the external instrument", || f.ports.sent_messages(500).len() == 3);
+    wait_for("Stop to silence the external instrument", || f.ports.sent_messages(500).len() == 5);
     // While we send clock ourselves, an echoed Start must not restart our transport.
     f.service.clock_command(serde_json::from_value(json!({"enabled": true})).unwrap()).unwrap();
     assert_eq!(f.engine.take(), ["wake"], "the clock runs with the audio engine");
@@ -178,15 +193,8 @@ fn controllers_sustain_and_transport() {
     f.ports.clear_sent();
     f.play(11, &[0xB0, 123, 0]);
     assert_eq!(f.engine.take(), ["panic"]);
-    wait_for("external instruments to be silenced", || f.ports.sent_messages(500).len() == 3);
-    assert_eq!(f.ports.sent_messages(500), [[0xB3, 64, 0], [0xB3, 123, 0], [0xB3, 120, 0]]);
-
-    // The application's own keys share the pedal bookkeeping.
-    assert!(!f.service.app_note_off(0, 60), "no pedal: the note stops");
-    assert!(f.service.app_sustain(true).is_empty());
-    assert!(f.service.app_note_off(0, 60) && f.service.app_note_off(1, 64));
-    f.service.app_note_on(1, 64);
-    assert_eq!(f.service.app_sustain(false), [st_midi::Destination { track: 0, note: 60 }]);
+    wait_for("external instruments to be silenced", || f.ports.sent_messages(500).len() == 5);
+    assert_eq!(f.ports.sent_messages(500), [[0xB3, 64, 0], [0xB3, 66, 0], [0xB3, 67, 0], [0xB3, 123, 0], [0xB3, 120, 0]], "pedals up, then all notes off and all sound off");
 }
 
 #[test]
@@ -216,10 +224,10 @@ fn held_notes_are_released_only_when_the_input_route_really_changes() {
     let all = f.configure(json!({"inputID": "all", "inputChannel": 0, "enabled": true})).unwrap();
     assert_eq!(all["allInputs"], true);
     assert_eq!(f.engine.take(), ["wake"]);
-    // A new input channel is a new route: the held key and the pedalled note are released.
+    // A new input channel is a new route: the held key is released and the pedals count as lifted.
     let devices = f.configure(json!({"inputChannel": 2})).unwrap();
     assert_eq!(devices["inputChannel"], 2);
-    assert_eq!(f.engine.take(), ["release t0 n60", "release t0 n64", "wake"]);
+    assert_eq!(f.engine.take(), ["release t0 n60", "lift pedals", "wake"]);
     f.play(11, &[0x80, 60, 0]);
     assert!(f.engine.take().is_empty(), "the released note is forgotten");
     f.play(11, &[0x90, 70, 1, 0x91, 71, 1]);
@@ -235,7 +243,7 @@ fn held_notes_are_released_only_when_the_input_route_really_changes() {
     f.engine.take();
     let off = f.configure(json!({"enabled": false})).unwrap();
     assert_eq!(off["enabled"], false);
-    assert_eq!(f.engine.take(), ["release t0 n72"]);
+    assert_eq!(f.engine.take(), ["release t0 n72", "lift pedals"]);
     f.play(11, &[0x91, 73, 1]);
     assert!(f.engine.take().is_empty());
 }
@@ -250,7 +258,7 @@ fn an_unplugged_keyboard_releases_its_notes_in_the_engine() {
     f.ports.remove_input(11);
     assert!(f.service.refresh_devices());
     f.service.flush_input();
-    assert_eq!(f.engine.take(), ["off t0 n60 (sustained)", "release t0 n60", "release t0 n62"], "the key is released, then the pedal lets go of both notes");
+    assert_eq!(f.engine.take(), ["off t0 n60", "pedal 64 0 ch1 from 11 to t0 i0"], "the key is released in the keyboard's name, then its pedal");
     assert_eq!(f.events("midi.note"), [json!({"on": false, "note": 60, "velocity": 0, "channel": 1, "source": 11, "track": 0, "instrument": 0})]);
     let status = f.events("midi.status");
     assert_eq!(status.len(), 1);

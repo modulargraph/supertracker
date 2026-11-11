@@ -105,6 +105,8 @@ fn midi_output_from_the_render_thread_never_allocates() {
     // channel); the engine has no use for it. The render thread keeps to its own queue.
     for step in 0..64u8 {
         assert!(service.send_to_instrument(0, st_midi::Message::new(0xD0, step, 0)) && service.send_to_instrument(0, st_midi::Message::new(0xA0, 60, step)));
+        // So does a pedal (the render thread's part is pedal-up with all-notes-off, below).
+        assert!(service.send_to_instrument(0, st_midi::Message::new(0xB0, 64, step * 2)));
         assert!(!engine.expression(0, [0xD0, step, 0]));
         render_counted(&engine, 3);
     }

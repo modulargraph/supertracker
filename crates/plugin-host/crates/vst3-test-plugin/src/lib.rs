@@ -12,6 +12,8 @@
 //! * **ST Test Sine VST3** ([`SINE_CLASS_ID`]): a **single-component** instrument (one
 //!   object is processor and controller): a one-voice sine driven by sample-accurate note
 //!   events, MIDI controller mapping (`IMidiMapping`), note and legacy-MIDI output events.
+//!   It has a sustain pedal (a parameter mapped to controller 64): a note whose key is
+//!   released while the pedal is down sounds until the pedal comes up.
 //!
 //! Parameter points are applied as steps at their sample offset (not as ramps), so the
 //! tests can predict every sample exactly.
@@ -109,6 +111,16 @@ pub const PARAM_PRESSURE: u32 = 4;
 pub const PARAM_BRIGHTNESS: u32 = 5;
 /// Read-only: the last poly pressure event, `(pitch * 128 + pressure 0..=127) / 16383`.
 pub const PARAM_POLY_PRESSURE: u32 = 6;
+/// The sustain pedal, mapped to controller 64 through `IMidiMapping`: down from 0.5.
+pub const PARAM_SUSTAIN: u32 = 7;
+/// Read-only: the note. [`NOTE_SILENT`], [`NOTE_KEY_DOWN`] or [`NOTE_SUSTAINED`].
+pub const PARAM_NOTE_STATE: u32 = 8;
+/// Nothing sounds.
+pub const NOTE_SILENT: f64 = 0.0;
+/// The note sounds and its key is down.
+pub const NOTE_KEY_DOWN: f64 = 0.5;
+/// The note-off arrived; the sustain pedal keeps the note sounding.
+pub const NOTE_SUSTAINED: f64 = 1.0;
 
 /// Programs of the gain effect: name and the normalized gain each one sets.
 pub const PROGRAMS: [(&str, f64); 3] = [("Unity", 0.5), ("Half", 0.25), ("Double", 1.0)];
@@ -176,13 +188,15 @@ static GAIN_PARAMS: [ParamDef; 21] = [
     def(PARAM_EDITOR_WIDTH, "Editor Width", "", "", 0, 0.0, PROBE, UNIT_PROBE),
 ];
 
-static SINE_PARAMS: [ParamDef; 6] = [
+static SINE_PARAMS: [ParamDef; 8] = [
     def(PARAM_LEVEL, "Level", "Lvl", "%", 0, 0.5, CAN_AUTOMATE, UNIT_ROOT),
     def(PARAM_THRU, "Thru", "Thru", "", 1, 0.0, 0, UNIT_ROOT),
     def(PARAM_BEND, "Bend", "Bend", "", 0, 0.5, CAN_AUTOMATE, UNIT_ROOT),
     def(PARAM_PRESSURE, "Pressure", "Prs", "", 0, 0.0, CAN_AUTOMATE, UNIT_ROOT),
     def(PARAM_BRIGHTNESS, "Brightness", "Brt", "", 0, 0.0, CAN_AUTOMATE, UNIT_ROOT),
     def(PARAM_POLY_PRESSURE, "Poly Pressure", "Poly", "", 0, 0.0, READ_ONLY, UNIT_ROOT),
+    def(PARAM_SUSTAIN, "Sustain", "Sus", "", 0, 0.0, CAN_AUTOMATE, UNIT_ROOT),
+    def(PARAM_NOTE_STATE, "Note State", "Note", "", 2, 0.0, READ_ONLY, UNIT_ROOT),
 ];
 
 /// The factor the sine instrument's Pressure parameter (normalized) multiplies its level by.
@@ -1137,13 +1151,15 @@ pub const SINE_TAIL: u32 = kInfiniteTail;
 
 struct SineSynth {
     /// What the processor half uses.
-    values: Values<6>,
+    values: Values<8>,
     /// What the controller half shows (a host keeps the two in step).
-    shown: Values<6>,
+    shown: Values<8>,
     sample_rate: AtomicU64,
     active: AtomicBool,
     /// Sounding note, or -1.
     note: AtomicI32,
+    /// The key of the sounding note is down.
+    key_down: AtomicBool,
     age: AtomicU64,
     mono: AtomicBool,
     handler: RefCell<Option<ComPtr<IComponentHandler>>>,
@@ -1169,6 +1185,7 @@ impl SineSynth {
             sample_rate: AtomicU64::new(48_000f64.to_bits()),
             active: AtomicBool::new(false),
             note: AtomicI32::new(-1),
+            key_down: AtomicBool::new(false),
             age: AtomicU64::new(0),
             mono: AtomicBool::new(false),
             handler: RefCell::new(None),
@@ -1330,6 +1347,7 @@ impl IAudioProcessorTrait for SineSynth {
         let mut next_event = 0;
         let outputs = bus_channels(data.outputs, data.numOutputs, 0);
         let mut note = self.note.load(Ordering::Relaxed);
+        let mut key_down = self.key_down.load(Ordering::Relaxed);
         let mut age = self.age.load(Ordering::Relaxed);
         let mut sounded = false;
 
@@ -1368,10 +1386,12 @@ impl IAudioProcessorTrait for SineSynth {
                 let kind = event.r#type as u32;
                 if kind == Event_::EventTypes_::kNoteOnEvent as u32 {
                     note = event.__field0.noteOn.pitch as i32;
+                    key_down = true;
                     age = 0;
                 } else if kind == Event_::EventTypes_::kNoteOffEvent as u32 {
+                    // The pedal, if it is down, keeps the note (see below).
                     if note == event.__field0.noteOff.pitch as i32 {
-                        note = -1;
+                        key_down = false;
                     }
                 } else if kind == Event_::EventTypes_::kPolyPressureEvent as u32 {
                     // One object is processor and controller: the probe is shown at once.
@@ -1389,6 +1409,10 @@ impl IAudioProcessorTrait for SineSynth {
                         out.addEvent(&mut event);
                     }
                 }
+            }
+            // A note whose key is up sounds for as long as the pedal is down.
+            if note >= 0 && !key_down && self.values.get(PARAM_SUSTAIN) < 0.5 {
+                note = -1;
             }
             if frame == frames {
                 break;
@@ -1410,7 +1434,16 @@ impl IAudioProcessorTrait for SineSynth {
             }
         }
         self.note.store(note, Ordering::Relaxed);
+        self.key_down.store(key_down, Ordering::Relaxed);
         self.age.store(age, Ordering::Relaxed);
+        // One object is processor and controller: the probe is shown at once.
+        let state = match (note >= 0, key_down) {
+            (false, _) => NOTE_SILENT,
+            (true, true) => NOTE_KEY_DOWN,
+            (true, false) => NOTE_SUSTAINED,
+        };
+        self.values.set(PARAM_NOTE_STATE, state);
+        self.shown.set(PARAM_NOTE_STATE, state);
         if data.numOutputs > 0 && !data.outputs.is_null() {
             let all = (1u64 << outputs.len().min(63)) - 1;
             (*data.outputs).silenceFlags = if !sounded && frames > 0 { all } else { 0 };
@@ -1462,8 +1495,9 @@ impl IEditControllerTrait for SineSynth {
             PARAM_LEVEL => format!("{:.0} %", value * 100.0),
             PARAM_THRU => if value >= 0.5 { "On" } else { "Off" }.to_string(),
             PARAM_BEND => format!("{:+.2}", value * 2.0 - 1.0),
-            PARAM_PRESSURE | PARAM_BRIGHTNESS => format!("{:.0}", value * 127.0),
+            PARAM_PRESSURE | PARAM_BRIGHTNESS | PARAM_SUSTAIN => format!("{:.0}", value * 127.0),
             PARAM_POLY_PRESSURE => format!("{:.0}", value * 16383.0),
+            PARAM_NOTE_STATE => ["Silent", "Key down", "Sustained"][list_index(value, 2) as usize].to_string(),
             _ => return kInvalidArgument,
         };
         copy_wstring(&text, &mut *string);
@@ -1529,6 +1563,8 @@ impl IMidiMappingTrait for SineSynth {
             *id = PARAM_PRESSURE;
         } else if controller == 74 {
             *id = PARAM_BRIGHTNESS;
+        } else if controller == ControllerNumbers_::kCtrlSustainOnOff as CtrlNumber {
+            *id = PARAM_SUSTAIN;
         } else {
             // Some plug-ins scribble over the out-parameter and report failure: a host
             // must go by the result, not by the value.

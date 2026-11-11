@@ -1,6 +1,8 @@
 //! What MIDI needs from [`AudioEngine`]: the output hook of its renderers, the two facts a
-//! live MIDI note asks for (is note recording armed, where is the transport), and where
-//! controllers, pressure and pitch bend played live go ([`AudioEngine::expression`]). A child
+//! live MIDI note asks for (is note recording armed, where is the transport), where
+//! controllers, pressure and pitch bend played live go ([`AudioEngine::expression`]), and what
+//! the pedals need to know about the instrument a note is played on
+//! ([`AudioEngine::instrument_kind`], [`AudioEngine::plugin_pedal_generation`]). A child
 //! module of [`crate::engine`], so that these additions stay out of that file. The seam itself
 //! is [`crate::midi`].
 
@@ -32,7 +34,10 @@ impl AudioEngine {
     /// - The engine's own voices take what they have a use for: pitch bend (two semitones
     ///   either way) and the modulation wheel (controller 1). Everything else is nothing to them.
     /// - A plug-in instrument on the track gets the message as MIDI at the first frame of its
-    ///   next block, in its format's own terms (see `crates/plugin-host`).
+    ///   next block, in its format's own terms (see `crates/plugin-host`). That includes the
+    ///   pedals (controllers 64, 66 and 67), with their values; they reach the plug-in before
+    ///   the notes of that block. Which instruments a pedal belongs to, and when it has to
+    ///   come up again, is the caller's to know (`st_midi::SustainState` in `st-host`).
     ///
     /// Returns whether something took the message. Notes, channel-mode messages (all notes
     /// off and its relatives, controllers 120 and up) and system messages are refused: notes
@@ -59,6 +64,20 @@ impl AudioEngine {
             _ => return false,
         };
         self.plugin_midi(track, [kind, data1, data2]) || own
+    }
+
+    /// The kind of the published project's instrument `instrument`: whether the engine sounds
+    /// it itself, a plug-in does, or an external MIDI device. `None` without a project or
+    /// such an instrument.
+    pub fn instrument_kind(&self, instrument: usize) -> Option<st_project::model::InstrumentKind> {
+        self.lock().project.as_ref().and_then(|project| project.instrument_list().get(instrument).map(|item| item.kind()))
+    }
+
+    /// For the plug-in instrument of `track`: a number that changes whenever the plug-in may
+    /// have lost what it was told about the pedals (`Hosted::pedal_generation`). 0 when the
+    /// track has no plug-in instrument that is loaded.
+    pub fn plugin_pedal_generation(&self, track: i32) -> u64 {
+        self.plugin_instrument(track).map_or(0, |hosted| hosted.pedal_generation())
     }
 
     /// Whether note recording is armed (`transport.recordArm`).

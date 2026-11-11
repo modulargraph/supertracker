@@ -24,6 +24,19 @@
 //!   and the modulation wheel, a plug-in instrument gets the message with its next block).
 //!   `midi.expression`, the audio area's command for the same messages from the interface,
 //!   uses the same two destinations ([`crate::areas::audio::Audio::set_external_midi`]).
+//!   The pedals (sustain, sostenuto, soft) and every key go through the audio area's record
+//!   of the pedals ([`crate::areas::audio`], "The pedals"): an instrument with a pedal of its
+//!   own gets the pedal and its note-offs as played, the engine's own instruments have their
+//!   note-offs held back while the sustain pedal of the same device and channel is down.
+//!
+//!   **A recorded note is as long as it sounded.** A key released while the sustain pedal of
+//!   its device and channel is down keeps its capture open: the interface hears of the key
+//!   release at once as a plain `{on: false, note, …}` (the key is no longer highlighted),
+//!   and the two events that close the capture follow when the note ends: when the pedal
+//!   comes up (or goes below half), when the same key is struck again on the same instrument,
+//!   and on Stop (where the acknowledgement is what a key held through Stop gets). The length
+//!   a played-back note gets is so the length that was heard, whether the host held the note
+//!   or the instrument did; patterns carry no pedal.
 //! - **Output** ([`st_audio::midi::MidiOutput`], implemented here over
 //!   [`st_midi::RenderOutput`]): on the render thread, the engine's note events for instruments
 //!   of type `midi` become timed messages for their device and channel, the transport position
@@ -50,14 +63,14 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
 
-use crate::areas::audio::Audio;
+use crate::areas::audio::{Audio, ExternalInstruments};
 use std::time::Duration;
 
 use serde_json::{json, Value};
 use st_audio::midi::{MidiBlock, MidiOutput, MidiRender};
 use st_audio::{AudioEngine, InputEdge, PlayOptions};
 use st_midi::memory::MemoryPorts;
-use st_midi::{InputTarget, Message, MidiClock, MidiService, NoteHandling, RenderOutput, RoutedNote, TransportPosition};
+use st_midi::{InputTarget, Message, MidiClock, MidiService, NoteHandling, PedalTarget, RenderOutput, RoutedNote, RoutedPedal, TransportPosition, APP_SOURCE};
 
 use crate::commands::Commands;
 use crate::session::Session;
@@ -97,16 +110,19 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 /// One key that is being recorded: the capture the interface opened for it.
 struct Capture {
     owner: String,
-    track: usize,
-    note: u8,
+    note: RoutedNote,
 }
 
 /// The engine as MIDI input plays it. See the module documentation.
 struct Input {
+    audio: Arc<Audio>,
     engine: Arc<AudioEngine>,
     events: EventSink,
     /// Recorded keys still held, by `(source, channel, note)`.
     captures: Mutex<HashMap<(i32, u8, u8), Capture>>,
+    /// Recorded keys that were released under the sustain pedal and sound on, by `(source,
+    /// channel, note)` and what the note sounds on: their captures end with the notes.
+    sustained: Mutex<HashMap<(i32, u8, u8, PedalTarget), Capture>>,
     next_owner: AtomicU64,
 }
 
@@ -123,9 +139,19 @@ impl Input {
     }
 
     fn cancel_all(&self, reason: &str) {
-        let captures: Vec<Capture> = lock(&self.captures).drain().map(|(_, capture)| capture).collect();
+        let mut captures: Vec<Capture> = lock(&self.captures).drain().map(|(_, capture)| capture).collect();
+        captures.extend(lock(&self.sustained).drain().map(|(_, capture)| capture));
         for capture in &captures {
             self.cancel(capture, reason);
+        }
+    }
+
+    /// A note the sustain pedal kept sounding is over: the capture that waited for it gets its
+    /// release, without touching the sound.
+    fn sustained_note_ended(&self, source: i32, channel: u8, note: u8, target: PedalTarget) {
+        let capture = lock(&self.sustained).remove(&(source, channel, note, target));
+        if let Some(capture) = capture {
+            self.capture(&capture.note, false, capture.owner, false);
         }
     }
 
@@ -154,12 +180,22 @@ impl Input {
 
 impl InputTarget for Input {
     fn note_on(&self, note: &RoutedNote) -> NoteHandling {
+        let key = (note.source, note.channel, note.note);
+        // The pedals first: one that is down reaches the instrument before the note.
+        let target = self.audio.key_down(note.source, note.channel, note.track as i32, note.instrument as i32, note.note);
+        // The key struck again ends what it was recording: a note the pedal kept sounding on
+        // this instrument gets its length here; a key that never came up loses its capture.
+        let sustained = lock(&self.sustained).remove(&(note.source, note.channel, note.note, target));
+        if let Some(sustained) = sustained {
+            self.capture(&sustained.note, false, sustained.owner, false);
+        }
+        let held = lock(&self.captures).remove(&key);
+        if let Some(held) = held {
+            self.cancel(&held, "retriggered");
+        }
         if self.engine.record_armed() {
             let owner = self.owner();
-            let previous = lock(&self.captures).insert((note.source, note.channel, note.note), Capture { owner: owner.clone(), track: note.track, note: note.note });
-            if let Some(previous) = previous {
-                self.cancel(&previous, "retriggered");
-            }
+            lock(&self.captures).insert(key, Capture { owner: owner.clone(), note: *note });
             self.capture(note, true, owner, true);
             return NoteHandling::Captured;
         }
@@ -168,32 +204,51 @@ impl InputTarget for Input {
         NoteHandling::Played(Some(TransportPosition { pattern: i64::from(transport.pattern), row: i64::from(transport.row), position: transport.position }))
     }
 
-    fn note_off(&self, note: &RoutedNote, sound: bool) -> NoteHandling {
+    fn note_off(&self, note: &RoutedNote) -> NoteHandling {
+        let up = self.audio.key_up(note.source, note.channel, note.track as i32, note.instrument as i32, note.note);
         // The release of a recorded key belongs to its capture, also when recording was disarmed
         // meanwhile (the acknowledgement then says so).
         let capture = lock(&self.captures).remove(&(note.source, note.channel, note.note));
-        if let Some(capture) = capture {
-            self.capture(note, false, capture.owner, sound);
-            return NoteHandling::Captured;
+        match capture {
+            // The note goes on sounding under the pedal: its capture ends when the note does.
+            // The interface hears of the key itself now.
+            Some(capture) if up.sustained => {
+                let replaced = lock(&self.sustained).insert((note.source, note.channel, note.note, up.target), capture);
+                if let Some(replaced) = replaced {
+                    self.cancel(&replaced, "retriggered");
+                }
+            }
+            Some(capture) => {
+                self.capture(note, false, capture.owner, up.send_note_off);
+                return NoteHandling::Captured;
+            }
+            None => {}
         }
-        if sound {
+        if up.send_note_off {
             self.engine.note_off(note.track as i32, i32::from(note.note));
         }
         NoteHandling::Played(None)
     }
 
-    fn release(&self, track: usize, note: u8) {
-        // A note released without its key (pedal up, the input route changed): a capture that was
-        // waiting for that key ends here.
-        let ended: Vec<Capture> = {
-            let mut captures = lock(&self.captures);
-            let keys: Vec<(i32, u8, u8)> = captures.iter().filter(|(_, capture)| capture.track == track && capture.note == note).map(|(key, _)| *key).collect();
-            keys.iter().filter_map(|key| captures.remove(key)).collect()
-        };
-        for capture in &ended {
-            self.cancel(capture, "MIDI input route changed");
+    fn release(&self, note: &RoutedNote) {
+        // The input route changed with the key down: a capture that was waiting for the key
+        // ends here, and the note is released like a key (its pedal is lifted next).
+        let up = self.audio.key_up(note.source, note.channel, note.track as i32, note.instrument as i32, note.note);
+        let capture = lock(&self.captures).remove(&(note.source, note.channel, note.note));
+        if let Some(capture) = capture {
+            self.cancel(&capture, "MIDI input route changed");
         }
-        self.engine.note_off(track as i32, i32::from(note));
+        if up.send_note_off {
+            self.engine.note_off(note.track as i32, i32::from(note.note));
+        }
+    }
+
+    fn pedal(&self, pedal: &RoutedPedal) {
+        self.audio.pedal(pedal.source, pedal.channel, pedal.controller, pedal.value, pedal.destination.map(|(track, instrument)| (track as i32, instrument as i32)));
+    }
+
+    fn lift_pedals(&self) {
+        self.audio.lift_pedals(|source| source != APP_SOURCE);
     }
 
     fn message(&self, track: usize, message: Message) {
@@ -202,6 +257,7 @@ impl InputTarget for Input {
 
     fn panic(&self) {
         self.cancel_all("all notes off");
+        self.audio.forget_pedals();
         self.engine.panic();
     }
 
@@ -210,6 +266,7 @@ impl InputTarget for Input {
     }
 
     fn transport_stop(&self) {
+        self.audio.silence_pedals();
         self.engine.stop();
     }
 
@@ -235,7 +292,17 @@ pub struct RenderHook {
     clock: MidiClock,
     /// `(graph frame, device time)` of the last block.
     anchor: Option<(u64, f64)>,
+    /// Counts the times every external instrument was sent pedal-up and all-notes-off from
+    /// here ([`Silenced`]).
+    silenced: Silenced,
 }
+
+/// Counts the times the render thread silenced the external instruments (the transport
+/// stopped, by Stop or at the end of the song; a panic). What a device was told about a pedal
+/// before is void afterwards: the count is part of an external instrument's generation
+/// ([`ExternalInstruments::generation`]), so a pedal that is still down is sent again with the
+/// next note.
+type Silenced = Arc<AtomicU64>;
 
 /// A block further than this from its expected time starts a new anchor (nanoseconds).
 const REANCHOR: f64 = 50_000_000.0;
@@ -275,6 +342,7 @@ impl MidiRender for RenderHook {
 
     fn all_notes_off(&mut self) {
         self.output.all_notes_off();
+        self.silenced.fetch_add(1, Ordering::Release);
     }
 }
 
@@ -282,6 +350,7 @@ impl MidiRender for RenderHook {
 /// through the engine (its input target), so a strong reference would keep both alive for ever.
 struct Output {
     service: Weak<MidiService>,
+    silenced: Silenced,
 }
 
 /// The hook of a renderer made after the MIDI service ended.
@@ -298,7 +367,7 @@ impl MidiRender for NoOutput {
 impl MidiOutput for Output {
     fn render_hook(&self) -> Box<dyn MidiRender> {
         match self.service.upgrade() {
-            Some(service) => Box::new(RenderHook { output: service.render_output(), clock: service.clock(), anchor: None }),
+            Some(service) => Box::new(RenderHook { output: service.render_output(), clock: service.clock(), anchor: None, silenced: self.silenced.clone() }),
             None => Box::new(NoOutput),
         }
     }
@@ -308,7 +377,29 @@ impl MidiOutput for Output {
 /// MIDI clock and transport messages, all-notes-off on stop and panic. [`install`] does this for
 /// the host's engine; it is public for tests that drive a renderer themselves.
 pub fn connect_output(engine: &AudioEngine, service: &Arc<MidiService>) {
-    engine.set_midi_output(Some(Arc::new(Output { service: Arc::downgrade(service) })));
+    connect(engine, service, Silenced::default());
+}
+
+fn connect(engine: &AudioEngine, service: &Arc<MidiService>, silenced: Silenced) {
+    engine.set_midi_output(Some(Arc::new(Output { service: Arc::downgrade(service), silenced })));
+}
+
+/// The devices of external MIDI instruments, for the audio area.
+struct Devices {
+    service: Weak<MidiService>,
+    silenced: Silenced,
+}
+
+impl ExternalInstruments for Devices {
+    fn send(&self, instrument: usize, [status, data1, data2]: [u8; 3]) -> Option<bool> {
+        let service = self.service.upgrade()?;
+        service.host().route(instrument).external.then(|| service.send_to_instrument(instrument, Message::new(status, data1, data2)))
+    }
+
+    fn generation(&self, instrument: usize) -> u64 {
+        // Both only ever count up, so their sum changes whenever one of them does.
+        self.service.upgrade().map_or(0, |service| service.route_generation(instrument)) + self.silenced.load(Ordering::Acquire)
+    }
 }
 
 /// The MIDI service of the host.
@@ -360,7 +451,6 @@ pub fn install(commands: &mut Commands, session: &Session, settings: &Arc<Settin
             move |name, payload: Value| events.emit(name, payload)
         }),
         poll_interval,
-        destination_count: 1024,
         input_ids: None,
     })
     .map_err(|error| Error::new(error.to_string()))?;
@@ -371,19 +461,21 @@ pub fn install(commands: &mut Commands, session: &Session, settings: &Arc<Settin
         .register("midi.clock", MidiService::clock_command)
         .register("midi.performance", MidiService::performance);
 
-    let input = engine.as_ref().map(|engine| Arc::new(Input { engine: engine.clone(), events, captures: Mutex::default(), next_owner: AtomicU64::new(1) }));
-    if let (Some(engine), Some(input)) = (&engine, &input) {
+    if let (Some(engine), Some(audio)) = (&engine, audio) {
+        let input = Arc::new(Input { audio: audio.clone(), engine: engine.clone(), events, captures: Mutex::default(), sustained: Mutex::default(), next_owner: AtomicU64::new(1) });
         service.set_target(input.clone());
         service.set_audio_running(true);
-        connect_output(engine, &service);
-    }
-    if let Some(audio) = audio {
-        // `midi.expression` for external MIDI instruments. Weak: the service plays through the
-        // engine the audio area owns.
-        let service = Arc::downgrade(&service);
-        audio.set_external_midi(Box::new(move |instrument, [status, data1, data2]| {
-            let service = service.upgrade()?;
-            service.host().route(instrument).external.then(|| service.send_to_instrument(instrument, Message::new(status, data1, data2)))
+        let silenced = Silenced::default();
+        connect(engine, &service, silenced.clone());
+        // `midi.expression` and the pedals for external MIDI instruments, and the end of
+        // recorded notes that a pedal kept sounding. Weak both ways: the service plays through
+        // the engine the audio area owns, and its input target holds the audio area.
+        audio.set_external_midi(Arc::new(Devices { service: Arc::downgrade(&service), silenced }));
+        let input = Arc::downgrade(&input);
+        audio.on_sustained_note_end(Box::new(move |source, channel, note, target| {
+            if let Some(input) = input.upgrade() {
+                input.sustained_note_ended(source, channel, note, target);
+            }
         }));
     }
     {

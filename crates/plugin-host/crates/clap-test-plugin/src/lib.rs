@@ -10,9 +10,13 @@
 //!   (bookkeeping only: no window is created), latency extension.
 //! * [`SINE_ID`]: instrument with one note port (CLAP and MIDI dialects) and a stereo
 //!   output. Parameter: Level. MIDI CC 7 sets the level and reports it to the host as an
-//!   output parameter event. Channel pressure scales the level ([`pressure_gain`]). Four
-//!   read-only probes show the last control change, channel pressure, poly pressure and
-//!   pitch bend it received.
+//!   output parameter event. Channel pressure scales the level ([`pressure_gain`]). It has
+//!   a sustain pedal (MIDI CC 64, down from 64): a note whose key is released while the
+//!   pedal is down sounds until the pedal comes up. "All notes off" (CC 123) releases the
+//!   keys and leaves the pedal alone, as the MIDI specification has it; "all sound off"
+//!   (CC 120) ends the sound. Five read-only probes show the last control change, channel
+//!   pressure, poly pressure and pitch bend it received, and the state of its note
+//!   ([`PARAM_PROBE_NOTE_STATE`]).
 //! * [`NOTE_SINE_ID`]: the same instrument with a note port that takes the CLAP dialect
 //!   only: pressure and pitch bend reach it as note expressions (and fill the same probes),
 //!   control changes cannot reach it at all.
@@ -62,6 +66,14 @@ pub const PARAM_PROBE_PRESSURE: u32 = 21;
 pub const PARAM_PROBE_POLY_PRESSURE: u32 = 22;
 /// Pitch bend, 0..=16383 (8192: centre).
 pub const PARAM_PROBE_BEND: u32 = 23;
+/// The note: [`NOTE_SILENT`], [`NOTE_KEY_DOWN`] or [`NOTE_SUSTAINED`].
+pub const PARAM_PROBE_NOTE_STATE: u32 = 24;
+/// Nothing sounds.
+pub const NOTE_SILENT: u32 = 0;
+/// The note sounds and its key is down.
+pub const NOTE_KEY_DOWN: u32 = 1;
+/// The note-off arrived; the sustain pedal keeps the note sounding.
+pub const NOTE_SUSTAINED: u32 = 2;
 
 /// The factor channel pressure (0..=127) multiplies the sine instruments' level by.
 pub fn pressure_gain(pressure: u8) -> f64 {
@@ -150,11 +162,16 @@ struct Instance {
     main_calls: AtomicU32,
     /// The sine's note port takes MIDI besides CLAP note events.
     midi_dialect: bool,
-    /// The probes of the sine: controller, channel pressure, poly pressure, pitch bend.
-    probes: [AtomicU32; 4],
+    /// The probes of the sine: controller, channel pressure, poly pressure, pitch bend, note
+    /// state.
+    probes: [AtomicU32; 5],
     // audio thread only
     note: Option<u8>,
     note_age: u64,
+    /// The key of `note` is down.
+    key_down: bool,
+    /// The sustain pedal is down.
+    pedal: bool,
 }
 
 impl Instance {
@@ -169,6 +186,38 @@ impl Instance {
     }
     fn set_probe(&self, id: clap_id, value: u32) {
         self.probes[(id - PARAM_PROBE_CONTROLLER) as usize].store(value, Ordering::Relaxed);
+    }
+
+    fn key_on(&mut self, key: u8) {
+        self.note = Some(key);
+        self.note_age = 0;
+        self.key_down = true;
+    }
+
+    /// The key of the sounding note is released: the note ends unless the pedal holds it.
+    fn key_off(&mut self, key: u8) {
+        if self.note == Some(key) {
+            self.key_down = false;
+            if !self.pedal {
+                self.note = None;
+            }
+        }
+    }
+
+    fn set_pedal(&mut self, down: bool) {
+        self.pedal = down;
+        if !down && !self.key_down {
+            self.note = None;
+        }
+    }
+
+    fn show_note_state(&self) {
+        let state = match (self.note, self.key_down) {
+            (None, _) => NOTE_SILENT,
+            (Some(_), true) => NOTE_KEY_DOWN,
+            (Some(_), false) => NOTE_SUSTAINED,
+        };
+        self.set_probe(PARAM_PROBE_NOTE_STATE, state);
     }
 }
 
@@ -231,6 +280,9 @@ unsafe extern "C" fn plugin_reset(plugin: *const clap_plugin) {
     let instance = this(plugin);
     instance.note = None;
     instance.note_age = 0;
+    instance.key_down = false;
+    instance.pedal = false;
+    instance.show_note_state();
 }
 
 unsafe extern "C" fn plugin_on_main_thread(plugin: *const clap_plugin) {
@@ -262,14 +314,11 @@ unsafe fn handle_event(instance: &mut Instance, header: *const clap_event_header
         }
         CLAP_EVENT_NOTE_ON if instance.kind == Kind::Sine => {
             let event = &*(header as *const clap_event_note);
-            instance.note = Some(event.key as u8);
-            instance.note_age = 0;
+            instance.key_on(event.key as u8);
         }
         CLAP_EVENT_NOTE_OFF if instance.kind == Kind::Sine => {
             let event = &*(header as *const clap_event_note);
-            if instance.note == Some(event.key as u8) {
-                instance.note = None;
-            }
+            instance.key_off(event.key as u8);
         }
         CLAP_EVENT_NOTE_EXPRESSION if instance.kind == Kind::Sine => {
             let event = &*(header as *const clap_event_note_expression);
@@ -293,17 +342,25 @@ unsafe fn handle_event(instance: &mut Instance, header: *const clap_event_header
         CLAP_EVENT_MIDI if instance.kind == Kind::Sine && instance.midi_dialect => {
             let event = &*(header as *const clap_event_midi);
             match event.data[0] & 0xF0 {
-                0x90 if event.data[2] > 0 => {
-                    instance.note = Some(event.data[1]);
-                    instance.note_age = 0;
-                }
-                0x80 | 0x90 => {
-                    if instance.note == Some(event.data[1]) {
-                        instance.note = None;
-                    }
-                }
+                0x90 if event.data[2] > 0 => instance.key_on(event.data[1]),
+                0x80 | 0x90 => instance.key_off(event.data[1]),
                 0xB0 => {
                     instance.set_probe(PARAM_PROBE_CONTROLLER, event.data[1] as u32 * 128 + event.data[2] as u32);
+                    match event.data[1] {
+                        64 => instance.set_pedal(event.data[2] >= 64),
+                        // All notes off releases the keys; what the pedal holds sounds on.
+                        123 => {
+                            if let Some(key) = instance.note {
+                                instance.key_off(key);
+                            }
+                        }
+                        // All sound off.
+                        120 => {
+                            instance.note = None;
+                            instance.key_down = false;
+                        }
+                        _ => {}
+                    }
                     if event.data[1] == 7 {
                         let level = event.data[2] as f64 / 127.0;
                         instance.set_value(level);
@@ -401,6 +458,9 @@ unsafe extern "C" fn plugin_process(plugin: *const clap_plugin, process: *const 
             }
         }
     }
+    if instance.kind == Kind::Sine {
+        instance.show_note_state();
+    }
     CLAP_PROCESS_CONTINUE
 }
 
@@ -494,7 +554,7 @@ const fn probe(id: clap_id, name: &'static str, max: f64, default: f64) -> Param
     }
 }
 
-const SINE_PARAMS: [ParamSpec; 5] = [
+const SINE_PARAMS: [ParamSpec; 6] = [
     ParamSpec {
         id: PARAM_LEVEL,
         name: "Level",
@@ -508,6 +568,7 @@ const SINE_PARAMS: [ParamSpec; 5] = [
     probe(PARAM_PROBE_PRESSURE, "Channel Pressure", 127.0, 0.0),
     probe(PARAM_PROBE_POLY_PRESSURE, "Poly Pressure", 16383.0, 0.0),
     probe(PARAM_PROBE_BEND, "Pitch Bend", 16383.0, 8192.0),
+    probe(PARAM_PROBE_NOTE_STATE, "Note State", 2.0, 0.0),
 ];
 
 fn specs(kind: Kind) -> &'static [ParamSpec] {
@@ -553,7 +614,7 @@ unsafe extern "C" fn params_get_value(plugin: *const clap_plugin, id: clap_id, o
         (Kind::Gain, PARAM_EDITOR_STATE) => instance.editor_state.load(Ordering::Relaxed) as f64,
         (Kind::Gain, PARAM_EDITOR_TITLE_LEN) => instance.editor_title_len.load(Ordering::Relaxed) as f64,
         (Kind::Gain, PARAM_MAIN_CALLS) => instance.main_calls.load(Ordering::Relaxed) as f64,
-        (Kind::Sine, PARAM_PROBE_CONTROLLER..=PARAM_PROBE_BEND) => instance.probe(id) as f64,
+        (Kind::Sine, PARAM_PROBE_CONTROLLER..=PARAM_PROBE_NOTE_STATE) => instance.probe(id) as f64,
         _ => return false,
     };
     *out = value;
@@ -904,9 +965,11 @@ unsafe extern "C" fn factory_create(
         editor_title_len: AtomicU32::new(0),
         main_calls: AtomicU32::new(0),
         midi_dialect: id != NOTE_SINE_ID.as_bytes(),
-        probes: [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(8192)],
+        probes: [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(8192), AtomicU32::new(0)],
         note: None,
         note_age: 0,
+        key_down: false,
+        pedal: false,
     }));
     (*instance).plugin.plugin_data = instance.cast();
     &(*instance).plugin

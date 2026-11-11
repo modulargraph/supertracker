@@ -300,6 +300,78 @@ fn controllers_and_pressure_played_live_reach_a_plug_in_instrument_with_its_next
     }
 }
 
+/// The sustain pedal is the plug-in's: it gets controller 64 with its value, before the notes
+/// of the block the pedal arrives with, and its note-offs as played.
+#[test]
+fn the_sustain_pedal_reaches_a_plug_in_instrument_before_the_notes_of_its_block() {
+    let fixture = Fixture::new("pedal");
+    for format in ["clap", "vst3"] {
+        let (engine, manager) = fixture.engine();
+        let mut project = project(2);
+        project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "au", "name": "Sine", "volume": 1, "pan": 0 }));
+        project["tracks"][0]["instrument"] = json!(1);
+        project["patterns"][0]["steps"][0] = json!(vec![Value::Null; 16]);
+        project["patterns"][0]["steps"][1] = json!(vec![Value::Null; 16]);
+        project["audioPlugins"] = json!([if format == "clap" { fixture.clap("track:a", "instrument", 0, "synth", CLAP_SINE) } else { fixture.vst3("track:a", "instrument", 0, "synth", VST3_SINE) }]);
+        engine.publish(&parse(&project)).unwrap();
+        let hosted = manager.hosted("synth").expect("the instrument has an instance");
+        assert_eq!(engine.instrument_kind(1), Some(st_project::model::InstrumentKind::Plugin));
+        let generation = engine.plugin_pedal_generation(0);
+        assert!(generation != 0 && generation == hosted.pedal_generation() && engine.plugin_pedal_generation(1) == 0, "{format}: the instrument's pedal generation; a track without a plug-in has none");
+
+        // A key is held. The pedal goes down and the key comes up before the next block is
+        // rendered: the plug-in hears them in that order, and sustains.
+        engine.note_on(0, 1, 60, 100);
+        let (held, _) = engine.render_offline(1_000, 512);
+        assert_bits(&held, |i| sine_sample(60, i as u64, 0.5), &format!("{format}: the held note"));
+        assert!(engine.expression(0, [0xB0, 64, 127]), "{format}: the pedal is taken");
+        engine.note_off(0, 60);
+        let (sustained, _) = engine.render_offline(1_000, 512);
+        assert_bits(&sustained, |i| sine_sample(60, 1_000 + i as u64, 0.5), &format!("{format}: the note-off arrived after the pedal, the instrument sustains"));
+        let state = |silent: f64, key_down: f64, sustained: f64| -> &'static str {
+            let value = value_of(&hosted, if format == "clap" { clap_sine::NOTE_STATE } else { vst3_sine::NOTE_STATE });
+            [(silent, "silent"), (key_down, "key down"), (sustained, "sustained")].into_iter().find(|(known, _)| *known == value).map_or("unknown", |(_, name)| name)
+        };
+        let note_state = || if format == "clap" { state(clap_sine::SILENT, clap_sine::KEY_DOWN, clap_sine::SUSTAINED) } else { state(vst3_sine::SILENT, vst3_sine::KEY_DOWN, vst3_sine::SUSTAINED) };
+        assert_eq!(note_state(), "sustained", "{format}: the plug-in has the note-off");
+        // Half-pedalling is the instrument's: it gets the value.
+        assert!(engine.expression(0, [0xB0, 64, 80]));
+        let (half, _) = engine.render_offline(500, 512);
+        assert_bits(&half, |i| sine_sample(60, 2_000 + i as u64, 0.5), &format!("{format}: still down"));
+        if format == "clap" {
+            assert_eq!(value_of(&hosted, clap_sine::LAST_CONTROLLER), (64 * 128 + 80) as f64);
+        } else {
+            wait_until("the mapped sustain parameter", || value_of(&hosted, vst3_sine::SUSTAIN) == 80.0 / 127.0);
+        }
+        // Pedal up: silence from the first frame of the next block.
+        assert!(engine.expression(0, [0xB0, 64, 0]));
+        let (released, _) = engine.render_offline(500, 512);
+        assert_eq!(peak(&released), 0.0, "{format}: the pedal let go");
+        assert_eq!(note_state(), "silent");
+        assert_eq!(engine.plugin_pedal_generation(0), generation, "{format}: nothing made the plug-in forget its pedals");
+
+        // A panic sends the pedals up before "all notes off": afterwards a key release ends
+        // its note, and whoever held the pedal down for the plug-in is told to send it again.
+        engine.note_on(0, 1, 62, 100);
+        engine.render_offline(512, 512);
+        assert!(engine.expression(0, [0xB0, 64, 127]) && engine.expression(0, [0xB0, 66, 127]));
+        engine.note_off(0, 62);
+        assert!(peak(&engine.render_offline(1_024, 512).0) > 0.1, "{format}: sustained");
+        engine.panic();
+        wait_until("silence after the panic", || peak(&engine.render_offline(1_024, 512).0) == 0.0 && note_state() == "silent");
+        assert_ne!(engine.plugin_pedal_generation(0), generation, "{format}: the pedals were reset");
+        // The plug-in comes back from its reset a moment later; then it plays, and lets go.
+        wait_until("the instrument to play again", || {
+            engine.note_on(0, 1, 64, 100);
+            let sounds = peak(&engine.render_offline(1_024, 512).0) > 0.1;
+            engine.note_off(0, 64);
+            let ended = peak(&engine.render_offline(1_024, 512).0[512..]) == 0.0;
+            assert!(!sounds || ended, "{format}: a note is still sustained after the panic");
+            sounds
+        });
+    }
+}
+
 /// Lanes and step locks move a plug-in's parameter for a while. Where it goes back to is its
 /// base value: the value the user left it at, which the host keeps for every plug-in itself.
 #[test]
