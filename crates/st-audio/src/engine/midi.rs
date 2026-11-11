@@ -88,9 +88,10 @@ impl AudioEngine {
     /// strip they have now: tracks it moves to another place in the list or removes. What was
     /// told to the instrument of such a track by its engine channel (a pedal held down) has to
     /// be taken back before the publication, while the channel still means that instrument.
+    /// None for a project the mixer cannot be built from: its publication is refused.
     pub fn tracks_leaving(&self, project: &st_project::Project) -> Vec<usize> {
         use crate::graph::spec::{GraphSpec, StripKind};
-        let next = GraphSpec::from_project(project);
+        let Ok(next) = GraphSpec::from_project(project) else { return Vec::new() };
         let stays = |track: usize, id: &str| next.strips.iter().any(|strip| strip.kind == StripKind::Track(track) && strip.id == id);
         let state = self.lock();
         let leaving = state.core.spec.strips.iter().filter_map(|strip| match strip.kind {

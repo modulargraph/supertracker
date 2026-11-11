@@ -35,6 +35,12 @@ const VST3: i64 = 3;
 /// The CLAP sine whose note port takes CLAP note events only: no controller reaches it.
 const NOTES_ONLY: i64 = 4;
 
+/// The mixer channel of one of the five tracks above: what `midi.expression` and the plug-in
+/// commands name a track by. It stays the track's when the tracks are reordered.
+fn owner(track: i64) -> &'static str {
+    ["track:hardware", "track:sampler", "track:clap", "track:vst3", "track:notes"][track as usize]
+}
+
 /// The CLAP sine's probe of the last control change, for a sustain pedal at `value`.
 fn pedal_at(value: u8) -> f64 {
     64.0 * 128.0 + f64::from(value)
@@ -102,7 +108,7 @@ fn start(label: &str) -> Fixture {
         ],
         "patterns": [{ "id": 0, "length": 16, "steps": vec![vec![Value::Null; 16]; 5], "automation": [] }],
         "sequence": [0], "loopSong": true,
-        "routing": { "version": 1, "mixModel": "standard", "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
+        "routing": { "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
         "audioPlugins": [
             plugin("clap", format!("clap:{CLAP_SINE}"), "CLAP", &installed.clap), plugin("vst3", format!("vst3:{VST3_SINE}"), "VST3", &installed.vst3),
             plugin("notes", format!("clap:{CLAP_NOTE_SINE}"), "CLAP", &installed.clap),
@@ -162,7 +168,7 @@ impl Fixture {
     fn pedal(&self, player: Player, track: i64, controller: u8, value: u8) {
         match player {
             Player::Page => {
-                self.request("midi.expression", json!({ "kind": "cc", "controller": controller, "track": track, "value": f64::from(value) / 127.0 }));
+                self.request("midi.expression", json!({ "kind": "cc", "controller": controller, "owner": owner(track), "value": f64::from(value) / 127.0 }));
             }
             Player::Device(device, channel) => {
                 self.point_keys(track);
@@ -171,9 +177,10 @@ impl Fixture {
         }
     }
 
-    /// The value of one parameter of the plug-in instrument on `track`, as it reports it.
+    /// The value of one parameter of the plug-in instrument of `track` (one of the constants
+    /// above: the plug-in is found by its channel, wherever the track is now), as it reports it.
     fn parameter(&self, track: i64, address: u64) -> f64 {
-        let list = self.request("plugin.parameters", json!({ "track": track, "kind": "instrument", "slot": 0 }));
+        let list = self.request("plugin.parameters", json!({ "owner": owner(track), "kind": "instrument", "slot": 0 }));
         let address = address.to_string();
         list["parameters"].as_array().unwrap().iter().find(|parameter| parameter["address"] == address.as_str()).unwrap_or_else(|| panic!("parameter {address} of track {track}"))["value"].as_f64().unwrap()
     }
@@ -402,11 +409,14 @@ fn an_instrument_with_a_pedal_gets_it_and_sustains_and_the_host_holds_for_the_sa
         fixture.shows("or to a plug-in", CLAP, &[(clap_sine::LAST_CONTROLLER, 67.0 * 128.0)]);
     }
     // The interface's replies say where a pedal went: the sampler has no use for sostenuto.
-    assert_eq!(fixture.request("midi.expression", json!({ "kind": "sustain", "track": SAMPLER, "value": 1 })), json!({ "sent": true, "track": SAMPLER, "instrument": SAMPLER }));
-    assert_eq!(fixture.request("midi.expression", json!({ "kind": "sustain", "track": SAMPLER, "value": 0 }))["sent"], true);
-    assert_eq!(fixture.request("midi.expression", json!({ "kind": "cc", "controller": 66, "track": SAMPLER, "value": 1 }))["sent"], false);
-    assert_eq!(fixture.request("midi.expression", json!({ "kind": "cc", "controller": 66, "track": CLAP, "value": 1 }))["sent"], true);
-    assert_eq!(fixture.request("midi.expression", json!({ "kind": "cc", "controller": 66, "track": CLAP, "value": 0 }))["sent"], true);
+    assert_eq!(fixture.request("midi.expression", json!({ "kind": "sustain", "owner": owner(SAMPLER), "value": 1 })), json!({ "sent": true, "owner": owner(SAMPLER), "instrument": SAMPLER }));
+    assert_eq!(fixture.request("midi.expression", json!({ "kind": "sustain", "owner": owner(SAMPLER), "value": 0 }))["sent"], true);
+    assert_eq!(fixture.request("midi.expression", json!({ "kind": "cc", "controller": 66, "owner": owner(SAMPLER), "value": 1 }))["sent"], false);
+    assert_eq!(fixture.request("midi.expression", json!({ "kind": "cc", "controller": 66, "owner": owner(CLAP), "value": 1 }))["sent"], true);
+    assert_eq!(fixture.request("midi.expression", json!({ "kind": "cc", "controller": 66, "owner": owner(CLAP), "value": 0 }))["sent"], true);
+    // A pedal for a channel that is no track's is refused, like other expression.
+    let refused = fixture.host.request("midi.expression", json!({ "kind": "sustain", "owner": "bus:drums", "value": 1 })).unwrap_err();
+    assert!(refused.contains("not the channel of a track"), "{refused}");
     fixture.services.services.shutdown();
 }
 
@@ -675,18 +685,19 @@ fn a_publication_leaves_the_pedal_alone_and_a_replaced_or_restored_instrument_ge
     fixture.note_off(KEYBOARD, SAMPLER, 57);
     project["tracks"].as_array_mut().unwrap().swap(SAMPLER as usize, CLAP as usize);
     fixture.publish(&project);
+    // (Where the two tracks are now. The plug-in is still found by its channel.)
     let (moved_clap, moved_sampler) = (SAMPLER, CLAP);
-    fixture.shows("the moved plug-in was told pedal-up", moved_clap, &[(clap_sine::LAST_CONTROLLER, pedal_at(0)), (clap_sine::NOTE_STATE, clap_sine::SILENT)]);
+    fixture.shows("the moved plug-in was told pedal-up", CLAP, &[(clap_sine::LAST_CONTROLLER, pedal_at(0)), (clap_sine::NOTE_STATE, clap_sine::SILENT)]);
     fixture.track_fades("the sampler's held note was let go", moved_sampler);
     fixture.track_fades("and nothing sounds where it was", moved_clap);
     // The pedal is still down: the plug-in gets it again at its new place.
     fixture.request("midi.configure", json!({ "track": moved_clap, "instrument": CLAP }));
     fixture.feed(KEYS, &[0x90, 64, 100]);
-    fixture.shows("the pedal comes with the note", moved_clap, &[(clap_sine::LAST_CONTROLLER, pedal_at(127)), (clap_sine::NOTE_STATE, clap_sine::KEY_DOWN)]);
+    fixture.shows("the pedal comes with the note", CLAP, &[(clap_sine::LAST_CONTROLLER, pedal_at(127)), (clap_sine::NOTE_STATE, clap_sine::KEY_DOWN)]);
     fixture.feed(KEYS, &[0x80, 64, 0]);
-    fixture.shows("sustained at its new place", moved_clap, &[(clap_sine::NOTE_STATE, clap_sine::SUSTAINED)]);
+    fixture.shows("sustained at its new place", CLAP, &[(clap_sine::NOTE_STATE, clap_sine::SUSTAINED)]);
     fixture.feed(KEYS, &[0xB0, 64, 0]);
-    fixture.shows("and released", moved_clap, &[(clap_sine::LAST_CONTROLLER, pedal_at(0)), (clap_sine::NOTE_STATE, clap_sine::SILENT)]);
+    fixture.shows("and released", CLAP, &[(clap_sine::LAST_CONTROLLER, pedal_at(0)), (clap_sine::NOTE_STATE, clap_sine::SILENT)]);
     fixture.services.services.shutdown();
 }
 
