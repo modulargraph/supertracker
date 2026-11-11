@@ -609,6 +609,10 @@ pub struct Vst3Processor {
     event_inputs: usize,
     held: Vec<HeldNote>,
     held_count: usize,
+    /// The offset of the last note event of the block being built, and the block's length
+    /// (see [`Vst3Processor::after_notes`]).
+    note_offset: Option<u32>,
+    block_frames: u32,
     /// Samples processed since activation, for `continousTimeSamples`.
     continuous: i64,
     /// A restart of the component failed; nothing can be processed until reactivation.
@@ -653,6 +657,8 @@ impl Vst3Processor {
             event_inputs: config.event_inputs,
             held: vec![HeldNote::default(); 16 * 128],
             held_count: 0,
+            note_offset: None,
+            block_frames: 0,
             continuous: 0,
             broken: false,
             component: config.component,
@@ -673,8 +679,22 @@ impl Vst3Processor {
     }
 
     fn add_event(&mut self, event: vst::Event) {
+        self.note_offset = Some(self.note_offset.map_or(event.sampleOffset.max(0) as u32, |offset| offset.max(event.sampleOffset.max(0) as u32)));
         if !self.events.push(event) {
             self.shared.dropped.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// Where a controller that reaches the plug-in as a parameter goes when it follows note
+    /// events in the host's order. VST3 hands a plug-in its events and its parameter changes
+    /// in two lists, and at one sample a plug-in applies the parameter before the event. A
+    /// controller played after a note (the pedal pressed just after a key came up) therefore
+    /// goes one sample behind the last note event before it, where the block has the room:
+    /// the order the host was given is the order the plug-in hears.
+    fn after_notes(&self, offset: u32) -> u32 {
+        match self.note_offset {
+            Some(note) if offset <= note => (note + 1).min(self.block_frames.saturating_sub(1)).max(offset),
+            _ => offset,
         }
     }
 
@@ -785,27 +805,27 @@ impl Vst3Processor {
                     // notes it holds are released explicitly, and the sustain pedal with them.
                     self.release_held(event.offset, Some(channel));
                     let sustain = self.shared.mapped_parameter(channel, 64);
-                    self.add_parameter(sustain, event.offset, 0.0, FROM_MIDI);
+                    self.add_parameter(sustain, self.after_notes(event.offset), 0.0, FROM_MIDI);
                 }
                 let parameter = self.shared.mapped_parameter(channel, data1 as usize);
-                self.add_parameter(parameter, event.offset, data2 as f64 / 127.0, FROM_MIDI);
+                self.add_parameter(parameter, self.after_notes(event.offset), data2 as f64 / 127.0, FROM_MIDI);
             }
             0xC0 => {
                 let parameter = self.shared.program_parameter.load(Ordering::Relaxed);
                 let steps = self.shared.program_steps.load(Ordering::Relaxed);
                 if steps > 0 {
                     let value = (data1 as i32).min(steps) as f64 / steps as f64;
-                    self.add_parameter(parameter, event.offset, value, FROM_MIDI);
+                    self.add_parameter(parameter, self.after_notes(event.offset), value, FROM_MIDI);
                 }
             }
             0xD0 => {
                 let parameter = self.shared.mapped_parameter(channel, CONTROLLER_AFTERTOUCH);
-                self.add_parameter(parameter, event.offset, data1 as f64 / 127.0, FROM_MIDI);
+                self.add_parameter(parameter, self.after_notes(event.offset), data1 as f64 / 127.0, FROM_MIDI);
             }
             0xE0 => {
                 let parameter = self.shared.mapped_parameter(channel, CONTROLLER_PITCH_BEND);
                 let bend = data1 as u32 | (data2 as u32) << 7;
-                self.add_parameter(parameter, event.offset, bend as f64 / 16383.0, FROM_MIDI);
+                self.add_parameter(parameter, self.after_notes(event.offset), bend as f64 / 16383.0, FROM_MIDI);
             }
             _ => {}
         }
@@ -1004,6 +1024,8 @@ impl Processor for Vst3Processor {
         self.out_changes.clear();
         self.events.clear();
         self.out_events.clear();
+        self.note_offset = None;
+        self.block_frames = frames as u32;
         // Untimed changes from the main thread first (offset 0), then the block's events.
         take_pending(&self.shared, &self.changes);
         for index in 0..data.events.len() {

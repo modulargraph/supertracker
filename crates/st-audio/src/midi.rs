@@ -8,8 +8,10 @@
 //! 1. [`MidiRender::begin_block`] once per rendered block, with the graph time of its first
 //!    frame and the transport position there (for MIDI clock and Start/Stop/Continue);
 //! 2. [`MidiRender::note`] for every note event of the engine (the engine emits them for the
-//!    instruments it does not sound itself: external MIDI instruments and plug-ins). The answer
-//!    tells whether the note belonged to an external MIDI instrument;
+//!    instruments it does not sound itself: external MIDI instruments and plug-ins), and
+//!    [`MidiRender::message`] for every channel message played live for an external MIDI
+//!    instrument (controllers, the pedals, pressure, pitch bend), in the order the notes and
+//!    messages were played. The answer tells whether the instrument is an external one;
 //! 3. [`MidiRender::all_notes_off`] when the transport stops and when everything is silenced
 //!    (panic).
 //!
@@ -44,7 +46,7 @@ use std::time::Duration;
 /// them at zero.
 pub const PEDAL_CONTROLLERS: [u8; 3] = [64, 66, 67];
 
-use tracker_engine::engine::abi::{STEvent, ST_EVENT_NOTE_OFF, ST_EVENT_NOTE_ON};
+use tracker_engine::engine::abi::{STEvent, ST_EVENT_MIDI, ST_EVENT_NOTE_OFF, ST_EVENT_NOTE_ON};
 use tracker_engine::engine::host::StatusHandle;
 
 /// One render block as MIDI output needs to know it.
@@ -74,6 +76,11 @@ pub trait MidiRender: Send {
     /// A note of `instrument` at `frame_offset` frames into the block. Returns true when the
     /// instrument is an external MIDI instrument (the note went to its device).
     fn note(&mut self, instrument: usize, on: bool, note: u8, velocity: u8, frame_offset: i32) -> bool;
+    /// A channel message played live for `instrument` at `frame_offset` frames into the block:
+    /// `[status without a channel, data 1, data 2]`. It is timed like a note of that frame,
+    /// and comes after the notes and messages handed over before it. Returns true when the
+    /// instrument is an external MIDI instrument (the message went to its device).
+    fn message(&mut self, instrument: usize, message: [u8; 3], frame_offset: i32) -> bool;
     /// Silence every external instrument now.
     fn all_notes_off(&mut self);
 }
@@ -138,16 +145,19 @@ impl RenderMidi {
         self.was_playing = playing;
     }
 
-    /// Render thread: one event of the engine. Returns true when it was a note of an external
-    /// MIDI instrument.
+    /// Render thread: one event of the engine. Returns true when it was a note or a channel
+    /// message of an external MIDI instrument.
     #[inline]
     pub(crate) fn event(&mut self, event: &STEvent) -> bool {
-        if self.suspended || (event.type_ != ST_EVENT_NOTE_ON && event.type_ != ST_EVENT_NOTE_OFF) || event.instrument < 0 {
+        if self.suspended || !matches!(event.type_, ST_EVENT_NOTE_ON | ST_EVENT_NOTE_OFF | ST_EVENT_MIDI) || event.instrument < 0 {
             return false;
         }
         let Some(hook) = self.hook.as_mut() else { return false };
-        let on = event.type_ == ST_EVENT_NOTE_ON;
-        hook.note(event.instrument as usize, on, event.note.clamp(0, 127) as u8, event.velocity.clamp(0, 127) as u8, event.frame_offset)
+        let (data1, data2) = (event.note.clamp(0, 127) as u8, event.velocity.clamp(0, 127) as u8);
+        if event.type_ == ST_EVENT_MIDI {
+            return hook.message(event.instrument as usize, [(event.target & 0xF0) as u8, data1, data2], event.frame_offset);
+        }
+        hook.note(event.instrument as usize, event.type_ == ST_EVENT_NOTE_ON, data1, data2, event.frame_offset)
     }
 
     /// Render thread: everything was silenced (panic).

@@ -9,14 +9,12 @@
 //!   second input bus. While the plug-in cannot answer (deadline missed, container gone,
 //!   a control operation holds it) the client returns the dry signal delayed by the plug-in's
 //!   latency, so the mixer's delay compensation stays right: a lost insert passes through.
-//! * **Instrument.** The first processor of a track strip. The engine's note events of the
-//!   track arrive through [`InsertProcessor::midi`] with their frame offsets; controllers,
-//!   pressure and pitch bend played live ([`Hosted::send_midi`]) arrive at the first frame of
-//!   the next block, after the notes of that frame. The pedals (sustain, sostenuto, soft:
-//!   [`crate::midi::PEDAL_CONTROLLERS`]) arrive at that frame *before* the notes: a key
-//!   released after the pedal went down is released after it for the plug-in too, however
-//!   close the two were (the other way round, a pedal pressed less than a block after a key
-//!   was released can still catch the note). The plug-in's
+//! * **Instrument.** The first processor of a track strip. The engine's events of the track
+//!   arrive through [`InsertProcessor::midi`] with their frame offsets: the notes, and the
+//!   controllers (the pedals among them), pressure and pitch bend played live, which the
+//!   engine hands on in their place among the live notes. The plug-in gets them in that
+//!   order: a key released before the pedal went down is released before it for the plug-in
+//!   too, however close the two were. The plug-in's
 //!   stereo output, times the instrument's volume and balanced by its pan, is **added** to
 //!   the strip's signal (the engine's own channel: clips and sample voices of the track), as
 //!   the previous host mixed both sources of a channel. The strip's signal is delayed by the
@@ -26,10 +24,18 @@
 //! ([`BlockInfo::cycle_end_ns`], set by the renderer from the device callback's length), but
 //! at least the manager's `min_deadline`. Instances of an offline manager have no deadline.
 //!
-//! Notes: the processor tracks the notes it sent on. After `reset` (panic), after a block the
-//! client reports as the first one following dropped blocks, and when bypass ends, it sends
-//! the pedals up, "all notes off" and "all sound off" before anything else, and a note-off
-//! for every note it believes held, at frame 0 of the next block.
+//! Blocks the plug-in misses: the client keeps the events of a block the plug-in did not
+//! process and delivers them with the next one it takes, at its first frame and in order
+//! (`stpc_client::Instance::process`), so a missed block costs audio and nothing else. The
+//! client gives up what waits only at its bounds (two seconds, or more events than a block
+//! can carry) and says so.
+//!
+//! Notes: the processor tracks the notes it sent on. After `reset` (panic), when the client
+//! reports that it gave up waiting events, with the first block of a plug-in restored after
+//! its container was lost, and when bypass ends, it sends the pedals up, "all notes off" and
+//! "all sound off" before anything else, and a note-off for every note the plug-in may
+//! hold (those it was sent on, and those whose note-off it may not have received), at frame
+//! 0 of the next block.
 //!
 //! Base values: a parameter a lane or a step lock moved is remembered ([`Hosted`]'s automated
 //! set) and goes back to the value the user left it at when the graph says so
@@ -49,8 +55,8 @@ use crate::midi::PEDAL_CONTROLLERS;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use stpc_client::{
-    Event, RawBlock, Transport, DEADLINE_NONE, EVENT_FLAG_SEQUENCED, PROCESS_OK, PROCESS_RESYNCED, TRANSPORT_PLAYING, TRANSPORT_PPQ_VALID, TRANSPORT_RECORDING, TRANSPORT_TEMPO_VALID,
-    TRANSPORT_TIME_SIG_VALID,
+    Event, RawBlock, Transport, DEADLINE_NONE, EVENT_FLAG_SEQUENCED, PROCESS_EVENTS_LOST, PROCESS_LOST, PROCESS_OK, TRANSPORT_PLAYING, TRANSPORT_PPQ_VALID, TRANSPORT_RECORDING,
+    TRANSPORT_TEMPO_VALID, TRANSPORT_TIME_SIG_VALID,
 };
 
 /// Reserved addresses of an instrument's mix, given as base parameters: the instrument's
@@ -58,15 +64,14 @@ use stpc_client::{
 pub const INSTRUMENT_VOLUME: u64 = u64::MAX - 1;
 pub const INSTRUMENT_PAN: u64 = u64::MAX - 2;
 
-/// Pedal messages a block can take: as many as the queue from the control threads holds, so
-/// that none it delivers is dropped here.
-const PEDAL_CAPACITY: usize = 256;
-
 struct InstrumentState {
     volume: f32,
     pan: f32,
     /// Notes sent on and not yet off.
     held: [u64; 2],
+    /// Notes sent off since the plug-in last answered a block: until it answers one, their
+    /// note-offs wait with the client and can still be given up.
+    released: [u64; 2],
     out_left: Vec<f32>,
     out_right: Vec<f32>,
     /// Aligns the strip's own signal with the plug-in's latency.
@@ -81,23 +86,23 @@ pub struct PluginInsert {
     sample_rate: f64,
     /// Parameter changes of the next block, in frame order.
     parameters: Vec<Event>,
-    /// Notes and controllers of the next block, in arrival order.
+    /// Notes and channel messages of the next block, in arrival order.
     notes: Vec<Event>,
-    /// Pedal messages played live, for the first frame of the next block, before its notes.
-    pedals: Vec<Event>,
     /// Parameters on their way back to their base values: the address, the frame offset,
-    /// and whether automation moved the parameter again after the return was queued. They
-    /// are sent with every block until the plug-in answers one, so a block it did not
-    /// answer cannot lose a return (nothing would send it again); until then the parameter
-    /// counts as held by automation.
+    /// and whether automation moved the parameter again after the return was queued. A
+    /// return is sent once (the client delivers it, with a later block if need be) and
+    /// stays here until the plug-in has answered a block: until then the parameter counts
+    /// as held by automation.
     returning: Vec<(u64, u32, bool)>,
+    /// How many of the first `returning` have been sent.
+    returns_sent: usize,
     merged: Vec<Event>,
     out_events: Vec<Event>,
     scratch_left: Vec<f32>,
     scratch_right: Vec<f32>,
     silence_notes: bool,
-    /// The last block was answered by the fallback.
-    dropped: bool,
+    /// The last block found the container lost.
+    lost: bool,
     /// Blocks answered by the fallback so far (for tests and diagnostics).
     pub fallback_blocks: u64,
 }
@@ -106,7 +111,7 @@ impl PluginInsert {
     pub fn new(hosted: Arc<Hosted>, mix: Option<(f32, f32)>) -> PluginInsert {
         let instrument = hosted.instrument.then(|| {
             let (volume, pan) = mix.unwrap_or((1.0, 0.0));
-            InstrumentState { volume, pan, held: [0; 2], out_left: Vec::new(), out_right: Vec::new(), dry: None }
+            InstrumentState { volume, pan, held: [0; 2], released: [0; 2], out_left: Vec::new(), out_right: Vec::new(), dry: None }
         });
         PluginInsert {
             hosted,
@@ -116,14 +121,14 @@ impl PluginInsert {
             sample_rate: 48_000.0,
             parameters: Vec::new(),
             notes: Vec::new(),
-            pedals: Vec::new(),
             returning: Vec::new(),
+            returns_sent: 0,
             merged: Vec::new(),
             out_events: Vec::new(),
             scratch_left: Vec::new(),
             scratch_right: Vec::new(),
             silence_notes: false,
-            dropped: false,
+            lost: false,
             fallback_blocks: 0,
         }
     }
@@ -149,11 +154,11 @@ impl PluginInsert {
         }
     }
 
-    /// Builds the block's event list: note silence first when it is due, then the pedals
-    /// played live, then returns to base values, parameter changes and notes by frame. On
-    /// the same frame a return comes before
-    /// a parameter change (a new start returns a parameter, then the first row's lock sets
-    /// it) and a parameter change before a note (a step's lock applies to the step's note).
+    /// Builds the block's event list: note silence first when it is due, then returns to
+    /// base values, parameter changes and notes (with the channel messages played live, in
+    /// their arrival order) by frame. On the same frame a return comes before a parameter
+    /// change (a new start returns a parameter, then the first row's lock sets it) and a
+    /// parameter change before a note (a step's lock applies to the step's note).
     fn merge_events(&mut self, frames: u32, silence: bool) {
         self.merged.clear();
         if let (true, Some(instrument)) = (silence, self.instrument.as_mut()) {
@@ -163,19 +168,18 @@ impl PluginInsert {
             }
             self.hosted.pedals_reset();
             for note in 0..128u8 {
-                if instrument.held[(note / 64) as usize] & (1 << (note % 64)) != 0 {
+                let (word, bit) = ((note / 64) as usize, 1u64 << (note % 64));
+                if (instrument.held[word] | instrument.released[word]) & bit != 0 {
                     self.merged.push(Event::note_off(0, 0, note));
                 }
             }
             instrument.held = [0; 2];
-        }
-        for event in self.pedals.drain(..) {
-            if self.merged.len() < self.merged.capacity() {
-                self.merged.push(event);
-            }
+            instrument.released = [0; 2];
         }
         let table = self.hosted.table();
-        for (address, offset, _) in &self.returning {
+        let unsent = self.returns_sent.min(self.returning.len());
+        self.returns_sent = self.returning.len();
+        for (address, offset, _) in &self.returning[unsent..] {
             let Some(value) = table.base(*address).and_then(|base| table.plain(*address, base)) else { continue };
             if self.merged.len() == self.merged.capacity() {
                 break;
@@ -219,10 +223,17 @@ impl PluginInsert {
     /// Queues the return of a parameter automation holds to its base value, `offset` frames
     /// into the next block.
     fn queue_return(&mut self, address: u64, offset: u32) {
-        if let Some(entry) = self.returning.iter_mut().find(|(known, _, _)| *known == address) {
-            // Queued already (the plug-in has not answered a block since): what was moved
-            // again in between returns after all.
-            entry.2 = false;
+        if let Some(index) = self.returning.iter().position(|(known, _, _)| *known == address) {
+            // Queued already (the plug-in has not answered a block since). If automation
+            // moved the parameter again after that return was sent, it returns once more.
+            let (_, _, moved_again) = self.returning[index];
+            if index < self.returns_sent && moved_again {
+                self.returning.remove(index);
+                self.returns_sent -= 1;
+                self.returning.push((address, offset, false));
+            } else {
+                self.returning[index].2 = false;
+            }
         } else if self.returning.len() < self.returning.capacity() {
             self.returning.push((address, offset, false));
         }
@@ -246,7 +257,6 @@ impl InsertProcessor for PluginInsert {
         self.hosted.planned_latency.store(self.latency, Ordering::Relaxed);
         self.parameters = Vec::with_capacity(EVENT_CAPACITY);
         self.notes = Vec::with_capacity(EVENT_CAPACITY);
-        self.pedals = Vec::with_capacity(PEDAL_CAPACITY);
         self.returning = Vec::with_capacity(AUTOMATED_CAPACITY);
         self.merged = Vec::with_capacity(EVENT_CAPACITY);
         self.out_events = vec![Event::default(); 64];
@@ -298,21 +308,10 @@ impl InsertProcessor for PluginInsert {
             // gets nothing: what was on its way back stays remembered as moved.
             self.parameters.clear();
             self.notes.clear();
-            self.pedals.clear();
             self.returning.clear();
+            self.returns_sent = 0;
             self.hosted.returns_pending.store(0, Ordering::Release);
-            // Controllers played meanwhile are not kept for when the bypass ends.
-            while self.hosted.pop_midi().is_some() {}
             return;
-        }
-        if self.instrument.is_some() {
-            while let Some(bytes) = self.hosted.pop_midi() {
-                let pedal = bytes[0] & 0xF0 == 0xB0 && PEDAL_CONTROLLERS.contains(&bytes[1]);
-                let list = if pedal { &mut self.pedals } else { &mut self.notes };
-                if list.len() < list.capacity() {
-                    list.push(Event::midi(0, &bytes[..(bytes[3] as usize).min(3)]));
-                }
-            }
         }
         let silence = std::mem::take(&mut self.silence_notes);
         self.merge_events(frames as u32, silence);
@@ -354,7 +353,10 @@ impl InsertProcessor for PluginInsert {
                         let (word, bit) = ((bytes[1] / 64) as usize & 1, 1u64 << (bytes[1] % 64));
                         match bytes[0] & 0xF0 {
                             0x90 if bytes[2] > 0 => instrument.held[word] |= bit,
-                            0x80 | 0x90 => instrument.held[word] &= !bit,
+                            0x80 | 0x90 => {
+                                instrument.released[word] |= instrument.held[word] & bit;
+                                instrument.held[word] &= !bit;
+                            }
                             _ => {}
                         }
                     }
@@ -391,28 +393,39 @@ impl InsertProcessor for PluginInsert {
             }
         };
         let processed = outcome.flags & PROCESS_OK != 0;
-        if !processed {
-            self.fallback_blocks += 1;
-            // The block's events never reached the plug-in. A lane's next value corrects a
-            // lost change; a return to a base value has no next value, so it is sent again.
-            for (_, offset, _) in &mut self.returning {
-                *offset = 0;
-            }
-        } else {
-            // The plug-in has its base values again: automation holds them no longer.
+        // The first block of a plug-in restored after its container was lost: it is another
+        // plug-in than the one the events before this block were sent to.
+        let restored = processed && self.lost;
+        if processed && !restored {
+            // Everything sent so far has reached the plug-in. It has its base values again:
+            // automation holds them no longer.
             for (address, _, moved_again) in self.returning.drain(..) {
                 if !moved_again {
                     self.hosted.automated.remove(address);
                 }
             }
+            self.returns_sent = 0;
+            if let Some(instrument) = self.instrument.as_mut() {
+                instrument.released = [0; 2];
+            }
+        } else if !processed {
+            // The block's audio is the fallback; its events wait with the client for the
+            // next block the plug-in takes.
+            self.fallback_blocks += 1;
         }
+        if outcome.flags & PROCESS_EVENTS_LOST != 0 || restored {
+            // What was sent did not all arrive. A lane's next value corrects a lost change;
+            // a return to a base value has no next value, so the returns are sent again. The
+            // plug-in may hold notes whose note-off was lost: the next block starts with
+            // note silence.
+            self.returns_sent = 0;
+            for (_, offset, _) in &mut self.returning {
+                *offset = 0;
+            }
+            self.silence_notes |= self.instrument.is_some();
+        }
+        self.lost = outcome.flags & PROCESS_LOST != 0;
         self.hosted.returns_pending.store(self.returning.len() as u32, Ordering::Release);
-        // Notes of dropped blocks are gone: the plug-in may hold notes nobody will end. The
-        // first block it answers again starts with note silence.
-        if self.instrument.is_some() && (outcome.flags & PROCESS_RESYNCED != 0 || (processed && self.dropped)) {
-            self.silence_notes = true;
-        }
-        self.dropped = !processed;
     }
 
     fn parameter(&mut self, address: u64, normalized: f64) {
@@ -464,7 +477,9 @@ impl InsertProcessor for PluginInsert {
         if self.instrument.is_none() || self.bypass || self.notes.len() >= self.notes.capacity() {
             return;
         }
-        let mut event = Event::midi(offset, &bytes);
+        // Program changes and channel pressure have one data byte.
+        let length = if matches!(bytes[0] & 0xF0, 0xC0 | 0xD0) { 2 } else { 3 };
+        let mut event = Event::midi(offset, &bytes[..length]);
         if sequenced {
             event.flags |= EVENT_FLAG_SEQUENCED;
         }
@@ -480,7 +495,6 @@ impl InsertProcessor for PluginInsert {
 
     fn reset(&mut self) {
         self.notes.clear();
-        self.pedals.clear();
         self.parameters.clear();
         self.silence_notes = true;
         if let Some(dry) = self.instrument.as_mut().and_then(|instrument| instrument.dry.as_mut()) {

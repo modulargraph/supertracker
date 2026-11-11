@@ -35,14 +35,17 @@ impl AudioEngine {
     ///   either way) and the modulation wheel (controller 1). Everything else is nothing to them.
     /// - A plug-in instrument on the track gets the message as MIDI at the first frame of its
     ///   next block, in its format's own terms (see `crates/plugin-host`). That includes the
-    ///   pedals (controllers 64, 66 and 67), with their values; they reach the plug-in before
-    ///   the notes of that block. Which instruments a pedal belongs to, and when it has to
-    ///   come up again, is the caller's to know (`st_midi::SustainState` in `st-host`).
+    ///   pedals (controllers 64, 66 and 67), with their values. The message is queued where
+    ///   live notes are ([`AudioEngine::note_on`], [`AudioEngine::note_off`]), so the plug-in
+    ///   gets notes and messages in the order of the calls: a pedal pressed after a key came
+    ///   up arrives after that note-off, however close the two were. Which instruments a
+    ///   pedal belongs to, and when it has to come up again, is the caller's to know
+    ///   (`st_midi::SustainState` in `st-host`).
     ///
     /// Returns whether something took the message. Notes, channel-mode messages (all notes
     /// off and its relatives, controllers 120 and up) and system messages are refused: notes
     /// have [`AudioEngine::note_on`], silence has [`AudioEngine::panic`]. External MIDI
-    /// instruments are the MIDI layer's (`st-midi` sends to their device).
+    /// instruments have [`AudioEngine::external_expression`].
     pub fn expression(&self, track: i32, message: [u8; 3]) -> bool {
         let (kind, data1, data2) = (message[0] & 0xF0, message[1] & 0x7F, message[2] & 0x7F);
         let own = match (kind, data1) {
@@ -64,6 +67,23 @@ impl AudioEngine {
             _ => return false,
         };
         self.plugin_midi(track, [kind, data1, data2]) || own
+    }
+
+    /// A channel message played live for the external MIDI instrument `instrument` (a control
+    /// change, the pedals among them, channel or poly pressure, pitch bend, a program
+    /// change). It is queued where the instrument's live notes are and leaves through the
+    /// MIDI output hook of the render thread ([`crate::midi::MidiRender::message`]) with the
+    /// next block: timed like the notes, and in the order of the calls. Returns whether it was
+    /// queued; notes and system messages are refused. Whether the instrument is external and
+    /// its device present is the MIDI layer's to know.
+    pub fn external_expression(&self, instrument: i32, message: [u8; 3]) -> bool {
+        let kind = message[0] & 0xF0;
+        if instrument < 0 || !matches!(kind, 0xA0 | 0xB0 | 0xC0 | 0xD0 | 0xE0) {
+            return false;
+        }
+        let mut state = self.lock();
+        let (control, shared, _) = state.core.control.parts();
+        control.midi(shared, -1, instrument, kind, message[1], message[2])
     }
 
     /// The kind of the published project's instrument `instrument`: whether the engine sounds

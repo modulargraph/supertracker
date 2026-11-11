@@ -90,11 +90,17 @@ impl AudioEngine {
         key.and_then(|key| manager.hosted(&key))
     }
 
-    /// A channel message for the plug-in instrument of `track`, for the first frame of its
-    /// next block ([`crate::plugins::manager::Hosted::send_midi`]). False when the track has
-    /// no plug-in instrument, or it is not processing.
+    /// A channel message for the plug-in instrument of `track`, queued behind the live notes
+    /// played before it: it reaches the plug-in at the first frame of the next block, in that
+    /// order. False when the track has no plug-in instrument that is loaded, or the engine's
+    /// command queue is full.
     pub(super) fn plugin_midi(&self, track: i32, bytes: [u8; 3]) -> bool {
-        self.plugin_instrument(track).is_some_and(|hosted| hosted.send_midi(bytes))
+        if self.plugin_instrument(track).is_none() {
+            return false;
+        }
+        let mut state = self.lock();
+        let (control, shared, _) = state.core.control.parts();
+        control.midi(shared, track, -1, bytes[0], bytes[1], bytes[2])
     }
 
     /// Live state of the plug-ins over the compiled mixer's insert report: an insert whose

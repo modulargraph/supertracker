@@ -58,7 +58,7 @@ use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
-use tracker_engine::engine::abi::{STEvent, ST_EVENT_ALL_NOTES_OFF, ST_EVENT_HOST_PARAMETER, ST_EVENT_NOTE_OFF, ST_EVENT_NOTE_ON, ST_EVENT_PARAMETER, ST_TARGET_DELAY, ST_TARGET_PAN, ST_TARGET_REVERB, ST_TARGET_VOLUME};
+use tracker_engine::engine::abi::{STEvent, ST_EVENT_ALL_NOTES_OFF, ST_EVENT_HOST_PARAMETER, ST_EVENT_MIDI, ST_EVENT_NOTE_OFF, ST_EVENT_NOTE_ON, ST_EVENT_PARAMETER, ST_TARGET_DELAY, ST_TARGET_PAN, ST_TARGET_REVERB, ST_TARGET_VOLUME};
 use tracker_engine::engine::host::BlockView;
 
 /// State owned by the render side but allocated and freed by the control thread.
@@ -1065,13 +1065,15 @@ impl Plan {
             }
         };
         match event.type_ {
-            // Notes of a track whose instrument is a plug-in go to that plug-in, at their frame.
-            ST_EVENT_NOTE_ON | ST_EVENT_NOTE_OFF | ST_EVENT_ALL_NOTES_OFF => {
+            // Notes of a track whose instrument is a plug-in go to that plug-in, at their frame;
+            // so do the channel messages played live on the track, in their place among the notes.
+            ST_EVENT_NOTE_ON | ST_EVENT_NOTE_OFF | ST_EVENT_ALL_NOTES_OFF | ST_EVENT_MIDI => {
                 let Some(insert) = self.track_targets.get(event.track.max(0) as usize).filter(|_| event.track >= 0).and_then(|targets| self.inserts.get(targets.instrument as usize)) else { return };
                 let (note, velocity) = (event.note.clamp(0, 127) as u8, event.velocity.clamp(0, 127) as u8);
                 let bytes = match event.type_ {
                     ST_EVENT_NOTE_ON if velocity > 0 => [0x90, note, velocity],
                     ST_EVENT_ALL_NOTES_OFF => [0xB0, 123, 0],
+                    ST_EVENT_MIDI => [(event.target & 0xF0) as u8, note, velocity],
                     _ => [0x80, note, 0],
                 };
                 // SAFETY: render owner; no other reference to this processor exists here.

@@ -18,11 +18,11 @@
 //!     Compiler::compile ................... PluginFactory::create(insert) -> PluginInsert(Arc<Hosted>)
 //!  Renderer::render (audio thread)
 //!     Plan::set_block(transport, cycle end)
-//!     Plan::engine_event .................. note events of a plug-in instrument's track -> PluginInsert::midi
+//!     Plan::engine_event .................. notes of a plug-in instrument's track, and the controllers and
+//!                                           pressure played live on it, in one order -> PluginInsert::midi
 //!     Plan::playback_begins ............... play, seek: automated parameters back to their base values
 //!     Plan::process ....................... automation and step locks -> PluginInsert::parameter_at(frame)
 //!                                           the end of a locked row -> PluginInsert::base_parameter_at(frame)
-//!                                           controllers and pressure played live <- Hosted::send_midi
 //!                                           PluginInsert::process -> Instance::process_raw (one round trip)
 //!  PluginManager's thread ................. container events: lost, latency, restart, editor edits
 //!     PluginEvent::Graph -> AudioEngine ... forgets the insert's processor and compiles again (delay compensation)
@@ -46,11 +46,24 @@
 //! # Controllers and pressure
 //!
 //! [`crate::AudioEngine::expression`] hands a plug-in instrument the channel messages played
-//! live on its track (control changes, channel and poly pressure, pitch bend, program
-//! changes) through [`Hosted::send_midi`]: they reach the plug-in at the first frame of its
-//! next block, after the notes of that frame. What a message becomes for the plug-in is its
-//! format's business (the container's backends: MIDI or note expressions for CLAP, mapped
-//! parameters and poly pressure events for VST3, MIDI for Audio Units).
+//! live on its track (control changes, the pedals among them, channel and poly pressure,
+//! pitch bend, program changes). They travel the way live notes do: through the engine's
+//! command queue and out again as events of the next block, so notes and messages reach the
+//! plug-in in the order they were played, at the block's first frame. What a message becomes
+//! for the plug-in is its format's business (the container's backends: MIDI or note
+//! expressions for CLAP, mapped parameters and poly pressure events for VST3, MIDI for Audio
+//! Units).
+//!
+//! # Blocks a plug-in misses
+//!
+//! A plug-in that does not answer a block in time (or whose container is busy with a control
+//! operation) costs that block's audio, not its events: the client keeps the notes,
+//! controllers and parameter changes and delivers them with the next block the plug-in takes,
+//! at its first frame and in order (`stpc_client::Instance::process`). Only when a plug-in
+//! stays away for two seconds, or more events wait than a block can carry
+//! ([`manager::EVENT_CAPACITY`]), is everything that waits given up; the processor then
+//! starts the next block with the pedals up, "all notes off" and a note-off for every note
+//! the plug-in may hold, so nothing sticks, and returns to base values are sent again.
 //!
 //! [`crate::AudioEngine::set_plugins`] attaches a manager to an engine. An engine that renders
 //! offline next to a live one (export, freeze) takes [`PluginManager::offline`] of the live

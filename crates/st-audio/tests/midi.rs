@@ -15,6 +15,8 @@ enum Seen {
     Block(MidiBlock),
     /// `(instrument, on, note, velocity, frame offset)` and the graph time of its block.
     Note(usize, bool, u8, u8, i32, u64),
+    /// `(instrument, message, frame offset)`.
+    Message(usize, [u8; 3], i32),
     AllNotesOff,
 }
 
@@ -38,6 +40,10 @@ impl MidiRender for Hook {
     fn note(&mut self, instrument: usize, on: bool, note: u8, velocity: u8, frame_offset: i32) -> bool {
         self.log.seen.lock().unwrap().push(Seen::Note(instrument, on, note, velocity, frame_offset, self.block));
         // Instrument 0 is the external MIDI instrument of the test project.
+        instrument == 0
+    }
+    fn message(&mut self, instrument: usize, message: [u8; 3], frame_offset: i32) -> bool {
+        self.log.seen.lock().unwrap().push(Seen::Message(instrument, message, frame_offset));
         instrument == 0
     }
     fn all_notes_off(&mut self) {
@@ -151,6 +157,48 @@ fn the_render_thread_reports_blocks_notes_of_external_instruments_and_silence() 
     assert_eq!(log.dropped.load(Ordering::SeqCst), 1);
     render(&engine, 2);
     assert_eq!(take(&log), []);
+}
+
+#[test]
+fn live_notes_and_channel_messages_of_an_external_instrument_leave_in_the_order_they_were_played() {
+    let log = Arc::new(Log::default());
+    let engine = engine();
+    engine.publish(&parse(&project())).unwrap();
+    engine.set_midi_output(Some(Arc::new(Output(log.clone()))));
+    engine.note_on(0, 0, 60, 100);
+    render(&engine, 1);
+    take(&log);
+    // Within one block: the key comes up, the pedal goes down, another key, a pitch bend, the
+    // pedal comes up, the second key comes up. Every one of them is an event of the next
+    // block, at its first frame, in this order: the pedal cannot catch the first note.
+    engine.note_off(0, 60);
+    assert!(engine.external_expression(0, [0xB3, 64, 127]), "a control change is taken (its channel is the instrument's to say)");
+    engine.note_on(0, 0, 62, 90);
+    assert!(engine.external_expression(0, [0xE0, 0, 96]));
+    assert!(engine.external_expression(0, [0xB0, 64, 0]));
+    engine.note_off(0, 62);
+    assert!(!engine.external_expression(0, [0x90, 60, 100]), "notes are not channel messages");
+    assert!(!engine.external_expression(-1, [0xB0, 64, 0]));
+    render(&engine, 2);
+    let seen: Vec<Seen> = take(&log).into_iter().filter(|item| !matches!(item, Seen::Block(_))).collect();
+    let time = 512;
+    assert_eq!(
+        seen,
+        [
+            Seen::Note(0, false, 60, 0, 0, time),
+            Seen::Message(0, [0xB0, 64, 127], 0),
+            Seen::Note(0, true, 62, 90, 0, time),
+            Seen::Message(0, [0xE0, 0, 96], 0),
+            Seen::Message(0, [0xB0, 64, 0], 0),
+            Seen::Note(0, false, 62, 0, 0, time),
+        ]
+    );
+    // An offline render sends nothing to a device, and a message for an instrument that is
+    // not external goes nowhere.
+    engine.external_expression(1, [0xB0, 1, 64]);
+    render(&engine, 1);
+    assert_eq!(take(&log).into_iter().filter(|item| !matches!(item, Seen::Block(_))).collect::<Vec<_>>(), [Seen::Message(1, [0xB0, 1, 64], 0)], "the hook is asked, and answers that instrument 1 is not external");
+    engine.set_midi_output(None);
 }
 
 #[test]

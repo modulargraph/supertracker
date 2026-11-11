@@ -121,7 +121,7 @@ fn rendering_with_plug_ins_never_allocates_also_when_one_of_them_crashes() {
     loudest = loudest.max(render_counted(&engine, 50, 127));
     engine.note_on(2, 1, 72, 100);
     // Pitch bend, the modulation wheel, another controller, the pedals, channel and poly
-    // pressure, more of them than one block's queue takes.
+    // pressure: several hundred messages for one block.
     for step in 0..100u8 {
         for message in [[0xE0, step, 64], [0xB0, 1, step], [0xB0, 74, step], [0xB0, 64, step], [0xB0, 66, 127 - step], [0xD0, step, 0], [0xA0, 72, step]] {
             engine.expression(2, message);
@@ -145,7 +145,17 @@ fn rendering_with_plug_ins_never_allocates_also_when_one_of_them_crashes() {
     engine.seek(None, 3, 0);
     render_counted(&engine, 4, 512);
     engine.play(&PlayOptions { song: false, from_start: true, ..Default::default() });
+    // The instrument misses blocks while the song, its lane and live playing go on: what
+    // the blocks carry waits for it, and arrives when it is back.
+    manager.hosted("synth").unwrap().instance.hold_blocks(20);
+    engine.note_on(2, 1, 74, 100);
+    engine.expression(2, [0xB0, 64, 127]);
+    engine.note_off(2, 74);
     loudest = loudest.max(render_counted(&engine, 40, 512));
+    engine.expression(2, [0xB0, 64, 0]);
+    // And one that stays away until what waited is given up (two seconds of blocks).
+    manager.hosted("synth").unwrap().instance.hold_blocks(30);
+    render_counted(&engine, 40, 4096);
     engine.panic();
     render_counted(&engine, 20, 64);
     // The effect on track a aborts inside `process`; rendering goes on with its fallback.

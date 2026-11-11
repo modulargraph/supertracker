@@ -57,7 +57,6 @@ use stpc_client::{
     Error as ClientError, ExitReason, Fallback, GroupingPolicy, HostEvent, Instance, InstanceConfig, InstanceId, InstanceStatus, ParameterInfo, PluginKind as ClientKind, Supervisor,
     SupervisorConfig, INFO_HAS_EDITOR, INFO_SUSTAIN_PEDAL, PARAM_AUTOMATABLE, PARAM_BOOLEAN, PARAM_HIDDEN, PARAM_READ_ONLY, PARAM_STEPPED,
 };
-use tracker_engine::engine::util::Ring;
 
 /// How the manager is set up.
 #[derive(Debug, Clone)]
@@ -311,11 +310,6 @@ pub struct Hosted {
     /// has no pedal of its own: whoever plays it holds its notes while the pedal is down.
     pub sustain_pedal: bool,
     table: AtomicPtr<ParamTable>,
-    /// Channel messages from control threads for the audio thread (controllers, pressure, pitch
-    /// bend): up to three MIDI bytes and their count, applied at the start of the next block.
-    midi: Ring<[u8; 4]>,
-    /// Serializes the senders of `midi`: the ring takes one producer at a time.
-    midi_senders: Mutex<()>,
     /// See [`Hosted::pedal_generation`].
     pedal_generation: AtomicU64,
     pub(crate) automated: AutomatedSet,
@@ -345,17 +339,10 @@ impl Hosted {
         unsafe { &*self.table.load(Ordering::Acquire) }
     }
 
-    /// Audio thread: the next message queued by [`Hosted::send_midi`]: the bytes and how many
-    /// of them count.
-    #[inline]
-    pub(crate) fn pop_midi(&self) -> Option<[u8; 4]> {
-        self.midi.pop()
-    }
-
     /// A number that changes whenever the plug-in may have lost what it was told about the
     /// pedals: it is another one for every instance, after a restore, and after the processor
-    /// sent the pedals up with "all notes off" (panic, blocks the plug-in did not answer, the
-    /// end of a bypass). Whoever holds a pedal down for the plug-in sends it again when the
+    /// sent the pedals up with "all notes off" (panic, events that waited for the plug-in
+    /// too long, the end of a bypass). Whoever holds a pedal down for the plug-in sends it again when the
     /// number is not the one it last sent the pedal under.
     pub fn pedal_generation(&self) -> u64 {
         self.pedal_generation.load(Ordering::Acquire)
@@ -365,20 +352,6 @@ impl Hosted {
     /// thread included.
     pub(crate) fn pedals_reset(&self) {
         self.pedal_generation.store(next_pedal_generation(), Ordering::Release);
-    }
-
-    /// Queues a channel message for the plug-in: a control change, channel or poly pressure,
-    /// pitch bend or a program change (the two-byte messages ignore `bytes[2]`). It reaches
-    /// the plug-in at the first frame of the next block. False for any other message and when
-    /// the queue is full (the plug-in is not processing). Any control thread.
-    pub fn send_midi(&self, bytes: [u8; 3]) -> bool {
-        let length = match bytes[0] & 0xF0 {
-            0xA0 | 0xB0 | 0xE0 => 3,
-            0xC0 | 0xD0 => 2,
-            _ => return false,
-        };
-        let _one_sender = self.midi_senders.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        self.midi.push(&[bytes[0], bytes[1] & 0x7F, if length == 3 { bytes[2] & 0x7F } else { 0 }, length])
     }
 
     /// The values just read from the plug-in as base values.
@@ -728,9 +701,8 @@ pub struct PluginManager {
     /// manager then hosts nothing and says so for every plug-in a project wants.
     supervisor: Result<Supervisor, String>,
     options: PluginOptions,
-    /// [`PluginOptions::min_deadline`] for the instances created next, in nanoseconds
-    /// ([`PluginManager::set_min_deadline`]).
-    min_deadline_ns: AtomicU64,
+    /// [`PluginOptions::min_deadline`] in nanoseconds.
+    min_deadline_ns: u64,
     recovery: Arc<RecoveryStore>,
     catalog: Mutex<Option<Arc<Catalog>>>,
     inner: Mutex<Inner>,
@@ -785,7 +757,7 @@ impl PluginManager {
         };
         let manager = Arc::new(PluginManager {
             supervisor,
-            min_deadline_ns: AtomicU64::new(options.min_deadline.as_nanos().min(u128::from(u64::MAX)) as u64),
+            min_deadline_ns: options.min_deadline.as_nanos().min(u128::from(u64::MAX)) as u64,
             options,
             recovery,
             catalog: Mutex::new(None),
@@ -821,14 +793,6 @@ impl PluginManager {
 
     pub fn is_offline(&self) -> bool {
         self.options.offline
-    }
-
-    /// Changes [`PluginOptions::min_deadline`] for the instances created from now on. A test
-    /// that plays live through a host it did not build the manager for gives every block all
-    /// the time it needs, so that a busy machine never makes a plug-in miss a block (and the
-    /// notes and controllers in it).
-    pub fn set_min_deadline(&self, deadline: Duration) {
-        self.min_deadline_ns.store(deadline.as_nanos().min(u128::from(u64::MAX)) as u64, Ordering::Release);
     }
 
     pub fn recovery(&self) -> &Arc<RecoveryStore> {
@@ -1014,14 +978,12 @@ impl PluginManager {
             planned_latency: AtomicU32::new(instance.latency()),
             instance,
             table: AtomicPtr::new(Box::into_raw(Box::new(ParamTable::default()))),
-            midi: Ring::new(256),
-            midi_senders: Mutex::new(()),
             pedal_generation: AtomicU64::new(next_pedal_generation()),
             automated: AutomatedSet::new(),
             base_requested: AtomicBool::new(false),
             returns_pending: AtomicU32::new(0),
             offline: self.options.offline,
-            min_deadline_ns: self.min_deadline_ns.load(Ordering::Acquire),
+            min_deadline_ns: self.min_deadline_ns,
             control: Mutex::new(HostedControl::default()),
         });
         if let Err(error) = hosted.refresh_parameters() {
