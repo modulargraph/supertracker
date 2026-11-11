@@ -24,6 +24,10 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
 - **Exports to 16- and 24-bit WAV are dithered (TPDF) by default**; the export dialog has a Dither choice.
 - **Live line inputs into tracks**, with latency compensation, stored with the track in the project.
 - **Freeze by recording** for tracks whose sound comes from outside the computer.
+- **An input on a different device than the output stays in sync.** It is resampled continuously onto the output's
+  clock (also across different sample rates), for line inputs, monitoring, recording and Freeze by recording. One
+  interface for both passes audio through unchanged. Recordings of an input are written at the project's sample
+  rate on the output's clock.
 - **Kits are saved with an audio preview.**
 - **Controllers, pressure and pitch bend** reach the plug-in or external instrument a track plays.
 - **The sustain pedal belongs to the instrument.** Plug-in and external MIDI instruments receive the pedal with its
@@ -60,8 +64,7 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
 
 ### Known gaps
 
-A line input from a second audio device is
-not resampled to the output's clock; nothing has been run on a Mac, with a real audio or MIDI device, or with a
+Nothing has been run on a Mac, with a real audio or MIDI device, or with a
 third-party plug-in. [docs/FEATURE_STATUS.md](docs/FEATURE_STATUS.md) and [docs/HOST.md](docs/HOST.md) have the details.
 
 ### Build

@@ -34,7 +34,6 @@ Every command the interface sends is implemented ([HOST.md](HOST.md) has the tab
 | Feature | State |
 |---|---|
 | Control changes to CLAP plug-ins that accept only CLAP note events | Dropped: CLAP has no event for them. Pressure and pitch bend arrive as note expressions. |
-| Line inputs from a second audio device | The input is not resampled to the output's clock: two separate devices gap or skip every few minutes. One interface for input and output has one clock and is not affected. |
 | Windows | `--serve` should work; there is no window and no control socket. |
 
 ## Added after the first Rust host
@@ -44,6 +43,7 @@ Each of these was tested on Linux with the silent test devices, in-memory MIDI p
 | Feature | How it was verified |
 |---|---|
 | Live line inputs into track strips (`tracks[i].audioInput`; state reported in `audio.devices`) | Mixer-graph and bridge tests with the test tone: through the track's inserts, fader and meters, with delay compensation; a check in the browser test. No real input device has been opened. |
+| An input on a different device than the output (two clocks, any pair of sample rates) is resampled onto the output's clock, for line inputs, monitoring, input takes and Freeze by recording; one device for both passes audio through unchanged | Simulated clocks only: ten simulated minutes at ±200 ppm and 44.1 into 48 kHz with jittered callbacks, no gap or skip, tone within about 15 ppm, delay within 3 frames of the reported latency; stalls and bursts recover and are counted. Costs latency (27 ms instead of 11 ms at 512-frame blocks). How regular real devices' callbacks are is unverified. |
 | Freeze by recording, for tracks whose sound comes from outside the computer (song and pattern prints) | A recorded print equals the offline print of the same track frame for frame in the tests. Real hardware returns and their latency are unverified. |
 | Kit previews: a kit is saved with `Preview.wav` (its group bus in the selected pattern, up to 10 s or 8 bars) | Bridge test on generated kits, including a built-in effect and a plug-in in a container. Nobody has listened to one. |
 | Controllers, channel and poly pressure and pitch bend to the instrument a track plays (external device, plug-in, engine), from MIDI input and the interface | In-memory MIDI ports; CLAP and VST3 test plug-ins, frame-exact. Audio Units: type-checked only. |
