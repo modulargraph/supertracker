@@ -17,7 +17,7 @@
       'plugins.recovery.retry', 'kit.read', 'kit.save']);
 
   const instrumentMutationCommands = new Set(['sample.load', 'sample.edit', 'plugin.load', 'plugin.loadNKS',
-      'plugin.parameter', 'plugin.preset', 'plugin.remove', 'plugin.move', 'plugin.duplicate', 'routing.apply',
+      'plugin.parameter', 'plugin.preset', 'plugin.remove', 'plugin.move', 'routing.apply',
       'freeze.track', 'freeze.unfreeze', 'audio.export', 'audio.bounceTrack', 'audio.configure']);
 
   // Commands that change the audio inputs wait for a line-input change like instrument mutations do.
@@ -43,11 +43,9 @@
       const timeout = interactiveCommands.has(command) ? null : setTimeout(() => {
         state.pending.delete(id);
         reject(new Error(`${command} took too long. Check the audio device or try again.`));
-      }, ['audio.export', 'audio.bounceTrack', 'project.media.search', 'project.media.apply'].includes(command)
+      }, ['project.media.search', 'project.media.apply', 'sample.edit', 'sample.analyzeSlices'].includes(command)
           ? 180000
-          : ['sample.edit', 'sample.analyzeSlices'].includes(command)
-          ? 180000
-          : command === 'sample.load' || command === 'plugin.load'
+          : command === 'sample.load'
           ? 45000
           : 15000);
       state.pending.set(id, { resolve, reject, timeout, command });

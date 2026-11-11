@@ -269,7 +269,7 @@
       write: (q, v) => {
         const target = q.tracks[track]; if (!target) return;
         if (v) target.chokeGroup = v; else delete target.chokeGroup;
-        // As the instrument page does: the track's value replaces a legacy instrument-wide choke group.
+        // As the instrument page does: the track's value replaces the instrument-wide choke group.
         if (instOf(q)) delete instOf(q).chokeGroup;
       },
       options: Array.from({ length: 17 }, (_, i) => [i, i ? `Group ${i}` : 'Off']) })];

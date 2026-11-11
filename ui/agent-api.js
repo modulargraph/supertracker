@@ -1,7 +1,7 @@
 /* SuperTracker agent API (window.STAgent).
-   A validated, UI-independent interface to the open song for AI assistants. The native
-   control socket (AgentControlServer.swift, used by `SuperTracker --mcp`) calls
-   STAgent.dispatch(method, paramsJSON) on the main thread. Every editing call is one
+   A validated, UI-independent interface to the open song for AI assistants. The host's
+   control socket (st-agent, used by `supertracker --mcp` and `--ctl`) sends agent.call events, answered
+   with STAgent.dispatch(method, paramsJSON). Every editing call is one
    ST.mutate, so it refreshes the interface, syncs the audio engine and is one ⌘Z step
    labelled "AI: …". Nothing here simulates key presses.
 

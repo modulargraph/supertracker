@@ -1,7 +1,7 @@
 /* Shared descriptions of the built-in (stfx:) effects: Maschine-style control pages.
    Each effect has named pages of up to eight parameters in a musical order, grouped in sections, with short
    display names. Ranges, units, value curves (linear / logarithmic / stepped), defaults and choice labels come
-   from the native catalogue (bridge command `builtin.effects`, BuiltinEffectsCatalogue.swift), so this file
+   from the host's catalogue (bridge command `builtin.effects`, tracker-engine), so this file
    only holds what a person curates: which knob goes where and what it is called.
    Used by the plug-in pages console (plugin-pages.js), the insert chain (insert-chain.js) and the MK3
    PLUG-IN pages. Plug-ins that are not built in keep the generic eight-at-a-time pages. */

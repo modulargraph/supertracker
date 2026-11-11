@@ -54,7 +54,7 @@
       if (!object(item)) fail(`${label} must contain objects.`);
       if (has(item, 'owner')) {
         if (typeof item.owner !== 'string' || !item.owner || strict && !owners.has(item.owner)) fail(`${label} has an invalid explicit owner.`);
-        return item.owner; // The numeric track is only a legacy/cache field when an owner exists.
+        return item.owner; // Beside an owner the numeric track is only a convenience copy.
       }
       if (item.track === -1) return 'master';
       if (Number.isInteger(item.track) && item.track >= 0 && item.track < tracks.length) return trackOwners[item.track];

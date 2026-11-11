@@ -34,11 +34,11 @@ function plainHarness() {
     assert.ok(set.chords.length >= 8 && set.chords.length <= 16, set.id + ' chord count');
     for (const chord of set.chords) assert.ok(chord.notes.length >= 3 && chord.notes.length <= 8 && chord.notes.every(Number.isInteger), set.id);
   }
-  // Projects from earlier builds name a former factory set; it opens on the harmony set in the same position.
-  same(['maschine-major-1', 'maschine-major-8', 'maschine-minor-3', 'neosoul', 'gone', undefined].map(ST.chordSetIdFor),
-      ['major-triads', 'major-lydian', 'minor-harmonic', 'neosoul', '', '']);
-  ST.acceptProject({ ...ST.demoProject(), performance: { root: 0, scale: 'chromatic', chord: 'single', chordSet: 'maschine-minor-2' } });
-  assert.equal(state.chordSet, 'minor-sevenths', 'a former factory set ID opens on its harmony set');
+  // A saved ID that names no chord set selects none.
+  same(['major-triads', 'minor-sevenths', 'neosoul', 'maschine-major-1', 'gone', undefined].map(ST.chordSetIdFor),
+      ['major-triads', 'minor-sevenths', 'neosoul', '', '', '']);
+  ST.acceptProject({ ...ST.demoProject(), performance: { root: 0, scale: 'chromatic', chord: 'single', chordSet: 'minor-sevenths' } });
+  assert.equal(state.chordSet, 'minor-sevenths', 'a saved chord set opens selected');
   ST.setPerformance({ chordSet: 'major-triads' }, false);
   same([0, 6, 7, 9].map(i => ST.chordSetChordName(ST.activeChordSet(), i)), ['C', 'B°', 'C/E', 'G/B']);
   same(ST.chordSetPitches(9), [47, 62, 67, 71], 'G/B: B bass under a close G triad');

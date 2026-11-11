@@ -123,16 +123,11 @@
 
   const chordSets = [...harmonyChordSets, ...styleChordSets];
   const chordSetById = Object.fromEntries(chordSets.map(set => [set.id, set]));
-  // Projects from earlier builds may name a former factory set (Major/Minor 1–8); they open
-  // on the harmony set in the same position.
-  const legacyChordSetIds = Object.fromEntries([false, true].flatMap(minor => harmonyChordSets
-      .filter(set => set.minor === minor)
-      .map((set, i) => [`maschine-${minor ? 'minor' : 'major'}-${i + 1}`, set.id])));
   const flatNoteNames = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'];
 
-  // A saved chord-set ID as a current one ('' when unknown).
+  // A saved chord-set ID ('' when it names no chord set).
   function chordSetIdFor(id) {
-    return chordSetById[id] ? id : legacyChordSetIds[id] || '';
+    return chordSetById[id] ? id : '';
   }
 
   function activeChordSet() {
