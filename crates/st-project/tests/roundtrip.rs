@@ -50,8 +50,7 @@ fn interface_fields_are_typed() {
         let keys = |extra: &serde_json::Map<String, Value>| extra.keys().cloned().collect::<Vec<_>>();
         assert!(project.extra.is_empty(), "{name}: project.extra {:?}", keys(&project.extra));
         for track in project.track_list() {
-            // `plugins` is the retired per-track plug-in list; the interface still writes `[]`.
-            assert!(track.extra.keys().all(|key| key == "plugins"), "{name}: track.extra {:?}", keys(&track.extra));
+            assert!(track.extra.is_empty(), "{name}: track.extra {:?}", keys(&track.extra));
         }
         for instrument in project.instrument_list() {
             // `plugin: null` (no instrument plug-in) stays as written.

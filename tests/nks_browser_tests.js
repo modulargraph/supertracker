@@ -18,7 +18,7 @@ function harness() {
     { path: '/a.nksf', name: 'Alpha Pad', product: 'Synth One', bank: 'A', types: ['Synth Pad'], subtypes: ['Synth Pad' + SEP + 'Warm'], characters: ['Warm'], previewPath: '/a.ogg', hasControls: true, effect: false },
     { path: '/b.nksf', name: 'Beta Bass', product: 'Synth One', bank: 'B', types: ['Bass'], subtypes: [], characters: [], effect: false }];
   const effect = { path: '/e.nksfx', name: 'Tape Echo', product: 'Echo FX', bank: '', types: ['Delay'], subtypes: [], characters: [], previewPath: '/e.ogg', effect: true };
-  const state = { project: { tracks: [{ name: 'Bass' }], instruments: [{ name: 'Synth' }], audioPlugins: [{ track: 0, kind: 'effect', slot: 0, name: 'Comp' }] }, track: 0, instrument: 0 };
+  const state = { project: { tracks: [{ name: 'Bass', routingID: 'bass' }], instruments: [{ name: 'Synth' }], audioPlugins: [{ owner: 'track:bass', kind: 'effect', slot: 0, name: 'Comp' }] }, track: 0, instrument: 0 };
   const ST = { state, escapeHTML, toast: text => notices.push(text), refresh() { markup = browser.render(); },
     async request(command, payload) {
       calls.push({ command, payload });

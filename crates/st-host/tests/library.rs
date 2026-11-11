@@ -179,7 +179,7 @@ fn session(sample: &Path) -> Value {
             { "id": 1, "type": "au", "name": "Synth" }
         ],
         "groups": [ { "id": "g1", "name": "Bridge kit", "busID": "kitbus" } ],
-        "audioPlugins": [ { "instanceID": "p-synth", "owner": "track:synth", "track": 1, "kind": "instrument", "slot": 0, "component": "vst3:ABCD", "format": "VST3", "name": "Fixture Synth", "state": "AAEC" } ],
+        "audioPlugins": [ { "instanceID": "p-synth", "owner": "track:synth", "kind": "instrument", "slot": 0, "component": "vst3:ABCD", "format": "VST3", "name": "Fixture Synth", "state": "AAEC" } ],
         "routing": { "buses": [ { "id": "kitbus", "name": "Bridge kit", "type": "group", "groupID": "g1" } ],
             "outputs": { "track:kick": "bus:kitbus", "track:synth": "bus:kitbus", "bus:kitbus": "master" }, "sends": [], "sidechains": [] },
         "patterns": [ { "id": 0, "length": 4, "steps": [[null, null, null, null], [null, null, null, null]] } ],
@@ -283,7 +283,7 @@ fn kit_session(sample: &Path, clap: &Path) -> Value {
         ],
         "groups": [ { "id": "g1", "name": "Bridge kit", "busID": "kitbus" } ],
         "audioPlugins": [
-            { "instanceID": "p-synth", "owner": "track:synth", "track": 1, "kind": "instrument", "slot": 0, "component": format!("clap:{}", st_audio::plugins::testing::CLAP_SINE), "format": "CLAP", "bundlePath": clap, "name": "ST Test Sine" },
+            { "instanceID": "p-synth", "owner": "track:synth", "kind": "instrument", "slot": 0, "component": format!("clap:{}", st_audio::plugins::testing::CLAP_SINE), "format": "CLAP", "bundlePath": clap, "name": "ST Test Sine" },
             { "instanceID": "p-bus", "owner": "bus:kitbus", "kind": "effect", "slot": 0, "component": "stfx:eq", "name": "EQ" }
         ],
         "routing": { "buses": [ { "id": "kitbus", "name": "Bridge kit", "type": "group", "groupID": "g1", "volume": 1, "pan": 0 } ],

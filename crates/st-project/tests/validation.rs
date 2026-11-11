@@ -212,7 +212,10 @@ fn plug_in_descriptors() {
     assert_eq!(rejected(|p| { p["audioPlugins"] = json!([insert("track:t0", 0)]); p["audioPlugins"][0]["kind"] = json!("generator"); }), "Unknown plug-in slot kind.");
     assert_eq!(rejected(|p| { p["audioPlugins"] = json!([insert("track:t0", 0)]); p["audioPlugins"][0]["instanceID"] = json!("no spaces"); }), "Plug-in instance ID must contain 1–128 letters, digits, hyphens, underscores, or periods.");
     assert_eq!(rejected(|p| { p["audioPlugins"] = json!([insert("bus:g", 0)]); p["audioPlugins"][0]["kind"] = json!("instrument"); }), "Instruments require a track's instrument slot.");
-    assert_eq!(rejected(|p| p["audioPlugins"] = json!([{ "track": 5, "kind": "effect", "slot": 0 }])), "Plug-in track does not exist.");
+    // The owner is the only way a descriptor names its channel: a track index is an unknown key.
+    assert_eq!(rejected(|p| p["audioPlugins"] = json!([{ "track": 0, "kind": "effect", "slot": 0 }])), "A plug-in has no owner.");
+    assert_eq!(rejected(|p| p["audioPlugins"] = json!([{ "owner": 0, "kind": "effect", "slot": 0 }])), "Plug-in owner must be text.");
+    assert_eq!(rejected(|p| p["audioPlugins"] = json!([{ "owner": "instrument:0", "kind": "instrument", "slot": 0 }])), "Instruments require a track's instrument slot.");
     // An instrument and an effect share slot 0 of a track; an instrument's insert chain has its own slots.
     accepted(|p| {
         p["audioPlugins"] = json!([insert("track:t0", 0), insert("instrument:0", 0), insert("instrument:9", 0), { "owner": "track:t0", "kind": "instrument", "slot": 0, "instanceID": "synth", "component": "clap:x" }]);
@@ -221,14 +224,14 @@ fn plug_in_descriptors() {
 }
 
 #[test]
-fn owner_automation_lanes() {
+fn automation_lanes() {
     let lane = |owner: &str, target: &str, points: Value| json!({ "id": "l", "owner": owner, "target": target, "interpolation": "linear", "points": points });
     let with = |lanes: Value| move |p: &mut Value| { p["routing"]["sends"] = json!([{ "id": "s1", "source": "track:t0", "tap": "postFader", "destination": "bus:r" }]); p["patterns"][0]["automation"] = lanes; };
+    // What the mixer plays is addressed by owner.
     accepted(with(json!([
-        lane("track:t0", "volume", json!([{ "row": 0, "value": 2 }, { "row": 16, "value": 0 }])),
-        lane("track:t0", "pan", json!([{ "row": 0.5, "value": -1 }])),
-        lane("track:t0", "cutoff", json!([{ "row": 0, "value": 20000 }])),
-        lane("bus:g", "pan", json!([])),
+        lane("bus:g", "volume", json!([{ "row": 0, "value": 2 }, { "row": 16, "value": 0 }])),
+        lane("bus:g", "pan", json!([{ "row": 0.5, "value": -1 }])),
+        lane("bus:r", "pan", json!([])),
         lane("master", "volume", json!([{ "row": 1, "value": 1 }])),
         lane("track:t0", "send:s1", json!([{ "row": 1, "value": 2 }])),
         lane("track:t0", "send:removed", json!([{ "row": 1, "value": 1 }])),
@@ -236,26 +239,38 @@ fn owner_automation_lanes() {
         lane("track:t0", "plugin:instrument:0:18446744073709551615", json!([{ "row": 1, "value": 0 }])),
         lane("instrument:0", "plugin:effect:2:1", json!([{ "row": 1, "value": 0.5 }])),
     ])));
-    assert_eq!(rejected(with(json!([lane("track:gone", "volume", json!([]))]))), "Host automation requires an existing owner and a target.");
+    assert_eq!(rejected(with(json!([lane("track:gone", "send:s1", json!([]))]))), "Host automation requires an existing owner and a target.");
     assert_eq!(rejected(with(json!([lane("master", "pan", json!([]))]))), "Master pan automation is unsupported.");
     assert_eq!(rejected(with(json!([lane("bus:g", "cutoff", json!([]))]))), "Unknown host automation target: cutoff.");
-    assert_eq!(rejected(with(json!([lane("track:t0", "warp", json!([]))]))), "Unknown host automation target: warp.");
     assert_eq!(rejected(with(json!([lane("track:t1", "send:s1", json!([]))]))), "Send automation owner does not match its source.");
     assert_eq!(rejected(with(json!([lane("track:t0", "plugin:instrument:1:5", json!([]))]))), "Invalid instrument automation slot.");
     assert_eq!(rejected(with(json!([lane("bus:g", "plugin:effect:16:5", json!([]))]))), "Unknown host automation target: plugin:effect:16:5.");
-    assert_eq!(rejected(with(json!([lane("track:t0", "volume", json!([{ "row": 17, "value": 1 }]))]))), "Automation row must be a finite number in 0...16.");
-    assert_eq!(rejected(with(json!([lane("track:t0", "volume", json!([{ "row": 1, "value": 2.5 }]))]))), "Automation value must be a finite number in 0...2.");
-    assert_eq!(rejected(with(json!([lane("track:t0", "cutoff", json!([{ "row": 1, "value": 30000 }]))]))), "Automation value must be a finite number in 20...20000.");
+    assert_eq!(rejected(with(json!([lane("bus:g", "volume", json!([{ "row": 17, "value": 1 }]))]))), "Automation row must be a finite number in 0...16.");
+    assert_eq!(rejected(with(json!([lane("bus:g", "volume", json!([{ "row": 1, "value": 2.5 }]))]))), "Automation value must be a finite number in 0...2.");
+    assert_eq!(rejected(with(json!([lane("bus:g", "pan", json!([{ "row": 1, "value": 1.5 }]))]))), "Automation value must be a finite number in -1...1.");
     assert_eq!(rejected(with(json!([lane("track:t0", "plugin:effect:0:1", json!([{ "row": 1, "value": 1.5 }]))]))), "Automation value must be a finite number in 0...1.");
-    assert_eq!(rejected(with(json!([lane("track:t0", "volume", json!([{ "row": 1, "value": 1 }, { "row": 1, "value": 0 }]))]))), "Duplicate automation point row.");
-    assert_eq!(rejected(with(json!([lane("track:t0", "volume", json!([{ "row": 1 }]))]))), "Automation points need a numeric row and value.");
-    assert_eq!(rejected(with(json!([lane("track:t0", "volume", json!([])), lane("track:t0", "volume", json!([]))]))), "Two automation lanes of a pattern control the same destination.");
+    assert_eq!(rejected(with(json!([lane("bus:g", "volume", json!([{ "row": 1, "value": 1 }, { "row": 1, "value": 0 }]))]))), "Duplicate automation point row.");
+    assert_eq!(rejected(with(json!([lane("bus:g", "volume", json!([{ "row": 1 }]))]))), "Automation points need a numeric row and value.");
+    assert_eq!(rejected(with(json!([lane("bus:g", "volume", json!([])), lane("bus:g", "volume", json!([]))]))), "Two automation lanes of a pattern control the same destination.");
     let dense = |count: usize| json!((0..count).map(|index| json!({ "row": index as f64 / 512.0, "value": 1 })).collect::<Vec<_>>());
-    accepted(with(json!([lane("track:t0", "volume", dense(MAX_AUTOMATION_POINTS))])));
-    assert_eq!(rejected(with(json!([lane("track:t0", "volume", dense(MAX_AUTOMATION_POINTS + 1))]))), "Automation supports at most 4096 points per lane.");
-    assert_eq!(rejected(|p| p["patterns"][0]["automation"] = json!([{ "owner": "track:t0", "target": "volume", "interpolation": "curved" }])), "Unknown automation interpolation.");
-    // Track-index lanes are the engine's: unknown targets are skipped there, not an error here.
+    accepted(with(json!([lane("bus:g", "volume", dense(MAX_AUTOMATION_POINTS))])));
+    assert_eq!(rejected(with(json!([lane("bus:g", "volume", dense(MAX_AUTOMATION_POINTS + 1))]))), "Automation supports at most 4096 points per lane.");
+    assert_eq!(rejected(|p| p["patterns"][0]["automation"] = json!([{ "owner": "bus:g", "target": "volume", "interpolation": "curved" }])), "Unknown automation interpolation.");
+
+    // A track's own parameters are the engine's: their lanes name the track by index, and
+    // names the engine does not know are skipped there, not an error here.
+    accepted(|p| p["patterns"][0]["automation"] = json!([{ "track": 0, "target": "volume", "points": [{ "row": 0, "value": 1 }] }, { "track": 1, "target": "cutoff", "points": [] }]));
     accepted(|p| p["patterns"][0]["automation"] = json!([{ "track": 0, "target": "warp", "points": [{ "row": 99, "value": 5 }] }]));
+    // One way to address each kind of lane.
+    let by_owner = "Automation of a track's own parameters names the track by index, not by owner.";
+    for target in ["volume", "pan", "cutoff", "warp"] {
+        assert_eq!(rejected(with(json!([lane("track:t0", target, json!([]))]))), by_owner);
+    }
+    let by_index = "Send and plug-in automation lanes name their channel by owner, not by track index.";
+    for target in ["send:s1", "plugin:effect:0:1", "plugin:instrument:0:1"] {
+        assert_eq!(rejected(with(json!([{ "track": 0, "target": target, "points": [] }]))), by_index);
+    }
+    assert_eq!(rejected(with(json!([{ "track": 0, "owner": "track:t0", "target": "send:s1", "points": [] }]))), "An automation lane names its channel by owner or its track by index, not both.");
     assert_eq!(native_automation_range("grainScan"), Some((-4.0, 4.0)));
     assert_eq!(native_automation_range("warp"), None);
 }

@@ -153,8 +153,20 @@ fn decode(bytes: &[u8]) -> Decoded {
     Decoded { format, track_count, division, events }
 }
 
-fn project(value: Value) -> Project {
-    Project::from_value(value).unwrap()
+/// The project of a test: `value` with what every project has and these tests leave out (a
+/// routing table, a routing identity for each track).
+fn project(mut value: Value) -> Project {
+    if value.get("routing").is_none() {
+        value["routing"] = json!({});
+    }
+    for (index, track) in value["tracks"].as_array_mut().into_iter().flatten().enumerate() {
+        if track.get("routingID").is_none() {
+            track["routingID"] = json!(format!("t{index}"));
+        }
+    }
+    let project = Project::from_value(value).unwrap();
+    project.validate().expect("a valid project");
+    project
 }
 
 /// One track with `rows` as its steps in one pattern.
@@ -446,7 +458,7 @@ fn unmapped_content_is_reported_and_mute_solo_are_respected() {
     let lead = rows(4, &[(0, json!({ "note": 60, "gate": 1, "fx1": { "type": "cutoff", "value": 900 }, "fx2": { "type": "probability", "value": 0.5 } }))]);
     let mut song = json!({ "name": "Warnings", "bpm": 120, "tracks": [{ "name": "A", "routingID": "a" }, { "name": "B", "mute": true }, { "name": "C" }],
         "instruments": [{}], "patterns": [{ "id": 0, "length": 4, "steps": [lead.clone(), lead.clone(), lead],
-            "automation": [{ "track": 0, "target": "cutoff", "points": [{ "row": 0, "value": 500 }] }, { "owner": "track:a", "target": "volume", "interpolation": "step", "points": [{ "row": 2, "value": 1 }] }] }] });
+            "automation": [{ "track": 0, "target": "cutoff", "points": [{ "row": 0, "value": 500 }] }, { "track": 0, "target": "volume", "interpolation": "step", "points": [{ "row": 2, "value": 1 }] }] }] });
     let exported = export(&project(song.clone())).unwrap();
     assert_eq!(exported.warnings, [
         "Automation without a MIDI CC mapping was omitted from MIDI export.",
@@ -480,8 +492,9 @@ fn many_track_export() {
     assert!((0..count).all(|track| on.iter().any(|event| event.data[0] as usize == 36 + track)), "every track's note is exported");
     assert!(on.iter().any(|event| event.data[0] == 36 + 16 && event.status == 0x90) && on.iter().any(|event| event.data[0] == 36 + 39 && event.status == 0x97), "default channels repeat beyond 16 tracks");
     assert_eq!(load(&exported.bytes).track_list().len(), count, "all forty tracks reimport");
+    // Too many tracks: not a project the host accepts, and not one that is exported.
     song["tracks"] = json!(vec![json!({ "instrument": 0 }); 1025]);
-    assert_eq!(export(&project(song)).unwrap_err().to_string(), "MIDI export requires a valid tracker project with 1–1024 tracks and up to 256 patterns.");
+    assert_eq!(export(&Project::from_value(song).unwrap()).unwrap_err().to_string(), "MIDI export requires a valid tracker project with 1–1024 tracks and up to 256 patterns.");
 }
 
 #[test]

@@ -78,9 +78,7 @@
       pattern.steps = order.map(old => steps[old] || Array(pattern.length).fill(null));
       (pattern.automation || []).forEach(fix);
     }
-    for (const key of ['audioClips', 'audioPlugins', 'patternClips']) (p[key] || []).forEach(fix);
-    for (const instrument of p.instruments || []) fix(instrument?.plugin);
-    for (const track of p.tracks) (track.plugins || []).forEach(fix);
+    for (const key of ['audioClips', 'patternClips']) (p[key] || []).forEach(fix);
     return map;
   }
 

@@ -31,7 +31,7 @@ function harness(){
  const context=vm.createContext({Event:class{constructor(type,fields){this.type=type;Object.assign(this,fields);}},window,document,console,Date,Math,Map,Set,WeakSet,Number,Array,Object,String,JSON,Promise,innerWidth:1280,innerHeight:800,setTimeout(fn,delay=0){timers.set(++timerID,{fn,delay});return timerID;},clearTimeout(id){timers.delete(id);}});
  web.load(context, 'app.js');
  const ST=window.ST,state=ST.state;state.project=ST.demoProject();state.view='instrument';state.engineReady=true;
- const target={track:0,kind:'instrument',slot:0,instanceID:'instance-B'},plugin={...target,component:'fixture:B',name:'Original fixture',state:'B:.2',parameters:[{address:'17',name:'Cutoff',min:0,max:1,value:.2,normalized:.2,writable:true}],presets:[{number:1,name:'Preset one'}]};
+ const owner=`track:${state.project.tracks[0].routingID}`,target={owner,kind:'instrument',slot:0,instanceID:'instance-B'},plugin={...target,component:'fixture:B',name:'Original fixture',state:'B:.2',parameters:[{address:'17',name:'Cutoff',min:0,max:1,value:.2,normalized:.2,writable:true}],presets:[{number:1,name:'Preset one'}]};
  state.project.audioPlugins=[copy(plugin)];state.project.instruments[0].type='au';state.project.instruments[0].plugin=copy(plugin);native=copy(plugin);
  handlers.set('plugin.parameters',()=>copy(native.parameters));
  handlers.set('plugin.parameter',payload=>{assert.equal(payload.instanceID,native.instanceID);native.state='B:'+payload.value;native.parameters[0].value=native.parameters[0].normalized=payload.value;return{display:String(payload.value)};});
@@ -40,7 +40,7 @@ function harness(){
  handlers.set('engine.project',payload=>{native=copy(payload.project.audioPlugins[0]);return{};});
  handlers.set('engine.snapshot',()=>({audioPlugins:[copy(native)]}));
  handlers.set('project.save',payload=>({project:copy(payload.project),path:'/private/fixture.supertracker'}));
- return{ST,state,window,document,calls,handlers,target,plugin,nodes,get input(){return inputs[0];},get native(){return native;},set native(value){native=value;},async open(){await ST.showPluginParameters({track:0,kind:'instrument',slot:0});assert.equal(state.modal,'dialog');assert(inputs.length);},async inputValue(value,commit=true){this.input.value=String(value);this.input.oninput();if(commit)return this.input.onchange();},runTimers(delay=35){for(const[id,timer]of [...timers])if(timer.delay===delay){timers.delete(id);timer.fn();}}};
+ return{ST,state,window,document,calls,handlers,target,plugin,nodes,get input(){return inputs[0];},get native(){return native;},set native(value){native=value;},async open(){await ST.showPluginParameters({owner,kind:'instrument',slot:0});assert.equal(state.modal,'dialog');assert(inputs.length);},async inputValue(value,commit=true){this.input.value=String(value);this.input.oninput();if(commit)return this.input.onchange();},runTimers(delay=35){for(const[id,timer]of [...timers])if(timer.delay===delay){timers.delete(id);timer.fn();}}};
 }
 const tests=[];function test(name,body){tests.push([name,body]);}
 test('pins read, writes and captures to the exact instance and commits one undoable gesture',async()=>{

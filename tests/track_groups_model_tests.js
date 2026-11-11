@@ -16,7 +16,7 @@ function project(count = 6) {
     patterns: [{ id: 0, length: 4, steps: tracks.map((_, i) => [{ note: 60 + i, instrument: i }, null, null, null]),
       automation: tracks.map((_, i) => ({ id: `a${i}`, track: i, target: 'volume', points: [] })) }],
     audioClips: [{ id: 'c', track: 4 }],
-    audioPlugins: [{ instanceID: 'p', owner: 'track:r5', track: 5, kind: 'effect', slot: 0 }],
+    audioPlugins: [{ instanceID: 'p', owner: 'track:r5', kind: 'effect', slot: 0 }],
     routing: { buses: [], outputs, sends: [], sidechains: [] }
   };
 }
@@ -52,7 +52,7 @@ test('adding, removing and moving members re-routes them automatically', () => {
   assert.equal(p.routing.outputs['track:r4'], bus);
   G.addTrack(p, group.id, 5, 0);
   assert.equal(names(p), 'T6 T1 T2 T5 T3 T4', 'position 0 inside the group');
-  assert.equal(p.audioPlugins[0].track, 0);
+  assert.equal(p.audioPlugins[0].owner, 'track:r5', 'a plug-in stays with its channel wherever the track moves');
   G.removeTrack(p, 1);
   assert.equal(names(p), 'T6 T2 T5 T1 T3 T4', 'a removed member lands right after its group');
   assert.equal(p.tracks[3].groupID, undefined);

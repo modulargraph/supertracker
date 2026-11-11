@@ -189,17 +189,22 @@ impl AutomationTarget {
 }
 
 model! {
-    /// An automation lane of a pattern.
+    /// An automation lane of a pattern. What it controls decides how it is addressed:
     ///
-    /// A lane belongs either to a track by index (`track`, the engine's own lanes) or to a mixer
-    /// channel by identity (`owner`: `track:<routingID>`, `bus:<id>`, `master` or
-    /// `instrument:<index>` for an instrument's insert chain).
+    /// * a parameter the engine plays for a track (the track's own mix and its instrument's
+    ///   parameters, by name: `volume`, `cutoff`, ...): `track`, the track's index;
+    /// * anything the mixer plays (a bus's or the master's `volume` and `pan`, a send's gain
+    ///   `send:<id>`, a plug-in parameter `plugin:...`): `owner`, the channel's identity
+    ///   (`track:<routingID>`, `bus:<id>`, `master`, or `instrument:<index>` for an insert of
+    ///   an instrument's chain).
+    ///
+    /// A lane has one of the two, never both.
     pub struct AutomationLane {
         /// Identity of the lane (unique within the pattern).
         "id" => id: String,
-        /// Track index of a track lane. Ignored when `owner` is present.
+        /// Track index of a lane of the engine's own track parameters.
         "track" => track: i64 = 0,
-        /// The mixer channel of an owner lane.
+        /// The mixer channel of a lane the mixer plays.
         "owner" => owner: String,
         /// What the lane controls; see [`AutomationTarget`]. Absent reads as `volume`.
         "target" => target: String,

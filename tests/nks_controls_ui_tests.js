@@ -32,8 +32,8 @@ class Root extends Element {
 }
 function harness() {
   const pages=[{index:0,name:'Sound <one>',parameters:[{slot:0,name:'Cutoff <bright>',section:'Filter',parameterID:0,mapped:true,mappingStatus:'mapped'},{slot:1,name:'Read only',parameterID:91,mapped:true},{slot:2,name:'Unmapped',parameterID:999,mapped:false,mappingStatus:'parameterUnavailable'},{slot:3,name:'No automation',parameterID:17,mapped:true}]},{index:1,name:'Movement',parameters:[{slot:0,name:'Amount',parameterID:123,mapped:true},{slot:7,name:'Unknown',mapped:false}]}];
-  const plugin={track:0,kind:'instrument',slot:0,component:'vst3:ABCD',format:'VST3',bundlePath:'/Plugin.vst3',name:'Synth',state:'baseline',custom:'preserved',nks:{name:'Preset',path:'/Preset.nksf',identity:{format:'vst3',vst3ClassID:'ABCD'},pages}};
-  const inst={id:0,type:'vst3',name:'Synth',plugin:copy(plugin)},project={tracks:[{instrument:0}],instruments:[inst],audioPlugins:[plugin]},state={project,track:0,instrument:0,view:'instrument'};
+  const plugin={owner:'track:t0',kind:'instrument',slot:0,component:'vst3:ABCD',format:'VST3',bundlePath:'/Plugin.vst3',name:'Synth',state:'baseline',custom:'preserved',nks:{name:'Preset',path:'/Preset.nksf',identity:{format:'vst3',vst3ClassID:'ABCD'},pages}};
+  const inst={id:0,type:'vst3',name:'Synth',plugin:copy(plugin)},project={tracks:[{instrument:0,routingID:'t0'}],instruments:[inst],audioPlugins:[plugin]},state={project,track:0,instrument:0,view:'instrument'};
   const parameters=[{address:'0',name:'Filter',normalized:.25,display:'1.2 kHz',writable:true,automatable:true},{address:'91',normalized:.3,display:'read',writable:false},{address:'17',normalized:.5,automatable:false},{address:'123',normalized:.75,display:'75%'}];
   const requests=[],mutations=[],notices=[],timers=new Map(),handlers=new Map(); let sequence=0,root=null,refreshes=0,restoreFocus=true;
   const document={activeElement:null,querySelectorAll:selector=>selector==='[data-nks-root]'&&root?[root]:[],getElementById:id=>root?.nodes.find(node=>node.id===id)};
@@ -211,7 +211,7 @@ function harness() {
     const key=h.root.fire('keydown',{target:input,key:'å',code:'KeyA',altKey:true});await tick();
     assert(key.prevented&&key.stopped);assert.equal(calls.length,0,'the global action must not outrun final native state capture');
     waiting.resolve({component:'vst3:ABCD',state:'saved:0.67'});await tick();
-    assert.deepEqual(calls,[[0,'plugin:instrument:0:0','Cutoff &lt;bright&gt;',.67]]);assert.equal(h.state.project.audioPlugins[0].state,'saved:0.67');
+    assert.deepEqual(calls,[['track:t0','plugin:instrument:0:0','Cutoff &lt;bright&gt;',.67]]);assert.equal(h.state.project.audioPlugins[0].state,'saved:0.67');
   }
   {
     const h=harness();h.mount();await tick();const calls=[],waiting=deferred();h.ST.automate=(...args)=>calls.push(args);h.handlers.set('plugin.state',()=>waiting.promise);

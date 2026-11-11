@@ -50,16 +50,20 @@
     // Instrument insert chains (instrument-effects.js) are owned by their instrument.
     for (let i = 0; i < instruments.length; i++) owners.add(`instrument:${i}`);
     const sourceOwner = trackOwners[index];
-    function ownerOf(item, label, strict = false) {
-      if (!object(item)) fail(`${label} must contain objects.`);
-      if (has(item, 'owner')) {
-        if (typeof item.owner !== 'string' || !item.owner || strict && !owners.has(item.owner)) fail(`${label} has an invalid explicit owner.`);
-        return item.owner; // Beside an owner the numeric track is only a convenience copy.
+    // A plug-in descriptor names its channel by owner.
+    function pluginOwner(plugin) {
+      if (!object(plugin)) fail('Audio plug-in must contain objects.');
+      if (typeof plugin.owner !== 'string' || !owners.has(plugin.owner)) fail('Audio plug-in has an invalid owner.');
+      return plugin.owner;
+    }
+    // An automation lane names its channel by owner, or (the engine's own track parameters) its track by index.
+    function laneOwner(lane) {
+      if (!object(lane)) fail('Automation lane must contain objects.');
+      if (has(lane, 'owner')) {
+        if (typeof lane.owner !== 'string' || !lane.owner) fail('Automation lane has an invalid owner.');
+        return lane.owner;
       }
-      if (item.track === -1) return 'master';
-      if (Number.isInteger(item.track) && item.track >= 0 && item.track < tracks.length) return trackOwners[item.track];
-      if (strict) fail(`${label} has no unambiguous track owner.`);
-      return null;
+      return Number.isInteger(lane.track) && lane.track >= 0 && lane.track < tracks.length ? trackOwners[lane.track] : null;
     }
     const needed = new Set([source.instrument]);
     for (const pattern of patterns) {
@@ -78,13 +82,13 @@
           }
         }
       }
-      for (const lane of array(pattern.automation, 'Automation lanes', true)) ownerOf(lane, 'Automation lane');
+      for (const lane of array(pattern.automation, 'Automation lanes', true)) laneOwner(lane);
     }
     const sourceClips = clips.filter(clip => { if (!object(clip)) fail('Audio clips must contain objects.'); return clip.track === index; });
     if (clips.length + sourceClips.length > 256) fail('Track duplication would exceed 256 audio clips.');
     const pluginIDs = new Set(), pluginSlots = new Set(), sourcePlugins = [];
     for (const plugin of plugins) {
-      const owner = ownerOf(plugin, 'Audio plug-in', true), kind = plugin.kind || 'effect', slot = plugin.slot ?? 0;
+      const owner = pluginOwner(plugin), kind = plugin.kind || 'effect', slot = plugin.slot ?? 0;
       if (!['instrument', 'effect'].includes(kind) || !Number.isInteger(slot) || slot < 0 || slot >= INSERT_SLOTS || kind === 'instrument' && (slot !== 0 || !owner.startsWith('track:'))) fail('Audio plug-in has an invalid slot or owner.');
       const location = `${owner}/${kind}/${slot}`;
       if (pluginSlots.has(location)) fail('Two audio plug-ins occupy the same owner and slot.');
@@ -138,8 +142,7 @@
     }
     newTrack.instrument = instrumentMap.get(source.instrument);
     const pluginCopies = sourcePlugins.map(plugin => {
-      const copied = clone(plugin); copied.track = trackIndex;
-      if (has(copied, 'owner')) copied.owner = newOwner;
+      const copied = clone(plugin); copied.owner = newOwner;
       copied.instanceID = fresh();
       if (plugin.instanceID) instanceMap.set(plugin.instanceID, copied.instanceID);
       return copied;
@@ -147,11 +150,9 @@
     function remapDescriptor(descriptor) {
       if (!object(descriptor) || !instanceMap.has(descriptor.instanceID)) return;
       descriptor.instanceID = instanceMap.get(descriptor.instanceID);
-      if (has(descriptor, 'owner')) descriptor.owner = newOwner;
-      if (has(descriptor, 'track')) descriptor.track = trackIndex;
+      descriptor.owner = newOwner;
     }
     for (const next of instrumentMap.values()) remapDescriptor(instruments[next].plugin);
-    if (Array.isArray(newTrack.plugins)) newTrack.plugins.forEach(remapDescriptor);
     for (const send of sourceSends) { const copied = clone(send); copied.id = fresh(); copied.source = newOwner; sendMap.set(send.id, copied.id); sends.push(copied); }
     for (const route of sourceSidechains) {
       const copied = clone(route); copied.id = fresh(); copied.destination.instanceID = instanceMap.get(route.destination.instanceID);
@@ -169,9 +170,9 @@
       while (pattern.steps.length < trackIndex) pattern.steps.push(Array(pattern.length).fill(null));
       pattern.steps.push(column);
       const lanes = array(pattern.automation, 'Automation lanes', true);
-      const copies = lanes.filter(lane => ownerOf(lane, 'Automation lane') === sourceOwner).map(lane => {
-        const copied = clone(lane); copied.id = fresh(); copied.track = trackIndex;
-        if (has(copied, 'owner')) copied.owner = newOwner;
+      const copies = lanes.filter(lane => laneOwner(lane) === sourceOwner).map(lane => {
+        const copied = clone(lane); copied.id = fresh();
+        if (has(copied, 'owner')) copied.owner = newOwner; else copied.track = trackIndex;
         if (instanceMap.has(copied.instanceID)) copied.instanceID = instanceMap.get(copied.instanceID);
         if (typeof copied.target === 'string' && copied.target.startsWith('send:') && sendMap.has(copied.target.slice(5))) copied.target = `send:${sendMap.get(copied.target.slice(5))}`;
         return copied;
@@ -182,7 +183,7 @@
     if (sourceClips.length) proposal.audioClips = clips;
     // Each copied instrument takes its insert chain, with fresh instance identities.
     const chainCopies = [...instrumentMap].flatMap(([old, next]) => plugins.filter(plugin => plugin.owner === `instrument:${old}`).map(plugin => {
-      const copied = clone(plugin); copied.owner = `instrument:${next}`; delete copied.track;
+      const copied = clone(plugin); copied.owner = `instrument:${next}`;
       copied.instanceID = fresh();
       if (plugin.instanceID) instanceMap.set(plugin.instanceID, copied.instanceID);
       if (plugin.instanceID && proposal.pluginPages?.[plugin.instanceID]) proposal.pluginPages[copied.instanceID] = clone(proposal.pluginPages[plugin.instanceID]);
@@ -244,7 +245,7 @@
     for (const [from, to] of ownerMap) if (from.startsWith('track:') && routing.outputs[to] === sourceOwner) routing.outputs[to] = busOwner;
     const plugins = array(proposal.audioPlugins, 'Audio plug-ins', true);
     const busPlugins = plugins.filter(plugin => object(plugin) && plugin.owner === sourceOwner).map(plugin => {
-      const copied = clone(plugin); copied.owner = busOwner; delete copied.track; copied.instanceID = fresh();
+      const copied = clone(plugin); copied.owner = busOwner; copied.instanceID = fresh();
       if (plugin.instanceID) instanceMap.set(plugin.instanceID, copied.instanceID);
       newPluginInstanceIDs.push(copied.instanceID);
       return copied;

@@ -50,7 +50,7 @@ use super::insert::{BlockInfo, InsertFactory, InsertProcessor, PassThrough, Proc
 use super::meters::{block_peak, MeterBank};
 use super::pdc::{self, DelayLine};
 use super::sends::{DelayReturn, ReverbReturn};
-use super::spec::{Destination, GraphSpec, RouteDestination, SendEffectsSpec, StripKind, INSERT_SLOTS};
+use super::spec::{Destination, GraphSpec, RouteDestination, SendEffectsSpec, StripKind};
 use super::tap::{StripTap, TapBlock, NOT_PLAYING};
 use crate::inputs::LineFeed;
 use st_project::model::Tap;
@@ -58,7 +58,7 @@ use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
-use tracker_engine::engine::abi::{STEvent, ST_EVENT_ALL_NOTES_OFF, ST_EVENT_HOST_PARAMETER, ST_EVENT_NOTE_OFF, ST_EVENT_NOTE_ON, ST_EVENT_PARAMETER, ST_TARGET_DELAY, ST_TARGET_PAN, ST_TARGET_PLUGIN, ST_TARGET_REVERB, ST_TARGET_VOLUME};
+use tracker_engine::engine::abi::{STEvent, ST_EVENT_ALL_NOTES_OFF, ST_EVENT_HOST_PARAMETER, ST_EVENT_NOTE_OFF, ST_EVENT_NOTE_ON, ST_EVENT_PARAMETER, ST_TARGET_DELAY, ST_TARGET_PAN, ST_TARGET_REVERB, ST_TARGET_VOLUME};
 use tracker_engine::engine::host::BlockView;
 
 /// State owned by the render side but allocated and freed by the control thread.
@@ -231,8 +231,6 @@ struct TrackTargets {
     strip: u32,
     delay_send: u32,
     reverb_send: u32,
-    /// The track's own inserts by slot.
-    inserts: [u32; INSERT_SLOTS],
     /// Index (in the plan's inserts) of the track's instrument plug-in, or `u32::MAX`.
     instrument: u32,
 }
@@ -750,7 +748,7 @@ impl Compiler {
 
         // Where engine events land.
         let track_count = spec.strips.iter().filter_map(|strip| if let StripKind::Track(track) = strip.kind { Some(track + 1) } else { None }).max().unwrap_or(0);
-        let mut track_targets = vec![TrackTargets { strip: NO_TARGET, delay_send: NO_TARGET, reverb_send: NO_TARGET, inserts: [NO_TARGET; INSERT_SLOTS], instrument: NO_TARGET }; track_count];
+        let mut track_targets = vec![TrackTargets { strip: NO_TARGET, delay_send: NO_TARGET, reverb_send: NO_TARGET, instrument: NO_TARGET }; track_count];
         for (index, strip) in spec.strips.iter().enumerate() {
             let StripKind::Track(track) = strip.kind else { continue };
             let targets = &mut track_targets[track];
@@ -760,8 +758,6 @@ impl Compiler {
             for (insert, description) in strip_inserts[index].clone().zip(&strip.inserts) {
                 if description.instrument.is_some() {
                     targets.instrument = insert as u32;
-                } else if !description.instrument_chain && description.slot < INSERT_SLOTS {
-                    targets.inserts[description.slot] = inserts[insert].target;
                 }
             }
         }
@@ -1076,9 +1072,6 @@ impl Plan {
                     ST_TARGET_PAN => schedule(targets.strip, PARAM_PAN, event.value.clamp(-1.0, 1.0)),
                     ST_TARGET_DELAY => schedule(targets.delay_send, PARAM_GAIN, event.value.clamp(0.0, 1.0)),
                     ST_TARGET_REVERB => schedule(targets.reverb_send, PARAM_GAIN, event.value.clamp(0.0, 1.0)),
-                    ST_TARGET_PLUGIN if (0..INSERT_SLOTS as i32).contains(&event.slot) && event.address <= u32::MAX as u64 => {
-                        schedule(targets.inserts[event.slot as usize], event.address as u32, event.value.clamp(0.0, 1.0))
-                    }
                     _ => {}
                 }
             }

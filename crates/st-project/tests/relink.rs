@@ -29,7 +29,7 @@ fn fixture(sample: &str, zone: Option<&str>, clip: Option<&str>) -> Project {
     let mut project = json!({
         "version": 1, "name": "Relink fixture", "bpm": 120.0, "linesPerBeat": 4, "tracks": [{ "id": 0, "routingID": "t0" }], "routing": {},
         "instruments": [instrument], "patterns": [{ "id": 0, "length": 64, "steps": [[]] }], "sequence": [0],
-        "audioPlugins": [{ "opaqueVendorState": { "path": "/keep/opaque/plugin.wav" } }]
+        "audioPlugins": [{ "owner": "master", "opaqueVendorState": { "path": "/keep/opaque/plugin.wav" } }]
     });
     if let Some(clip) = clip {
         project["audioClips"] = json!([{ "id": "clip-1", "name": "Field recording", "track": 0, "path": clip, "startBeat": 4.0, "durationBeats": 8.0, "sourceOffset": 1.25, "fadeIn": 0.2, "gain": 0.6 }]);

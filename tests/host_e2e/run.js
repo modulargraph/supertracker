@@ -421,7 +421,7 @@ async function main() {
     await page.waitForFunction(id => (ST.state.project.audioPlugins || []).some(item => item.component === id && item.instanceID && item.state), GAIN, { timeout: 20000 })
       .catch(async error => { throw new Error('The plug-in was not inserted: ' + await toasts(page) + '\n' + error.message); });
     const inserted = await page.evaluate(id => ST.state.project.audioPlugins.find(item => item.component === id), GAIN);
-    const target = { owner: inserted.owner, track: inserted.track, kind: 'effect', slot: inserted.slot };
+    const target = { owner: inserted.owner, kind: 'effect', slot: inserted.slot };
     if (!target.owner) delete target.owner;
     assert.equal(inserted.track ?? track, track, 'the insert is on the selected track');
     assert.match(await toasts(page), /ST Test Gain added/);

@@ -4,10 +4,10 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = web.source('nks-loader.js');
 const copy = value => JSON.parse(JSON.stringify(value));
-const descriptor = { component: 'vst3:TEST', track: 0, kind: 'instrument', slot: 0,
+const descriptor = { component: 'vst3:TEST', owner: 'track:t0', kind: 'instrument', slot: 0,
   state: 'restorable-state', name: 'Test synth', format: 'VST3', nks: { name: 'Mapped patch', pages: [] } };
 function environment() {
-  const project = { tracks: [{ instrument: 0 }], instruments: [{ id: 0, name: 'Previous', type: 'synth' }],
+  const project = { tracks: [{ instrument: 0, routingID: 't0' }], instruments: [{ id: 0, name: 'Previous', type: 'synth' }],
     patterns: [{ steps: [[{ note: 60, velocity: 97 }]] }], audioPlugins: [] };
   const calls = [], undo = [], notices = [];
   const state = { native: true, project, track: 0, instrument: 0 };
@@ -49,7 +49,7 @@ async function main() {
     const result = e.loader.load('/Library/Fixture.nksf');
     while (!resolve) await Promise.resolve();
     assert.equal(await e.loader.load('/Library/Other.nksf'), false);
-    e.state.project = { tracks: [{ instrument: 0 }], instruments: [{ name: 'New project' }], audioPlugins: [] };
+    e.state.project = { tracks: [{ instrument: 0, routingID: 't0' }], instruments: [{ name: 'New project' }], audioPlugins: [] };
     resolve(copy(descriptor));
     assert.equal(await result, false); assert.equal(e.undo.length, 0);
     assert.equal(e.calls.at(-1).command, 'engine.project');
@@ -61,7 +61,7 @@ async function main() {
     e.app.request = async (command, payload) => {
       e.calls.push({ command, payload });
       if (command === 'plugin.loadNKS') {
-        e.project.audioPlugins.push({ track: 0, kind: 'instrument', component: 'Changed while loading' });
+        e.project.audioPlugins.push({ owner: 'track:t0', kind: 'instrument', component: 'Changed while loading' });
         return copy(descriptor);
       }
       return {};
@@ -110,7 +110,7 @@ async function main() {
   }
   {
     const e = environment();
-    e.project.tracks.push({ instrument: 1 });
+    e.project.tracks.push({ instrument: 1, routingID: 't1' });
     e.project.instruments.push({ id: 1, name: 'Other instrument', type: 'synth' });
     e.app.request = async (command, payload) => {
       e.calls.push({ command, payload });

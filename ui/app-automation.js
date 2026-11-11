@@ -47,7 +47,8 @@
         'grainSize', 'grainPosition', 'sliceCount', 'instrumentVolume', 'instrumentPan', 'tune', 'filterAttack',
         'filterDecay', 'filterSustain', 'filterRelease', 'filterEnvAmount', 'lfo2Rate', 'lfo2Depth', 'lfoBeats',
         'lfo2Beats', 'wavetablePosition', 'grainDensity', 'grainSpray', 'grainPitchSpread', 'grainScan', 'grainReverse', 'grainStereo'];
-    const routeLane = index < 0 || target.startsWith('send:'),
+    // A lane names its channel by owner; only the engine's own track parameters name the track by index.
+    const routeLane = index < 0 || target.startsWith('send:'), ownerLane = routeLane || target.startsWith('plugin:'),
       descriptor = window.STStudio?.target?.(ownerArgument ? owner : index, target);
     const send = target.startsWith('send:')
         && p.routing.sends?.find(item => item.id === target.slice(5) && item.source === owner);
@@ -68,7 +69,7 @@
       state.view = 'automation';
     };
     const existing = pat.automation.find(item => item.target === target
-        && (owner && item.owner === owner || !routeLane && !item.owner && item.track === index));
+        && (ownerLane ? item.owner === owner : !item.owner && item.track === index));
     if (existing) {
       select(existing);
       refresh();
@@ -90,7 +91,7 @@
                     : channel?.[target] ?? inst?.[target] ?? .5);
         const lane = {
           id: uid(),
-          ...(routeLane ? { owner } : { track: index }),
+          ...(ownerLane ? { owner } : { track: index }),
           target,
           name: name || target,
           interpolation: 'linear',

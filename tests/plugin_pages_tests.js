@@ -8,9 +8,9 @@ const source = web.source('plugin-pages.js');
 const tick = async () => { for (let n = 0; n < 30; n++) await Promise.resolve(); };
 function harness() {
   const parameters = Array.from({ length: 11 }, (_, index) => ({ address: String(index), name: `P${index}`, normalized: index / 10, display: `d${index}`, writable: index !== 9, automatable: true }));
-  const instrument = { track: 0, kind: 'instrument', slot: 0, instanceID: 'inst', name: 'Synth', parameters };
-  const nksEffect = { track: 0, kind: 'effect', slot: 1, instanceID: 'fx', name: 'Delay', nks: { name: 'Echo', pages: [{ name: 'Main', parameters: [{ slot: 0, name: 'Mix', parameterID: 4, mapped: true }, { slot: 1, name: 'Gone', parameterID: 7, mapped: false }] }] } };
-  const project = { tracks: [{ instrument: 0, plugins: [] }], instruments: [{ type: 'au', plugin: { instanceID: 'inst' } }], audioPlugins: [instrument, nksEffect] };
+  const instrument = { owner: 'track:t0', kind: 'instrument', slot: 0, instanceID: 'inst', name: 'Synth', parameters };
+  const nksEffect = { owner: 'track:t0', kind: 'effect', slot: 1, instanceID: 'fx', name: 'Delay', nks: { name: 'Echo', pages: [{ name: 'Main', parameters: [{ slot: 0, name: 'Mix', parameterID: 4, mapped: true }, { slot: 1, name: 'Gone', parameterID: 7, mapped: false }] }] } };
+  const project = { tracks: [{ instrument: 0, routingID: 't0' }], instruments: [{ type: 'au', plugin: { instanceID: 'inst' } }], audioPlugins: [instrument, nksEffect] };
   const state = { project, track: 0, instrument: 0 }, calls = [], undo = [], timers = new Map(); let serial = 0;
   const ST = { state, escapeHTML: String, markDirty() {}, toast() {}, refresh() {},
     mutate(label, fn) { undo.push(label); fn(state.project); },
@@ -55,9 +55,9 @@ function harness() {
   }
   {
     const h=harness(), owner='sound:kit-a:pad-1';
-    const synth={...h.instrument,owner,track:16,instanceID:'kit-synth'};
-    const effect={...h.instrument,kind:'effect',slot:0,owner,track:16,instanceID:'kit-fx'};
-    const group={...h.nksEffect,owner:'bus:kit-group',track:80,instanceID:'kit-group-fx'};
+    const synth={...h.instrument,owner,instanceID:'kit-synth'};
+    const effect={...h.instrument,kind:'effect',slot:0,owner,instanceID:'kit-fx'};
+    const group={...h.nksEffect,owner:'bus:kit-group',instanceID:'kit-group-fx'};
     h.project.audioPlugins.push(synth,effect,group);
     h.window.STKits={controller:{view:()=>({active:true,ownerID:owner,selectedPluginID:'kit-synth'}),selectPlugin(){}}};
     const bound=h.api.controller.forOwner(owner,'kit-synth');

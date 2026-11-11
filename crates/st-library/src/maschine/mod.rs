@@ -571,7 +571,7 @@ impl ImportedGroup {
             let voice_mode = instrument.remove("voiceMode").and_then(|mode| mode.as_str().map(String::from));
             let mut track = json!({
                 "id": index, "name": sound.name, "routingID": routing_id, "groupID": group_id, "pad": sound.pad, "padNote": 60, "instrument": index,
-                "volume": sound.volume, "pan": sound.pan, "mute": sound.mute, "solo": false, "delaySend": 0.0, "reverbSend": 0.0, "plugins": [],
+                "volume": sound.volume, "pan": sound.pan, "mute": sound.mute, "solo": false, "delaySend": 0.0, "reverbSend": 0.0,
             });
             if sound.choke_group > 0 {
                 track["chokeGroup"] = json!(sound.choke_group.min(16));
@@ -582,7 +582,6 @@ impl ImportedGroup {
             for plugin in &sound.plugins {
                 let mut descriptor = plugin.clone();
                 descriptor["owner"] = json!(format!("track:{routing_id}"));
-                descriptor["track"] = json!(index);
                 plugins.push(descriptor);
             }
             outputs.insert(format!("track:{routing_id}"), json!(format!("bus:{bus_id}")));

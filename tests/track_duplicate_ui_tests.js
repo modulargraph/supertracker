@@ -22,13 +22,13 @@ function harness() {
   for (const name of ['routing-project.js', 'app.js', 'track-duplicate-project.js', 'track-duplicate.js']) web.load(context, name);
   web.pendingEditsStub(context.window, 'nksControls', 'STNKSControls', 30);
   const ST = window.ST;
-  ST.state.project = ST.normalize({ name: 'Original', tracks: [{ id: 0, routingID: 'lead', name: 'Lead', instrument: 0, volume: .7, pan: .1 }], instruments: [{ id: 0, name: 'Lead patch', type: 'au', plugin: { instanceID: 'synth', component: 'fixture' } }], patterns: [{ id: 0, length: 4, steps: [[{ note: 60, instrument: 0, fx1: { type: 'plugin', instanceID: 'synth', address: '19', value: .31 } }, null, null, null]], automation: [{ id: 'lane', track: 0, target: 'plugin:instrument:0:19', points: [{ row: 0, value: .31 }] }] }], audioPlugins: [{ track: 0, kind: 'instrument', slot: 0, instanceID: 'synth', component: 'fixture', name: 'Fixture synth', state: 'opaque-original' }, { track: 0, kind: 'effect', slot: 6, instanceID: 'effect', component: 'effect-fixture', state: 'opaque-effect' }] });
+  ST.state.project = ST.normalize({ name: 'Original', tracks: [{ id: 0, routingID: 'lead', name: 'Lead', instrument: 0, volume: .7, pan: .1 }], instruments: [{ id: 0, name: 'Lead patch', type: 'au', plugin: { instanceID: 'synth', component: 'fixture' } }], patterns: [{ id: 0, length: 4, steps: [[{ note: 60, instrument: 0, fx1: { type: 'plugin', instanceID: 'synth', address: '19', value: .31 } }, null, null, null]], automation: [{ id: 'lane', track: 0, target: 'plugin:instrument:0:19', points: [{ row: 0, value: .31 }] }] }], audioPlugins: [{ owner: 'track:lead', kind: 'instrument', slot: 0, instanceID: 'synth', component: 'fixture', name: 'Fixture synth', state: 'opaque-original' }, { owner: 'track:lead', kind: 'effect', slot: 6, instanceID: 'effect', component: 'effect-fixture', state: 'opaque-effect' }] });
   ST.state.engineReady = true; native = copy(ST.state.project);
   const publish = project => { native = copy(project); };
   handlers.set('engine.snapshot', () => copy(native));
   handlers.set('engine.project', payload => { publish(payload.project); return {}; });
   handlers.set('plugin.parameters', payload => {
-    if (!(native.audioPlugins || []).some(plugin => plugin.instanceID === payload.instanceID && plugin.track === payload.track && plugin.kind === payload.kind && plugin.slot === payload.slot)) throw Error('Exact plug-in instance was not restored');
+    if (!(native.audioPlugins || []).some(plugin => plugin.instanceID === payload.instanceID && plugin.owner === payload.owner && plugin.kind === payload.kind && plugin.slot === payload.slot)) throw Error('Exact plug-in instance was not restored');
     assert.deepEqual(copy(payload.addresses), []); return { parameters: [] };
   });
   return { ST, window, document, node, calls, handlers, publish, native: () => native, run: () => ST.perform('duplicateTrack') };
@@ -43,7 +43,7 @@ test('Cmd-K command prepares exact state, publishes atomically once, verifies sp
   assert.equal(h.ST.state.undo.length, 1); assert.deepEqual(copy(h.ST.state.undo[0].project), before);
   assert.equal(h.ST.state.track, 1); assert.equal(h.ST.state.instrument, 1); assert.equal(h.document.activeElement.id, 'tracker');
   const verified = h.calls.filter(call => call.command === 'plugin.parameters').map(call => call.payload);
-  assert.deepEqual(verified.map(value => value.slot).sort(), [0, 6]); assert(verified.every(value => value.track === 1 && !['synth', 'effect'].includes(value.instanceID)));
+  assert.deepEqual(verified.map(value => value.slot).sort(), [0, 6]); assert(verified.every(value => value.owner === `track:${h.ST.state.project.tracks[1].routingID}` && !['synth', 'effect'].includes(value.instanceID)));
   assert.equal(owner.audioPlugins[2].state, 'opaque-original'); assert.equal(owner.audioPlugins[3].state, 'opaque-effect');
 });
 test('undo and redo keep the same independent identities and opaque copied state', async () => {

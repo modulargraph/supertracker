@@ -233,6 +233,7 @@
   // What deleting these tracks removes: notes, patterns, automation lanes, clips and plug-ins.
   function contentSummary(p, indices) {
     const chosen = new Set(indices), owners = new Set(indices.map(i => G().trackOwner(p.tracks[i])).filter(Boolean));
+    // A lane names its channel by owner, or (the engine's own track parameters) its track by index.
     const belongs = item => item && (item.owner ? owners.has(item.owner) : chosen.has(item.track));
     let notes = 0, steps = 0, lanes = 0;
     const patterns = new Set();
@@ -245,7 +246,7 @@
       lanes += (pat.automation || []).filter(belongs).length;
     }
     const clips = [...(p.audioClips || []), ...(p.patternClips || [])].filter(item => chosen.has(item?.track)).length;
-    const plugins = (p.audioPlugins || []).filter(belongs).length;
+    const plugins = (p.audioPlugins || []).filter(item => owners.has(item?.owner)).length;
     return { notes, steps, patterns: patterns.size, lanes, clips, plugins, total: steps + lanes + clips + plugins };
   }
 

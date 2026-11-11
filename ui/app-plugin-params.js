@@ -16,14 +16,17 @@
   let pluginParameterOpen = 0;
   let pluginParameterDialog = null;
 
+  // The track whose mixer channel is `owner` (`track:<routingID>`); null for a bus, Master or an instrument chain.
+  const trackOf = (project, owner) => project.tracks.find(track => `track:${track.routingID}` === owner) || null;
+
   function pluginParameterCurrent(edit) {
     if (state.project !== edit.project
-        || edit.trackObject && edit.project.tracks[edit.target.track] !== edit.trackObject) return null;
+        || edit.trackObject && trackOf(edit.project, edit.target.owner) !== edit.trackObject) return null;
     return edit.project.audioPlugins?.find(plugin => plugin.instanceID === edit.target.instanceID
         && plugin.component === edit.component
         && plugin.kind === edit.target.kind
         && (plugin.slot ?? 0) === (edit.target.slot ?? 0)
-        && (edit.target.owner ? plugin.owner === edit.target.owner : plugin.track === edit.target.track))
+        && plugin.owner === edit.target.owner)
         || null;
   }
 
@@ -93,7 +96,7 @@
         && plugin.component === edit.component
         && plugin.kind === edit.target.kind
         && (plugin.slot ?? 0) === (edit.target.slot ?? 0)
-        && (edit.target.owner ? plugin.owner === edit.target.owner : plugin.track === edit.target.track));
+        && plugin.owner === edit.target.owner);
     if (!replacement) {
       closeModal();
       return;
@@ -101,7 +104,7 @@
     // Only the acknowledged Save replacement can retain the existing dialog.
     // Undo, Open and arbitrary same-slot replacements still cancel its ownership.
     edit.project = next;
-    edit.trackObject = edit.target.track === undefined ? null : next.tracks[edit.target.track];
+    edit.trackObject = trackOf(next, edit.target.owner);
   }
 
   function commitPluginParameterEdit(edit) {
@@ -149,9 +152,7 @@
           || snapshot.component !== edit.component
           || snapshot.kind !== edit.target.kind
           || (snapshot.slot ?? 0) !== (edit.target.slot ?? 0)
-          || (edit.target.owner
-              ? snapshot.owner !== edit.target.owner
-              : snapshot.track !== edit.target.track)) throw new Error('The plug-in changed before its control edit could be saved.');
+          || snapshot.owner !== edit.target.owner) throw new Error('The plug-in changed before its control edit could be saved.');
       // A newer gesture owns the final desired values; never publish an older
       // capture that would schedule engine.project over those pending writes.
       if (edit.revision !== revision) return true;
@@ -266,14 +267,14 @@
       previousDialog = $('.modal');
     const matches = plugin => plugin.kind === target.kind
         && (plugin.slot ?? 0) === (target.slot ?? 0)
-        && (target.owner ? plugin.owner === target.owner : plugin.track === target.track);
+        && plugin.owner === target.owner;
     const initial = owner.audioPlugins?.find(matches),
       instanceID = initial?.instanceID;
     try {
       if (!instanceID) throw new Error('The plug-in instance is not ready. Wait for it to finish loading, then reopen its parameters.');
       const edit = {
         project: owner,
-        trackObject: target.track === undefined ? null : owner.tracks[target.track],
+        trackObject: trackOf(owner, target.owner),
         target: { ...target, instanceID },
         component: initial.component,
         revision: 0,
@@ -306,7 +307,7 @@
           + `<span class="parameter-top"><span class="parameter-label">${esc(param.name)}</span>`
           + `<span class="muted mono" data-param-label="${param.address ?? param.id}" style="font-size:11px">${esc(param.display || param.value)}</span>`
           + `</span><input id="plugin-param-${index}" type="range" ${param.writable === false ? 'disabled' : ''} data-plugin-address="${param.address ?? param.id}"`
-          + ` ${param.automatable === false || param.writable === false ? '' : `data-automate="plugin:${target.kind}:${target.slot ?? 0}:${param.address ?? param.id}" ${target.owner ? `data-owner="${esc(target.owner)}"` : `data-track="${target.track}"`}`
+          + ` ${param.automatable === false || param.writable === false ? '' : `data-automate="plugin:${target.kind}:${target.slot ?? 0}:${param.address ?? param.id}" data-owner="${esc(target.owner)}"`
           + ` data-name="${esc(param.name)}"`}`
           + ` min="0" max="1" step="${window.STFine?.parameterStep(param) || .001}" data-parameter-steps="${window.STFine?.parameterSteps(param) || 0}"`
           + ` value="${param.normalized ?? ((param.value - param.min) / (param.max - param.min) || 0)}">`

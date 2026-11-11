@@ -201,7 +201,7 @@
       // Plug-in / hardware instruments: track channel controls here, plug-in pages on PLUG-IN.
       return { id: 'channel', title: 'Channel', main: mk.listMainInstrument(),
         buttons: mk.withLevels([button('Editor', () => S().request('plugin.editor', {
-          track,
+          owner: `track:${t.routingID}`,
           kind: 'instrument',
           slot: 0
         }).catch(error => S().toast(error.message, 'error'))), button('Plug-in',

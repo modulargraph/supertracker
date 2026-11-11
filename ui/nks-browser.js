@@ -196,7 +196,7 @@
   }
   function effectSlots() {
     const state = S().state, effects = [];
-    (state.project?.audioPlugins || []).filter(plugin => plugin.track === Number(state.track || 0) && plugin.kind === 'effect').forEach(plugin => { effects[plugin.slot ?? 0] = plugin; });
+    (state.project?.audioPlugins || []).filter(plugin => plugin.owner === `track:${state.project.tracks?.[state.track]?.routingID}` && plugin.kind === 'effect').forEach(plugin => { effects[plugin.slot ?? 0] = plugin; });
     return effects;
   }
   function slotChoice() {

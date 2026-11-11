@@ -47,7 +47,7 @@
       return { id, length: pattern.length, rows, lanes };
     }).filter(Boolean);
     const strip = ({ name, color, id, volume, pan, mute, solo, delaySend, reverbSend, frozen, selected, collapsed, viewState, ...rest }) => rest;
-    const plugins = (p.audioPlugins || []).filter(plugin => plugin.owner ? plugin.owner === owner : (plugin.track || 0) === index)
+    const plugins = (p.audioPlugins || []).filter(plugin => plugin.owner === owner)
       .map(({ state: _s, parameters, latency, latencyFrames, tailTime, stateError, name, editorOpen, windowFrame, ...rest }) => rest);
     return JSON.stringify({
       track: strip(track), patterns, plugins,

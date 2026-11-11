@@ -176,8 +176,8 @@ pub fn validate(project: &Project) -> Result<()> {
     }
 
     let owners = validate_routing(project, tracks)?;
-    validate_plugins(project, tracks, &owners)?;
-    validate_patterns(project, patterns, &owners)?;
+    validate_plugins(project, &owners)?;
+    validate_patterns(patterns, &owners)?;
     for (index, track) in tracks.iter().enumerate() {
         if track.extra.contains_key("frozen") {
             return fail(format!("{}: the freeze record must be an object.", track.display_name(index)));
@@ -423,8 +423,8 @@ fn find_cycle(edges: &[(String, String)]) -> Option<Vec<String>> {
     (!left.is_empty()).then(|| left.into_iter().map(str::to_string).collect())
 }
 
-/// Plug-in descriptors (`AudioRoutingAutomation.desiredPluginLayouts`, `AudioRouting.Definition.graph`).
-fn validate_plugins(project: &Project, tracks: &[Track], owners: &Owners) -> Result<()> {
+/// Plug-in descriptors: each names an existing owner, and no two share a slot.
+fn validate_plugins(project: &Project, owners: &Owners) -> Result<()> {
     if project.extra.contains_key("audioPlugins") {
         return fail("Project plug-ins must be an array of objects.");
     }
@@ -441,25 +441,19 @@ fn validate_plugins(project: &Project, tracks: &[Track], owners: &Owners) -> Res
         if plugin.extra.contains_key("instanceID") {
             return fail("Plug-in instance ID must be text.");
         }
-        let owner: String = if plugin.owner.is_some() || plugin.extra.contains_key("owner") {
-            let owner = plugin.owner.as_deref().unwrap_or("?");
-            match Owner::parse(owner) {
-                // An instrument's insert chain runs on the tracks that play it; with none it has no instance.
-                Some(Owner::Instrument(_)) => {
-                    if kind != PluginKind::Effect {
-                        continue;
-                    }
-                    owner.to_string()
+        let Some(owner) = plugin.owner.as_deref() else {
+            return fail(if plugin.extra.contains_key("owner") { "Plug-in owner must be text." } else { "A plug-in has no owner." });
+        };
+        let owner: String = match Owner::parse(owner) {
+            // An instrument's insert chain runs on the tracks that play it; with none it has no instance.
+            Some(Owner::Instrument(_)) => {
+                if kind != PluginKind::Effect {
+                    return fail("Instruments require a track's instrument slot.");
                 }
-                _ if owners.channels.contains_key(owner) => owner.to_string(),
-                _ => return fail(format!("Plug-in owner {owner} does not exist.")),
+                owner.to_string()
             }
-        } else {
-            let index = plugin.track.unwrap_or(0);
-            if plugin.extra.contains_key("track") || index < 0 || index as usize >= tracks.len() {
-                return fail("Plug-in track does not exist.");
-            }
-            tracks[index as usize].owner().unwrap_or_default()
+            _ if owners.channels.contains_key(owner) => owner.to_string(),
+            _ => return fail(format!("Plug-in owner {owner} does not exist.")),
         };
         if let Some(id) = &plugin.instance_id {
             if !is_identifier(id) {
@@ -509,8 +503,7 @@ fn validate_points(lane: &AutomationLane, length: i64, range: (f64, f64)) -> Res
 
 /// Owner automation lanes (`AudioRoutingAutomation.init`) and plug-in parameter locks
 /// (`AudioPluginStepFX.init`).
-fn validate_patterns(project: &Project, patterns: &[Pattern], owners: &Owners) -> Result<()> {
-    let _ = project;
+fn validate_patterns(patterns: &[Pattern], owners: &Owners) -> Result<()> {
     for pattern in patterns {
         for row in pattern.steps.iter().flatten().flatten().flatten() {
             for effect in [&row.fx1, &row.fx2].into_iter().flatten() {
@@ -531,9 +524,16 @@ fn validate_patterns(project: &Project, patterns: &[Pattern], owners: &Owners) -
         let length = pattern.length();
         let mut destinations = BTreeSet::new();
         for lane in pattern.automation.iter().flatten() {
-            // Track-index lanes belong to the engine, which skips what it does not know.
             if lane.owner.is_none() && !lane.extra.contains_key("owner") {
+                // A lane of the engine's own track parameters, which skips names it does not
+                // know. What the mixer plays is addressed by owner: here it would play nothing.
+                if matches!(lane.target.as_deref().and_then(AutomationTarget::parse), Some(AutomationTarget::Send(_) | AutomationTarget::Plugin { .. })) {
+                    return fail("Send and plug-in automation lanes name their channel by owner, not by track index.");
+                }
                 continue;
+            }
+            if lane.track.is_some() || lane.extra.contains_key("track") {
+                return fail("An automation lane names its channel by owner or its track by index, not both.");
             }
             let owner = lane.owner.as_deref().unwrap_or("");
             if lane.extra.contains_key("interpolation") {
@@ -553,15 +553,16 @@ fn validate_patterns(project: &Project, patterns: &[Pattern], owners: &Owners) -
             };
             let is_track = matches!(channel, Channel::Track(_));
             let range = match AutomationTarget::parse(target) {
+                // A track's own parameters are the engine's: their lanes name the track by index.
+                Some(AutomationTarget::Native(_)) if is_track => {
+                    return fail("Automation of a track's own parameters names the track by index, not by owner.");
+                }
                 Some(AutomationTarget::Native(name)) if name == "volume" => (0.0, 2.0),
                 Some(AutomationTarget::Native(name)) if name == "pan" => {
                     if owner == "master" {
                         return fail("Master pan automation is unsupported.");
                     }
                     (-1.0, 1.0)
-                }
-                Some(AutomationTarget::Native(name)) if is_track && native_automation_range(&name).is_some() => {
-                    native_automation_range(&name).unwrap_or((0.0, 1.0))
                 }
                 Some(AutomationTarget::Send(route)) => {
                     // A lane for a send that is gone is unavailable, not invalid.

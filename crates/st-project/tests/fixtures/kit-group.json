@@ -16,7 +16,6 @@
    "solo": false,
    "delaySend": 0,
    "reverbSend": 0,
-   "plugins": [],
    "chokeGroup": 1
   },
   {
@@ -33,7 +32,6 @@
    "solo": false,
    "delaySend": 0,
    "reverbSend": 0,
-   "plugins": [],
    "chokeGroup": 1
   },
   {
@@ -49,8 +47,7 @@
    "mute": false,
    "solo": false,
    "delaySend": 0,
-   "reverbSend": 0,
-   "plugins": []
+   "reverbSend": 0
   }
  ],
  "instruments": [
@@ -232,7 +229,6 @@
  "audioPlugins": [
   {
    "owner": "track:srckit-pad0",
-   "track": 0,
    "kind": "effect",
    "slot": 0,
    "component": "builtin:compressor",
@@ -242,7 +238,6 @@
   },
   {
    "owner": "track:srckit-pad5",
-   "track": 2,
    "kind": "effect",
    "slot": 2,
    "component": "builtin:delay",

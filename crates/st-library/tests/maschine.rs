@@ -781,7 +781,7 @@ fn hosted_plugin_state() {
     assert!(imported.warnings.iter().any(|warning| warning.contains("VST2 plug-in, which SuperTracker does not load")));
     assert_eq!(status_of(&imported.report, "external-state-retained").len(), 16);
     let project = imported.group_project();
-    assert_eq!((project["audioPlugins"][0]["owner"].as_str().map(|owner| owner.starts_with("track:")), project["audioPlugins"][0]["track"].as_u64()), (Some(true), Some(0)));
+    assert_eq!(project["audioPlugins"][0]["owner"], format!("track:{}", project["tracks"][0]["routingID"].as_str().unwrap()), "a Sound's plug-in is owned by its track's channel");
 }
 
 fn close(actual: Option<f64>, expected: f64, message: &str) {

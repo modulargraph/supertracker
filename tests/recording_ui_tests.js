@@ -59,7 +59,7 @@ test('recording source selected on the main page initializes master resampling w
 test('sampling a live input lane restores its source and creates a separate playable sampler track', async () => {
   const h=harness(), source=h.state.project.tracks[0];
   source.audioInput={enabled:true,deviceUID:'interface-stable-uid',channels:[4,5],gain:.7};
-  h.state.project.audioPlugins=[{track:0,kind:'instrument',instanceID:'source-instrument',slot:0}];
+  h.state.project.audioPlugins=[{owner:'track:midi-track',kind:'instrument',instanceID:'source-instrument',slot:0}];
   const before=copy(source), sourceInstrument=copy(h.state.project.instruments[0]);
   await h.open(); assert.equal(h.get('record-destination').value,'newTrack');
   assert.equal(h.get('record-input-device').value,'22'); assert.equal(h.get('record-input-left').value,'4'); assert.equal(h.get('record-input-right').value,'5');
@@ -90,7 +90,7 @@ test('new sampler track capacity is checked before recording and again before sa
 test('sampler recording removes only sidechains belonging to the replaced instrument plug-in', async () => {
   for (const destination of ['current']) {
     const h = harness();
-    h.state.project.audioPlugins = [{track:0,kind:'instrument',instanceID:'old-instrument',slot:0},{track:0,kind:'effect',instanceID:'keep-effect',slot:1}];
+    h.state.project.audioPlugins = [{owner:'track:midi-track',kind:'instrument',instanceID:'old-instrument',slot:0},{owner:'track:midi-track',kind:'effect',instanceID:'keep-effect',slot:1}];
     h.state.project.routing = {version:1,outputs:{'track:midi-track':'master'},sidechains:[{destination:{instanceID:'old-instrument'}},{destination:{instanceID:'keep-effect'}}]};
     await h.open(); h.change('record-destination',destination); await h.startStop(); await h.startStop();
     assert.equal(h.state.modal,null);
@@ -173,7 +173,7 @@ test('recording waits for settled project and native acknowledgment and cancels 
 test('failed attachment restoration preserves the capture path and reports its strict native failure', async () => {
   let syncs = 0, h;
   h = harness({ 'engine.project': () => { if (++syncs > 1) throw Error('Restore graph rejected'); return {}; }, 'plugin.remove': () => { h.state.project = copy(h.state.project); h.state.project.name = 'Replacement project'; return {}; } });
-  h.state.project.audioPlugins = [{track:0,kind:'instrument',slot:0,state:'preserved patch'}];
+  h.state.project.audioPlugins = [{owner:'track:midi-track',kind:'instrument',slot:0,state:'preserved patch'}];
   await h.open();h.change('record-destination','current'); await h.startStop(); await h.startStop();
   assert.equal(h.edits.length,0); assert(h.ui.lastRecording.path); assert(!h.ui.isRecording && !h.ui.isBusy);
   const restored = h.calls.filter(c => c.command === 'engine.project').at(-1);
@@ -309,7 +309,7 @@ test('hardware input and root are remembered in a separate undoable edit before 
 test('hardware capture adds a fresh sampler track and empty pattern columns while preserving the MIDI source and routes', async () => {
   const h = hardware(), project = h.state.project, originalTrack = project.tracks[0], originalInstrument = project.instruments[0];
   project.routing = { outputs: { 'track:midi-track': 'bus:group' }, buses: [{ id: 'group', type: 'group' }], sends: [{ id: 'original-send', source: 'track:midi-track', destination: 'bus:return', gain: .3 }], sidechains: [] };
-  project.audioPlugins = [{ track: 0, kind: 'effect', slot: 0, state: 'source effect preserved' }];
+  project.audioPlugins = [{ owner:'track:midi-track', kind: 'effect', slot: 0, state: 'source effect preserved' }];
   const before = copy(project); await h.open({ hardwareSample: true }); h.get('record-name').value = 'Hardware C sharp';
   await h.startStop(); const rememberedSource = copy(originalInstrument); await h.startStop();
   assert.equal(h.state.modal, null); assert.equal(project.tracks.length, 2); assert.equal(project.instruments.length, 2);

@@ -29,8 +29,9 @@ function harness(view='instrument'){
   for(const file of ['routing-project.js','studio.js'])web.load(context, file);
   window.STRoutingProject.ensureTrackIDs(state.project);state.project.patterns.forEach(p=>p.automation=[]);ST.refresh();h.calls.length=0;state.undo=[];
   return {...h,handlers,async boot(){handlers.set('ready',()=>({project:state.project}));await ST.boot();state.view=view;ST.refresh();h.calls.length=0;state.undo=[];},contextAction(control){const event={target:control,clientX:40,clientY:40,preventDefault(){}};for(const fn of listeners.get('contextmenu')||[])fn(event);h.get('context-automate').click();},async plugin(){
-    const plugin={track:0,kind:'instrument',slot:0,instanceID:'original-instance',component:'original-fixture',state:'state:.25',name:'Original fixture',parameters:[{address:'71',name:'Brightness',normalized:.25,writable:true,automatable:true}]};state.project.instruments[0].type='au';state.project.audioPlugins=[plugin];state.view='instrument';ST.refresh();
-    handlers.set('plugin.parameters',()=>plugin.parameters);handlers.set('plugin.state',()=>({...plugin,state:'state:.61'}));handlers.set('engine.snapshot',()=>({audioPlugins:copy(state.project.audioPlugins)}));h.get('plugin-parameters').focus();await ST.showPluginParameters({track:0,kind:'instrument',slot:0});return h.get('plugin-param-0');
+    const owner=`track:${state.project.tracks[0].routingID}`;
+    const plugin={owner,kind:'instrument',slot:0,instanceID:'original-instance',component:'original-fixture',state:'state:.25',name:'Original fixture',parameters:[{address:'71',name:'Brightness',normalized:.25,writable:true,automatable:true}]};state.project.instruments[0].type='au';state.project.audioPlugins=[plugin];state.view='instrument';ST.refresh();
+    handlers.set('plugin.parameters',()=>plugin.parameters);handlers.set('plugin.state',()=>({...plugin,state:'state:.61'}));handlers.set('engine.snapshot',()=>({audioPlugins:copy(state.project.audioPlugins)}));h.get('plugin-parameters').focus();await ST.showPluginParameters({owner,kind:'instrument',slot:0});return h.get('plugin-param-0');
   }};
 }
 function handedOff(h,source,target,existing){
@@ -56,14 +57,14 @@ for(const view of ['instrument','mixer'])for(const existing of [false,true])test
 });
 for(const existing of [false,true])test(`generic parameter context action ${existing?'selects existing':'creates new'} lane and closes its modal`,async()=>{
   const h=harness();await h.boot();const input=await h.plugin(),target='plugin:instrument:0:71';let prior;
-  if(existing){prior={id:'plugin-lane',track:0,target,name:'Brightness',points:[{row:0,value:.2}]};h.ST.pattern().automation.push(prior);}
+  if(existing){prior={id:'plugin-lane',owner:`track:${h.state.project.tracks[0].routingID}`,target,name:'Brightness',points:[{row:0,value:.2}]};h.ST.pattern().automation.push(prior);}
   input.focus();h.state.dirty=false;h.calls.length=0;h.timers.clear();const before=checkpoint(h);h.contextAction(input);assert.equal(h.state.undo.length,existing?0:1);focusedEnvelope(h);if(existing)await pureNavigation(h,before);handedOff(h,input,target,prior);await tick();assert.equal(h.document.activeElement.id,'automation-envelope');
 });
 test('existing lanes remain pure navigation during export and routing edits, retaining clean or dirty history',async()=>{
   for(const view of ['instrument','mixer','plugin'])for(const blocker of ['export','routing'])for(const dirty of [false,true]){
     const h=harness(view==='plugin'?'instrument':view);const input=view==='plugin'?await h.plugin():h.get(view==='mixer'?'mix-vol-0':'param-value-cutoff');
     const target=view==='plugin'?'plugin:instrument:0:71':view==='mixer'?'volume':'cutoff';
-    const lane={id:'existing',track:0,target,name:'Do not rename',interpolation:'step',points:[{row:2,value:view==='instrument'?800:.3}]};h.ST.pattern().automation.push(lane);
+    const lane={id:'existing',...(view==='plugin'?{owner:`track:${h.state.project.tracks[0].routingID}`}:{track:0}),target,name:'Do not rename',interpolation:'step',points:[{row:2,value:view==='instrument'?800:.3}]};h.ST.pattern().automation.push(lane);
     h.state.undo.push({label:'Prior musical edit',project:copy(h.state.project)});h.state.redo.push({label:'Future musical edit',project:copy(h.state.project)});h.state.dirty=dirty;
     h.window[blocker==='export'?'STExport':'STRouting']=blocker==='export'?{isBusy:true}:{isApplying:true};input.focus();h.calls.length=0;h.timers.clear();const before=checkpoint(h);
     h.key(input,'å',{code:'KeyA',altKey:true});focusedEnvelope(h);await pureNavigation(h,before);

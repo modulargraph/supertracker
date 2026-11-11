@@ -347,14 +347,12 @@
   function pluginOn(p, t, kind, slot = 0) {
     return (p.audioPlugins || []).find(plugin => onTrack(p, plugin, t) && plugin.kind === kind && (plugin.slot ?? 0) === slot) || null;
   }
-  function pluginTarget(plugin, t) {
-    return { track: t, owner: plugin.owner, kind: plugin.kind, slot: plugin.slot ?? 0, instanceID: plugin.instanceID };
-  }
+  const pluginTarget = plugin => ({ owner: plugin.owner, kind: plugin.kind, slot: plugin.slot ?? 0, instanceID: plugin.instanceID });
 
   /* Mixer channels, as the mixer (studio.js) and routing (routing.js) address them: {type: 'track' | 'group' |
      'return' | 'master', owner: 'track:<routingID>' | 'bus:<id>' | 'master', name, track?, bus?}. Callers name
      them "master", by bus name or "bus:<id>", or like tracks (index or name). */
-  const trackChannel = (p, t) => ({ type: 'track', owner: `track:${p.tracks[t].routingID || t}`, name: p.tracks[t].name, track: t });
+  const trackChannel = (p, t) => ({ type: 'track', owner: `track:${p.tracks[t].routingID}`, name: p.tracks[t].name, track: t });
   const busChannel = bus => ({ type: bus.type === 'return' ? 'return' : 'group', owner: `bus:${bus.id}`, name: bus.name || 'Bus', bus: bus.id });
   const MASTER = Object.freeze({ type: 'master', owner: 'master', name: 'Master' });
   function channelList(p) {
@@ -399,9 +397,7 @@
     if (ref.channel.type === 'track') return pluginOn(p, ref.channel.track, ref.kind, ref.slot);
     return ref.kind === 'effect' ? channelEffects(p, ref.channel).find(plugin => (plugin.slot ?? 0) === ref.slot) || null : null;
   }
-  function slotTarget(plugin, ch) {
-    return ch.type === 'track' ? pluginTarget(plugin, ch.track) : { owner: ch.owner, kind: plugin.kind, slot: plugin.slot ?? 0, instanceID: plugin.instanceID };
-  }
+
   const insertOut = plugin => ({ slot: plugin.slot ?? 0, name: plugin.nks?.name || plugin.name, format: plugin.format, bypass: !!plugin.bypass,
     ...(plugin.instanceID ? { instanceID: plugin.instanceID } : {}) });
   /* track or channel (not both); without either, the track under the cursor. */
@@ -1028,8 +1024,7 @@
         solo: false,
         instrument: instrument ?? 0,
         delaySend: 0,
-        reverbSend: 0,
-        plugins: []
+        reverbSend: 0
       };
       if (window.STRoutingProject?.appendTrack) window.STRoutingProject.appendTrack(target, track, S().uid); else target.tracks.push(track);
       target.patterns.forEach(pat => pat.steps.push(Array(pat.length).fill(null)));
@@ -1345,8 +1340,7 @@
     }
     const owner = p,
       trackObject = p.tracks[track],
-      // Track plug-ins are addressed by owner, as the mixer does (studio.js ownerPayload).
-      target = { track, owner: trackChannel(p, track).owner, kind, slot, component: plugin.id, ...(plugin.bundlePath ? { bundlePath: plugin.bundlePath } : {}) };
+      target = { owner: trackChannel(p, track).owner, kind, slot, component: plugin.id, ...(plugin.bundlePath ? { bundlePath: plugin.bundlePath } : {}) };
     const stillValid = () => st().project === owner && owner.tracks[track] === trackObject;
     // The slot holds this load's instance.
     const attached = list => (Array.isArray(list) ? list : []).find(item => item.owner === target.owner
@@ -1362,14 +1356,13 @@
       snapshot = await S().request('plugin.state', {});
     } catch (error) { if (error instanceof AgentError) throw error; fail(`Could not load ${plugin.name}: ${error.message || error}`); }
     if (!stillValid()) { await S().syncEngineProject(() => clone(st().project)); fail('The session changed while the plug-in was loading; it was not attached.'); }
-    if (Array.isArray(snapshot) && !attached(snapshot)) {
+    if (!attached(snapshot)) {
       await S().syncEngineProject(() => clone(st().project)).catch(() => undefined);
       fail(`${plugin.name} was not attached: the audio host no longer lists it on track ${track} (${kind}${kind === 'effect' ? ' slot ' + slot : ''}). Try again.`);
     }
     let instrumentIndex = null;
     const out = commit(`load ${plugin.name} on ${trackObject.name}`, project => {
-      if (Array.isArray(snapshot)) project.audioPlugins = clone(snapshot);
-      else { project.audioPlugins = (project.audioPlugins || []).filter(x => !(onTrack(project, x, track) && x.kind === kind && (x.slot ?? 0) === slot)); project.audioPlugins.push({ ...clone(result), ...target }); }
+      project.audioPlugins = clone(snapshot);
       // Never record a load the project does not hold.
       if (!attached([pluginOn(project, track, kind, slot)].filter(Boolean))) fail(`${plugin.name} was not attached to track ${track}.`);
       if (kind === 'instrument') {
@@ -1384,7 +1377,7 @@
         inst.plugin = clone(result);
         inst.name = plugin.name;
         project.tracks[track].instrument = instrumentIndex;
-      } else { project.tracks[track].plugins ||= []; project.tracks[track].plugins[slot] = clone(result); }
+      }
       return {};
     });
     return { ...out, plugin: { name: plugin.name, format: plugin.format, id: plugin.id }, track, kind, slot, ...(instrumentIndex !== null
@@ -1419,7 +1412,7 @@
         : ''}`);
     let list;
     try { list = await S().request('plugin.parameters',
-        slotTarget(plugin, channel)); } catch (error) { fail(`Could not read ${plugin.name} parameters: ${error.message || error}`); }
+        pluginTarget(plugin)); } catch (error) { fail(`Could not read ${plugin.name} parameters: ${error.message || error}`); }
     return { plugin, list: Array.isArray(list) ? list : [] };
   }
   /* {channel, kind, slot} for the plug-in tools: tracks default to their instrument, buses and master to effects. */
@@ -1483,9 +1476,7 @@
       if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot) || typeof snapshot.state !== 'string' || !snapshot.state)
         fail('The plug-in did not return its saved state. The edit remains pending; retry Save to capture it.');
       if (snapshot.instanceID !== edit.target.instanceID || snapshot.component !== edit.component || snapshot.kind !== edit.target.kind ||
-          (snapshot.slot ?? 0) !== edit.target.slot || (edit.target.owner
-              ? snapshot.owner !== edit.target.owner
-              : snapshot.track !== edit.target.track))
+          (snapshot.slot ?? 0) !== edit.target.slot || snapshot.owner !== edit.target.owner)
         fail('The plug-in returned state for a different instance or slot. The edit remains pending.');
       const result = commit(edit.label, project => {
         const old = slotPlugin(project, edit.ref);
@@ -1600,7 +1591,7 @@
       if (!Number.isFinite(normalized) || normalized < 0 || normalized > 1) fail(`${item.name}: the position must be 0–100%.`);
       return { item, normalized };
     });
-    const target = slotTarget(plugin, channel),
+    const target = pluginTarget(plugin),
       applied = [],
       edit = {
         project: p,
@@ -1754,8 +1745,8 @@
         || known?.label
         || target, descriptor };
   }
-  /* Bus and master lanes (and track send lanes) are owner lanes {owner, target}, as app-automation.js creates them;
-     they play through AudioRoutingAutomation, which needs standard routing. */
+  /* Bus and master lanes, and the send and plug-in lanes of any channel, are owner lanes {owner, target}, as
+     app-automation.js creates them: the mixer plays them. */
   function ownerAutomationSpec(p, channel, target) {
     const descriptor = window.STStudio?.target?.(channel.owner, target), master = channel.type === 'master';
     const effect = /^plugin:effect:(\d+):(.+)$/.exec(target);
@@ -1776,11 +1767,13 @@
     }
     fail(`"${target}" cannot be automated on ${channelLabel(channel)}. Targets: ${master ? 'volume' : 'volume, pan'}, send:<id>, plugin:effect:<slot>:<address> (see automationTargets).`);
   }
-  /* The lane a call addresses: {channel, owner lane?}. Track lanes stay track lanes except for sends. */
+  /* The lane a call addresses: {channel, ownerLane, mixerSpec}. A lane names its channel by owner, except the
+     engine's own track parameters, whose lanes name the track by index. mixerSpec: the target is described by
+     ownerAutomationSpec (a bus, Master or a send) rather than by the track's own automationSpec. */
   function automationChannel(p, params, target) {
     const channel = pluginChannel(p, params, { required: true });
-    const ownerLane = channel.type !== 'track' || String(target || '').startsWith('send:');
-    return { channel, ownerLane };
+    const mixerSpec = channel.type !== 'track' || String(target || '').startsWith('send:');
+    return { channel, ownerLane: mixerSpec || String(target || '').startsWith('plugin:'), mixerSpec };
   }
   const laneMatches = (lane, channel, ownerLane, target) => lane.target === target && (ownerLane ? lane.owner === channel.owner : !lane.owner && lane.track === channel.track);
   method('automationTargets', 'List parameters that can be automated on a track, bus or master (channel): built-in, instrument, sends, plug-in parameters.', ['track',
@@ -1799,8 +1792,8 @@
     const p = project(), pat = findPattern(p, params.pattern);
     if (typeof params.target !== 'string'
         || !params.target) fail('target must be an automation target id such as "cutoff", "volume" or "plugin:instrument:0:12" (see automationTargets).');
-    const { channel, ownerLane } = automationChannel(p, params, params.target), t = channel.track;
-    const spec = ownerLane ? ownerAutomationSpec(p, channel, params.target) : automationSpec(p, t, params.target);
+    const { channel, ownerLane, mixerSpec } = automationChannel(p, params, params.target), t = channel.track;
+    const spec = mixerSpec ? ownerAutomationSpec(p, channel, params.target) : automationSpec(p, t, params.target);
     if (!Array.isArray(params.points) || !params.points.length || params.points.length > 1024) fail('points must be a list of 1–1024 {row, value}.');
     const parsed = params.points.map((point, k) => {
       if (!point || !isInt(point.row) || point.row < 0 || point.row >= pat.length) fail(`points[${k}].row must be 0–${pat.length - 1}.`);
@@ -1907,7 +1900,7 @@
       tracks: q.tracks.map((_, t) => describeChannel(q, trackChannel(q, t))),
       sidechains: (q.routing.sidechains || []).map(route => {
         const plugin = (q.audioPlugins || []).find(item => item.instanceID === route.destination?.instanceID),
-          owner = plugin && (plugin.owner || (q.tracks[plugin.track] ? trackChannel(q, plugin.track).owner : null));
+          owner = plugin?.owner;
         return { id: route.id, from: route.source, fromName: channelOf(q, route.source)?.name, to: { channel: owner || null, plugin: plugin?.name || null, slot: plugin?.slot ?? null,
           input: route.destination?.layoutSignature?.name || null }, tap: route.tap, gain: formatValue('db', route.gain ?? 1), enabled: route.enabled !== false };
       }),

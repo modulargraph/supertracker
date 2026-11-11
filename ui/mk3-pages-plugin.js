@@ -286,7 +286,7 @@
     const { chain: full, nks, view } = trackChain(), track = st().track;
     const chain = full.filter(item => level === 'track' ? item.sends || item.kind === 'effect' && !item.instrumentFx : !item.sends && (item.kind !== 'effect' || item.instrumentFx));
     const browse = button('Browse', () => mk.setScreen('browser', { pluginTab: true }));
-    const editorFor = (kind, slot) => () => S().request('plugin.editor', { track, kind, slot }).catch(error => S().toast(error.message, 'error'));
+    const editorFor = (kind, slot) => () => S().request('plugin.editor', { owner: `track:${P().tracks[track]?.routingID}`, kind, slot }).catch(error => S().toast(error.message, 'error'));
     const tools = (editor, extra = []) => withLevels([editor ? button('Editor', editor, {
       shift: button('Chain', () => {
         M.overlay = 'pluginSlots';

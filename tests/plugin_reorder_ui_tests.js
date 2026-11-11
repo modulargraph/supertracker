@@ -2,7 +2,7 @@
 // Drive the real mixer module. Native fixtures model the plugin.move response contract.
 const assert = require('node:assert/strict');
 // The mixer addresses a channel by owner; the fixture's tracks are named by their index (helpers/project.js), so the owner is `track:<index>`.
-const trackOf = payload => payload.track ?? Number(String(payload.owner).split(':')[1]);
+const trackOf = payload => Number(String(payload.owner).split(':')[1]);
 const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
 const { routed } = require('./helpers/project');
@@ -16,13 +16,13 @@ function deferred() { let resolve, reject; const promise = new Promise((yes, no)
 function fixture(slots = [0, 3, 7]) {
   return routed({ activePattern: 0, tracks: [{ name: 'Keys', instrument: 0 }, { name: 'Bass', instrument: 1 }], instruments: [{ type: 'synth' }, { type: 'synth' }],
     audioPlugins: [...slots.map((slot, i) => ({ track: 0, kind: 'effect', slot, component: `fx:${i}`, name: ['Equalizer', 'Compressor', 'Echo'][i], state: `saved-${i}`, bypass: i === 1, parameters: [{ address: 42, name: 'Amount', normalized: .2 + i / 10 }] })), { track: 0, kind: 'instrument', slot: 0, component: 'instrument', state: 'preset' }, { track: 1, kind: 'effect', slot: 0, component: 'bassfx', state: 'bass' }],
-    patterns: [{ id: 0, length: 64, automation: [{ track: 0, target: `plugin:effect:${slots[0]}:42`, points: [{ row: 0, value: .25 }] }, { track: 0, target: `plugin:${slots[1]}:42`, points: [{ row: 4, value: .75 }] }, { track: 0, target: 'plugin:instrument:0:42', points: [{ row: 0, value: .5 }] }, { track: 1, target: 'plugin:effect:0:42', points: [] }] }, { id: 1, length: 32, automation: [{ track: 0, target: `plugin:effect:${slots[2]}:99:part`, points: [{ row: 20, value: .6 }] }, { track: 0, target: 'volume', points: [] }] }] });
+    patterns: [{ id: 0, length: 64, automation: [{ owner: 'track:0', target: `plugin:effect:${slots[0]}:42`, points: [{ row: 0, value: .25 }] }, { owner: 'track:0', target: `plugin:effect:${slots[1]}:42`, points: [{ row: 4, value: .75 }] }, { owner: 'track:0', target: 'plugin:instrument:0:42', points: [{ row: 0, value: .5 }] }, { owner: 'track:1', target: 'plugin:effect:0:42', points: [] }] }, { id: 1, length: 32, automation: [{ owner: 'track:0', target: `plugin:effect:${slots[2]}:99:part`, points: [{ row: 20, value: .6 }] }, { track: 0, target: 'volume', points: [] }] }] });
 }
 function response(owner, track, fromSlot, toSlot) {
-  const before = clone(owner.audioPlugins.filter(p => p.track === track && p.kind === 'effect').sort((a, b) => a.slot - b.slot)).map((p, i) => ({ ...p, instanceID: p.instanceID || `instance-${i}`, state: `live-${i}` }));
+  const before = clone(owner.audioPlugins.filter(p => p.owner === `track:${track}` && p.kind === 'effect').sort((a, b) => a.slot - b.slot)).map((p, i) => ({ ...p, instanceID: p.instanceID || `instance-${i}`, state: `live-${i}` }));
   const slots = before.map(p => p.slot), from = slots.indexOf(fromSlot), to = slots.indexOf(toSlot), ordered = before.slice(); ordered.splice(to, 0, ordered.splice(from, 1)[0]);
   const after = ordered.map((p, i) => ({ ...p, slot: slots[i] }));
-  return { moved: true, owner: `track:${track}`, track, fromSlot, toSlot, previousPlugins: before, plugins: after, slotMap: before.map(p => ({ fromSlot: p.slot, toSlot: after.find(q => q.instanceID === p.instanceID).slot, instanceID: p.instanceID })) };
+  return { moved: true, owner: `track:${track}`, fromSlot, toSlot, previousPlugins: before, plugins: after, slotMap: before.map(p => ({ fromSlot: p.slot, toSlot: after.find(q => q.instanceID === p.instanceID).slot, instanceID: p.instanceID })) };
 }
 function harness(slots) {
   const nodes = new Map(), groups = new Map(), calls = [], mutations = [], errors = [], timers = new Map(); let timerID = 0, refreshes = 0;
@@ -31,15 +31,15 @@ function harness(slots) {
     const item = { id, dataset, tagName, type: tagName === 'INPUT' ? 'range' : '', handlers: {}, value: '.5', disabled: false, style: {}, classList: { toggle() {} }, setAttribute() {}, addEventListener(type, fn) { (this.handlers[type] ||= []).push(fn); }, focus() { document.activeElement = this; }, scrollIntoView() { this.scrolled = true; }, closest(selector) { return selector === '.studio-plugin > summary' && this.tagName === 'SUMMARY' ? this : null; }, async fire(type, extra = {}) { for (const fn of this.handlers[type] || []) await fn({ target: this, ...extra }); } }; nodes.set(id, item); return item;
   }
   const state = { project: fixture(slots), track: 0, instrument: 0, view: 'mixer', selectedLane: 0, plugins: [] };
-  let native = (command, payload) => command === 'plugin.move' ? response(state.project, trackOf(payload), payload.fromSlot, payload.toSlot) : command === 'plugin.parameters' ? { parameters: state.project.audioPlugins.find(p => p.track === trackOf(payload) && p.kind === payload.kind && p.slot === payload.slot)?.parameters || [] } : command === 'plugin.state' ? state.project.audioPlugins.find(p => p.track === trackOf(payload) && p.kind === payload.kind && p.slot === payload.slot) : {};
+  let native = (command, payload) => command === 'plugin.move' ? response(state.project, trackOf(payload), payload.fromSlot, payload.toSlot) : command === 'plugin.parameters' ? { parameters: state.project.audioPlugins.find(p => p.owner === payload.owner && p.kind === payload.kind && p.slot === payload.slot)?.parameters || [] } : command === 'plugin.state' ? state.project.audioPlugins.find(p => p.owner === payload.owner && p.kind === payload.kind && p.slot === payload.slot) : {};
   const ST = { state, escapeHTML: value => String(value), toast(message, kind) { errors.push({ message, kind }); }, captureNativeEdits: async () => { calls.push({ command: 'capture' }); return true; }, syncEngine: async () => { calls.push({ command: 'sync' }); }, request(command, payload = {}) { calls.push({ command, payload: clone(payload) }); return Promise.resolve().then(() => native(command, payload)); }, mutate(label, fn) { mutations.push({ label, before: clone(state.project) }); fn(state.project); this.refresh(); }, refresh() { refreshes++; mount(); } };
   ST.syncEngineProject=async(makeProject,options={})=>{const project=makeProject();return project?ST.request('engine.project',{project,...(options.replace?{replace:true}:{})}):false;};
   const context = vm.createContext({ window: { ST }, document, setTimeout(fn) { const id = ++timerID; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); }, requestAnimationFrame: fn => fn() }); web.load(context, 'studio.js', { text: source }); const studio = context.window.STStudio;
   function mount() {
     const focus = document.activeElement?.id; nodes.clear(); groups.clear();
     const details = [], summaries = [], moves = [], actions = [], addresses = [], presets = [];
-    for (const p of state.project.audioPlugins.filter(p => p.track === state.track && p.kind === 'effect')) {
-      const d = node(`detail-${p.slot}`, { pluginTrack: String(p.track), pluginSlot: String(p.slot) }, 'DETAILS'); d.open = p.slot === 0; details.push(d);
+    for (const p of state.project.audioPlugins.filter(p => p.owner === `track:${state.track}` && p.kind === 'effect')) {
+      const d = node(`detail-${p.slot}`, { pluginOwner: p.owner, pluginSlot: String(p.slot) }, 'DETAILS'); d.open = p.slot === 0; details.push(d);
       const header = node(`plugin-header-${p.slot}`, {}, 'SUMMARY'); header.parentElement = d; summaries.push(header);
       for (const direction of [-1, 1]) moves.push(node(`plugin-move-${direction === -1 ? 'up' : 'down'}-${p.slot}`, { slot: String(p.slot), pluginMove: String(direction) }));
       for (const action of ['editor', 'refresh', 'remove', 'bypass']) actions.push(node(`plugin-${action}-${p.slot}`, { slot: String(p.slot), pluginAction: action }));
@@ -65,7 +65,7 @@ function integratedHarness() {
   const window={addEventListener(){},STHostTransport:hostStub({post(message){
     const request=clone(message);calls.push(request);
     Promise.resolve().then(async()=>{
-      if(request.command==='plugin.move'){const result=response(nativeProject,trackOf(request.payload),request.payload.fromSlot,request.payload.toSlot);await moveGate.promise;nativeProject.audioPlugins=[...nativeProject.audioPlugins.filter(p=>p.kind!=='effect'||p.track!==0),...clone(result.plugins)];return result;}
+      if(request.command==='plugin.move'){const result=response(nativeProject,trackOf(request.payload),request.payload.fromSlot,request.payload.toSlot);await moveGate.promise;nativeProject.audioPlugins=[...nativeProject.audioPlugins.filter(p=>p.kind!=='effect'||p.owner !== 'track:0'),...clone(result.plugins)];return result;}
       if(request.command==='engine.project'){nativeProject=clone(request.payload.project);return {};}
       if(request.command==='engine.snapshot')return {audioPlugins:clone(nativeProject.audioPlugins)};
       if(request.command==='project.save')return {saved:true,project:request.payload.project,path:'/tmp/session.supertracker'};
@@ -92,15 +92,15 @@ test('buttons expose direction and boundaries; ordinary arrows navigate without 
 test('sparse reorder preserves slots, native states and bypass; all pattern effect lanes move in one undo', async () => {
   const h = harness(); await tick(); const original = clone(h.state.project), event = h.key(7, 'ArrowUp');
   assert(event.handled && event.defaultPrevented); await h.finish();
-  const effects = h.state.project.audioPlugins.filter(p => p.track === 0 && p.kind === 'effect');
+  const effects = h.state.project.audioPlugins.filter(p => p.owner === 'track:0' && p.kind === 'effect');
   assert.deepEqual(clone(effects.map(p => [p.slot, p.component, p.bypass, p.instanceID, p.state])), [[0,'fx:0',false,'instance-0','live-0'],[3,'fx:2',false,'instance-2','live-2'],[7,'fx:1',true,'instance-1','live-1']]);
-  assert.deepEqual(h.state.project.patterns.map(p => p.automation.map(l => l.target)), [['plugin:effect:0:42','plugin:7:42','plugin:instrument:0:42','plugin:effect:0:42'],['plugin:effect:3:99:part','volume']]);
+  assert.deepEqual(h.state.project.patterns.map(p => p.automation.map(l => l.target)), [['plugin:effect:0:42','plugin:effect:7:42','plugin:instrument:0:42','plugin:effect:0:42'],['plugin:effect:3:99:part','volume']]);
   assert.deepEqual(h.state.project.patterns.map(p => p.automation.map(l => l.points)), original.patterns.map(p => p.automation.map(l => l.points)));
-  assert.deepEqual(clone(h.state.project.audioPlugins.filter(p => p.kind === 'instrument' || p.track === 1)), original.audioPlugins.filter(p => p.kind === 'instrument' || p.track === 1));
+  assert.deepEqual(clone(h.state.project.audioPlugins.filter(p => p.kind === 'instrument' || p.owner === 'track:1')), original.audioPlugins.filter(p => p.kind === 'instrument' || p.owner === 'track:1'));
   assert.equal(h.mutations.length, 1); assert.equal(h.mutations[0].label, 'Reorder insert effect'); assert.equal(h.document.activeElement.id, 'plugin-header-3'); assert(h.document.activeElement.scrolled); assert.equal(h.state.track, 0);
   const order = h.calls.filter(x => ['capture','engine.project','plugin.move'].includes(x.command)).map(x => x.command); assert.deepEqual(order, ['capture','engine.project','plugin.move']);
   await h.undo(); assert.deepEqual(h.state.project.patterns, original.patterns);
-  assert.deepEqual(h.state.project.audioPlugins.filter(p => p.kind === 'effect' && p.track === 0).map(p => [p.slot,p.component,p.state,p.instanceID]), [[0,'fx:0','live-0','instance-0'],[3,'fx:1','live-1','instance-1'],[7,'fx:2','live-2','instance-2']]);
+  assert.deepEqual(h.state.project.audioPlugins.filter(p => p.kind === 'effect' && p.owner === 'track:0').map(p => [p.slot,p.component,p.state,p.instanceID]), [[0,'fx:0','live-0','instance-0'],[3,'fx:1','live-1','instance-1'],[7,'fx:2','live-2','instance-2']]);
   assert.equal(h.calls.findLast(x => x.command === 'engine.project').payload.replace, true);
 });
 
@@ -113,7 +113,7 @@ test('fresh opaque plug-in state arriving during the pre-move sync does not canc
   };
   h.key(7, 'ArrowUp'); await h.finish();
   assert.deepEqual(h.errors.map(e => e.message), []); assert.equal(h.mutations.length, 1);
-  assert.deepEqual(clone(h.state.project.audioPlugins.filter(p => p.track === 0 && p.kind === 'effect').map(p => [p.slot, p.component])), [[0,'fx:0'],[3,'fx:2'],[7,'fx:1']]);
+  assert.deepEqual(clone(h.state.project.audioPlugins.filter(p => p.owner === 'track:0' && p.kind === 'effect').map(p => [p.slot, p.component])), [[0,'fx:0'],[3,'fx:2'],[7,'fx:1']]);
 });
 
 test('Move down button uses adjacent occupied slot and follows the moved header', async () => {
@@ -140,7 +140,7 @@ test('new mixer previews wait for the remapped chain and superseded previews nev
     if(supersede){input.value='.72';await input.fire('change');}
     wait.resolve(result);await h.finish();await pending;
     const previews=h.calls.filter(x=>x.command==='engine.project'&&x.payload.project.tracks[0].volume===.61);assert.equal(previews.length,supersede?0:1);
-    if(!supersede){assert.equal(previews[0].payload.project.tracks[0].volume,.61);assert.equal(previews[0].payload.project.audioPlugins.find(p=>p.track===0&&p.kind==='effect'&&p.slot===0).component,'fx:1');}
+    if(!supersede){assert.equal(previews[0].payload.project.tracks[0].volume,.61);assert.equal(previews[0].payload.project.audioPlugins.find(p=>p.owner === 'track:0'&&p.kind==='effect'&&p.slot===0).component,'fx:1');}
   }
 });
 
@@ -164,7 +164,7 @@ test('late responses never attach to a replaced project, replaced track or edite
     h.key(3,'ArrowUp'); await tick();
     if(kind==='project')h.state.project=fixture([0,1,2]);
     if(kind==='track')h.state.project.tracks[0]={name:'Replacement',instrument:0};
-    if(kind==='chain')h.state.project.audioPlugins.find(p=>p.kind==='effect'&&p.track===0&&p.slot===3).component='different';
+    if(kind==='chain')h.state.project.audioPlugins.find(p=>p.kind==='effect'&&p.owner === 'track:0'&&p.slot===3).component='different';
     const expected=clone(h.state.project); wait.resolve(result); await h.finish(); assert.deepEqual(h.state.project,expected); assert.equal(h.mutations.length,0); assert(h.calls.some(x=>x.command==='engine.project'&&x.payload.replace));
   }
 });
@@ -191,9 +191,9 @@ test('actual app waits for the module move before sync/save and Undo/Redo restor
   assert.equal(h.calls.filter(x=>x.command==='engine.project').length,initialSyncs);assert.equal(h.calls.filter(x=>x.command==='project.save').length,0);
   gate.resolve();await tick();assert.equal(await saving,true);await tick();
   assert.equal(h.ST.state.undo.length,2);assert.equal(h.ST.state.project.name,'Parallel edit');assert.equal(h.ST.state.project.patterns[0].automation[0].target,'plugin:effect:3:42');
-  const saved=h.calls.find(x=>x.command==='project.save').payload.project;assert.equal(saved.name,'Parallel edit');assert.equal(saved.audioPlugins.find(p=>p.track===0&&p.kind==='effect'&&p.slot===0).component,'fx:1');
+  const saved=h.calls.find(x=>x.command==='project.save').payload.project;assert.equal(saved.name,'Parallel edit');assert.equal(saved.audioPlugins.find(p=>p.owner === 'track:0'&&p.kind==='effect'&&p.slot===0).component,'fx:1');
   const after=clone(h.ST.state.project);await h.ST.perform('undo');await h.ST.syncEngine(true,true);
-  assert.equal(h.ST.state.project.name,'Parallel edit');assert.deepEqual(clone(h.ST.state.project.patterns),original.patterns);assert.equal(h.ST.state.project.audioPlugins.find(p=>p.track===0&&p.kind==='effect'&&p.slot===0).instanceID,'instance-0');
+  assert.equal(h.ST.state.project.name,'Parallel edit');assert.deepEqual(clone(h.ST.state.project.patterns),original.patterns);assert.equal(h.ST.state.project.audioPlugins.find(p=>p.owner === 'track:0'&&p.kind==='effect'&&p.slot===0).instanceID,'instance-0');
   await h.ST.perform('redo');assert.deepEqual(clone(h.ST.state.project),after);assert.equal(h.ST.state.undo.length,2);
 });
 

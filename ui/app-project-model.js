@@ -195,8 +195,7 @@
         solo: false,
         instrument: i,
         delaySend: i === 1 ? .28 : i === 7 ? .2 : 0,
-        reverbSend: i === 1 ? .25 : i === 2 ? .38 : 0,
-        plugins: []
+        reverbSend: i === 1 ? .25 : i === 2 ? .38 : 0
       })),
       instruments: inst,
       patterns: [],

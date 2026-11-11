@@ -73,7 +73,8 @@
       const lane = findLane(p, pattern, owner, target);
       if (lane) { const copy = clone(lane); delete copy.id; delete copy.points; return copy; }
     }
-    const track = trackIndexOf(p, owner), route = track < 0 || String(target).startsWith('send:');
+    // Only the engine's own track parameters name their track by index; every other lane names its channel.
+    const track = trackIndexOf(p, owner), route = track < 0 || /^(send|plugin):/.test(String(target));
     return { ...(route ? { owner: normalizeOwner(owner, p) } : { track }), target, name: name || target, interpolation: 'linear' };
   }
   function ensureLane(p, pattern, owner, target, { uid, name } = {}) {

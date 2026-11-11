@@ -92,13 +92,13 @@ function harness() {
   {
     const { ST } = harness(), project = ST.state.project;
     const owner = routing.trackOwner(project.tracks[0]), nextID = project.tracks[1].routingID;
-    project.audioPlugins = [{ owner, kind: 'effect', slot: 0, instanceID: 'remove' }, { track: 1, kind: 'effect', slot: 0, instanceID: 'next' }, { owner: 'bus:group', kind: 'effect', slot: 0, instanceID: 'bus' }];
+    project.audioPlugins = [{ owner, kind: 'effect', slot: 0, instanceID: 'remove' }, { owner: `track:${nextID}`, kind: 'effect', slot: 0, instanceID: 'next' }, { owner: 'bus:group', kind: 'effect', slot: 0, instanceID: 'bus' }];
     project.routing.outputs[owner] = 'bus:group';
     project.routing.sidechains = [{ id: 'key', source: routing.trackOwner(project.tracks[1]), destination: { instanceID: 'remove' } }];
     const before = JSON.stringify(project);
     ST.perform('removeTrack');
     assert.deepEqual(project.audioPlugins.map(item => item.instanceID), ['next', 'bus']);
-    assert.equal(project.audioPlugins[0].track, 0);
+    assert.equal(project.audioPlugins[0].owner, `track:${nextID}`, 'the next track keeps its plug-in: owners do not shift with indices');
     assert.equal(project.tracks[0].routingID, nextID);
     assert.equal(project.routing.sidechains.length, 0);
     assert.equal(Object.hasOwn(project.routing.outputs, owner), false);
@@ -110,16 +110,16 @@ function harness() {
     const { ST } = harness(), p = ST.state.project;
     const removed = routing.trackOwner(p.tracks[0]), survivor = routing.trackOwner(p.tracks[1]);
     p.audioPlugins = [
-      { owner: removed, track: 1, instanceID: 'gone' },
-      { owner: survivor, track: 0, instanceID: 'survivor' },
-      { owner: 'bus:group', track: 0, instanceID: 'bus' },
-      { owner: 'sound:kit:kick', track: 0, instanceID: 'sound' }
+      { owner: removed, instanceID: 'gone' },
+      { owner: survivor, instanceID: 'survivor' },
+      { owner: 'bus:group', instanceID: 'bus' },
+      { owner: 'sound:kit:kick', instanceID: 'sound' }
     ];
     p.patterns[0].automation = [
-      { owner: removed, track: 1, target: 'volume' },
-      { owner: survivor, track: 0, target: 'pan' },
-      { owner: 'bus:group', track: 0, target: 'volume' },
-      { owner: 'sound:kit:kick', track: 0, target: 'volume' },
+      { owner: removed, target: 'plugin:effect:0:1' },
+      { owner: survivor, target: 'plugin:effect:0:1' },
+      { owner: 'bus:group', target: 'volume' },
+      { owner: 'sound:kit:kick', target: 'volume' },
       { track: 0, target: 'cutoff' }, { track: 1, target: 'cutoff' }
     ];
     p.audioClips = [{ id: 'gone', track: 0 }, { id: 'keep', track: 1 }];
@@ -136,7 +136,7 @@ function harness() {
     ST.perform('undo'); assert.equal(JSON.stringify(ST.state.project), before);
     ST.perform('redo'); assert.equal(JSON.stringify(ST.state.project), after);
     assert.equal(JSON.stringify(ST.normalize(JSON.parse(after))).includes('sound:kit:kick'), true);
-    console.log('PASS removal honors explicit owners over stale indices and keeps clips, instruments, sidechains and undo/redo');
+    console.log('PASS removal takes the plug-ins and lanes of the removed channel only and keeps clips, instruments, sidechains and undo/redo');
 
   }
   {

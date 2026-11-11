@@ -25,6 +25,11 @@ const SAMPLER: i64 = 1;
 const CLAP: i64 = 2;
 const VST3: i64 = 3;
 
+/// The mixer channel of one of the four tracks above.
+fn owner(track: i64) -> &'static str {
+    ["track:hardware", "track:sampler", "track:clap", "track:vst3"][track as usize]
+}
+
 struct Fixture {
     host: TestHost,
     services: Host,
@@ -82,7 +87,7 @@ impl Fixture {
 
     /// The value of one parameter of the plug-in instrument on `track`, as it reports it.
     fn parameter(&self, track: i64, address: u64) -> f64 {
-        let list = self.host.request("plugin.parameters", json!({ "track": track, "kind": "instrument", "slot": 0 })).expect("the plug-in's parameters");
+        let list = self.host.request("plugin.parameters", json!({ "owner": owner(track), "kind": "instrument", "slot": 0 })).expect("the plug-in's parameters");
         let address = address.to_string();
         list["parameters"].as_array().unwrap().iter().find(|parameter| parameter["address"] == address.as_str()).unwrap_or_else(|| panic!("parameter {address} of track {track}"))["value"].as_f64().unwrap()
     }

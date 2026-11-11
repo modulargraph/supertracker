@@ -606,7 +606,7 @@ mod tests {
         let lanes = json!([
             { "owner": "bus:g", "target": "volume", "points": [] }, { "owner": "bus:g", "target": "pan", "points": [] },
             { "owner": "master", "target": "volume", "points": [] }, { "owner": "track:a", "target": "send:s", "points": [] },
-            { "track": 0, "target": "volume", "points": [] }, { "owner": "track:a", "target": "volume", "points": [] },
+            { "track": 0, "target": "volume", "points": [] },
         ]);
         let first = spec(project(lanes.clone()));
         // Volume and pan of a strip share one destination; native track lanes have none.

@@ -15,8 +15,8 @@ function effectSession() {
   const p = h.state.project;
   p.tracks[0].routingID = 'lead';
   let nativePlugins = [
-    { owner: 'track:lead', track: 0, kind: 'effect', slot: 0, component: 'stfx:filter', name: 'Multimode Filter', format: 'Builtin', instanceID: 'fx-filter', state: 'filter-state' },
-    { owner: 'track:lead', track: 0, kind: 'effect', slot: 1, component: 'stfx:beatdelay', name: 'Beat Delay', format: 'Builtin', instanceID: 'fx-delay', state: 'delay-state' }];
+    { owner: 'track:lead', kind: 'effect', slot: 0, component: 'stfx:filter', name: 'Multimode Filter', format: 'Builtin', instanceID: 'fx-filter', state: 'filter-state' },
+    { owner: 'track:lead', kind: 'effect', slot: 1, component: 'stfx:beatdelay', name: 'Beat Delay', format: 'Builtin', instanceID: 'fx-delay', state: 'delay-state' }];
   p.audioPlugins = clone(nativePlugins);
   const at = payload => nativePlugins.find(x => x.slot === payload.slot && x.owner === payload.owner);
   const handlers = {

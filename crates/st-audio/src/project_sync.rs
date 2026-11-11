@@ -21,10 +21,10 @@
 //! as a timed event that the graph applies. Automation of everything else the host owns goes in
 //! as host lanes, numbered by [`GraphSpec::destinations`].
 
-use crate::graph::spec::{track_owner, Destination, GraphSpec, StripKind};
+use crate::graph::spec::{track_owner, Destination, GraphSpec};
 use crate::samples::{SampleLookup, SamplePcm, SampleSource};
 use st_project::model::{
-    AutomationTarget, FilterType, InstrumentKind, Interpolation, LfoShape, LfoTarget, Owner, Pattern, Project, SamplerMode, Step, StepEffect, StepEffectKind, VoiceMode,
+    FilterType, InstrumentKind, Interpolation, LfoShape, LfoTarget, Pattern, Project, SamplerMode, Step, StepEffect, StepEffectKind, VoiceMode,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -556,29 +556,15 @@ impl ProjectSync {
                     }
                 }
             }
-            for lane in pattern.automation.as_deref().unwrap_or(&[]) {
-                let name = lane.target_name();
-                // Track mix and instrument lanes belong to the engine's sequencer, whether the
-                // lane names its track by index or by owner.
-                let (track, target, slot, address) = match lane.owner.as_deref() {
-                    Some(owner) => {
-                        let (Some(target), Some(Owner::Track(_))) = (native_target(name), Owner::parse(owner)) else { continue };
-                        let Some(StripKind::Track(track)) = spec.strip(owner).map(|strip| strip.kind.clone()) else { continue };
-                        (track as i32, target, 0, 0)
-                    }
-                    None => match AutomationTarget::parse(name) {
-                        Some(AutomationTarget::Native(name)) => match native_target(&name) {
-                            Some(target) => (clamp_i32(lane.track()), target, 0, 0),
-                            // Unknown names are skipped, never retargeted to track volume.
-                            None => continue,
-                        },
-                        Some(AutomationTarget::Plugin { instrument, slot, address }) => (clamp_i32(lane.track()), ST_TARGET_PLUGIN, if instrument { -1 } else { clamp_i32(slot) }, address),
-                        _ => continue,
-                    },
-                };
+            // The engine's sequencer plays the lanes of a track's own mix and instrument
+            // parameters, which name the track by index. Lanes with an owner are the mixer's
+            // (the host points above).
+            for lane in pattern.automation.as_deref().unwrap_or(&[]).iter().filter(|lane| lane.owner.is_none()) {
+                // Unknown names are skipped, never retargeted to track volume.
+                let Some(target) = native_target(lane.target_name()) else { continue };
                 let stepped = (lane.interpolation() == Interpolation::Step) as i32;
                 for point in lane.points.as_deref().unwrap_or(&[]) {
-                    control.add_automation_point(number, track, target, slot, address, stepped, point.row(), point.value());
+                    control.add_automation_point(number, clamp_i32(lane.track()), target, 0, 0, stepped, point.row(), point.value());
                 }
             }
             for point in host_points.get(&number).into_iter().flatten() {

@@ -16,35 +16,33 @@
     const trackLimit = window.TRACK_SANITY_LIMIT ?? Infinity;
     if (create
         && targetTrack >= trackLimit) throw new Error(`A new plug-in needs room for one track (maximum ${trackLimit} tracks).`);
-    const routingID = create ? app.uid() : null, routingIDs = [];
+    const routingID = create ? app.uid() : null;
+    // The channel of the destination track: the new track's identity is chosen here.
+    const owner = `track:${create ? routingID : project.tracks[sourceTrack].routingID}`;
     const append = candidate => {
       if (!create) return;
       if (candidate.instruments.length !== destination
           || candidate.tracks.length !== targetTrack) throw new Error('The destination list changed while loading. Try again.');
       candidate.instruments.push(app.instrumentDefaults(destination, options.name || 'Plug-in', 'au'));
-      let routingIndex = 0;
-      app.appendInstrumentTrack(candidate, destination, options.name || 'Plug-in', routingID, () => {
-        const index = routingIndex++;
-        return routingIDs[index] ||= app.uid();
-      });
+      app.appendInstrumentTrack(candidate, destination, options.name || 'Plug-in', routingID);
     };
     await window.STInstrumentEdits.run(sourceIndex, create ? [] : [sourceTrack], async edit => {
       app.stopHeld();
       if (create) await edit.prepareProject(append);
-      const loaded = await edit.native(command, { ...payload, track: targetTrack, kind: 'instrument', slot: 0 });
+      const loaded = await edit.native(command, { ...payload, owner, kind: 'instrument', slot: 0 });
       if (!loaded?.component || (command === 'plugin.loadNKS' && !loaded.nks)) throw new Error('The host did not return a validated instrument.');
-      const captured = await edit.native('plugin.state', { track: targetTrack, kind: 'instrument', slot: 0, instanceID: loaded.instanceID });
+      const captured = await edit.native('plugin.state', { owner, kind: 'instrument', slot: 0, instanceID: loaded.instanceID });
       if (!captured?.component
           || captured.stateError
           || captured.component !== loaded.component) throw new Error('The loaded plug-in state could not be captured.');
-      const result = { ...loaded, ...captured, track: targetTrack, kind: 'instrument', slot: 0 };
+      const result = { ...loaded, ...captured, owner, kind: 'instrument', slot: 0 };
       const name = result.nks?.name || result.name || options.name || 'Plug-in';
       await edit.commit(`Load ${name}`, candidate => {
         append(candidate);
         Object.assign(candidate.instruments[destination], { type: 'au', name, plugin: copy(result) });
         candidate.tracks[targetTrack].instrument = destination;
         if (create) candidate.tracks[targetTrack].name = name;
-        candidate.audioPlugins = candidate.audioPlugins.filter(value => !(value.track === targetTrack && value.kind === 'instrument'));
+        candidate.audioPlugins = candidate.audioPlugins.filter(value => !(value.owner === owner && value.kind === 'instrument'));
         candidate.audioPlugins.push(copy(result));
       });
       if (state.project === project && state.track === sourceTrack && state.instrument === sourceIndex) {
@@ -62,6 +60,7 @@
     if (!state.native) { app.toast('Open the SuperTracker app to load NKS presets.'); return false; }
     if (options.kind === 'effect') return loadEffect(path, options);
     const owner = state.project, trackIndex = state.track, track = owner.tracks[trackIndex];
+    const channel = `track:${track?.routingID}`, ownInstrument = plugin => plugin.owner === channel && plugin.kind === 'instrument';
     const instrumentIndex = state.instrument, instrument = owner.instruments[instrumentIndex];
     if (!track || !instrument || typeof path !== 'string' || !path) return false;
     // Browsing a plug-in must not overwrite the selected sample.
@@ -92,13 +91,13 @@
       if (!current()) return false;
       previousInstrument = JSON.stringify(instrument);
       if (await app.syncEngineProject(() => current() ? copy(owner) : null) === false || !current()) return false;
-      const previousSlot = JSON.stringify(owner.audioPlugins?.find(plugin => plugin.track === trackIndex && plugin.kind === 'instrument'));
+      const previousSlot = JSON.stringify(owner.audioPlugins?.find(ownInstrument));
       const targetUnchanged = () => current()
-          && JSON.stringify(owner.audioPlugins?.find(plugin => plugin.track === trackIndex && plugin.kind === 'instrument')) === previousSlot;
+          && JSON.stringify(owner.audioPlugins?.find(ownInstrument)) === previousSlot;
       app.stopHeld();
       app.toast('Loading NKS preset…');
       attempted = true;
-      const result = await app.request('plugin.loadNKS', { path, track: trackIndex, kind: 'instrument', slot: 0 });
+      const result = await app.request('plugin.loadNKS', { path, owner: channel, kind: 'instrument', slot: 0 });
       if (!targetUnchanged()) {
         await restoreCurrent(); app.toast('Preset loading was canceled because its destination changed.'); return false;
       }
@@ -116,7 +115,7 @@
         selected.type = 'au'; selected.name = result.nks.name || result.name; selected.plugin = copy(result);
         track.instrument = destination;
         if (stillSelected) state.instrument = destination;
-        project.audioPlugins = (project.audioPlugins || []).filter(plugin => !(plugin.track === trackIndex && plugin.kind === 'instrument'));
+        project.audioPlugins = (project.audioPlugins || []).filter(plugin => !ownInstrument(plugin));
         project.audioPlugins.push(copy(result));
       });
       if (applied === false) throw new Error('The session could not take the preset right now. Nothing was changed.');
@@ -138,8 +137,9 @@
     const owner = state.project, trackIndex = state.track, track = owner.tracks[trackIndex];
     const slot = Math.trunc(Number(options.slot ?? 0));
     if (!track || typeof path !== 'string' || !path || !Number.isInteger(slot) || slot < 0 || slot >= INSERT_SLOTS) return false;
-    const sameSlot = plugin => plugin.track === trackIndex && plugin.kind === 'effect' && (plugin.slot ?? 0) === slot;
-    const slotState = () => JSON.stringify([owner.audioPlugins?.find(sameSlot), track.plugins?.[slot]]);
+    const channel = `track:${track?.routingID}`;
+    const sameSlot = plugin => plugin.owner === channel && plugin.kind === 'effect' && (plugin.slot ?? 0) === slot;
+    const slotState = () => JSON.stringify(owner.audioPlugins?.find(sameSlot) ?? null);
     let previousSlot = null;
     const current = () => state.project === owner && owner.tracks[trackIndex] === track && (previousSlot === null || slotState() === previousSlot);
     const restoreCurrent = async () => {
@@ -156,15 +156,14 @@
       if (await app.syncEngineProject(() => current() ? copy(owner) : null) === false || !current()) return false;
       app.toast('Loading NKS effect…');
       attempted = true;
-      const result = await app.request('plugin.loadNKS', { path, track: trackIndex, kind: 'effect', slot });
+      const result = await app.request('plugin.loadNKS', { path, owner: channel, kind: 'effect', slot });
       if (!current()) { await restoreCurrent(); app.toast('Effect loading was canceled because its track or slot changed.'); return false; }
       if (!result || !result.component || !result.nks) throw new Error('The host did not return a validated NKS effect.');
       const name = result.nks.name || result.name;
       const applied = app.mutate('load NKS effect', project => {
-        const descriptor = { ...copy(result), track: trackIndex, kind: 'effect', slot };
+        const descriptor = { ...copy(result), owner: channel, kind: 'effect', slot };
         project.audioPlugins = (project.audioPlugins || []).filter(plugin => !sameSlot(plugin));
         project.audioPlugins.push(descriptor);
-        track.plugins ||= []; track.plugins[slot] = copy(descriptor);
       });
       if (applied === false) throw new Error('The session could not take the effect right now. Nothing was changed.');
       app.toast(`Loaded ${name} on ${track.name || `Track ${trackIndex + 1}`} · FX ${slot + 1}`);

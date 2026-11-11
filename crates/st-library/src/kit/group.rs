@@ -209,9 +209,7 @@ pub fn extract_group(project: &Value, group_id: &str) -> Result<ExtractedGroup> 
     let mut instrument_map: BTreeMap<usize, usize> = BTreeMap::new();
     let mut instruments: Vec<Value> = Vec::new();
     let mut member_tracks: Vec<Value> = Vec::new();
-    let mut track_index: BTreeMap<String, usize> = BTreeMap::new();
-    let mut old_track_owner: BTreeMap<usize, String> = BTreeMap::new();
-    for (position, (old_index, track)) in members.iter().enumerate() {
+    for (position, (_, track)) in members.iter().enumerate() {
         let old_instrument = index_of(track.get("instrument")).unwrap_or(0);
         let new_instrument = *instrument_map.entry(old_instrument).or_insert_with(|| {
             let mut instrument = source_instruments.get(old_instrument).cloned().filter(Value::is_object).unwrap_or_else(|| json!({ "type": "sample" }));
@@ -226,10 +224,6 @@ pub fn extract_group(project: &Value, group_id: &str) -> Result<ExtractedGroup> 
             // A frozen print belongs to the session it was printed in.
             object.remove("frozen");
         }
-        if let Some(routing_id) = text(track, "routingID") {
-            track_index.insert(format!("track:{routing_id}"), position);
-            old_track_owner.insert(*old_index, format!("track:{routing_id}"));
-        }
         member_tracks.push(member);
     }
 
@@ -237,14 +231,7 @@ pub fn extract_group(project: &Value, group_id: &str) -> Result<ExtractedGroup> 
     let mut plugins: Vec<Value> = Vec::new();
     let mut plugin_ids: HashSet<String> = HashSet::new();
     for plugin in list(project, "audioPlugins") {
-        let owner = match text(plugin, "owner") {
-            Some(owner) => owner.to_string(),
-            // Descriptors written before owners existed name their track by index.
-            None => match index_of(plugin.get("track")).and_then(|index| old_track_owner.get(&index)) {
-                Some(owner) => owner.clone(),
-                None => continue,
-            },
-        };
+        let Some(owner) = text(plugin, "owner").map(String::from) else { continue };
         let mapped = if let Some(old) = owner.strip_prefix("instrument:").and_then(|digits| digits.parse::<usize>().ok()) {
             match instrument_map.get(&old) {
                 Some(new) => format!("instrument:{new}"),
@@ -257,12 +244,6 @@ pub fn extract_group(project: &Value, group_id: &str) -> Result<ExtractedGroup> 
         };
         let mut copy = plugin.clone();
         copy["owner"] = json!(mapped);
-        match track_index.get(&mapped) {
-            Some(index) => copy["track"] = json!(index),
-            None => {
-                copy.as_object_mut().map(|object| object.remove("track"));
-            }
-        }
         if let Some(id) = text(plugin, "instanceID") {
             plugin_ids.insert(id.to_string());
         }

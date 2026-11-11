@@ -156,7 +156,7 @@ fn opaque_state_and_unknown_fields_are_never_treated_as_media() {
     fs::write(&opaque, [9u8, 8, 7]).unwrap();
     let state = json!({ "path": opaque.to_string_lossy(), "nested": { "samplePath": "opaque-relative.wav" }, "binary": "opaque untouched" });
     let mut value = minimal(Some(&source)).to_value();
-    value["audioPlugins"] = json!([{ "id": "vendor", "state": state }]);
+    value["audioPlugins"] = json!([{ "owner": "master", "id": "vendor", "state": state }]);
     value["extensions"] = json!({ "future": { "path": opaque.to_string_lossy(), "samplePath": "unknown.wav" } });
     value["mediaRelinkHistory"] = json!([{ "path": opaque.to_string_lossy(), "samplePath": "historical.wav" }]);
     value["instruments"][0]["plugin"] = json!({ "state": state });

@@ -78,7 +78,7 @@ impl Fixture {
         };
         project["patterns"] = json!([
             { "id": 0, "length": 8, "steps": [rows(&[(0, 57), (3, 60), (6, 64)]), rows(&[(2, 45)])], "automation": [
-                { "id": "v", "owner": "track:a", "target": "volume", "interpolation": "linear", "points": [{ "row": 0, "value": 0.9 }, { "row": 7, "value": 0.5 }] },
+                { "id": "v", "track": 0, "target": "volume", "interpolation": "linear", "points": [{ "row": 0, "value": 0.9 }, { "row": 7, "value": 0.5 }] },
             ] },
             { "id": 1, "length": 8, "steps": [rows(&[(1, 52), (7, 59)]), rows(&[(4, 40)])], "automation": [] },
         ]);

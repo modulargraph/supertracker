@@ -111,8 +111,8 @@ test('metadata loads once from the bridge and late metadata relabels pages', asy
 function console_() {
   const calls = [], undo = [];
   const project = { tracks: [{ name: 'Drums', instrument: 0, routingID: 'drums' }], instruments: [{ type: 'synth' }], patterns: [{ id: 0, length: 16, steps: [[]], automation: [] }],
-    audioPlugins: [{ track: 0, kind: 'effect', slot: 0, component: 'stfx:filter', name: 'Multimode Filter', format: 'Builtin', instanceID: 'fx-filter' },
-      { track: 0, kind: 'effect', slot: 1, component: 'aufx:dly', name: 'Some Delay', instanceID: 'fx-other' }] };
+    audioPlugins: [{ owner: 'track:drums', kind: 'effect', slot: 0, component: 'stfx:filter', name: 'Multimode Filter', format: 'Builtin', instanceID: 'fx-filter' },
+      { owner: 'track:drums', kind: 'effect', slot: 1, component: 'aufx:dly', name: 'Some Delay', instanceID: 'fx-other' }] };
   const values = new Map();
   const ST = { state: { project, track: 0, instrument: 0, view: 'pattern' }, escapeHTML: value => String(value), toast() {}, refresh() {}, markDirty() {},
     request(command, payload) {
@@ -130,7 +130,6 @@ function console_() {
   const timers = [];
   const context = vm.createContext({ window: { ST }, document: { activeElement: null, querySelector: () => null, getElementById: () => null }, console, Map, Set, Math, JSON, Number, String, Object, Array, Promise, Date,
     setTimeout: (fn) => { timers.push(fn); return timers.length; }, clearTimeout() {} });
-  context.window.STRoutingProject = { trackOwner: track => `track:${track?.routingID}` };
   web.load(context, 'fine-control.js'); web.load(context, 'effect-pages.js'); web.load(context, 'plugin-pages.js');
   const flush = async () => { for (let i = 0; i < 6; i++) { while (timers.length) timers.shift()(); for (let j = 0; j < 20; j++) await Promise.resolve(); } };
   return { window: context.window, ST, calls, undo, values, flush };

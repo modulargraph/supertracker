@@ -64,8 +64,7 @@
         solo: false,
         instrument: instrumentIndex,
         delaySend: 0,
-        reverbSend: 0,
-        plugins: []
+        reverbSend: 0
       };
     if (window.STRoutingProject) {
       window.STRoutingProject.appendTrack(project, track, makeID);
@@ -91,8 +90,10 @@
     mutate('remove track', p => {
       const group = window.STGroups?.ofTrack(p, index),
         removedOwner = window.STRoutingProject?.trackOwner(p.tracks[index]),
-        belongs = x => x.owner ? x.owner === removedOwner : x.track === index;
-      window.STRoutingProject?.removeTrackReferences(p, p.tracks[index], p.audioPlugins.filter(belongs));
+        ownsPlugin = x => x.owner === removedOwner,
+        // A lane names its channel by owner, or (the engine's own track parameters) its track by index.
+        ownsLane = x => x.owner ? x.owner === removedOwner : x.track === index;
+      window.STRoutingProject?.removeTrackReferences(p, p.tracks[index], p.audioPlugins.filter(ownsPlugin));
       p.tracks.splice(index, 1);
       p.audioClips = (p.audioClips || []).filter(x => x.track !== index).map(x => ({
         ...x,
@@ -101,15 +102,12 @@
       p.tracks.forEach((t, i) => t.id = i);
       for (const pat of p.patterns) {
         pat.steps.splice(index, 1);
-        pat.automation = pat.automation.filter(l => !belongs(l));
+        pat.automation = pat.automation.filter(l => !ownsLane(l));
         pat.automation.forEach(l => {
           if (l.track > index) l.track--;
         });
       }
-      p.audioPlugins = p.audioPlugins.filter(x => !belongs(x)).map(x => Number.isInteger(x.track) && x.track > index ? {
-        ...x,
-        track: x.track - 1
-      } : x);
+      p.audioPlugins = p.audioPlugins.filter(x => !ownsPlugin(x));
       // Removing a group's last track removes the group and its bus.
       if (group && !window.STGroups.members(p, group).length) window.STGroups.dissolve(p, group.id);
       state.track = Math.min(index, p.tracks.length - 1);
@@ -121,8 +119,8 @@
     if (state.project.instruments.length === 1) return toast('Keep at least one instrument in a session.');
     const index = state.instrument;
     mutate('remove instrument', p => {
-      const affected = new Set(p.tracks.map((t, i) => t.instrument === index ? i : -1));
-      p.audioPlugins = p.audioPlugins.filter(x => !(x.kind === 'instrument' && affected.has(x.track)));
+      const affected = new Set(p.tracks.filter(t => t.instrument === index).map(t => window.STRoutingProject?.trackOwner(t)));
+      p.audioPlugins = p.audioPlugins.filter(x => !(x.kind === 'instrument' && affected.has(x.owner)));
       // The removed instrument's insert chain goes with it; later instruments' chains follow their new index.
       window.STInstrumentEffects?.reindexAfterRemoval(p, index);
       p.instruments.splice(index, 1);

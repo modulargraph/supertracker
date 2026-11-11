@@ -433,7 +433,7 @@
         let target = pattern.automation.find(item => item.target === lane.ref.target
             && normalizeOwner(item.owner ?? item.track, p) === lane.ref.owner);
         if (!target) {
-          const routeLane = destination.track < 0 || lane.ref.target.startsWith('send:');
+          const routeLane = destination.track < 0 || /^(send|plugin):/.test(lane.ref.target);
           target = {
             id: S().uid ? S().uid() : `lane-${Date.now().toString(36)}-${committed}`,
             ...(routeLane ? { owner: lane.ref.owner } : { track: destination.track }),
@@ -489,7 +489,7 @@
       let target = pattern.automation.find(item => item.target === lane.ref.target
           && normalizeOwner(item.owner ?? item.track, draft) === lane.ref.owner);
       if (!target) {
-        const routeLane = destination.track < 0 || lane.ref.target.startsWith('send:');
+        const routeLane = destination.track < 0 || /^(send|plugin):/.test(lane.ref.target);
         target = {
           id: `recording-${lane.key}`,
           ...(routeLane ? { owner: lane.ref.owner } : { track: destination.track }),

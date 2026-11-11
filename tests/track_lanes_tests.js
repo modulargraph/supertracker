@@ -37,10 +37,10 @@ function model(count = 6) {
     tracks,
     instruments: tracks.map((_, i) => ({ id: i, name: `I${i}`, type: 'sample' })),
     patterns: [{ id: 0, length: 2, steps: tracks.map((_, i) => [{ note: 60 + i }, null]),
-      automation: tracks.map((_, i) => ({ id: `a${i}`, track: i, owner: `track:r${i}`, target: 'volume', points: [] })) }],
+      automation: tracks.map((_, i) => ({ id: `a${i}`, track: i, target: 'volume', points: [] })) }],
     audioClips: [{ id: 'c4', track: 4 }, { id: 'c1', track: 1 }],
-    audioPlugins: [{ instanceID: 'p5', owner: 'track:r5', track: 5, kind: 'effect', slot: 0 },
-      { instanceID: 'p2', owner: 'track:r2', track: 2, kind: 'effect', slot: 0 }],
+    audioPlugins: [{ instanceID: 'p5', owner: 'track:r5', kind: 'effect', slot: 0 },
+      { instanceID: 'p2', owner: 'track:r2', kind: 'effect', slot: 0 }],
     pluginPages: { p2: {}, p5: {} },
     routing: { buses: [], outputs: Object.fromEntries(tracks.map(t => [`track:${t.routingID}`, 'master'])),
       sends: [], sidechains: [] }
@@ -72,7 +72,7 @@ test('moveTracks moves a block before a track, joins or leaves groups and keeps 
   G.moveTracks(p, G.members(p, group), 6, group.id);
   assert.equal(order(p), 'T1 T4 T6 T5 T2 T3');
   same(G.members(p, group), [4, 5]);
-  assert.equal(p.audioPlugins.find(x => x.instanceID === 'p5').track, 2, 'plug-in descriptors follow');
+  assert.equal(p.audioPlugins.find(x => x.instanceID === 'p5').owner, `track:${p.tracks[2].routingID}`, 'plug-in descriptors stay with their channel');
   // The last member leaving removes the group and its bus.
   G.moveTracks(p, [4, 5], 0, null);
   assert.equal(G.list(p).length, 0);
@@ -93,7 +93,7 @@ test('removeTracks deletes tracks with their steps, automation, clips, plug-ins,
   same(p.patterns[0].automation.map(l => l.id), ['a0', 'a1', 'a3', 'a5'], 'their lanes and the lanes of removed sends go');
   same(p.patterns[0].automation.map(l => l.track), [0, 1, 2, 3]);
   same(p.audioClips.map(c => c.id), ['c1']);
-  same(p.audioPlugins.map(x => [x.instanceID, x.track]), [['p5', 3]]);
+  same(p.audioPlugins.map(x => [x.instanceID, x.owner]), [['p5', `track:${p.tracks[3].routingID}`]]);
   assert.equal(p.pluginPages.p2, undefined);
   same(p.routing.sends.map(s => s.id), ['s2']);
   same(p.routing.sidechains, [], 'sidechains from a removed track or into its plug-ins go');

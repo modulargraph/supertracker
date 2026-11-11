@@ -148,12 +148,13 @@ fn inserts_are_loaded_changed_moved_saved_and_restored_through_the_bridge() {
     let target = json!({ "owner": "track:a", "kind": "effect", "slot": 0 });
     // A plug-in and a built-in effect, as the mixer's rack adds them.
     let loaded = fixture.request("plugin.load", with(target.clone(), fixture.clap(CLAP_GAIN)));
-    assert_eq!((loaded["owner"].clone(), loaded["track"].clone(), loaded["slot"].clone(), loaded["format"].clone(), loaded["name"].clone()), (json!("track:a"), json!(0), json!(0), json!("CLAP"), json!("ST Test Gain")));
+    assert_eq!((loaded["owner"].clone(), loaded["slot"].clone(), loaded["format"].clone(), loaded["name"].clone()), (json!("track:a"), json!(0), json!("CLAP"), json!("ST Test Gain")));
+    assert!(loaded.get("track").is_none(), "a descriptor names its channel by owner only");
     assert!(loaded["instanceID"].as_str().is_some_and(|id| !id.is_empty()) && loaded["hostStatus"]["available"] == true);
     let gain = parameter(&loaded["parameters"], clap_gain::GAIN);
     assert_eq!((gain["name"].clone(), gain["value"].clone(), gain["normalized"].clone(), gain["writable"].clone(), gain["display"].clone()), (json!("Gain"), json!(1.0), json!(0.5), json!(true), json!("1.00 x")));
     assert_eq!(parameter(&loaded["parameters"], 10)["writable"], false, "a parameter the plug-in only reports");
-    let equalizer = fixture.request("plugin.load", json!({ "track": 0, "kind": "effect", "slot": 3, "component": "stfx:eq" }));
+    let equalizer = fixture.request("plugin.load", json!({ "owner": "track:a", "kind": "effect", "slot": 3, "component": "stfx:eq" }));
     assert_eq!((equalizer["format"].clone(), equalizer["owner"].clone(), equalizer["slot"].clone()), (json!("Builtin"), json!("track:a"), json!(3)));
     assert!(equalizer["parameters"].as_array().unwrap().len() > 3);
     fixture.adopt(&mut project);
@@ -239,17 +240,20 @@ fn an_instrument_plug_in_an_editor_and_an_nks_preset() {
     project["tracks"][0]["mute"] = json!(true);
     fixture.publish(&project);
     fixture.request("plugins.scan", json!({ "wait": true }));
-    let loaded = fixture.request("plugin.load", json!({ "track": 1, "kind": "instrument", "slot": 0, "component": format!("clap:{CLAP_SINE}") }));
-    assert_eq!((loaded["kind"].clone(), loaded["owner"].clone(), loaded["track"].clone(), loaded["name"].clone()), (json!("instrument"), json!("track:b"), json!(1), json!("ST Test Sine")));
+    let loaded = fixture.request("plugin.load", json!({ "owner": "track:b", "kind": "instrument", "slot": 0, "component": format!("clap:{CLAP_SINE}") }));
+    assert_eq!((loaded["kind"].clone(), loaded["owner"].clone(), loaded["name"].clone()), (json!("instrument"), json!("track:b"), json!("ST Test Sine")));
     assert_eq!(PathBuf::from(loaded["bundlePath"].as_str().unwrap()), fixture.installed.clap, "the catalogue knows the file");
-    let captured = fixture.request("plugin.state", json!({ "track": 1, "kind": "instrument", "slot": 0, "instanceID": loaded["instanceID"] }));
+    let captured = fixture.request("plugin.state", json!({ "owner": "track:b", "kind": "instrument", "slot": 0, "instanceID": loaded["instanceID"] }));
     assert!(captured["component"] == loaded["component"] && captured.get("stateError").is_none() && captured["state"].is_string());
     fixture.adopt(&mut project);
     fixture.request("transport.play", json!({ "mode": "pattern", "fromStart": true }));
     fixture.status_where("the plug-in instrument is heard", |status| status["peakL"].as_f64().unwrap() > 0.05);
     assert_eq!(fixture.insert("track:b")["instrument"], true);
+    // A plug-in command names the channel by owner; a track number is not an address.
+    let error = fixture.host.request("plugin.parameters", json!({ "track": 1, "kind": "instrument" })).unwrap_err();
+    assert!(error.contains("its owner"), "{error}");
     // An effect cannot be an instrument, and the other way round.
-    let error = fixture.host.request("plugin.load", json!({ "track": 0, "kind": "instrument", "component": format!("clap:{CLAP_GAIN}") })).unwrap_err();
+    let error = fixture.host.request("plugin.load", json!({ "owner": "track:a", "kind": "instrument", "component": format!("clap:{CLAP_GAIN}") })).unwrap_err();
     assert!(error.contains("is an effect, not an instrument"), "{error}");
 
     // The editor: the container opens the plug-in's window (the test plug-in keeps count).
@@ -260,7 +264,7 @@ fn an_instrument_plug_in_an_editor_and_an_nks_preset() {
     assert_eq!(parameter(&fixture.request("plugin.parameters", gain.clone())["parameters"], 10)["value"], 2.0, "the plug-in's window is shown");
     assert_eq!(fixture.request("plugin.editor", with(gain.clone(), json!({ "open": false })))["open"], false);
     assert_eq!(parameter(&fixture.request("plugin.parameters", gain.clone())["parameters"], 10)["value"], 0.0);
-    let error = fixture.host.request("plugin.editor", json!({ "track": 1, "kind": "instrument" })).unwrap_err();
+    let error = fixture.host.request("plugin.editor", json!({ "owner": "track:b", "kind": "instrument" })).unwrap_err();
     assert!(error.contains("no editor window"), "{error}");
 
     // An NKS preset of the VST3 gain: its exact state (gain 0.25 of 0..1) and its pages.
@@ -283,7 +287,7 @@ fn an_instrument_plug_in_an_editor_and_an_nks_preset() {
     let slots = &loaded["nks"]["pages"][0]["parameters"];
     assert_eq!((slots[0]["mappingStatus"].clone(), slots[0]["mapped"].clone(), slots[1]["mappingStatus"].clone(), slots[2]["mappingStatus"].clone()), (json!("mapped"), json!(true), json!("parameterUnavailable"), json!("unassigned")));
     assert_eq!(fixture.request("plugin.state", json!({}))[2]["nks"]["pages"], loaded["nks"]["pages"], "the engine's descriptor carries the pages");
-    let error = fixture.host.request("plugin.loadNKS", json!({ "path": fixture.folder.path().join("nothing.nksf"), "track": 0 })).unwrap_err();
+    let error = fixture.host.request("plugin.loadNKS", json!({ "path": fixture.folder.path().join("nothing.nksf"), "owner": "track:a" })).unwrap_err();
     assert!(!error.is_empty());
 }
 

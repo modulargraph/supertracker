@@ -69,9 +69,8 @@ model! {
     /// `migration`, `editorOpen`, `windowFrame`) stay in `extra`.
     pub struct PluginDescriptor {
         /// The owner: `track:<routingID>`, `bus:<id>`, `master` or `instrument:<index>`; see [`Owner`].
+        /// Required: it is the only way a descriptor names its channel.
         "owner" => owner: String,
-        /// Track index, written next to `owner` for track channels. The owner is authoritative.
-        "track" => track: i64,
         /// Instrument or insert effect. Absent reads as an effect.
         "kind" => kind: PluginKind = PluginKind::Effect,
         /// Insert slot 0..16 (0 for an instrument).

@@ -19,7 +19,7 @@ function faithfulReads(h){
   if(command==='plugin.parameter'&&payload?.address!==undefined&&Number.isFinite(result?.normalized))live.set(String(payload.address),result.normalized);
   return command==='plugin.parameters'&&Array.isArray(result)?result.map(item=>live.has(String(item.address))?{...item,normalized:live.get(String(item.address))}:item):result;};}});
 }
-function effect(h){const descriptor={owner:'track:'+h.state.project.tracks[1].routingID,track:1,kind:'effect',slot:0,instanceID:'fx-1',component:'aufx:test',name:'Test FX',state:'ORIGINAL'};h.state.project.audioPlugins=[descriptor];h.state.project.tracks[1].plugins=[{name:'Test FX'}];h.state.dirty=false;return descriptor;}
+function effect(h){const descriptor={owner:'track:'+h.state.project.tracks[1].routingID,kind:'effect',slot:0,instanceID:'fx-1',component:'aufx:test',name:'Test FX',state:'ORIGINAL'};h.state.project.audioPlugins=[descriptor];h.state.project.tracks[1].plugins=[{name:'Test FX'}];h.state.dirty=false;return descriptor;}
 const tests=[],test=(name,run)=>tests.push({name,run});
 
 test('export pins the original project at each preparation await',async()=>{
@@ -88,14 +88,14 @@ test('a preflight capture may settle an equivalent descriptor, but not a new ins
 });
 test('default effect load fills a free sparse slot; a full rack requires explicit replacement',async()=>{
  for(const full of [false,true]){
-  const h=harness();h.state.plugins=[{id:'aufx:new',name:'New FX',type:'effect',format:'AU'}];const old=(full?Array.from({length:16},(_,i)=>i):[0,2,8,15]).map(slot=>({owner:'track:'+h.state.project.tracks[0].routingID,track:0,kind:'effect',slot,instanceID:'old'+slot,name:'Old'+slot,state:'KEEP'}));h.state.project.audioPlugins=clone(old);let loaded;
+  const h=harness();h.state.plugins=[{id:'aufx:new',name:'New FX',type:'effect',format:'AU'}];const old=(full?Array.from({length:16},(_,i)=>i):[0,2,8,15]).map(slot=>({owner:'track:'+h.state.project.tracks[0].routingID,kind:'effect',slot,instanceID:'old'+slot,name:'Old'+slot,state:'KEEP'}));h.state.project.audioPlugins=clone(old);let loaded;
   h.ST.request=async(command,payload)=>{if(command==='plugin.load'){loaded={...payload,name:'New FX',instanceID:'new',state:'NEW'};return loaded}if(command==='plugin.state')return[...old,loaded];throw Error(command)};
   const reply=await h.call('loadPlugin',{plugin:'New FX',track:0,kind:'effect'});assert.equal(reply.ok,!full);if(full){assert.equal(loaded,undefined);assert.match(reply.error,/occupied/);assert.equal(h.state.undo.length,0)}else{assert.equal(loaded.slot,1);assert.equal(h.state.project.audioPlugins.find(x=>x.slot===2).state,'KEEP')}
  }
 });
 test('default NKS effect load fills a free sparse slot; a full rack requires explicit replacement',async()=>{
  for(const full of [false,true]){
-  const h=harness();web.load(h.context,'nks-loader.js');const old=(full?Array.from({length:16},(_,i)=>i):[0,2]).map(slot=>({owner:'track:'+h.state.project.tracks[0].routingID,track:0,kind:'effect',slot,instanceID:'old'+slot,name:'Old'+slot,state:'KEEP'}));h.state.project.audioPlugins=clone(old);const loads=[];
+  const h=harness();web.load(h.context,'nks-loader.js');const old=(full?Array.from({length:16},(_,i)=>i):[0,2]).map(slot=>({owner:'track:'+h.state.project.tracks[0].routingID,kind:'effect',slot,instanceID:'old'+slot,name:'Old'+slot,state:'KEEP'}));h.state.project.audioPlugins=clone(old);const loads=[];
   h.ST.syncEngineProject=async make=>{make();return true};h.ST.request=async(command,payload)=>{if(command==='plugin.loadNKS'){loads.push(payload);return{component:'aufx:verb',name:'Verb',instanceID:'new',nks:{name:'Verb',path:payload.path},state:'NEW'}}throw Error(command)};
   const reply=await h.call('loadNKS',{path:'/presets/Verb.nksfx',track:0,kind:'effect'});assert.equal(reply.ok,!full,reply.error);
   if(full){assert.deepEqual(loads,[]);assert.match(reply.error,/occupied/);assert.equal(h.state.undo.length,0);assert.deepEqual(clone(h.state.project.audioPlugins),old)}

@@ -6,10 +6,10 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = web.source('nks-loader.js');
 const copy = value => JSON.parse(JSON.stringify(value));
-const descriptor = { component: 'vst3:FX', track: 0, kind: 'effect', slot: 1, instanceID: 'fx-a', state: 'fx-state', name: 'Delay', format: 'VST3', nks: { name: 'Tape Echo', pages: [] } };
+const descriptor = { component: 'vst3:FX', owner: 'track:bass', kind: 'effect', slot: 1, instanceID: 'fx-a', state: 'fx-state', name: 'Delay', format: 'VST3', nks: { name: 'Tape Echo', pages: [] } };
 function environment() {
-  const project = { tracks: [{ instrument: 0, name: 'Bass', plugins: [] }], instruments: [{ id: 0, name: 'Synth', type: 'au', plugin: { component: 'vst3:SYNTH' } }],
-    audioPlugins: [{ track: 0, kind: 'instrument', slot: 0, component: 'vst3:SYNTH' }, { track: 0, kind: 'effect', slot: 0, component: 'au:comp' }] };
+  const project = { tracks: [{ instrument: 0, name: 'Bass', routingID: 'bass' }], instruments: [{ id: 0, name: 'Synth', type: 'au', plugin: { component: 'vst3:SYNTH' } }],
+    audioPlugins: [{ owner: 'track:bass', kind: 'instrument', slot: 0, component: 'vst3:SYNTH' }, { owner: 'track:bass', kind: 'effect', slot: 0, component: 'au:comp' }] };
   const calls = [], undo = [], notices = [];
   const state = { native: true, project, track: 0, instrument: 0, view: 'browser' };
   const app = { state, captureNativeEdits: async () => true, toast: text => notices.push(text), stopHeld() {}, setView: view => { state.view = view; },
@@ -24,18 +24,19 @@ function environment() {
     const e = environment();
     assert.equal(await e.loader.load('/FX/Tape Echo.nksfx', { kind: 'effect', slot: 1 }), true);
     const request = e.calls.find(call => call.command === 'plugin.loadNKS');
-    assert.deepEqual(request.payload, { path: '/FX/Tape Echo.nksfx', track: 0, kind: 'effect', slot: 1 });
+    assert.deepEqual(request.payload, { path: '/FX/Tape Echo.nksfx', owner: 'track:bass', kind: 'effect', slot: 1 });
     assert.deepEqual(e.undo, ['load NKS effect']);
     assert.equal(e.project.audioPlugins.length, 3);
     assert.equal(e.project.audioPlugins.find(plugin => plugin.kind === 'effect' && plugin.slot === 1).instanceID, 'fx-a');
-    assert.equal(e.project.tracks[0].plugins[1].nks.name, 'Tape Echo');
+    assert.equal(e.project.audioPlugins.find(plugin => plugin.kind === 'effect' && plugin.slot === 1).nks.name, 'Tape Echo');
+    assert.equal(e.project.tracks[0].plugins, undefined, 'the project keeps plug-ins in audioPlugins only');
     assert.equal(e.project.instruments[0].plugin.component, 'vst3:SYNTH', 'the instrument is untouched');
     assert.equal(e.state.view, 'browser', 'effects load without leaving the browser');
     console.log('PASS NKS effect loads into the chosen insert slot with one Undo step');
   }
   {
     const e = environment();
-    e.app.request = async (command, payload) => { e.calls.push({ command, payload }); if (command === 'plugin.loadNKS') { e.project.audioPlugins.push({ track: 0, kind: 'effect', slot: 1, component: 'other' }); return copy(descriptor); } return {}; };
+    e.app.request = async (command, payload) => { e.calls.push({ command, payload }); if (command === 'plugin.loadNKS') { e.project.audioPlugins.push({ owner: 'track:bass', kind: 'effect', slot: 1, component: 'other' }); return copy(descriptor); } return {}; };
     assert.equal(await e.loader.load('/FX/Tape Echo.nksfx', { kind: 'effect', slot: 1 }), false);
     assert.equal(e.undo.length, 0); assert.equal(e.calls.at(-1).command, 'engine.project');
     console.log('PASS a slot replaced during loading is preserved and the engine is restored');

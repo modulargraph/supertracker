@@ -11,7 +11,7 @@ const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':
 const decode = value => value.replace(/&(amp|lt|gt|quot|#39);/g, (_, c) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" }[c]));
 const ID = '00000000-0000-0000-0000-000000000017', OTHER = '00000000-0000-0000-0000-000000000018', MAX = '18446744073709551615';
 const parameter = (address = MAX, extra = {}) => ({ address, name: 'Native frequency', writable: true, automatable: true, normalized: .27, ...extra });
-const plugin = extra => ({ instanceID: ID, track: 0, kind: 'effect', slot: 2, component: 'AU:fixture:one', name: 'Fixture Echo', ...extra });
+const plugin = extra => ({ instanceID: ID, owner: 'track:keys', kind: 'effect', slot: 2, component: 'AU:fixture:one', name: 'Fixture Echo', ...extra });
 const saved = extra => ({ type: 'plugin', instanceID: ID, address: MAX, name: 'Saved frequency', value: .4, ...extra });
 function fixture() {
   const pattern = id => ({ id, name: `Pattern ${id}`, length: 8, steps: [Array(8).fill(null), Array(8).fill(null)], automation: [] });
@@ -80,7 +80,7 @@ test('search combines built-ins, live parameter names and NKS labels without tou
   const metadata = new Map([[MAX, { name: 'Color', group: 'NKS Tone', search: 'Brightness Macro Bank 2' }]]), h = harness({ metadata }), before = copy(h.state.project);
   await h.ui.show(); assert.equal(h.document.activeElement.id, 'step-fx-search'); assert.match(await h.search('filter cutoff'), /Filter cutoff/);
   assert.match(await h.search('brightness fixture'), /Color/); assert.match(h.get('step-fx-results').innerHTML, /NKS Tone/); assert.match(await h.search('native frequency'), /Color/); assert.match(await h.search(MAX), /Color/);
-  assert.match(await h.search('not-a-parameter'), /No matching/); assert.equal(h.metadataCalls.length, 1); assert.deepEqual(h.state.project, before); assert.equal(h.mutations.length, 0); assert.deepEqual(h.calls[0].payload, { track: 0, kind: 'effect', slot: 2, instanceID: ID });
+  assert.match(await h.search('not-a-parameter'), /No matching/); assert.equal(h.metadataCalls.length, 1); assert.deepEqual(h.state.project, before); assert.equal(h.mutations.length, 0); assert.deepEqual(h.calls[0].payload, { owner: 'track:keys', kind: 'effect', slot: 2, instanceID: ID });
 });
 
 test('only explicit writable and automatable parameters with canonical UInt64 string addresses are offered', async () => {
@@ -91,12 +91,11 @@ test('only explicit writable and automatable parameters with canonical UInt64 st
 });
 
 test('only unique same-track instances are read; saved missing, duplicate and other-track targets stay unavailable', async () => {
-  for (const kind of ['missing', 'duplicate', 'other-track', 'wrong-owner', 'invalid-id']) {
+  for (const kind of ['missing', 'duplicate', 'other-track', 'invalid-id']) {
     const p = fixture(); p.patterns[0].steps[0][0] = { note: -3, instrument: 0, fx1: saved() };
     if (kind === 'missing') p.audioPlugins = [];
     if (kind === 'duplicate') p.audioPlugins.push(plugin({ slot: 3 }));
-    if (kind === 'other-track') p.audioPlugins[0].track = 1;
-    if (kind === 'wrong-owner') p.audioPlugins[0].owner = 'track:bass';
+    if (kind === 'other-track') p.audioPlugins[0].owner = 'track:bass';
     if (kind === 'invalid-id') { p.audioPlugins[0].instanceID = ''; p.patterns[0].steps[0][0].fx1.instanceID = ''; }
     const h = harness({ project: p }), before = copy(p); await h.ui.show(); assert.match(h.ui.renderField(1, p.patterns[0].steps[0][0].fx1), /unavailable/, kind); assert.match(h.get('step-fx-choice-note').textContent, /unavailable/, kind); assert.equal(h.calls.length, 0, kind); assert.deepEqual(p, before); assert.equal(h.mutations.length, 0);
   }
@@ -191,7 +190,7 @@ test('project, pattern, track, row and cell changes during reads cannot attach a
 });
 
 test('moved, replaced, duplicated or reassigned plug-ins during a read never receive a stale attachment', async () => {
-  const changes = { slot: h => { h.state.project.audioPlugins[0].slot++; }, kind: h => { h.state.project.audioPlugins[0].kind = 'instrument'; }, id: h => { h.state.project.audioPlugins[0].instanceID = OTHER; }, track: h => { h.state.project.audioPlugins[0].track = 1; }, duplicate: h => { h.state.project.audioPlugins.push(plugin({ slot: 5 })); }, component: h => { h.state.project.audioPlugins[0] = plugin({ component: 'AU:replacement:two' }); } };
+  const changes = { slot: h => { h.state.project.audioPlugins[0].slot++; }, kind: h => { h.state.project.audioPlugins[0].kind = 'instrument'; }, id: h => { h.state.project.audioPlugins[0].instanceID = OTHER; }, track: h => { h.state.project.audioPlugins[0].owner = 'track:bass'; }, duplicate: h => { h.state.project.audioPlugins.push(plugin({ slot: 5 })); }, component: h => { h.state.project.audioPlugins[0] = plugin({ component: 'AU:replacement:two' }); } };
   for (const phase of ['load', 'apply']) for (const [name, change] of Object.entries(changes)) {
     const h = harness(), gate = deferred(); let pending;
     if (phase === 'load') { h.read(() => gate.promise); pending = h.ui.show(); } else { await h.ui.show(); await h.choose('native frequency'); h.read(() => gate.promise); pending = h.apply('.8'); }

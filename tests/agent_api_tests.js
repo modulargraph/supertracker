@@ -200,7 +200,6 @@ test('plug-in parameters resolve by name, change natively and commit captured st
     'plugin.state': payload => ({ ...payload, component: 'aufx:test', name: 'Test FX', state: 'NEWSTATE' })
   });
   h.state.project.audioPlugins = [{ track: 1, kind: 'effect', slot: 0, instanceID: 'fx-1', component: 'aufx:test', name: 'Test FX', state: 'OLD' }]; owned(h.state.project);
-  h.state.project.tracks[1].plugins = [{ name: 'Test FX' }];
   const list = await h.ok('pluginParameters', { track: 1, kind: 'effect', slot: 0, query: 'cut' });
   assert.deepEqual(list.parameters.map(p => p.name), ['Cutoff']);
   const undo = h.state.undo.length;

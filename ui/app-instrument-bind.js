@@ -81,15 +81,10 @@
       setView('browser');
       window.STBrowser?.showPlugins?.('instrument');
     };
-    for (const id of ['plugin-editor', 'plugin-parameters']) if ($('#' + id)) $('#' + id).onclick = () => id === 'plugin-editor' ? request('plugin.editor', {
-      track: state.track,
-      kind: 'instrument',
-      slot: 0
-    }).catch(e => toast(e.message, 'error')) : app.showPluginParameters({
-      track: state.track,
-      kind: 'instrument',
-      slot: 0
-    });
+    for (const id of ['plugin-editor', 'plugin-parameters']) if ($('#' + id)) $('#' + id).onclick = () => {
+      const target = { owner: `track:${state.project.tracks[state.track].routingID}`, kind: 'instrument', slot: 0 };
+      return id === 'plugin-editor' ? request('plugin.editor', target).catch(e => toast(e.message, 'error')) : app.showPluginParameters(target);
+    };
     if ($('#midi-refresh')) $('#midi-refresh').onclick = async () => {
       try {
         state.midi = await request('midi.devices');

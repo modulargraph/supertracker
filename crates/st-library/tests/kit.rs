@@ -51,11 +51,11 @@ fn session(sample: &str, zone: &str) -> Value {
         ],
         "groups": [ { "id": "g1", "name": "Fixture kit", "color": "#e2a44f", "collapsed": true, "busID": "kitbus", "libraryPath": "/Users/x/Kits/Fixture kit.stkit", "importNotes": ["A note"] } ],
         "audioPlugins": [
-            { "instanceID": "p-synth", "owner": "track:synth", "track": 3, "kind": "instrument", "slot": 0, "component": "vst3:ABCD", "format": "VST3", "name": "Fixture Synth",
+            { "instanceID": "p-synth", "owner": "track:synth", "kind": "instrument", "slot": 0, "component": "vst3:ABCD", "format": "VST3", "name": "Fixture Synth",
               "state": "AAECAwQFAP/+", "opaqueVendorState": { "samplePath": "/vendor/opaque/do-not-copy.wav", "path": "/vendor/data" } },
             { "instanceID": "p-kick-fx", "owner": "instrument:2", "kind": "effect", "slot": 0, "component": "stfx:eq", "format": "Builtin", "state": "e30=" },
             { "instanceID": "p-bus", "owner": "bus:kitbus", "kind": "effect", "slot": 0, "component": "stfx:compressor", "format": "Builtin" },
-            { "instanceID": "p-lead", "owner": "track:lead", "track": 0, "kind": "effect", "slot": 0, "component": "stfx:chorus" },
+            { "instanceID": "p-lead", "owner": "track:lead", "kind": "effect", "slot": 0, "component": "stfx:chorus" },
             { "instanceID": "p-return", "owner": "bus:space", "kind": "effect", "slot": 0, "component": "stfx:plate" }
         ],
         "routing": {
@@ -113,8 +113,6 @@ fn a_group_is_taken_out_of_a_session() {
     let plugins = kit["audioPlugins"].as_array().unwrap();
     let owners: Vec<&str> = plugins.iter().map(|p| p["owner"].as_str().unwrap()).collect();
     assert_eq!(owners, ["track:synth", "instrument:0", "bus:kitbus", "bus:space"], "plug-ins of members, their instruments, the bus and the buses it feeds");
-    assert_eq!(plugins[0]["track"], 2, "a track plug-in names its new track index");
-    assert!(plugins[1].get("track").is_none());
     assert_eq!(plugins[0]["opaqueVendorState"], project["audioPlugins"][0]["opaqueVendorState"], "opaque plug-in state is untouched");
 
     let routing = &kit["routing"];

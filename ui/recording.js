@@ -297,9 +297,10 @@
       if (!sample?.path) throw new Error('The host could not decode the capture file.');
       if (createsInstrument(session)
           && session.project.instruments.length !== index) throw new Error('The instrument list changed while loading. Your capture file is available below.');
-      const hosted = (session.project.audioPlugins || []).find(plugin => plugin.track === session.track && plugin.kind === 'instrument');
+      const channel = `track:${session.trackObject?.routingID}`;
+      const hosted = (session.project.audioPlugins || []).find(plugin => plugin.owner === channel && plugin.kind === 'instrument');
       if (hosted && !createsTrack(session)) { await app().request('plugin.remove',
-          { track: session.track, kind: 'instrument', slot: hosted.slot || 0 }); session.removedPlugin = true; requireDestination(session); }
+          { owner: channel, kind: 'instrument', slot: hosted.slot || 0 }); session.removedPlugin = true; requireDestination(session); }
       let attachedInstrument, attachedTrack;
       app().mutate('Record sampler instrument', p => {
         if (createsInstrument(session)) p.instruments.push(app().normalize({
@@ -333,16 +334,15 @@
             mute: false,
             solo: false,
             delaySend: 0,
-            reverbSend: 0,
-            plugins: []
+            reverbSend: 0
           };
           window.STRoutingProject.appendTrack(p,track,app().uid);
           for (const pattern of p.patterns || []) { pattern.steps ||= []; pattern.steps.push(Array.from({length:pattern.length},()=>null)); }
           attachedTrack = track;
         } else {
-          const removed = new Set((p.audioPlugins || []).filter(plugin => plugin.track === session.track
-              && plugin.kind === 'instrument').map(plugin => plugin.instanceID).filter(Boolean));
-          p.audioPlugins = (p.audioPlugins || []).filter(plugin => !(plugin.track === session.track && plugin.kind === 'instrument'));
+          const channel = `track:${session.trackObject.routingID}`, own = plugin => plugin.owner === channel && plugin.kind === 'instrument';
+          const removed = new Set((p.audioPlugins || []).filter(own).map(plugin => plugin.instanceID).filter(Boolean));
+          p.audioPlugins = (p.audioPlugins || []).filter(plugin => !own(plugin));
           if (p.routing.sidechains) p.routing.sidechains = p.routing.sidechains.filter(send => !removed.has(send.destination?.instanceID));
           session.trackObject.instrument = index; attachedTrack = session.trackObject;
         }

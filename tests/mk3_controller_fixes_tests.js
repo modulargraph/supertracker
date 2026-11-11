@@ -133,7 +133,7 @@ test('plug-in automation gestures end per parameter', async () => {
   const h = start();
   for (const file of ['fine-control.js', 'effect-pages.js', 'routing-project.js', 'studio.js']) h.load(file);
   h.win.STEffectPages.setMetadata(metadata());
-  const plugins = [{ track: 0, kind: 'effect', slot: 0, component: 'stfx:filter', name: 'Multimode Filter', format: 'Builtin', instanceID: 'fx-filter', state: 's' }];
+  const plugins = [{ owner: `track:${h.state.project.tracks[0].routingID}`, kind: 'effect', slot: 0, component: 'stfx:filter', name: 'Multimode Filter', format: 'Builtin', instanceID: 'fx-filter', state: 's' }];
   h.state.project.audioPlugins = clone(plugins);
   h.win.STHostTransport.post = message => {
     h.calls.push(message);

@@ -135,12 +135,10 @@ fn track_owner(track: &Value) -> Option<String> {
     track["routingID"].as_str().map(|id| format!("track:{id}"))
 }
 
-/// The track index a plug-in descriptor belongs to (by its owner, or by its `track` field).
+/// The index of the track whose channel owns a plug-in descriptor, if a track does.
 fn plugin_track(plugin: &Value, tracks: &[Value]) -> Option<usize> {
-    match plugin["owner"].as_str() {
-        Some(owner) => tracks.iter().position(|track| track_owner(track).as_deref() == Some(owner)),
-        None => whole(&plugin["track"]).filter(|track| *track >= 0).map(|track| track as usize),
-    }
+    let owner = plugin["owner"].as_str()?;
+    tracks.iter().position(|track| track_owner(track).as_deref() == Some(owner))
 }
 
 /// The owners the `sources` reach through outputs and sends (themselves included).

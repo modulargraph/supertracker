@@ -33,7 +33,7 @@
   const owner = (project, track) => `track:${project.tracks[track]?.routingID}`;
   // A track also runs its assigned instrument's insert chain (instrument-effects.js); locks on it reach this track's instance.
   function onTrack(plugin, project, track) {
-    return plugin.owner ? plugin.owner === owner(project, track) || plugin.owner === `instrument:${project.tracks[track]?.instrument ?? 0}` : plugin.track === track;
+    return plugin.owner === owner(project, track) || plugin.owner === `instrument:${project.tracks[track]?.instrument ?? 0}`;
   }
   function resolvePlugin(project, track, id) {
     if (!instanceID(id)) return null;
@@ -136,11 +136,8 @@
     if (fx.type === 'plugin') {
       const plugin = resolvePlugin(entry.project, entry.trackIndex, fx.instanceID);
       if (plugin
-          && entry.pattern.automation?.some(lane => (lane.owner
-              ? lane.owner === owner(entry.project, entry.trackIndex)
-              : lane.track === entry.trackIndex)
-              && (lane.target === `plugin:${plugin.kind}:${plugin.slot}:${fx.address}` || plugin.kind === 'effect'
-                  && lane.target === `plugin:${plugin.slot}:${fx.address}`))) rank = Math.max(rank, 1);
+          && entry.pattern.automation?.some(lane => lane.owner === plugin.owner
+              && lane.target === `plugin:${plugin.kind}:${plugin.slot}:${fx.address}`)) rank = Math.max(rank, 1);
     }
     return rank;
   }
@@ -230,7 +227,7 @@
   }
   function payload(plugin, entry) {
     return {
-      ...(plugin.owner ? { owner: plugin.owner } : { track: entry.trackIndex }),
+      owner: plugin.owner,
       kind: plugin.kind,
       slot: plugin.slot,
       instanceID: plugin.instanceID
@@ -242,7 +239,7 @@
     const plugin = snapshot.plugin, found = resolvePlugin(entry.project, entry.trackIndex, snapshot.instanceID);
     return found === plugin && pluginIdentity(found) === snapshot.signature ? found : null;
   }
-  const pluginIdentity = plugin => signature([plugin.instanceID, plugin.track, plugin.kind, plugin.slot, plugin.component, plugin.owner,
+  const pluginIdentity = plugin => signature([plugin.instanceID, plugin.kind, plugin.slot, plugin.component, plugin.owner,
       plugin.bundlePath]);
   const pluginSnapshot = plugin => ({ plugin, instanceID: plugin.instanceID, signature: pluginIdentity(plugin) });
   async function load(entry) {

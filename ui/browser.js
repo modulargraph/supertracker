@@ -813,9 +813,8 @@
   function effectSlots() {
     const state = app().state;
     const effects = [];
-    if (Array.isArray(state.project?.audioPlugins)) state.project.audioPlugins.filter(value => value.track === Number(state.track || 0)
-        && value.kind === 'effect').forEach(value => { effects[value.slot] = value; });
-    else (state.project?.tracks?.[state.track]?.plugins || []).forEach((value, index) => { if (value) effects[index] = value; });
+    const owner = `track:${state.project?.tracks?.[state.track]?.routingID}`;
+    (state.project?.audioPlugins || []).filter(value => value.owner === owner && value.kind === 'effect').forEach(value => { effects[value.slot] = value; });
     return effects;
   }
   const pluginFormat = plugin => String(plugin.format || 'AU').toUpperCase();
@@ -1128,15 +1127,16 @@
     const destinationInstrument = destinationProject.instruments[instrumentIndex], destinationTrack = destinationProject.tracks[state.track];
     const createInstrument = local.pluginKind === 'instrument' && asNew;
     local.busy = true; paint();
+    const trackIndex = Number(state.track || 0);
     const target = {
-      track: Number(state.track || 0),
+      owner: `track:${destinationTrack.routingID}`,
       kind: local.pluginKind,
       slot: local.pluginKind === 'instrument' ? 0 : local.slot,
       component: plugin.id
     };
     if (plugin.bundlePath) target.bundlePath = plugin.bundlePath;
     const stillValid = () => state.project === destinationProject
-        && destinationProject.tracks[target.track] === destinationTrack
+        && destinationProject.tracks[trackIndex] === destinationTrack
         && (target.kind !== 'instrument' || destinationProject.instruments[instrumentIndex] === destinationInstrument);
     const stale = async () => {
       await app().syncEngineProject(() => window.STUtil.clone(state.project));
@@ -1153,12 +1153,7 @@
         const snapshot = await call('plugin.state', {});
         if (!stillValid()) { await stale(); return; }
         app().mutate(`Load ${plugin.name}`, () => {
-          if (Array.isArray(snapshot)) state.project.audioPlugins = snapshot;
-          else {
-            state.project.audioPlugins ||= [];
-            state.project.audioPlugins = state.project.audioPlugins.filter(value => !(value.track === target.track && value.kind === target.kind && value.slot === target.slot));
-            state.project.audioPlugins.push({ ...result, ...target });
-          }
+          state.project.audioPlugins = snapshot;
           const track = destinationTrack;
           if (target.kind === 'instrument') {
             const destination = createInstrument ? state.project.instruments.length : instrumentIndex;
@@ -1171,11 +1166,11 @@
               instrument.plugin = result;
               instrument.name = plugin.name;
               track.instrument = destination;
-              if (state.track === target.track && state.instrument === instrumentIndex) state.instrument = destination;
+              if (state.track === trackIndex && state.instrument === instrumentIndex) state.instrument = destination;
             }
-          } else { track.plugins ||= []; track.plugins[target.slot] = result; }
+          }
         });
-        app().toast(`${plugin.name} loaded on ${state.project.tracks[target.track]?.name || 'track'}`, 'success');
+        app().toast(`${plugin.name} loaded on ${destinationTrack.name || 'track'}`, 'success');
       }
     } catch (error) { failure(error); }
     finally { local.busy = false; paint(); }

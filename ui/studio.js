@@ -478,7 +478,7 @@
       params = ui.parameters.get(paramKey) || plugin.parameters || [],
       paramError = ui.parameterErrors.get(paramKey);
     const pluginOwner = ownerForPlugin(plugin), chain = effectsFor(pluginOwner), position = chain.findIndex(item => item.slot === plugin.slot);
-    return `<details class="studio-plugin ${plugin.bypass ? 'is-bypassed' : ''}" data-plugin-owner="${esc(pluginOwner)}" data-plugin-track="${plugin.track ?? ''}"`
+    return `<details class="studio-plugin ${plugin.bypass ? 'is-bypassed' : ''}" data-plugin-owner="${esc(pluginOwner)}"`
         + ` data-plugin-slot="${plugin.slot}" ${(ui.openPlugins.get(pluginKey(pluginOwner, plugin.slot)) ?? plugin.slot === 0) ? 'open' : ''}>`
         + `<summary id="plugin-header-${plugin.slot}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" title="Option Up / Down moves this effect in the `
         + `chain"><span class="studio-slot-index">${String(plugin.slot + 1).padStart(2, '0')}</span><strong>${esc(plugin.name || 'plug-in')}${plugin.bypass ? ' · bypassed' : ''}</strong>`
@@ -684,9 +684,9 @@
       mutate(label, p => {
         replaceEffects(p, track, after);
         for (const pattern of p.patterns || []) for (const lane of pattern.automation || []) {
-          if (ownerForLane(lane) !== track) continue;
-          const match = /^plugin:(effect:)?(\d+):(.+)$/.exec(lane.target || '');
-          if (match && map.has(Number(match[2]))) lane.target = `plugin:${match[1] || ''}${map.get(Number(match[2]))}:${match[3]}`;
+          if (lane.owner !== track) continue;
+          const match = /^plugin:effect:(\d+):(.+)$/.exec(lane.target || '');
+          if (match && map.has(Number(match[1]))) lane.target = effectTarget(map.get(Number(match[1])), match[2]);
         }
       });
       focusSlot = toSlot; committed = true;
@@ -796,7 +796,7 @@
         if (removed.instanceID
             && p.routing.sidechains) p.routing.sidechains = p.routing.sidechains.filter(route => route.destination?.instanceID !== removed.instanceID);
         if (removed.instanceID && p.pluginPages?.[removed.instanceID]) delete p.pluginPages[removed.instanceID];
-        for (const pattern of p.patterns || []) pattern.automation = (pattern.automation || []).filter(lane => !(ownerForLane(lane) === track && (lane.target?.startsWith(`plugin:effect:${slot}:`) || lane.target?.startsWith(`plugin:${slot}:`))));
+        for (const pattern of p.patterns || []) pattern.automation = (pattern.automation || []).filter(lane => !(lane.owner === track && lane.target?.startsWith(`plugin:effect:${slot}:`)));
       });
       window.STRouting?.refreshCapabilities();
       return true;
@@ -871,7 +871,7 @@
     document.querySelector('.studio-rack-details')?.addEventListener('toggle', event => { ui.rackDetails = !!event.target?.open; });
     window.STInsertChain?.bind(document, selectedOwner(), { prefix: 'mixfx', search: true, title: channelTitle(selectedOwner()) });
     document.querySelectorAll('.studio-plugin').forEach(details => details.addEventListener('toggle', () => {
-      ui.openPlugins.set(pluginKey(details.dataset.pluginOwner || Number(details.dataset.pluginTrack), Number(details.dataset.pluginSlot)),
+      ui.openPlugins.set(pluginKey(details.dataset.pluginOwner, Number(details.dataset.pluginSlot)),
           details.open);
     }));
     document.querySelectorAll('[data-studio-property]').forEach(input => {

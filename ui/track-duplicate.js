@@ -58,9 +58,7 @@
       const freshIDs = new Set(proposal.newPluginInstanceIDs || Object.values(proposal.instanceMap));
       for (const plugin of proposal.project.audioPlugins || []) if (freshIDs.has(plugin.instanceID)) {
         await app().request('plugin.parameters',
-            { track: plugin.track, ...(plugin.owner
-                ? { owner: plugin.owner }
-                : {}), kind: plugin.kind, slot: plugin.slot, instanceID: plugin.instanceID, addresses: [] });
+            { owner: plugin.owner, kind: plugin.kind, slot: plugin.slot, instanceID: plugin.instanceID, addresses: [] });
         if (!unchanged()) throw new Error('The project changed while verifying the copied plug-ins. Your newer edits were preserved.');
       }
       if (window.STBusy.any(['routing', 'export'])) throw new Error(`Another audio operation started. The ${spec.noun} was not duplicated.`);

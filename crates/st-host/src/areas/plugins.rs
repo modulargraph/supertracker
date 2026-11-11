@@ -152,12 +152,9 @@ fn new_instance_id() -> String {
     format!("plug-{hash:016x}")
 }
 
-/// The owner of a descriptor of `project`: its `owner`, else the owner of its track index.
-fn owner_of(project: &Project, descriptor: &Value) -> String {
-    match text(descriptor, "owner") {
-        Some(owner) => owner.to_string(),
-        None => track_owner(project, whole(descriptor, "track").unwrap_or(0).max(0) as usize),
-    }
+/// The channel a descriptor names.
+fn owner_of(descriptor: &Value) -> &str {
+    text(descriptor, "owner").unwrap_or_default()
 }
 
 fn track_index(project: &Project, owner: &str) -> Option<usize> {
@@ -168,8 +165,8 @@ fn descriptor_kind(descriptor: &Value) -> &str {
     if descriptor.get("kind").and_then(Value::as_str) == Some("instrument") { "instrument" } else { "effect" }
 }
 
-fn matches(project: &Project, descriptor: &Value, target: &Target) -> bool {
-    owner_of(project, descriptor) == target.owner && descriptor_kind(descriptor) == target.kind() && (target.instrument || whole(descriptor, "slot").unwrap_or(0) == target.slot)
+fn matches(descriptor: &Value, target: &Target) -> bool {
+    owner_of(descriptor) == target.owner && descriptor_kind(descriptor) == target.kind() && (target.instrument || whole(descriptor, "slot").unwrap_or(0) == target.slot)
 }
 
 fn parameter_value(info: &ParameterInfo, plain: f64, display: Option<String>) -> Value {
@@ -207,13 +204,11 @@ impl Plugins {
         self.engine.project().ok_or_else(|| Error::new("No project is open in the audio engine yet."))
     }
 
-    fn target(&self, project: &Project, payload: &Value) -> Result<Target> {
+    /// The insert or instrument a request names: `{owner, kind?, slot?}`.
+    fn target(&self, payload: &Value) -> Result<Target> {
         let instrument = payload.get("kind").and_then(Value::as_str).unwrap_or("effect") == "instrument";
-        let owner = match (text(payload, "owner"), whole(payload, "track")) {
-            (Some(owner), _) => owner.to_string(),
-            (None, Some(track)) if track >= 0 && (track as usize) < project.track_list().len() => track_owner(project, track as usize),
-            (None, Some(_)) => fail!("That track is not in the project."),
-            (None, None) => fail!("Choose the channel of the plug-in: an owner or a track."),
+        let Some(owner) = text(payload, "owner").map(String::from) else {
+            fail!("Choose the channel of the plug-in: its owner (track:<routingID>, bus:<id>, master or instrument:<n>).");
         };
         let slot = if instrument { 0 } else { whole(payload, "slot").unwrap_or(0) };
         if !(0..INSERT_SLOTS).contains(&slot) {
@@ -227,7 +222,7 @@ impl Plugins {
 
     /// The descriptor of `target` in the engine's project.
     fn descriptor(&self, project: &Project, target: &Target) -> Option<Value> {
-        project.to_value()["audioPlugins"].as_array().into_iter().flatten().find(|descriptor| matches(project, descriptor, target)).cloned()
+        project.to_value()["audioPlugins"].as_array().into_iter().flatten().find(|descriptor| matches(descriptor, target)).cloned()
     }
 
     fn require(&self, project: &Project, target: &Target) -> Result<Value> {
@@ -276,14 +271,11 @@ impl Plugins {
 
     /// What a reply says about a descriptor beyond what the project stores: live latency,
     /// presets, status, and the parameter list when asked for.
-    fn summary(&self, project: &Project, target: &Target, mut descriptor: Value, parameters: bool) -> Value {
+    fn summary(&self, target: &Target, mut descriptor: Value, parameters: bool) -> Value {
         let component = text(&descriptor, "component").unwrap_or_default().to_string();
         descriptor["owner"] = json!(target.owner);
         descriptor["kind"] = json!(target.kind());
         descriptor["slot"] = json!(target.slot);
-        if let Some(track) = track_index(project, &target.owner) {
-            descriptor["track"] = json!(track);
-        }
         if is_builtin(&component) {
             descriptor["presets"] = json!([]);
             descriptor["hostStatus"] = json!({ "available": true });
@@ -424,7 +416,7 @@ impl Plugins {
     // ---- loading -------------------------------------------------------------------------
 
     /// The descriptor `plugin.load` puts into the project.
-    fn new_descriptor(&self, project: &Project, target: &Target, payload: &Value) -> Result<Value> {
+    fn new_descriptor(&self, target: &Target, payload: &Value) -> Result<Value> {
         let Some(component) = text(payload, "component").or_else(|| text(payload, "id")) else { fail!("Choose a plug-in to load.") };
         let mut descriptor = Map::new();
         // What the interface stored with the descriptor travels on (pages, NKS binding).
@@ -436,9 +428,6 @@ impl Plugins {
         descriptor.insert("owner".into(), json!(target.owner));
         descriptor.insert("kind".into(), json!(target.kind()));
         descriptor.insert("slot".into(), json!(target.slot));
-        if let Some(track) = track_index(project, &target.owner) {
-            descriptor.insert("track".into(), json!(track));
-        }
         descriptor.insert("instanceID".into(), json!(text(payload, "instanceID").map(String::from).unwrap_or_else(new_instance_id)));
         descriptor.insert("component".into(), json!(component));
         descriptor.entry("bypass").or_insert(json!(false));
@@ -479,12 +468,12 @@ impl Plugins {
     /// Puts `descriptor` into the engine's project in place of whatever `target` held, and
     /// answers with its summary. On a failed load the engine gets its previous project back.
     fn place(&self, project: &Project, target: &Target, descriptor: Value) -> Result<Value> {
-        let replaced: Vec<String> = project.to_value()["audioPlugins"].as_array().into_iter().flatten().filter(|other| matches(project, other, target)).filter_map(|other| text(other, "instanceID").map(String::from)).collect();
+        let replaced: Vec<String> = project.to_value()["audioPlugins"].as_array().into_iter().flatten().filter(|other| matches(other, target)).filter_map(|other| text(other, "instanceID").map(String::from)).collect();
         let instance = text(&descriptor, "instanceID").unwrap_or_default().to_string();
         self.manager.forget_failures();
-        let next = self.edit(project, |value| {
+        self.edit(project, |value| {
             let plugins = value["audioPlugins"].as_array_mut().expect("an array");
-            plugins.retain(|other| !matches(project, other, target));
+            plugins.retain(|other| !matches(other, target));
             plugins.push(descriptor.clone());
             remove_sidechains(value, &replaced.iter().filter(|id| **id != instance).cloned().collect::<Vec<_>>());
             Ok(())
@@ -500,15 +489,15 @@ impl Plugins {
             let _ = self.engine.publish_with(project, false);
             return Err(Error::new(reason));
         }
-        Ok(self.summary(&next, target, descriptor, true))
+        Ok(self.summary(target, descriptor, true))
     }
 
     /// `plugin.load`.
     fn load(&self, payload: Value) -> Result<Value> {
         let _editing = self.editing.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let project = self.project()?;
-        let target = self.target(&project, &payload)?;
-        let descriptor = self.new_descriptor(&project, &target, &payload)?;
+        let target = self.target(&payload)?;
+        let descriptor = self.new_descriptor(&target, &payload)?;
         self.place(&project, &target, descriptor)
     }
 
@@ -537,8 +526,8 @@ impl Plugins {
         request["manufacturer"] = json!(plugin.vendor);
         // The preset holds the component's own state: framed as the container stores VST3 state.
         request["state"] = json!(base64(&vst3_component_state(&plugin.id, &preset.state)?));
-        let target = self.target(&project, &request)?;
-        let mut descriptor = self.new_descriptor(&project, &target, &request)?;
+        let target = self.target(&request)?;
+        let mut descriptor = self.new_descriptor(&target, &request)?;
         descriptor["nks"] = json!({ "name": preset.name, "path": preset.path, "identity": preset.identity, "pages": [], "warnings": preset.warnings });
         let mut loaded = self.place(&project, &target, descriptor)?;
         // Bind the pages to the parameters the loaded plug-in has, and keep the binding in the
@@ -560,12 +549,12 @@ impl Plugins {
     fn remove(&self, payload: Value) -> Result<Value> {
         let _editing = self.editing.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let project = self.project()?;
-        let target = self.target(&project, &payload)?;
-        let removed: Vec<String> = project.to_value()["audioPlugins"].as_array().into_iter().flatten().filter(|other| matches(&project, other, &target)).filter_map(|other| text(other, "instanceID").map(String::from)).collect();
+        let target = self.target(&payload)?;
+        let removed: Vec<String> = project.to_value()["audioPlugins"].as_array().into_iter().flatten().filter(|other| matches(other, &target)).filter_map(|other| text(other, "instanceID").map(String::from)).collect();
         let found = self.descriptor(&project, &target).is_some();
         if found {
             self.edit(&project, |value| {
-                value["audioPlugins"].as_array_mut().expect("an array").retain(|other| !matches(&project, other, &target));
+                value["audioPlugins"].as_array_mut().expect("an array").retain(|other| !matches(other, &target));
                 remove_sidechains(value, &removed);
                 Ok(())
             })?;
@@ -582,10 +571,10 @@ impl Plugins {
         let mut request = payload.clone();
         request["kind"] = json!("effect");
         request["slot"] = payload.get("fromSlot").cloned().unwrap_or(Value::Null);
-        let target = self.target(&project, &request)?;
+        let target = self.target(&request)?;
         let Some(to_slot) = whole(&payload, "toSlot").filter(|slot| (0..INSERT_SLOTS).contains(slot)) else { fail!("Choose the slot to move the effect to.") };
         let chain_of = |project: &Project| -> Vec<Value> {
-            let mut chain: Vec<Value> = project.to_value()["audioPlugins"].as_array().into_iter().flatten().filter(|other| owner_of(project, other) == target.owner && descriptor_kind(other) == "effect").cloned().collect();
+            let mut chain: Vec<Value> = project.to_value()["audioPlugins"].as_array().into_iter().flatten().filter(|other| owner_of(other) == target.owner && descriptor_kind(other) == "effect").cloned().collect();
             chain.sort_by_key(|descriptor| whole(descriptor, "slot").unwrap_or(0));
             chain
         };
@@ -611,35 +600,26 @@ impl Plugins {
         let owner = target.owner.clone();
         let next = self.edit(&project, |value| {
             for other in value["audioPlugins"].as_array_mut().expect("an array") {
-                if owner_of(&project, other) == owner && descriptor_kind(other) == "effect" {
+                if owner_of(other) == owner && descriptor_kind(other) == "effect" {
                     if let Some(slot) = lookup(whole(other, "slot").unwrap_or(0)) {
                         other["slot"] = json!(slot);
                     }
                 }
             }
+            // The lanes of the channel's effects (`plugin:effect:<slot>:<address>`) follow them.
             for lane in value["patterns"].as_array_mut().into_iter().flatten().flat_map(|pattern| pattern["automation"].as_array_mut().into_iter().flatten()) {
-                let lane_owner = match text(lane, "owner") {
-                    Some(lane_owner) => lane_owner.to_string(),
-                    None => track_owner(&project, whole(lane, "track").unwrap_or(0).max(0) as usize),
-                };
-                let Some(target_text) = lane.get("target").and_then(Value::as_str).filter(|_| lane_owner == owner) else { continue };
+                let Some(target_text) = lane.get("target").and_then(Value::as_str).filter(|_| text(lane, "owner") == Some(owner.as_str())) else { continue };
                 let parts: Vec<&str> = target_text.split(':').collect();
-                let position = match parts.as_slice() {
-                    ["plugin", "effect", _, _] => 2,
-                    ["plugin", _, _] => 1,
-                    _ => continue,
-                };
-                if let Some(slot) = parts[position].parse().ok().and_then(lookup) {
-                    let mut parts: Vec<String> = parts.iter().map(|part| part.to_string()).collect();
-                    parts[position] = slot.to_string();
-                    lane["target"] = json!(parts.join(":"));
+                let ["plugin", "effect", slot, address] = parts.as_slice() else { continue };
+                if let Some(slot) = slot.parse().ok().and_then(lookup) {
+                    lane["target"] = json!(format!("plugin:effect:{slot}:{address}"));
                 }
             }
             Ok(())
         })?;
         let after: Vec<Value> = chain_of(&next).into_iter().map(|descriptor| {
             let slot = whole(&descriptor, "slot").unwrap_or(0);
-            let mut item = self.summary(&next, &Target { owner: owner.clone(), instrument: false, slot }, descriptor.clone(), false);
+            let mut item = self.summary(&Target { owner: owner.clone(), instrument: false, slot }, descriptor.clone(), false);
             // The state is the one captured before the move: moving changes none.
             if let Some(state) = previous.iter().find(|prior| prior["instanceID"] == descriptor["instanceID"]).and_then(|prior| prior.get("state")) {
                 item["state"] = state.clone();
@@ -648,17 +628,10 @@ impl Plugins {
         }).collect();
         let slot_map: Vec<Value> = previous.iter().map(|prior| { let slot = whole(prior, "slot").unwrap_or(0); json!({ "fromSlot": slot, "toSlot": lookup(slot).unwrap_or(slot), "instanceID": prior["instanceID"] }) }).collect();
         let value = next.to_value();
-        let mut result = json!({
+        Ok(json!({
             "moved": true, "owner": owner, "fromSlot": target.slot, "toSlot": to_slot, "previousPlugins": previous, "plugins": after, "slotMap": slot_map,
-            "audioPlugins": value["audioPlugins"],
-        });
-        if let Some(track) = track_index(&next, &owner) {
-            result["track"] = json!(track);
-        }
-        if !value["routing"].is_null() {
-            result["routing"] = value["routing"].clone();
-        }
-        Ok(result)
+            "audioPlugins": value["audioPlugins"], "routing": value["routing"],
+        }))
     }
 
     // ---- parameters, state, presets, editor ----------------------------------------------
@@ -666,7 +639,7 @@ impl Plugins {
     /// `plugin.parameters`.
     fn parameters(&self, payload: Value) -> Result<Value> {
         let project = self.project()?;
-        let target = self.target(&project, &payload)?;
+        let target = self.target(&payload)?;
         let descriptor = self.require(&project, &target)?;
         let addresses: Option<HashSet<String>> = payload.get("addresses").and_then(Value::as_array).map(|list| list.iter().filter_map(|address| address.as_str().map(String::from).or_else(|| address.as_u64().map(|number| number.to_string()))).collect());
         let list = if is_builtin(text(&descriptor, "component").unwrap_or_default()) {
@@ -684,19 +657,19 @@ impl Plugins {
     /// `plugin.parameter`: `{address, value, normalized?}` sets a value; `{bypass}` bypasses.
     fn parameter(&self, payload: Value) -> Result<Value> {
         let project = self.project()?;
-        let target = self.target(&project, &payload)?;
+        let target = self.target(&payload)?;
         let descriptor = self.require(&project, &target)?;
         if let Some(bypass) = payload.get("bypass").and_then(Value::as_bool) {
             let _editing = self.editing.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            let next = self.edit(&project, |value| {
-                for other in value["audioPlugins"].as_array_mut().expect("an array").iter_mut().filter(|other| matches(&project, other, &target)) {
+            self.edit(&project, |value| {
+                for other in value["audioPlugins"].as_array_mut().expect("an array").iter_mut().filter(|other| matches(other, &target)) {
                     other["bypass"] = json!(bypass);
                 }
                 Ok(())
             })?;
             let mut descriptor = descriptor;
             descriptor["bypass"] = json!(bypass);
-            return Ok(self.summary(&next, &target, descriptor, false));
+            return Ok(self.summary(&target, descriptor, false));
         }
         let address = payload.get("address").and_then(|address| address.as_str().and_then(|text| text.parse::<u64>().ok()).or_else(|| address.as_u64()));
         let (Some(address), Some(value)) = (address, payload.get("value").and_then(Value::as_f64).filter(|value| value.is_finite())) else {
@@ -735,25 +708,25 @@ impl Plugins {
     /// The descriptor of `target` with its state captured now.
     fn snapshot_of(&self, project: &Project, target: &Target) -> Option<Value> {
         let value = project.to_value();
-        let index = value["audioPlugins"].as_array()?.iter().position(|descriptor| matches(project, descriptor, target))?;
+        let index = value["audioPlugins"].as_array()?.iter().position(|descriptor| matches(descriptor, target))?;
         self.engine.snapshot_one(|candidate, _| candidate == index)
     }
 
     /// `plugin.state`: `{}` for every descriptor with its state; a target for one; a target
     /// and `state` to load a state first.
     fn state(&self, payload: Value) -> Result<Value> {
-        if payload.get("owner").is_none() && payload.get("track").is_none() {
+        if payload.get("owner").is_none() {
             if payload.get("state").is_some() {
-                fail!("Restoring plug-in state requires a serialized state string and a target owner or track.");
+                fail!("Restoring plug-in state requires a serialized state string and the owner of the plug-in.");
             }
             return Ok(self.engine.snapshot()["audioPlugins"].clone());
         }
         let project = self.project()?;
-        let target = self.target(&project, &payload)?;
+        let target = self.target(&payload)?;
         let descriptor = self.require(&project, &target)?;
         let mut project = project;
         if let Some(state) = payload.get("state") {
-            let Some(state) = state.as_str() else { fail!("Restoring plug-in state requires a serialized state string and a target owner or track.") };
+            let Some(state) = state.as_str() else { fail!("Restoring plug-in state requires a serialized state string and the owner of the plug-in.") };
             let _editing = self.editing.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             if is_builtin(text(&descriptor, "component").unwrap_or_default()) {
                 for key in self.engine.insert_keys(&target.owner, false, target.slot as usize, text(&descriptor, "instanceID")) {
@@ -765,7 +738,7 @@ impl Plugins {
                 }
             }
             project = self.edit(&project, |value| {
-                for other in value["audioPlugins"].as_array_mut().expect("an array").iter_mut().filter(|other| matches(&project, other, &target)) {
+                for other in value["audioPlugins"].as_array_mut().expect("an array").iter_mut().filter(|other| matches(other, &target)) {
                     other["state"] = json!(state);
                 }
                 Ok(())
@@ -779,13 +752,13 @@ impl Plugins {
                 snapshot["stateError"] = json!(error.to_string());
             }
         }
-        Ok(self.summary(&project, &target, snapshot, false))
+        Ok(self.summary(&target, snapshot, false))
     }
 
     /// `plugin.preset`: `{number}` loads a factory preset; without it the presets are listed.
     fn preset(&self, payload: Value) -> Result<Value> {
         let project = self.project()?;
-        let target = self.target(&project, &payload)?;
+        let target = self.target(&payload)?;
         let descriptor = self.require(&project, &target)?;
         if is_builtin(text(&descriptor, "component").unwrap_or_default()) {
             if payload.get("number").is_some() {
@@ -802,7 +775,7 @@ impl Plugins {
         for instance in &hosted {
             instance.load_preset(*id).map_err(Error::new)?;
         }
-        let mut summary = self.summary(&project, &target, descriptor, true);
+        let mut summary = self.summary(&target, descriptor, true);
         summary["currentPreset"] = json!({ "number": id, "name": name });
         Ok(summary)
     }
@@ -811,7 +784,7 @@ impl Plugins {
     /// front; `{open: false}` closes it.
     fn editor(&self, payload: Value) -> Result<Value> {
         let project = self.project()?;
-        let target = self.target(&project, &payload)?;
+        let target = self.target(&payload)?;
         let descriptor = self.require(&project, &target)?;
         let name = text(&descriptor, "name").unwrap_or("Plug-in").to_string();
         if is_builtin(text(&descriptor, "component").unwrap_or_default()) {
@@ -873,11 +846,7 @@ impl Plugins {
 
     fn placed(&self, key: &str) -> Option<Value> {
         let placement = self.manager.hosted(key)?.placement();
-        let mut value = json!({ "owner": placement.owner, "kind": if placement.instrument { "instrument" } else { "effect" }, "slot": placement.slot, "instanceID": placement.instance_id });
-        if let Some(track) = self.engine.with_project(|project| project.and_then(|project| track_index(project, &placement.owner))) {
-            value["track"] = json!(track);
-        }
-        Some(value)
+        Some(json!({ "owner": placement.owner, "kind": if placement.instrument { "instrument" } else { "effect" }, "slot": placement.slot, "instanceID": placement.instance_id }))
     }
 
     fn forward(&self, event: &PluginEvent) {

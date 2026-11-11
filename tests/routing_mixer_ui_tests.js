@@ -28,7 +28,7 @@ function fixture() {
     },
     audioPlugins: [],
     patterns: [{ id: 0, name: 'Pattern A', length: 64, automation: [
-      { owner: 'track:keys', track: 0, target: 'volume', name: 'Keys level', points: [{ row: 0, value: .8 }] },
+      { track: 0, target: 'volume', name: 'Keys level', points: [{ row: 0, value: .8 }] },
       { owner: 'bus:drums', target: 'volume', name: 'Group level', points: [{ row: 0, value: 1.1 }] },
       { owner: 'master', target: 'volume', name: 'Main level', points: [{ row: 0, value: .73 }] }
     ] }, { id: 1, name: 'Pattern B', length: 32, automation: [] }]
@@ -297,14 +297,14 @@ test('bus reorder sends owner, preserves other chains and remaps only that owner
   const h = harness(state => {
     state.project.audioPlugins = [effect('bus:drums', 0, 'eq'), effect('bus:drums', 3, 'comp'), effect('master', 0, 'limit'), effect('track:keys', 0, 'keys')];
     state.project.patterns[0].automation.push({ owner: 'bus:drums', target: 'plugin:effect:0:42', name: 'Group EQ', points: [{ row: 0, value: .3 }] }, { owner: 'master', target: 'plugin:effect:0:42', points: [] });
-    state.project.patterns[1].automation.push({ owner: 'bus:drums', target: 'plugin:3:42', points: [{ row: 6, value: .7 }] }, { owner: 'track:keys', target: 'plugin:effect:0:42', points: [] });
+    state.project.patterns[1].automation.push({ owner: 'bus:drums', target: 'plugin:effect:3:42', points: [{ row: 6, value: .7 }] }, { owner: 'track:keys', target: 'plugin:effect:0:42', points: [] });
   });
   h.select('bus:drums'); await h.settle(); const before = clone(h.state.project); h.nodes.get('plugin-header-3').focus();
   const event = h.key('plugin-header-3', 'ArrowUp', { altKey: true }); assert(event.handled && event.defaultPrevented); await h.settle();
   const move = h.calls.find(c => c.command === 'plugin.move'); assert.deepEqual(move.payload, { owner: 'bus:drums', fromSlot: 3, toSlot: 0 }); assert.equal(h.changes.length, 1);
   assert.deepEqual(clone(h.state.project.audioPlugins.filter(p => p.owner === 'bus:drums').map(p => [p.slot, p.component, p.state, p.bypass])), [[0, 'vst3:fx-comp', 'state-comp', true], [3, 'vst3:fx-eq', 'state-eq', false]]);
   assert.deepEqual(clone(h.state.project.audioPlugins.filter(p => p.owner !== 'bus:drums')), before.audioPlugins.filter(p => p.owner !== 'bus:drums'));
-  assert.equal(h.state.project.patterns[0].automation[3].target, 'plugin:effect:3:42'); assert.equal(h.state.project.patterns[1].automation[0].target, 'plugin:0:42');
+  assert.equal(h.state.project.patterns[0].automation[3].target, 'plugin:effect:3:42'); assert.equal(h.state.project.patterns[1].automation[0].target, 'plugin:effect:0:42');
   assert.equal(h.state.project.patterns[0].automation[4].target, 'plugin:effect:0:42'); assert.equal(h.state.project.patterns[1].automation[1].target, 'plugin:effect:0:42');
   assert.deepEqual(h.changes[0].before.patterns, before.patterns); assert.equal(h.document.activeElement.id, 'plugin-header-0'); assert.equal(h.state.track, 0); assert.equal(h.studio.selectedOwner(), 'bus:drums');
 });
@@ -340,8 +340,7 @@ test('effect removal captures state and atomically cleans exact instance routes 
       state.project.routing.sidechains = [route('removed-key', removedID), route('second-removed-key', removedID, 'bus:verb'), route('same-source-keep', `${owner}-kept`), route('prefix-keep', `${removedID}-other`), route('other-owner-keep', 'bus:verb-return', owner)];
       const lane = (name, target, laneOwner = owner) => ({ owner: laneOwner, name, target, points: [{ row: 4, value: .4 }] });
       state.project.patterns[0].automation.push(lane('remove-modern', 'plugin:effect:3:42'), lane('keep-neighbor-slot', 'plugin:effect:30:42'), lane('keep-instrument', 'plugin:instrument:3:42'), lane('keep-other-bus', 'plugin:effect:3:42', 'bus:verb'));
-      state.project.patterns[1].automation.push(lane('remove-legacy', 'plugin:3:99:part'), lane('keep-slot-zero', 'plugin:effect:0:42'), { track: 1, name: 'keep-other-track', target: 'plugin:3:42', points: [] });
-      if (owner === 'track:keys') state.project.patterns[1].automation.push({ track: 0, name: 'remove-legacy-track', target: 'plugin:effect:3:42', points: [] });
+      state.project.patterns[1].automation.push(lane('remove-other-parameter', 'plugin:effect:3:99'), lane('keep-slot-zero', 'plugin:effect:0:42'), lane('keep-other-track', 'plugin:effect:3:42', 'track:bass'));
     });
     h.select(owner); await h.settle(); let captured;
     h.ST.captureNativeEdits = async () => { h.calls.push({ command: 'capture' }); h.state.project.audioPlugins.find(p => p.instanceID === removedID).state = 'fresh opaque editor state'; captured = clone(h.state.project); return true; };

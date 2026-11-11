@@ -87,7 +87,9 @@ function harness(){
   const h=harness();h.state.view=item.view;h.state.modal=item.modal||null;h.state.keyboardPlay=true;h.state.recording=true;h.state.project.patterns[0].automation=[];
   const input=h.node('option-parameter',{automate:item.target,track:String(item.track),name:'Focused parameter'},'INPUT');input.type=item.type;input.value=item.value;
   const event=h.key(input,key,{code,altKey:true,shiftKey});assert.equal(event.defaultPrevented,true,`${item.target}: ${key}/${code}`);
-  const lanes=h.state.project.patterns[0].automation;assert.equal(lanes.length,1);assert.equal(lanes[0].target,item.target);assert.equal(lanes[0].track,item.track);assert.equal(lanes[0].points[0].value,Number(item.value));
+  const lanes=h.state.project.patterns[0].automation;assert.equal(lanes.length,1);assert.equal(lanes[0].target,item.target);
+  // A plug-in lane names the track's channel; a lane of the track's own parameters names its index.
+  if(item.target.startsWith('plugin:'))assert.equal(lanes[0].owner,`track:${h.state.project.tracks[item.track].routingID}`);else assert.equal(lanes[0].track,item.track);assert.equal(lanes[0].points[0].value,Number(item.value));
   assert.equal(h.state.view,'automation');assert.equal(h.state.modal,null);assert.equal(h.state.undo.length,1);assert.equal(h.calls.some(x=>x.command==='note.on'),false);
  }
  console.log('PASS macOS Option and Shift-Option character events automate instrument, mixer, NKS and modal parameters');

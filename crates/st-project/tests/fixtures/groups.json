@@ -512,7 +512,6 @@
   {
    "instanceID": "p",
    "owner": "track:r5",
-   "track": 5,
    "kind": "effect",
    "slot": 0,
    "component": "builtin:eq"

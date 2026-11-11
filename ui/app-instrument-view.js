@@ -104,7 +104,7 @@
     const inst = currentInstrument(),
       p = state.project;
     const plugin = p.tracks[state.track].instrument === state.instrument
-        ? p.audioPlugins.find(x => x.track === state.track && x.kind === 'instrument')
+        ? p.audioPlugins.find(x => x.owner === `track:${p.tracks[state.track].routingID}` && x.kind === 'instrument')
         : null;
     const midiInputs = state.midi.inputs || state.midi.sources || [],
       midiOutputs = state.midi.outputs || state.midi.destinations || [];

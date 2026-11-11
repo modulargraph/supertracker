@@ -280,7 +280,7 @@ test('DUPLICATE + group duplicates the whole group: members, bus and its inserts
   const memberOwner = `track:${h.state.project.tracks[3].routingID}`;
   h.ST.mutate('inserts', p => {
     p.audioPlugins = [...(p.audioPlugins || []), { owner, kind: 'effect', slot: 0, name: 'Glue', component: 'stfx:compressor', instanceID: 'drum-glue', state: 'glue-state' },
-      { owner: memberOwner, track: 3, kind: 'effect', slot: 0, name: 'Kick EQ', component: 'stfx:eq', instanceID: 'kick-eq', state: 'eq-state' }];
+      { owner: memberOwner, kind: 'effect', slot: 0, name: 'Kick EQ', component: 'stfx:eq', instanceID: 'kick-eq', state: 'eq-state' }];
     p.routing.buses.find(bus => bus.id === group().busID).volume = .7;
   });
   const before = JSON.stringify(h.state.project), undo = h.state.undo.length, notes = cols => cols.map(c => JSON.stringify(c.map(step => step && [step.note, step.velocity, step.gate]))), steps = notes(h.ST.pattern().steps.slice(3, 7));

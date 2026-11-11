@@ -20,7 +20,10 @@
           : item);
   const savedIdentity = plugin => stable([plugin?.instanceID, plugin?.component, plugin?.format, plugin?.bundlePath, plugin?.nks?.path,
       plugin?.nks?.identity]);
-  const target = (track, plugin) => ({ track, kind: 'instrument', slot: 0, ...(plugin?.instanceID ? { instanceID: plugin.instanceID } : {}) });
+  const target = plugin => ({ owner: plugin.owner, kind: 'instrument', slot: 0, ...(plugin.instanceID ? { instanceID: plugin.instanceID } : {}) });
+  // A track's instrument plug-in: the instrument descriptor owned by the track's channel.
+  const instrumentPlugin = (project, index) => project?.audioPlugins?.find(item => item.owner === `track:${project.tracks?.[index]?.routingID}`
+      && item.kind === 'instrument' && (item.slot ?? 0) === 0);
   const addressOf = parameter => String(parameter.address ?? parameter.parameterID ?? (/^\d+$/.test(String(parameter.id)) ? parameter.id : ''));
   const valueOf = parameter => finite(parameter.normalized)
       ? normalized(parameter.normalized)
@@ -118,7 +121,6 @@
       if (oldMatches.length !== 1 || newMatches.length !== 1) continue;
       const old = oldMatches[0], replacement = newMatches[0], track = next.tracks?.[entry.track], inst = next.instruments?.[track?.instrument];
       const sameSlot = plugin => plugin.kind === 'instrument'
-          && plugin.track === entry.track
           && (plugin.slot ?? 0) === 0
           && plugin.owner === entry.plugin.owner;
       if (!sameSlot(entry.plugin) || !sameSlot(old) || !sameSlot(replacement) || !old.nks || !replacement.nks || !track || !inst) continue;
@@ -220,8 +222,8 @@
   function automationAttributes(input, entry, value) {
     if (value?.writable && value.automatable !== false) {
       input.dataset.automate = `plugin:instrument:0:${input.dataset.nksAddress}`;
-      input.dataset.track = String(entry.track); input.dataset.name = input.dataset.nksName;
-    } else { delete input.dataset.automate; delete input.dataset.track; delete input.dataset.name; }
+      input.dataset.owner = entry.plugin.owner; input.dataset.name = input.dataset.nksName;
+    } else { delete input.dataset.automate; delete input.dataset.owner; delete input.dataset.name; }
   }
   function control(entry, slot) {
     const id = String(slot.parameterID),
@@ -233,7 +235,7 @@
       attributes = known
           ? `data-nks-address="${id}" data-nks-name="${esc(name)}" ${!enabled || value?.automatable === false
               ? ''
-              : `data-automate="plugin:instrument:0:${id}" data-track="${entry.track}" data-name="${esc(name)}"`}`
+              : `data-automate="plugin:instrument:0:${id}" data-owner="${esc(entry.plugin.owner)}" data-name="${esc(name)}"`}`
           : '';
     const display = !known ? reason(slot) : value ? value.display : entry.loaded ? 'Parameter unavailable' : entry.error ? 'Unavailable' : 'Loading…';
     return `<div class="nks-control ${known ? '' : 'nks-unmapped'}" data-nks-slot="${slot.slot}"><div class="nks-control-caption">`
@@ -309,7 +311,7 @@
     entry.loading = true;
     const generation = entry.readGeneration || 0;
     try {
-      const response = await S().request('plugin.parameters', target(entry.track, entry.plugin));
+      const response = await S().request('plugin.parameters', target(entry.plugin));
       if (!valid(entry) || (entry.readGeneration || 0) !== generation) return;
       const list = Array.isArray(response) ? response : response?.parameters || [];
       for (const parameter of list) remember(entry, parameter);
@@ -345,7 +347,7 @@
         if (!valid(entry)) return;
         let response;
         try { response = await S().request('plugin.parameter',
-            { ...target(entry.track, entry.plugin), address, value: item.value, normalized: true }); }
+            { ...target(entry.plugin), address, value: item.value, normalized: true }); }
         catch (error) {
           // Preserve the final requested writes for an explicit retry. A failed write
           // must not be replaced by a successful snapshot of the preceding value.
@@ -386,7 +388,7 @@
       // A failed final write must never create an undo snapshot claiming success.
       await applied;
       if (!valid(entry)) return;
-      const snapshot = await S().request('plugin.state', target(entry.track, entry.plugin));
+      const snapshot = await S().request('plugin.state', target(entry.plugin));
       if (!valid(entry)) return;
       if (snapshot?.stateError) throw new Error(String(snapshot.stateError));
       if (!snapshot
@@ -396,7 +398,7 @@
           || !snapshot.state) throw new Error('The plug-in did not return a state snapshot.');
       if (entry.plugin.instanceID && snapshot.instanceID !== entry.plugin.instanceID
           || snapshot.component && snapshot.component !== entry.plugin.component
-          || snapshot.track !== undefined && Number(snapshot.track) !== entry.track
+          || snapshot.owner !== undefined && snapshot.owner !== entry.plugin.owner
           || snapshot.kind && snapshot.kind !== 'instrument'
           || snapshot.slot !== undefined && Number(snapshot.slot) !== 0) throw new Error('The plug-in changed before its controls could be saved.');
       // A later edit already superseded this snapshot. Keep the original Undo
@@ -465,7 +467,6 @@
       const uniqueOld = id && project.audioPlugins.filter(plugin => plugin.instanceID === id).length === 1;
       const sameRoute = replacement
           && replacement.owner === entry.plugin.owner
-          && replacement.track === entry.plugin.track
           && replacement.kind === entry.plugin.kind
           && (replacement.slot ?? 0) === (entry.plugin.slot ?? 0);
       if (!uniqueOld || !sameRoute || savedIdentity(replacement) !== savedIdentity(entry.plugin) || stable(pagesOf(replacement)) !== entry.mapping) {
@@ -519,7 +520,7 @@
         || state.track !== entry.track
         || owner.activePattern !== patternID
         || state.row !== row) return;
-    S().automate(entry.track, parameter, name, value);
+    S().automate(entry.plugin.owner, parameter, name, value);
     if (state.view === 'automation') document.getElementById?.('automation-envelope')?.focus();
   }
   async function useOnStep(entry, button) {
@@ -579,7 +580,7 @@
       if (root.dataset.nksBound === 'true') continue;
       const state = S().state,
         track = Number(root.dataset.nksRoot),
-        plugin = state.project.audioPlugins?.find(item => item.track === track && item.kind === 'instrument' && (item.slot ?? 0) === 0),
+        plugin = instrumentPlugin(state.project, track),
         inst = state.project.instruments[state.project.tracks[track]?.instrument];
       if (!plugin?.nks || !inst) continue;
       const entry = entryFor(inst, plugin), binding = { root, entry, poll: null }; root.dataset.nksBound = 'true'; bindings.add(binding);
@@ -685,7 +686,7 @@
     }
     if (!['status', 'plugin.parameter', 'plugin.changed'].includes(type)) return;
     for (const binding of bindings) {
-      if (!mounted(binding) || (payload.track !== undefined && Number(payload.track) !== binding.entry.track)) continue;
+      if (!mounted(binding) || (payload.owner !== undefined && payload.owner !== binding.entry.plugin.owner)) continue;
       if (Date.now() - binding.entry.lastRead > 350) read(binding.entry);
     }
   }
@@ -693,7 +694,7 @@
   // preview / one-Undo-per-gesture path as the on-screen knobs.
   function controllerEntry() {
     const state = S().state, track = state.project?.tracks?.[state.track];
-    const plugin = state.project?.audioPlugins?.find(item => item.track === state.track && item.kind === 'instrument' && (item.slot ?? 0) === 0);
+    const plugin = instrumentPlugin(state.project, state.track);
     const inst = state.project?.instruments?.[track?.instrument];
     if (!plugin?.nks || !pagesOf(plugin).length || !inst) return null;
     const entry = entryFor(inst, plugin);

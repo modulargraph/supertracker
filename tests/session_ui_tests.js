@@ -12,6 +12,8 @@ function harness(){
   web.load(context, 'app.js');
   web.pendingEditsStub(window, 'nksControls', 'STNKSControls', 30);
   const ST=window.ST;ST.state.project=ST.demoProject();ST.state.project.name='Unsaved piece';ST.state.dirty=true;
+  // Readable channel identities: track 0 is the owner 'track:t0' in the plug-in fixtures below.
+  ST.state.project.tracks.forEach((track,index)=>{track.routingID='t'+index;});
   handlers.set('project.new',()=>null);handlers.set('project.open',()=>({project:{name:'Opened piece'}}));handlers.set('project.importMIDI',()=>({project:{name:'Imported MIDI'}}));handlers.set('project.save',payload=>({saved:true,project:payload.project,path:'/tmp/piece.supertracker'}));
   return {ST,window,document,calls,handlers,element,advance,load(name){web.load(context, name);}};
 }
@@ -172,11 +174,11 @@ async function run(){
   {
     function assignment(){
       const h=harness(),p=h.ST.state.project;p.instruments[1].type='au';p.tracks[0].instrument=0;p.tracks[1].instrument=1;
-      p.audioPlugins=[{track:0,kind:'instrument',slot:0,component:'old',state:'old target'},{track:1,kind:'instrument',slot:0,component:'fixture',state:'old source'}];
+      p.audioPlugins=[{owner:'track:t0',kind:'instrument',slot:0,component:'old',state:'old target'},{owner:'track:t1',kind:'instrument',slot:0,component:'fixture',state:'old source'}];
       p.instruments[1].plugin={...p.audioPlugins[1]};h.ST.state.instrument=1;h.ST.state.track=0;h.ST.setView('instrument');
       // Assignment captures the retiring target before loading its replacement.
       let loaded=false;
-      h.handlers.set('plugin.state',payload=>payload.track===1?{...p.audioPlugins[1]}:loaded?{track:0,kind:'instrument',slot:0,component:'fixture',state:'new target'}:{...p.audioPlugins[0]});
+      h.handlers.set('plugin.state',payload=>payload.owner==='track:t1'?{...p.audioPlugins[1]}:loaded?{owner:'track:t0',kind:'instrument',slot:0,component:'fixture',state:'new target'}:{...p.audioPlugins[0]});
       h.handlers.set('plugin.load',payload=>{loaded=true;return {...payload};});return h;
     }
     for(const failure of ['mapped','native']){
@@ -193,7 +195,7 @@ async function run(){
       const s=assignment();if(operation==='remove')s.ST.state.project.instruments[1].type='synth';
       let finishNative;const gateNative=new Promise(resolve=>finishNative=resolve);s.handlers.set('plugin.'+operation,()=>gateNative);
       const assigning=s.element('#assign-instrument').click();await new Promise(resolve=>setImmediate(resolve));assert(s.calls.some(x=>x.command==='plugin.'+operation));
-      const replacement=s.ST.normalize({name:'Different owner',audioPlugins:[{track:0,kind:'instrument',slot:0,component:'keep',state:'replacement state'}]});s.ST.state.project=replacement;
+      const replacement=s.ST.normalize({name:'Different owner',tracks:[{id:0,name:'Track 01',routingID:'t0',instrument:0}],audioPlugins:[{owner:'track:t0',kind:'instrument',slot:0,component:'keep',state:'replacement state'}]});s.ST.state.project=replacement;
       finishNative({component:'fixture'});await assigning;
       const restored=s.calls.filter(x=>x.command==='engine.project').at(-1);assert.equal(restored.payload.project.name,'Different owner');assert.equal(restored.payload.replace,true);
       assert.equal(replacement.audioPlugins[0].state,'replacement state');assert.equal(replacement.audioPlugins[0].component,'keep');
@@ -249,7 +251,7 @@ async function run(){
   }
   {
     const h=harness();let epoch=0,finishCapture;
-    h.ST.state.engineReady=true;h.ST.state.project.audioPlugins=[{track:0,kind:'instrument',slot:0,state:'edited'}];
+    h.ST.state.engineReady=true;h.ST.state.project.audioPlugins=[{owner:'track:t0',kind:'instrument',slot:0,state:'edited'}];
     h.handlers.set('engine.project',()=>{epoch++;return {};});
     h.handlers.set('engine.snapshot',()=>{const startEpoch=epoch;return new Promise((resolve,reject)=>{finishCapture=()=>epoch===startEpoch?resolve({audioPlugins:h.ST.state.project.audioPlugins}):reject(new Error('The project or audio graph changed while plug-in edits were being saved.'));});});
     h.ST.mutate('note before Save',p=>p.patterns[0].steps[0][0].note=72);
@@ -263,7 +265,7 @@ async function run(){
     const h=harness();let finishGraph,moving=true;
     const graph=new Promise(resolve=>finishGraph=()=>{moving=false;resolve();});
     h.window.STStudio={get isMovingEffect(){return moving;},waitForEffectMove:()=>graph};
-    h.ST.state.engineReady=true;h.ST.state.project.audioPlugins=[{track:0,kind:'effect',slot:0,state:'current'}];
+    h.ST.state.engineReady=true;h.ST.state.project.audioPlugins=[{owner:'track:t0',kind:'effect',slot:0,state:'current'}];
     h.handlers.set('engine.snapshot',()=>({audioPlugins:h.ST.state.project.audioPlugins}));
     h.ST.mutate('queued note',p=>p.patterns[0].steps[0][0].note=73);h.advance(101);await tick();
     const save=h.ST.projectAction('save');await tick();
@@ -275,7 +277,7 @@ async function run(){
   }
   {
     const h=harness();let finishSync,first=true;
-    h.ST.state.engineReady=true;h.ST.state.project.audioPlugins=[{track:0,kind:'effect',slot:0,state:'current'}];
+    h.ST.state.engineReady=true;h.ST.state.project.audioPlugins=[{owner:'track:t0',kind:'effect',slot:0,state:'current'}];
     h.handlers.set('engine.project',()=>first?(first=false,new Promise(resolve=>finishSync=()=>resolve({}))):{});
     h.handlers.set('engine.snapshot',()=>({audioPlugins:h.ST.state.project.audioPlugins}));
     const syncing=h.ST.syncEngine(true);await tick();
@@ -290,7 +292,7 @@ async function run(){
   {
     for(const mode of ['save','export-preparation']){
       const h=harness();h.ST.state.engineReady=true;
-      h.ST.state.project.audioPlugins=[{track:0,kind:'instrument',slot:0,state:'original patch'}];
+      h.ST.state.project.audioPlugins=[{owner:'track:t0',kind:'instrument',slot:0,state:'original patch'}];
       h.handlers.set('engine.snapshot',()=>({audioPlugins:h.ST.state.project.audioPlugins}));
       h.ST.mutate('change patch',p=>p.audioPlugins[0].state='new patch');h.ST.perform('undo');
       h.ST.syncEngine(); // An ordinary refresh must not erase Undo's replacement flag.
@@ -313,7 +315,7 @@ async function run(){
   }
   {
     const h=harness();let failFirst,finishSecond,number=0;
-    h.ST.state.engineReady=true;h.ST.state.project.audioPlugins=[{track:0,kind:'effect',slot:0,state:'keep patch'}];
+    h.ST.state.engineReady=true;h.ST.state.project.audioPlugins=[{owner:'track:t0',kind:'effect',slot:0,state:'keep patch'}];
     h.handlers.set('engine.project',()=>++number===1?new Promise((resolve,reject)=>failFirst=()=>reject(new Error('First update failed'))):new Promise(resolve=>finishSecond=()=>resolve({})));
     const first=h.ST.syncEngine(true);await tick();const second=h.ST.syncEngine(true);await tick();
     let settled=false;const save=h.ST.projectAction('save').then(value=>{settled=true;return value;});await tick();
@@ -325,7 +327,7 @@ async function run(){
   }
   {
     const h=harness();h.ST.state.engineReady=true;
-    h.ST.state.project.audioPlugins=[{track:0,kind:'instrument',slot:0,state:'keep patch'}];
+    h.ST.state.project.audioPlugins=[{owner:'track:t0',kind:'instrument',slot:0,state:'keep patch'}];
     h.handlers.set('engine.project',()=>{throw new Error('Audio graph update failed');});
     h.ST.mutate('note before failed sync',p=>p.patterns[0].steps[0][0].note=76);
     assert.equal(await h.ST.projectAction('save'),false);
@@ -407,7 +409,7 @@ async function run(){
   {
     for(const operation of ['export','recording']){
       const h=harness();let complete,busy=false;
-      h.ST.state.engineReady=true;h.ST.state.dirty=false;h.ST.state.project.audioPlugins=[{track:0,kind:'effect',slot:0}];
+      h.ST.state.engineReady=true;h.ST.state.dirty=false;h.ST.state.project.audioPlugins=[{owner:'track:t0',kind:'effect',slot:0}];
       h.window.STExport={get isBusy(){return operation==='export'&&busy;}};
       h.window.STRecording={get isBusy(){return operation==='recording'&&busy;}};
       h.handlers.set('engine.snapshot',()=>new Promise(resolve=>complete=()=>resolve({audioPlugins:h.ST.state.project.audioPlugins})));
@@ -432,8 +434,8 @@ async function run(){
   }
   {
     const h=harness();let complete;
-    h.ST.state.engineReady=true;h.ST.state.project.audioPlugins=[{track:0,kind:'effect',slot:0,state:'old'}];
-    h.handlers.set('engine.snapshot',()=>new Promise(resolve=>complete=()=>resolve({audioPlugins:[{track:0,kind:'effect',slot:0,state:'captured'}]})));
+    h.ST.state.engineReady=true;h.ST.state.project.audioPlugins=[{owner:'track:t0',kind:'effect',slot:0,state:'old'}];
+    h.handlers.set('engine.snapshot',()=>new Promise(resolve=>complete=()=>resolve({audioPlugins:[{owner:'track:t0',kind:'effect',slot:0,state:'captured'}]})));
     const save=h.ST.projectAction('save');await tick();
     h.ST.state.project.audioPlugins=[];complete();
     assert.equal(await save,false);assert.equal(h.ST.state.project.audioPlugins.length,0);
@@ -447,7 +449,7 @@ async function run(){
     const pending=h.ST.syncEngine(true);h.ST.mutate('parallel pattern edit',p=>p.name='Edit during move');
     h.advance(2000);await tick();
     assert.equal(h.calls.filter(x=>['engine.project','project.autosave'].includes(x.command)).length,0);
-    h.ST.state.project.audioPlugins=[{track:0,kind:'effect',slot:1,instanceID:'moved'}];complete();await pending;await tick();
+    h.ST.state.project.audioPlugins=[{owner:'track:t0',kind:'effect',slot:1,instanceID:'moved'}];complete();await pending;await tick();
     const sends=h.calls.filter(x=>['engine.project','project.autosave'].includes(x.command));
     assert.ok(sends.some(x=>x.command==='project.autosave'));assert.ok(sends.some(x=>x.command==='engine.project'));
     for(const send of sends){assert.equal(send.payload.project.name,'Edit during move');assert.equal(send.payload.project.audioPlugins[0].slot,1);}
@@ -457,8 +459,8 @@ async function run(){
     const h=harness();let complete,moving=true;
     const done=new Promise(resolve=>complete=()=>{moving=false;resolve();});
     h.window.STStudio={get isMovingEffect(){return moving;},waitForEffectMove:()=>done};
-    h.ST.state.engineReady=true;h.ST.state.project.audioPlugins=[{track:0,kind:'effect',slot:0}];
-    h.handlers.set('engine.snapshot',()=>({audioPlugins:[{track:0,kind:'effect',slot:1}]}));
+    h.ST.state.engineReady=true;h.ST.state.project.audioPlugins=[{owner:'track:t0',kind:'effect',slot:0}];
+    h.handlers.set('engine.snapshot',()=>({audioPlugins:[{owner:'track:t0',kind:'effect',slot:1}]}));
     const save=h.ST.projectAction('save');await tick();
     assert.equal(h.calls.some(x=>x.command==='engine.snapshot'||x.command==='project.save'),false);
     complete();assert.equal(await save,true);
@@ -559,7 +561,7 @@ async function run(){
   }
   {
     const h=harness();h.handlers.set('plugin.state',()=>({state:'previous valid state',stateError:'Processor state unavailable'}));
-    await assert.rejects(h.ST.request('plugin.state',{track:0,kind:'instrument',slot:0}),/Processor state unavailable/);
+    await assert.rejects(h.ST.request('plugin.state',{owner:'track:t0',kind:'instrument',slot:0}),/Processor state unavailable/);
     console.log('PASS plug-in state callers reject a native fallback carrying a capture error');
   }
   {

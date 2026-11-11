@@ -34,15 +34,15 @@
   const slotKey = plugin => `${plugin.kind}:${plugin.slot ?? 0}`;
   const kindLabel = plugin => plugin.kind === 'instrument' ? 'Instrument' : `FX ${(plugin.slot ?? 0) + 1}`;
   const pluginName = plugin => plugin?.nks?.name || plugin?.name || plugin?.component || 'Plug-in';
-  const targetOf = plugin => ({ ...(plugin.owner ? {owner:plugin.owner} : {track:plugin.track}), kind: plugin.kind, slot: plugin.slot ?? 0, ...(plugin.instanceID ? { instanceID: plugin.instanceID } : {}) });
+  const targetOf = plugin => ({ owner: plugin.owner, kind: plugin.kind, slot: plugin.slot ?? 0, ...(plugin.instanceID ? { instanceID: plugin.instanceID } : {}) });
   const addressOf = parameter => String(parameter?.address ?? parameter?.parameterID ?? '');
   const valueOf = parameter => finite(parameter.normalized) ? clamp01(parameter.normalized) : finite(parameter.value) && Number(parameter.max) > Number(parameter.min) ? clamp01((Number(parameter.value) - Number(parameter.min)) / (Number(parameter.max) - Number(parameter.min))) : null;
   /** Slots this console controls: the instrument (when it has no NKS console) and the track's inserts. */
-  const pluginOwner = plugin => plugin.owner || (Number.isInteger(plugin.track) ? window.STRoutingProject?.trackOwner(S().state.project?.tracks?.[plugin.track]) : null);
-  function slotsForOwner(owner) { return (S().state.project?.audioPlugins||[]).filter(plugin=>plugin.instanceID && pluginOwner(plugin)===owner).sort((a,b)=>(a.kind==='instrument'?-1:a.slot??0)-(b.kind==='instrument'?-1:b.slot??0)); }
+  const trackOwner = (project, index) => `track:${project?.tracks?.[index]?.routingID}`;
+  function slotsForOwner(owner) { return (S().state.project?.audioPlugins||[]).filter(plugin=>plugin.instanceID && plugin.owner===owner).sort((a,b)=>(a.kind==='instrument'?-1:a.slot??0)-(b.kind==='instrument'?-1:b.slot??0)); }
   function slotsFor(inst, instrumentPlugin) {
     const state = S().state, track = Number(state.track || 0);
-    const plugins = (state.project?.audioPlugins || []).filter(plugin => plugin.track === track && plugin.instanceID);
+    const plugins = (state.project?.audioPlugins || []).filter(plugin => plugin.owner === trackOwner(state.project, track) && plugin.instanceID);
     const effects = plugins.filter(plugin => plugin.kind === 'effect').sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0));
     const instrument = instrumentPlugin && !instrumentPlugin.nks?.pages?.length && instrumentPlugin.instanceID ? [instrumentPlugin] : [];
     return [...instrument, ...effects];
@@ -137,7 +137,7 @@
       return `<div class="nks-control nks-unmapped" data-pp-slot="${index}"><div class="nks-control-caption"><span class="nks-slot-number" aria-hidden="true">${index + 1}</span><label for="${base}">${esc(slot?.name || 'Empty')}</label></div><span class="nks-section">${esc(slot?.section || ' ')}</span><div class="nks-readout"><output>${slot ? 'Parameter unavailable' : 'Unassigned'}</output></div>${editable ? `<button type="button" class="pp-assign" id="${base}" data-pp-knob="${index}" data-pp-empty="true" aria-label="Assign a parameter to knob ${index + 1}">Assign… <kbd>↵</kbd></button>` : `<span class="pp-empty-line" id="${base}" aria-hidden="true"></span>`}</div>`;
     }
     const value = entry.values.get(slot.address), name = slot.name, writable = !!value && value.writable !== false;
-    const automate = writable && value.automatable !== false ? `data-automate="plugin:${plugin.kind}:${plugin.slot ?? 0}:${slot.address}" ${plugin.owner ? `data-owner="${esc(plugin.owner)}"` : `data-track="${plugin.track}"`} data-name="${esc(`${pluginName(plugin)} · ${name}`)}"` : '';
+    const automate = writable && value.automatable !== false ? `data-automate="plugin:${plugin.kind}:${plugin.slot ?? 0}:${slot.address}" data-owner="${esc(plugin.owner)}" data-name="${esc(`${pluginName(plugin)} · ${name}`)}"` : '';
     const display = value ? value.display : entry.loaded ? 'Parameter unavailable' : entry.error ? 'Unavailable' : 'Loading…';
     return `<div class="nks-control" data-pp-slot="${index}"><div class="nks-control-caption"><span class="nks-slot-number" aria-hidden="true">${index + 1}</span><label for="${base}">${esc(name)}</label></div><span class="nks-section" title="${esc(slot.section || '')}">${esc(slot.section || ' ')}</span><div class="nks-readout"><output id="${base}-display" data-pp-display="${slot.address}">${esc(display)}</output><span class="pp-percent" data-pp-percent="${slot.address}">${percent(value)}</span></div><input id="${base}" type="range" min="0" max="1" step="${window.STFine?.parameterStep(value) || .001}" data-parameter-steps="${window.STFine?.parameterSteps(value) || 0}" value="${value?.value ?? 0}" data-pp-knob="${index}" data-pp-address="${slot.address}" data-pp-name="${esc(name)}" ${automate} ${writable ? '' : 'disabled'} aria-label="${esc(name)}, knob ${index + 1}" aria-valuetext="${esc(display)}" aria-describedby="pp-${track}-hint"></div>`;
   }
@@ -270,11 +270,10 @@
       S().mutate(`Adjust ${name}`, project => {
         const index = project.audioPlugins?.findIndex(item => item.instanceID === entry.id) ?? -1;
         if (index < 0) return;
-        const old = project.audioPlugins[index], replacement = { ...old, ...snapshot, nks: old.nks, track: old.track, owner:old.owner, kind: old.kind, slot: old.slot };
+        const old = project.audioPlugins[index], replacement = { ...old, ...snapshot, nks: old.nks, owner:old.owner, kind: old.kind, slot: old.slot };
         project.audioPlugins[index] = replacement;
-        const track = project.tracks?.[old.track];
+        const track = project.tracks?.find((_, i) => trackOwner(project, i) === old.owner);
         if (old.kind === 'instrument') { const inst = project.instruments?.[track?.instrument]; if (inst?.plugin?.instanceID === entry.id || inst?.type === 'au') inst.plugin = { ...(inst.plugin || {}), ...replacement }; }
-        else if (Array.isArray(track?.plugins) && track.plugins[old.slot ?? 0]) track.plugins[old.slot ?? 0] = { ...track.plugins[old.slot ?? 0], ...replacement };
         committed = true;
       }, { render: false, nativeCapture: true });
       if (!committed) throw new Error('The control edit is still pending. Finish the current operation and try again.');
@@ -404,13 +403,13 @@
   }
   function currentView() {
     const state = S().state, track = state.project?.tracks?.[state.track];
-    const instrumentPlugin = track?.instrument === state.instrument ? state.project.audioPlugins?.find(plugin => plugin.track === state.track && plugin.kind === 'instrument') : null;
+    const instrumentPlugin = track?.instrument === state.instrument ? state.project.audioPlugins?.find(plugin => plugin.owner === trackOwner(state.project, state.track) && plugin.kind === 'instrument') : null;
     return selection(state.project?.instruments?.[state.instrument], instrumentPlugin);
   }
   function automateKnob(input) {
     if (!input?.dataset?.automate) { S().toast('This parameter cannot be automated.', 'info'); return; }
-    const value = Number(input.value), parameter = input.dataset.automate, name = input.dataset.name, track = input.dataset.owner || Number(input.dataset.track);
-    flushEdits().then(ok => { if (ok) S().automate(track, parameter, name, value); });
+    const value = Number(input.value), parameter = input.dataset.automate, name = input.dataset.name, owner = input.dataset.owner;
+    flushEdits().then(ok => { if (ok) S().automate(owner, parameter, name, value); });
   }
   function adjust(entry, input, delta, modifiers = {}) {
     if (input.disabled) return;
@@ -514,8 +513,8 @@
       const view = resolve(); if (!view) return null;
       const { slots, plugin, entry, pages, page } = view;
       if (wantsRead(entry, 1500)) read(entry);
-      return { slots: slots.map(item => ({ key: slotKey(item), label: kindLabel(item), name: pluginName(item), instanceID: item.instanceID, kind: item.kind, slot: item.slot ?? 0, track: item.track })),
-        slot: slotKey(plugin), slotIndex:plugin.slot??0, owner:pluginOwner(plugin), name: pluginName(plugin), kind: plugin.kind, instanceID: plugin.instanceID, track: plugin.track, nks: !!plugin.nks?.pages?.length,
+      return { slots: slots.map(item => ({ key: slotKey(item), label: kindLabel(item), name: pluginName(item), instanceID: item.instanceID, kind: item.kind, slot: item.slot ?? 0 })),
+        slot: slotKey(plugin), slotIndex:plugin.slot??0, owner:plugin.owner, name: pluginName(plugin), kind: plugin.kind, instanceID: plugin.instanceID, nks: !!plugin.nks?.pages?.length,
         component: plugin.component || '', builtin: !!FX()?.isBuiltin(plugin.component), bypass: !!plugin.bypass, pageKinds: pages.map(item => item.kind),
         pages: pages.map(item => item.name), page, loaded: entry.loaded, error: entry.error,
         knobs: (pages[page]?.slots || Array(8).fill(null)).map(slot => { const value = slot?.address ? entry.values.get(slot.address) : null; return slot ? { name: slot.name, id: slot.id || '', fullName: slot.fullName || slot.name, defaultValue: slot.defaultValue, section: slot.section || '', address: slot.address, value: value ? value.value : null, display: value ? value.display : slot.address ? (entry.loaded || entry.error ? 'Unavailable' : 'Loading…') : '', writable: !!value && value.writable !== false, automatable: !!value && value.automatable !== false, stepCount:value?.stepCount ?? (slot.stepCount || undefined), normalizedStep:value?.normalizedStep ?? (slot.stepCount ? 1 / slot.stepCount : undefined) } : null; }) };

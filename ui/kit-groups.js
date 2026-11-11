@@ -71,10 +71,10 @@
       if (!owners.has(plugin.owner)) continue;
       const copy = { ...clone(plugin), owner: owner.get(plugin.owner), instanceID: fresh('plugin:' + plugin.instanceID) };
       instances.set(plugin.instanceID, copy.instanceID);
-      if (copy.owner.startsWith('track:')) copy.track = q.tracks.findIndex(t => trackOwner(t) === copy.owner); else delete copy.track;
       q.audioPlugins.push(copy);
-      if (copy.kind === 'instrument' && copy.track >= 0) {
-        const instrument = q.instruments[q.tracks[copy.track].instrument];
+      const track = copy.kind === 'instrument' && q.tracks.find(t => trackOwner(t) === copy.owner);
+      if (track) {
+        const instrument = q.instruments[track.instrument];
         if (instrument?.type === 'au') instrument.plugin = clone(copy);
       }
     }
@@ -149,7 +149,7 @@
       for (const plugin of source.audioPlugins || []) {
         if (plugin.owner === `instrument:${member.instrument}`) { q.audioPlugins.push({ ...clone(plugin), owner: `instrument:${instrumentIndex}`, instanceID: fresh('plugin:' + plugin.instanceID) }); continue; }
         if (plugin.owner !== trackOwner(member)) continue;
-        const copy = { ...clone(plugin), owner: trackOwner(track), track: index, instanceID: fresh('plugin:' + plugin.instanceID) };
+        const copy = { ...clone(plugin), owner: trackOwner(track), instanceID: fresh('plugin:' + plugin.instanceID) };
         q.audioPlugins.push(copy);
         if (copy.kind === 'instrument' && instrument.type === 'au') instrument.plugin = clone(copy);
       }
@@ -169,7 +169,7 @@
       q.instruments.push(defaultInstrument(instrumentIndex, member.name));
       const index = q.tracks.length;
       q.tracks.push({ id: index, routingID: fresh('track:' + member.pad), name: member.name, instrument: instrumentIndex, volume: .8, pan: 0,
-        mute: false, solo: false, delaySend: 0, reverbSend: 0, plugins: [], pad: member.pad, padNote: 60, color: S().colors?.[index % 8] });
+        mute: false, solo: false, delaySend: 0, reverbSend: 0, pad: member.pad, padNote: 60, color: S().colors?.[index % 8] });
       for (const pattern of q.patterns) pattern.steps.push(Array(pattern.length).fill(null));
       const map = G().addTrack(q, groupID, index);
       adopt(map[index], member);
@@ -313,10 +313,11 @@
     if (members.length >= p.tracks.length) { S().toast('Keep at least one track in a session: dissolve the group instead.'); return false; }
     return S().mutate('remove kit', q => {
       for (const index of [...G().members(q, groupID)].reverse()) {
+        // A lane names its channel by owner, or (the engine's own track parameters) its track by index.
         const track = q.tracks[index], owner = trackOwner(track), belongs = x => x.owner ? x.owner === owner : x.track === index;
-        window.STRoutingProject?.removeTrackReferences(q, track, q.audioPlugins.filter(belongs));
+        window.STRoutingProject?.removeTrackReferences(q, track, q.audioPlugins.filter(x => x.owner === owner));
         q.tracks.splice(index, 1);
-        q.audioPlugins = q.audioPlugins.filter(x => !belongs(x)).map(x => Number.isInteger(x.track) && x.track > index ? { ...x, track: x.track - 1 } : x);
+        q.audioPlugins = q.audioPlugins.filter(x => x.owner !== owner);
         q.audioClips = (q.audioClips || []).filter(x => x.track !== index).map(x => ({ ...x, track: x.track > index ? x.track - 1 : x.track }));
         for (const pattern of q.patterns) {
           pattern.steps.splice(index, 1);

@@ -10,35 +10,35 @@ function fixture() {
   return {
     name: 'Independent takes', bpm: 113, activePattern: 0, sequence: [0, 1],
     tracks: [
-      { id: 0, routingID: 'source', name: 'Juno', instrument: 0, volume: .73, pan: -.4, mute: true, solo: true, delaySend: .2, reverbSend: .3, plugins: [{ instanceID: 'fx-six', owner: 'track:source', track: 0, state: { instanceID: 'fx-six' } }] },
+      { id: 0, routingID: 'source', name: 'Juno', instrument: 0, volume: .73, pan: -.4, mute: true, solo: true, delaySend: .2, reverbSend: .3 },
       { id: 1, routingID: 'other', name: 'Shared Juno', instrument: 0, volume: .9, mute: false }
     ],
     instruments: [
-      { id: 0, name: 'Juno patch', type: 'au', plugin: { instanceID: 'instrument', owner: 'track:source', track: 0, component: 'AU:synth', state: { instanceID: 'instrument', owner: 'track:source' }, nks: { identity: 'instrument', instanceID: 'instrument' } }, rootNote: 60 },
-      { id: 1, name: 'Slice', type: 'sample', samplePath: '/samples/chord.wav', slices: [.2, .4], zones: [{ samplePath: '/samples/zone.wav', lo: 20, hi: 127 }], plugin: { instanceID: 'dormant', owner: 'track:other', track: 1, nks: { instanceID: 'fx-six' } } },
+      { id: 0, name: 'Juno patch', type: 'au', plugin: { instanceID: 'instrument', owner: 'track:source', component: 'AU:synth', state: { instanceID: 'instrument', owner: 'track:source' }, nks: { identity: 'instrument', instanceID: 'instrument' } }, rootNote: 60 },
+      { id: 1, name: 'Slice', type: 'sample', samplePath: '/samples/chord.wav', slices: [.2, .4], zones: [{ samplePath: '/samples/zone.wav', lo: 20, hi: 127 }], plugin: { instanceID: 'dormant', owner: 'track:other', nks: { instanceID: 'fx-six' } } },
       { id: 2, name: 'Unused', type: 'midi', midiChannel: 7 }
     ],
     audioPlugins: [
-      { instanceID: 'instrument', owner: 'track:source', track: 0, kind: 'instrument', slot: 0, component: 'AU:synth', state: 'opaque:instrument:track:source', nks: { instanceID: 'instrument', source: 'track:source' } },
-      { instanceID: 'fx-six', track: 0, kind: 'effect', slot: 6, component: 'AU:echo', state: { instanceID: 'fx-six', nested: { owner: 'track:source' } }, bypass: true },
-      { instanceID: 'fx-two', owner: 'track:source', track: 1, kind: 'effect', slot: 2, component: 'VST3:filter', state: 'opaque-filter' },
-      { instanceID: 'master', owner: 'master', track: 0, kind: 'effect', slot: 0, component: 'AU:master' },
-      { instanceID: 'other-fx', owner: 'track:other', track: 0, kind: 'effect', slot: 0, component: 'AU:other' },
-      { instanceID: 'bus-fx', owner: 'bus:group', track: 0, kind: 'effect', slot: 0, component: 'AU:group' },
-      { instanceID: 'legacy-master', track: -1, kind: 'effect', slot: 3, component: 'AU:master-two' }
+      { instanceID: 'instrument', owner: 'track:source', kind: 'instrument', slot: 0, component: 'AU:synth', state: 'opaque:instrument:track:source', nks: { instanceID: 'instrument', source: 'track:source' } },
+      { instanceID: 'fx-six', owner: 'track:source', kind: 'effect', slot: 6, component: 'AU:echo', state: { instanceID: 'fx-six', nested: { owner: 'track:source' } }, bypass: true },
+      { instanceID: 'fx-two', owner: 'track:source', kind: 'effect', slot: 2, component: 'VST3:filter', state: 'opaque-filter' },
+      { instanceID: 'master', owner: 'master', kind: 'effect', slot: 0, component: 'AU:master' },
+      { instanceID: 'other-fx', owner: 'track:other', kind: 'effect', slot: 0, component: 'AU:other' },
+      { instanceID: 'bus-fx', owner: 'bus:group', kind: 'effect', slot: 0, component: 'AU:group' },
+      { instanceID: 'master-two', owner: 'master', kind: 'effect', slot: 3, component: 'AU:master-two' }
     ],
     patterns: [
       { id: 0, length: 2, steps: [
         [{ note: 60, instrument: 0, chord: [0, 4, 7], fx1: { type: 'plugin', instanceID: 'instrument', address: maxAddress, value: .73 }, fx2: { type: 'plugin', instanceID: 'other-fx', address: '42', value: .23 } }, { note: 64, instrument: 1, fx1: { type: 'slice', value: 3 }, fx2: { type: 'plugin', instanceID: 'fx-six', address: maxAddress, value: .42 } }],
         [{ note: 72, instrument: 0 }, null]
       ], automation: [
-        { id: 'lane-legacy', track: 0, target: `plugin:effect:6:${maxAddress}`, points: [{ row: 0, value: .5 }] },
-        { id: 'lane-send', owner: 'track:source', track: 1, target: 'send:send-source', interpolation: 'step', points: [{ row: 1, value: .3 }] },
-        { id: 'lane-mix', owner: 'track:source', target: 'volume', points: [{ row: 0, value: .7 }] },
-        { id: 'lane-other', owner: 'track:other', track: 0, target: 'volume', points: [] },
-        { id: 'lane-master', owner: 'master', track: 0, target: 'volume', points: [] },
-        { id: 'lane-bus', owner: 'bus:group', track: 0, target: 'pan', points: [] },
-        { id: 'lane-dormant', owner: 'track:unavailable', track: 0, target: 'volume', points: [] }
+        { id: 'lane-effect', owner: 'track:source', target: `plugin:effect:6:${maxAddress}`, points: [{ row: 0, value: .5 }] },
+        { id: 'lane-send', owner: 'track:source', target: 'send:send-source', interpolation: 'step', points: [{ row: 1, value: .3 }] },
+        { id: 'lane-mix', track: 0, target: 'volume', points: [{ row: 0, value: .7 }] },
+        { id: 'lane-other', track: 1, target: 'volume', points: [] },
+        { id: 'lane-master', owner: 'master', target: 'volume', points: [] },
+        { id: 'lane-bus', owner: 'bus:group', target: 'pan', points: [] },
+        { id: 'lane-dormant', owner: 'track:unavailable', target: 'send:unavailable', points: [] }
       ] },
       { id: 1, length: 3, steps: [[{ note: 48, instrument: 99 }, { note: 50, instrument: -1, fx1: { type: 'plugin', instanceID: 'missing-instance', address: '7', value: .8 } }, null], [null, null, null]], automation: [] }
     ],
@@ -71,24 +71,23 @@ test('the new track preserves mixer attributes and independently clones every va
   assert.equal(project.patterns[0].steps[2][0].instrument, 3); assert.equal(project.patterns[0].steps[2][1].instrument, 4);
   assert.equal(project.patterns[1].steps[2][0].instrument, 99); assert.equal(project.patterns[1].steps[2][1].instrument, -1); assert.equal(project.patterns[1].steps[2][2], null);
 });
-test('source ownership is explicit-owner first and copying keeps sparse effect slots and exact opaque state', () => {
+test('the plug-ins of the source channel are copied to the new channel with sparse effect slots and exact opaque state', () => {
   const original = fixture(), result = build(original), copied = result.project.audioPlugins.slice(original.audioPlugins.length);
   assert.deepEqual(copied.map(plugin => [plugin.kind, plugin.slot]), [['instrument', 0], ['effect', 6], ['effect', 2]]);
   assert.deepEqual(Object.keys(result.instanceMap), ['instrument', 'fx-six', 'fx-two']);
   assert.deepEqual(result.newPluginInstanceIDs, copied.map(plugin => plugin.instanceID));
   for (let i = 0; i < copied.length; i++) {
-    assert.equal(copied[i].track, 2); assert.equal(copied[i].instanceID, result.instanceMap[original.audioPlugins[i].instanceID]);
+    assert.equal(copied[i].instanceID, result.instanceMap[original.audioPlugins[i].instanceID]);
     assert.deepEqual(copied[i].state, original.audioPlugins[i].state); assert.deepEqual(copied[i].nks, original.audioPlugins[i].nks);
-    if (original.audioPlugins[i].owner) assert.equal(copied[i].owner, `track:${result.project.tracks[2].routingID}`);
+    assert.equal(copied[i].owner, `track:${result.project.tracks[2].routingID}`); assert.equal(Object.hasOwn(copied[i], 'track'), false);
   }
   assert.equal(copied[1].bypass, true); assert.deepEqual(result.project.audioPlugins.slice(0, original.audioPlugins.length), original.audioPlugins);
 });
 test('only known descriptor identity fields change while dormant descriptors and nested vendor metadata remain exact', () => {
   const original = fixture(), result = build(original), instrument = result.project.instruments[3];
-  assert.equal(instrument.plugin.instanceID, result.instanceMap.instrument); assert.equal(instrument.plugin.track, 2); assert.equal(instrument.plugin.owner, `track:${result.project.tracks[2].routingID}`);
+  assert.equal(instrument.plugin.instanceID, result.instanceMap.instrument); assert.equal(instrument.plugin.owner, `track:${result.project.tracks[2].routingID}`);
   assert.deepEqual(instrument.plugin.state, original.instruments[0].plugin.state); assert.deepEqual(instrument.plugin.nks, original.instruments[0].plugin.nks);
   assert.deepEqual(result.project.instruments[4].plugin, original.instruments[1].plugin);
-  assert.equal(result.project.tracks[2].plugins[0].instanceID, result.instanceMap['fx-six']); assert.deepEqual(result.project.tracks[2].plugins[0].state, original.tracks[0].plugins[0].state);
 });
 test('both step FX remap copied plug-in identities without changing exact addresses or unrelated targets', () => {
   const original = fixture(), result = build(original), steps = result.project.patterns[0].steps[2];
@@ -110,7 +109,9 @@ test('routing preserves shared destinations and incoming connections while remap
 test('copied automation has fresh IDs and correct owner, track and send identity without altering unrelated lanes', () => {
   const original = fixture(), result = build(original), lanes = result.project.patterns[0].automation, copied = lanes.slice(original.patterns[0].automation.length), owner = `track:${result.project.tracks[2].routingID}`;
   assert.equal(copied.length, 3); assert.deepEqual(lanes.slice(0, 7), original.patterns[0].automation);
-  assert(copied.every(lane => lane.track === 2)); assert.equal(Object.hasOwn(copied[0], 'owner'), false); assert.equal(copied[1].owner, owner); assert.equal(copied[2].owner, owner);
+  // Plug-in and send lanes name the new channel; the lane of the track's own volume names the new track's index.
+  assert.equal(copied[0].owner, owner); assert.equal(copied[1].owner, owner); assert.equal(Object.hasOwn(copied[0], 'track') || Object.hasOwn(copied[1], 'track'), false);
+  assert.equal(copied[2].track, 2); assert.equal(Object.hasOwn(copied[2], 'owner'), false);
   assert.equal(copied[0].target, `plugin:effect:6:${maxAddress}`); assert.equal(copied[1].target, `send:${result.project.routing.sends[2].id}`); assert.equal(copied[2].target, 'volume');
   copied.forEach((lane, i) => { assert.notEqual(lane.id, original.patterns[0].automation[i].id); assert.deepEqual(lane.points, original.patterns[0].automation[i].points); });
 });
@@ -141,7 +142,7 @@ test('inactive descriptors do not become active plug-ins when the authoritative 
     const project = fixture(); project.routing = {}; project.audioPlugins = []; if (absent) delete project.audioPlugins;
     for (const pattern of project.patterns) pattern.automation = pattern.automation.filter(lane => !String(lane.target).startsWith('send:'));
     const result = build(project);
-    assert.deepEqual(result.instanceMap, {}); assert.deepEqual(result.project.instruments[3].plugin, project.instruments[0].plugin); assert.deepEqual(result.project.tracks[2].plugins, project.tracks[0].plugins);
+    assert.deepEqual(result.instanceMap, {}); assert.deepEqual(result.project.instruments[3].plugin, project.instruments[0].plugin);
     assert.equal(Object.hasOwn(result.project, 'audioPlugins'), !absent); if (!absent) assert.deepEqual(result.project.audioPlugins, []);
     assert.deepEqual(Object.keys(result.project.routing), ['outputs'], 'collections the table left out are not invented');
   }
@@ -172,9 +173,9 @@ test('disconnected output is copied exactly and omitted output uses the existing
 test('selection of a later source track appends at the end and follows authoritative ownership', () => {
   const original = fixture(), result = duplicate.build(original, 1, () => 'new-later-track'), project = result.project;
   assert.equal(result.sourceTrackIndex, 1); assert.equal(result.trackIndex, 2); assert.equal(project.tracks[2].name, 'Shared Juno copy'); assert.deepEqual(result.instrumentMap, { 0: 3 });
-  assert.deepEqual(Object.keys(result.instanceMap), ['other-fx']); assert.equal(project.audioPlugins.at(-1).track, 2); assert.equal(project.audioPlugins.at(-1).owner, `track:${project.tracks[2].routingID}`);
+  assert.deepEqual(Object.keys(result.instanceMap), ['other-fx']); assert.equal(project.audioPlugins.at(-1).owner, `track:${project.tracks[2].routingID}`);
   assert.deepEqual(project.patterns[0].steps[2], [{ note: 72, instrument: 3 }, null]);
-  assert.equal(project.patterns[0].automation.length, original.patterns[0].automation.length + 1); assert.equal(project.patterns[0].automation.at(-1).owner, `track:${project.tracks[2].routingID}`);
+  assert.equal(project.patterns[0].automation.length, original.patterns[0].automation.length + 1); assert.equal(project.patterns[0].automation.at(-1).track, 2);
   assert.equal(project.routing.outputs[`track:${project.tracks[2].routingID}`], 'track:source');
   assert.equal(project.routing.sidechains.at(-1).source, 'track:source'); assert.equal(project.routing.sidechains.at(-1).destination.instanceID, result.instanceMap['other-fx']);
 });
@@ -213,7 +214,7 @@ test('malformed sources, unsupported routing and ambiguous active identities fai
     p => { p.tracks[0].instrument = 99; }, p => { p.tracks[0].instrument = -1; }, p => { p.tracks[0] = null; },
     p => { p.routing.outputs = []; }, p => { p.tracks[1].routingID = 'source'; },
     p => { p.audioPlugins[1].instanceID = 'instrument'; }, p => { p.audioPlugins[1].owner = 'bus:absent'; }, p => { p.audioPlugins[1].owner = ''; },
-    p => { p.audioPlugins[2].slot = 6; }, p => { p.audioPlugins[1].track = undefined; }, p => { p.routing.sends[1].id = 'self-key'; },
+    p => { p.audioPlugins[2].slot = 6; }, p => { delete p.audioPlugins[1].owner; }, p => { p.routing.sends[1].id = 'self-key'; },
     p => { p.patterns[0].steps[0][0] = 42; }, p => { p.patterns[0].length = 0; }, p => { p.patterns[0].steps[0] = {}; }
   ];
   for (const change of changes) { const project = fixture(); change(project); const before = copy(project); assert.throws(() => build(project)); assert.deepEqual(copy(project), before); }

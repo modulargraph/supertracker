@@ -38,9 +38,9 @@ test('Load kit appends one member per loaded pad, routed to a new group bus, as 
   // Instruments and plug-ins follow their members with fresh identities.
   for (const i of members) assert.equal(p.instruments[p.tracks[i].instrument].name, p.tracks[i].name);
   const insert = p.audioPlugins.find(x => x.owner === `track:${p.tracks[members[1]].routingID}`);
-  assert.equal(insert.track, members[1]); assert.notEqual(insert.instanceID, 'src-plugin-0');
+  assert.notEqual(insert.instanceID, 'src-plugin-0');
   const instrument = p.audioPlugins.find(x => x.kind === 'instrument' && x.owner === `track:${p.tracks[members[2]].routingID}`);
-  assert.equal(instrument.track, members[2]);
+  assert.ok(instrument, 'the pad\'s instrument plug-in is owned by its new track');
   assert.equal(p.audioPlugins.filter(x => x.owner === `bus:${group.busID}`).length, 2);
   assert(published.some(project => project.tracks.length === p.tracks.length), 'the audio host accepted the candidate before the commit');
   assert.equal(h.S.state.track, members[0], 'the cursor moves to the first pad');

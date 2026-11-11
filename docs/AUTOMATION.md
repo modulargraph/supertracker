@@ -3,6 +3,12 @@
 ## How automation is stored and played
 
 - Each pattern owns its lanes: `project.patterns[].automation = [{id, track | owner, target, name, interpolation, points:[{row, value}]}]`.
+  What a lane controls decides how it is addressed, and there is one way for each: a lane of a track's own
+  parameters (its volume, pan and sends, its instrument's parameters) names the track by index (`track`);
+  every other lane names its mixer channel (`owner`: `track:<routingID>`, `bus:<id>`, `master`,
+  `instrument:<n>`) and has a target of the mixer: `volume` or `pan` of a bus or Master, `send:<id>`, or a
+  plug-in parameter `plugin:<instrument|effect>:<slot>:<address>`. The host refuses a lane addressed the
+  other way.
   Rows are pattern rows (live recording stores 1/64-row points); a lane holds its first value before
   its first point and its last value after its last point.
 - `st-audio` (`project_sync.rs`) sends the engine's own lanes with `add_automation_point`;

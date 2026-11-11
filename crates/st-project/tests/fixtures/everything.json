@@ -18,7 +18,6 @@
    "instrument": 0,
    "delaySend": 0,
    "reverbSend": 0,
-   "plugins": [],
    "routingID": "fx0004",
    "futureTrackField": "kept"
   },
@@ -33,7 +32,6 @@
    "instrument": 1,
    "delaySend": 0.28,
    "reverbSend": 0.25,
-   "plugins": [],
    "routingID": "fx0005",
    "noteColumns": 3
   },
@@ -48,7 +46,6 @@
    "instrument": 2,
    "delaySend": 0,
    "reverbSend": 0.38,
-   "plugins": [],
    "routingID": "fx0006",
    "frozen": {
     "version": 1,
@@ -100,7 +97,6 @@
    "instrument": 3,
    "delaySend": 0,
    "reverbSend": 0,
-   "plugins": [],
    "routingID": "fx0007",
    "groupID": "fx000e",
    "pad": 0,
@@ -117,7 +113,6 @@
    "instrument": 4,
    "delaySend": 0,
    "reverbSend": 0,
-   "plugins": [],
    "routingID": "fx0008",
    "groupID": "fx000e",
    "voiceMode": "mono"
@@ -133,7 +128,6 @@
    "instrument": 5,
    "delaySend": 0,
    "reverbSend": 0,
-   "plugins": [],
    "routingID": "fx0009",
    "groupID": "fx000e",
    "chokeGroup": 1
@@ -149,7 +143,6 @@
    "instrument": 6,
    "delaySend": 0,
    "reverbSend": 0,
-   "plugins": [],
    "routingID": "fx000a",
    "groupID": "fx000e",
    "chokeGroup": 1
@@ -165,7 +158,6 @@
    "instrument": 7,
    "delaySend": 0.2,
    "reverbSend": 0,
-   "plugins": [],
    "routingID": "fx000b",
    "audioInput": {
     "enabled": true,
@@ -295,7 +287,6 @@
    "wavetableFrameSize": 0,
    "plugin": {
     "owner": "track:fx0005",
-    "track": 1,
     "kind": "instrument",
     "slot": 0,
     "instanceID": "keys-1",
@@ -2954,7 +2945,6 @@
  "audioPlugins": [
   {
    "owner": "track:fx0004",
-   "track": 0,
    "kind": "effect",
    "slot": 0,
    "instanceID": "comp-1",
@@ -2984,7 +2974,6 @@
   },
   {
    "owner": "track:fx0005",
-   "track": 1,
    "kind": "instrument",
    "slot": 0,
    "instanceID": "keys-1",

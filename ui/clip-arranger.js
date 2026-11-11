@@ -384,8 +384,7 @@
             solo: false,
             instrument: 0,
             delaySend: 0,
-            reverbSend: 0,
-            plugins: []
+            reverbSend: 0
           };
           window.STRoutingProject.appendTrack(value, track, app().uid || uid);
           value.patterns.forEach(pattern => { pattern.steps ||= []; pattern.steps.push(Array.from({ length: pattern.length }, () => null)); });

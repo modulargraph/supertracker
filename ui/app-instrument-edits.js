@@ -15,8 +15,14 @@
   let instrumentEditGeneration = 0;
   let instrumentEditRestoreError = null;
 
+  // A track's mixer channel, `track:<routingID>`: what a plug-in descriptor names as its owner.
+  const trackOwner = (project, track) => `track:${project.tracks[track]?.routingID}`;
+  const instrumentPluginOf = (project, track) => project.audioPlugins.find(x => x.kind === 'instrument'
+      && x.owner === trackOwner(project, track));
+
   function removeInstrumentDescriptors(project, tracks) {
-    const removed = project.audioPlugins.filter(x => x.kind === 'instrument' && tracks.includes(x.track));
+    const owners = new Set(tracks.map(track => trackOwner(project, track)));
+    const removed = project.audioPlugins.filter(x => x.kind === 'instrument' && owners.has(x.owner));
     const ids = new Set(removed.map(x => x.instanceID).filter(Boolean));
     project.audioPlugins = project.audioPlugins.filter(x => !removed.includes(x));
     if (project.routing.sidechains) project.routing.sidechains = project.routing.sidechains.filter(x => !ids.has(x.destination?.instanceID));
@@ -51,7 +57,7 @@
         && (id === null ? null : project.instruments[id]) === inst
         && tracks.every((track, i) => project.tracks[track] === targets[i]);
     const signature = () => stableJSON([inst, tracks.map(track => project.tracks[track]),
-        project.audioPlugins.filter(x => x.kind === 'instrument' && tracks.includes(x.track))]);
+        tracks.map(track => instrumentPluginOf(project, track)).filter(Boolean)]);
     const hadPluginInstance = !!inst?.plugin?.instanceID;
     const preparationSignature = () => stableJSON([{
       ...inst,
@@ -140,9 +146,9 @@
       // Always capture the retiring instance, even if its controls were edited in
       // a native editor. Keep that state in the canonical model for Undo/rollback.
       for (const track of tracks) {
-        const plugin = project.audioPlugins.find(x => x.track === track && x.kind === 'instrument');
+        const plugin = instrumentPluginOf(project, track);
         if (!plugin) continue;
-        const snapshot = await request('plugin.state', { track, kind: 'instrument', slot: 0 });
+        const snapshot = await request('plugin.state', { owner: plugin.owner, kind: 'instrument', slot: 0 });
         requireCurrent();
         if (!snapshot?.component
             || snapshot.stateError
@@ -210,9 +216,8 @@
 
   async function removeInstrumentPlugin(track, edit) {
     if (!edit || edit !== instrumentEditOperation) throw new Error('Instrument removal requires an owned edit.');
-    if (edit.project.audioPlugins.some(x => x.track === track
-        && x.kind === 'instrument')) await edit.native('plugin.remove', {
-      track,
+    if (instrumentPluginOf(edit.project, track)) await edit.native('plugin.remove', {
+      owner: trackOwner(edit.project, track),
       kind: 'instrument',
       slot: 0
     });
@@ -249,13 +254,12 @@
       inst = project.instruments[index];
     if (project.tracks[track].instrument === index
         && inst.type === 'au'
-        && project.audioPlugins.some(x => x.track === track && x.kind === 'instrument')) {
+        && instrumentPluginOf(project, track)) {
       toast('This plug-in is already assigned to the selected track.');
       return false;
     }
     const initialSourceTrack = inst.type === 'au'
-        ? project.tracks.findIndex((t, i) => t.instrument === index
-            && project.audioPlugins.some(x => x.track === i && x.kind === 'instrument'))
+        ? project.tracks.findIndex((t, i) => t.instrument === index && instrumentPluginOf(project, i))
         : -1;
     const protectedTracks = [...new Set([track, ...(initialSourceTrack >= 0 ? [initialSourceTrack] : [])])];
     try {
@@ -268,35 +272,31 @@
           });
           return true;
         }
-        const sourceTrack = project.tracks.findIndex((t, i) => t.instrument === index
-            && project.audioPlugins.some(x => x.track === i && x.kind === 'instrument'));
-        const source = sourceTrack >= 0
-            ? project.audioPlugins.find(x => x.track === sourceTrack && x.kind === 'instrument')
-            : inst.plugin;
+        const sourceTrack = project.tracks.findIndex((t, i) => t.instrument === index && instrumentPluginOf(project, i));
+        const source = sourceTrack >= 0 ? instrumentPluginOf(project, sourceTrack) : inst.plugin;
         // runInstrumentEdit secured both lanes and protects their native events.
         // A second unowned source capture could refresh descriptors during publication.
         const snapshot = source;
         if (sourceTrack !== initialSourceTrack) throw new Error('The source plug-in changed while preparing its assignment.');
         if (!snapshot?.component
             || snapshot.stateError) throw new Error('Load a plug-in for this instrument from the browser first.');
+        const owner = trackOwner(project, track);
         const loadDescriptor = {
           ...source,
           ...snapshot,
-          track,
+          owner,
           kind: 'instrument',
           slot: 0,
           component: snapshot.component
         };
-        // Native owner IDs outrank numeric tracks; a copied source must not retain
-        // its old channel or instance identity when assigned to another lane.
-        delete loadDescriptor.owner;
+        // The copy is a new instance on this track's channel, not the source's.
         delete loadDescriptor.instanceID;
         const loaded = await edit.native('plugin.load', loadDescriptor);
-        const full = await request('plugin.state', { track, kind: 'instrument', slot: 0 });
+        const full = await request('plugin.state', { owner, kind: 'instrument', slot: 0 });
         if (!full?.component
             || full.stateError
             || full.component !== snapshot.component) throw new Error('Could not capture the assigned plug-in.');
-        const descriptor = { ...loadDescriptor, ...loaded, ...full, track, kind: 'instrument', slot: 0 };
+        const descriptor = { ...loadDescriptor, ...loaded, ...full, owner, kind: 'instrument', slot: 0 };
         await edit.commit('assign plug-in', p => {
           removeInstrumentDescriptors(p, [track]);
           p.audioPlugins.push(descriptor);

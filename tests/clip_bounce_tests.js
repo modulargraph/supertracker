@@ -14,7 +14,7 @@ function harness({standard=false}={}) {
   const document={activeElement:null,getElementById:id=>nodes.get(id)||null,querySelectorAll:()=>[]};
   const state={view:'song',track:0,sequence:0,modal:null,project:{name:'Bounce fixture',bpm:120,linesPerBeat:4,activePattern:0,masterVolume:.6,
     tracks:[{id:0,routingID:'source',name:'Source',instrument:0,volume:.65,pan:.25,mute:false,solo:true,delaySend:.35,reverbSend:.4}],
-    instruments:[{id:0,type:'synth'}],audioPlugins:[{owner:'track:source',track:0,kind:'effect',slot:0,state:'original patch'}],
+    instruments:[{id:0,type:'synth'}],audioPlugins:[{owner:'track:source',kind:'effect',slot:0,state:'original patch'}],
     patterns:[{id:0,length:4,steps:[[{note:60},null,null,null]],automation:[{track:0,target:'volume',points:[{row:0,value:.65}]}]}],sequence:[0],audioClips:[],
     routing:{buses:[],outputs:{'track:source':'master'},sends:[],sidechains:[]}}};
   if(standard)state.project.routing={buses:[{id:'group',name:'Group',type:'group',volume:.8,pan:0,mute:false,solo:false}],outputs:{'track:source':'bus:group','bus:group':'master'},sends:[{id:'send',source:'track:source',destination:'bus:group',tap:'preFader',gain:.2,enabled:true}],sidechains:[]};

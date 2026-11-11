@@ -38,7 +38,7 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
     patterns: [{ id: 0, length: 4, steps: tracks.map((_, i) => [{ note: 60 + i, instrument: i }, null, null, null]),
       automation: tracks.map((_, i) => ({ id: `a${i}`, track: i, target: 'volume', points: [] })) }],
     audioClips: [{ id: 'c', track: 4, path: '/Audio/c.wav', startBeat: 0, durationBeats: 4 }],
-    audioPlugins: [{ instanceID: 'p', owner: 'track:r5', track: 5, kind: 'effect', slot: 0, component: 'builtin:eq' }],
+    audioPlugins: [{ instanceID: 'p', owner: 'track:r5', kind: 'effect', slot: 0, component: 'builtin:eq' }],
     routing: { buses: [], outputs: Object.fromEntries(tracks.map(t => [`track:${t.routingID}`, 'master'])), sends: [], sidechains: [] }
   };
   G.create(p, [1, 3, 4], { makeID: uid, name: 'Drums' });
@@ -63,10 +63,10 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
     destination: { instanceID: 'comp-1', inputBus: 1, layoutSignature: { name: 'Sidechain', channels: 2 } }, gain: 1, enabled: true });
   // Plug-in descriptors as plugin.load returns them (AudioPluginRack.summary) plus built-in effects (insert-chain.js).
   p.audioPlugins = [
-    { owner: `track:${p.tracks[0].routingID}`, track: 0, kind: 'effect', slot: 0, instanceID: 'comp-1', component: 'vst3:ABCDEF0123456789ABCDEF0123456789',
+    { owner: `track:${p.tracks[0].routingID}`, kind: 'effect', slot: 0, instanceID: 'comp-1', component: 'vst3:ABCDEF0123456789ABCDEF0123456789',
       name: 'Squash', manufacturer: 'Acme', format: 'VST3', bundlePath: '/Library/Audio/Plug-Ins/VST3/Squash.vst3', bypass: false, latency: 0.0013, tailTime: 0,
       state: 'AAECAwQ=', presets: [], parameters: [{ address: '18446744073709551615', name: 'Threshold', value: .5 }], hostStatus: { state: 'running' } },
-    { owner: `track:${p.tracks[1].routingID}`, track: 1, kind: 'instrument', slot: 0, instanceID: 'keys-1', component: 'clap:com.acme.keys', name: 'Keys',
+    { owner: `track:${p.tracks[1].routingID}`, kind: 'instrument', slot: 0, instanceID: 'keys-1', component: 'clap:com.acme.keys', name: 'Keys',
       manufacturer: 'Acme', format: 'CLAP', bypass: false, latency: 0, tailTime: 2, state: 'c3RhdGU=', nks: { name: 'Glass', path: '/Library/NKS/Glass.nksf' }, missing: true },
     { owner: 'bus:ret1', kind: 'effect', slot: 0, instanceID: 'plate-1', component: 'builtin:reverb', name: 'Reverb', format: 'Builtin', state: 'AAAA' },
     { owner: 'master', kind: 'effect', slot: 15, instanceID: 'limit-1', component: 'builtin:limiter', name: 'Limiter', format: 'Builtin', state: 'AAAA', stateError: 'busy' },
