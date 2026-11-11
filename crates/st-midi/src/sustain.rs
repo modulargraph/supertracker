@@ -28,7 +28,9 @@
 //! An instrument can be replaced while a pedal is down (another plug-in, a plug-in restored
 //! after a crash, another device or channel). The owner passes a *generation* with every note:
 //! a number that changes when what stands at that place may have lost its pedal. A note played
-//! to a new generation brings the pedal along again.
+//! to a new generation brings the pedal along again. An instrument can also leave its place (its
+//! track is moved or removed): the owner says so while it is still there
+//! ([`SustainState::detach`]), and it is told pedal-up.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -153,6 +155,11 @@ impl SustainState {
     /// The value of a pedal (0: up).
     pub fn value(&self, source: i32, channel: u8, controller: u8) -> u8 {
         self.pedals.get(&(source, channel, controller)).map_or(0, |pedal| pedal.value)
+    }
+
+    /// Whether no pedal is down: there is nothing to keep track of.
+    pub fn is_idle(&self) -> bool {
+        self.pedals.is_empty()
     }
 
     /// Whether the sustain pedal of `source` on `channel` is down (64 or more): it holds the
@@ -288,6 +295,29 @@ impl SustainState {
     pub fn lift(&mut self, lifted: impl Fn(i32) -> bool) -> Vec<PedalEffect> {
         let keys: Vec<(i32, u8, u8)> = self.pedals.keys().filter(|(source, _, _)| lifted(*source)).copied().collect();
         keys.into_iter().flat_map(|(source, channel, controller)| self.pedal(source, channel, controller, 0, None)).collect()
+    }
+
+    /// The instruments `gone` names are about to leave their places (their tracks are moved or
+    /// removed). Carry out the answer while they are still there: they are told pedal-up, and
+    /// the notes a sustain pedal held on them end. The pedals forget them; what is played at
+    /// those places afterwards gets a pedal that is still down like any new instrument.
+    pub fn detach(&mut self, gone: impl Fn(PedalTarget) -> bool) -> Vec<PedalEffect> {
+        let mut effects = Vec::new();
+        for ((source, channel, _), pedal) in &mut self.pedals {
+            let (ended, kept): (BTreeSet<_>, BTreeSet<_>) = std::mem::take(&mut pedal.held).into_iter().partition(|(target, _)| gone(*target));
+            pedal.held = kept;
+            effects.extend(ended.into_iter().map(|(target, note)| PedalEffect::NoteEnds { source: *source, channel: *channel, note, target }));
+            pedal.targets.retain(|target| !gone(*target));
+        }
+        for keys in self.keys.values_mut() {
+            keys.retain(|key| !gone(key.target));
+        }
+        let told: Vec<(PedalTarget, u8)> = self.sent.keys().filter(|(target, _)| gone(*target)).copied().collect();
+        for (target, controller) in told {
+            self.sent.remove(&(target, controller));
+            effects.push(PedalEffect::Send { target, controller, value: 0 });
+        }
+        effects
     }
 
     /// Everything is being silenced, but the pedals stay where the player has them (the
@@ -516,6 +546,31 @@ mod tests {
         assert!(off(&mut state, 10, 1, 60, PLUGIN));
         assert_eq!(state.pedal(10, 1, SUSTAIN, 0, None), [ends(10, 1, 60, PLUGIN), send(PLUGIN, 64, 0)]);
         assert_eq!(state.pedal(10, 1, SOSTENUTO, 0, None), [send(PLUGIN, 66, 0)]);
+    }
+
+    #[test]
+    fn an_instrument_that_leaves_its_place_is_told_pedal_up_and_forgotten() {
+        let mut state = SustainState::new();
+        assert!(state.is_idle());
+        state.pedal(10, 1, SUSTAIN, 127, Some((PLUGIN, 0)));
+        state.pedal(10, 1, SOFT, 127, Some((PLUGIN, 0)));
+        assert!(!state.is_idle());
+        on(&mut state, 10, 1, 72, SYNTH, 0);
+        on(&mut state, 10, 1, 60, PLUGIN, 0);
+        on(&mut state, 10, 1, 48, ENGINE, 0);
+        for (note, target) in [(60, PLUGIN), (48, ENGINE)] {
+            assert!(off(&mut state, 10, 1, note, target));
+        }
+        // Tracks 0 and 1 are moved: the sampler's held note ends and the plug-in is told
+        // pedal-up while both are still where the pedal knows them. The synth is untouched.
+        let moved = |target: PedalTarget| matches!(target, PedalTarget::Engine { .. } | PedalTarget::Plugin { .. });
+        assert_eq!(state.detach(moved), [ends(10, 1, 48, ENGINE), ends(10, 1, 60, PLUGIN), send(PLUGIN, 64, 0), send(PLUGIN, 67, 0)]);
+        assert_eq!(state.detach(moved), [], "once");
+        // The pedal is still down: whatever stands at track 1 now gets it with its first note.
+        assert_eq!(on(&mut state, 10, 1, 62, PLUGIN, 0), [send(PLUGIN, 64, 127), send(PLUGIN, 67, 127)]);
+        assert_eq!(state.pedal(10, 1, SUSTAIN, 0, None), [send(PLUGIN, 64, 0), send(SYNTH, 64, 0)]);
+        state.pedal(10, 1, SOFT, 0, None);
+        assert!(state.is_idle());
     }
 
     #[test]

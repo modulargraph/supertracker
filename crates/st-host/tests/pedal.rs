@@ -79,6 +79,10 @@ fn start(label: &str) -> Fixture {
         services = Some(install(bridge, options).expect("install the host"));
     });
     host.request("ready", json!({})).expect("the handshake");
+    let services = services.unwrap();
+    // No block of a plug-in is given up, however busy the machine: a live note or a pedal in a
+    // block the plug-in missed would be lost, and with it what the test waits for.
+    services.audio.as_ref().unwrap().engine().plugins().expect("plug-in hosting").set_min_deadline(Duration::from_secs(20));
     let track = |index: i64, name: &str| json!({ "id": index, "name": name, "routingID": name, "volume": 1, "pan": 0, "instrument": index });
     let plugin = |name: &str, component: String, format: &str, path: &std::path::Path| {
         json!({ "instanceID": name, "owner": format!("track:{name}"), "kind": "instrument", "slot": 0, "component": component, "format": format, "bundlePath": path, "name": name })
@@ -97,7 +101,7 @@ fn start(label: &str) -> Fixture {
         "routing": { "version": 1, "mixModel": "standard", "buses": [], "outputs": {}, "sends": [], "sidechains": [] },
         "audioPlugins": [plugin("clap", format!("clap:{CLAP_SINE}"), "CLAP", &installed.clap), plugin("vst3", format!("vst3:{VST3_SINE}"), "VST3", &installed.vst3)],
     });
-    let fixture = Fixture { host, services: services.unwrap(), ports, project, notes: Default::default(), _folder: folder };
+    let fixture = Fixture { host, services, ports, project, notes: Default::default(), _folder: folder };
     fixture.publish(&fixture.project);
     fixture.ports.clear_sent();
     fixture
@@ -200,11 +204,26 @@ impl Fixture {
         self.ports.clear_sent();
     }
 
-    /// The sampler's track peak in the first status event made from now on.
-    fn sampler_peak(&self) -> f64 {
+    /// The peak of a track's strip in the first status event made from now on.
+    fn track_peak(&self, track: i64) -> f64 {
         self.host.events();
         let status = self.host.wait_for_event("status", Duration::from_secs(10)).expect("a status event");
-        status["trackPeaks"][SAMPLER as usize].as_f64().unwrap()
+        status["trackPeaks"][track as usize].as_f64().unwrap()
+    }
+
+    fn sampler_peak(&self) -> f64 {
+        self.track_peak(SAMPLER)
+    }
+
+    fn track_fades(&self, what: &str, track: i64) {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            let peak = self.track_peak(track);
+            if peak < 0.001 {
+                return;
+            }
+            assert!(Instant::now() < deadline, "{what}: the peak of track {track} is {peak}");
+        }
     }
 
     fn sampler_where(&self, what: &str, wanted: impl Fn(f64) -> bool) -> f64 {
@@ -623,6 +642,32 @@ fn a_publication_leaves_the_pedal_alone_and_a_replaced_or_restored_instrument_ge
     fixture.synth_gets("pedal-up on the synth's new channel", &[&[0xB4, 64, 0]]);
     fixture.clap_note("the CLAP instrument is silent", clap_sine::SILENT);
     fixture.vst3_note("the VST3 instrument is silent", vst3_sine::SILENT);
+
+    // Tracks are reordered while the pedal is down: the sampler's track and the CLAP
+    // instrument's swap places. The pedals know these instruments by their track's place, so
+    // before the publication the plug-in is told pedal-up and the sampler's held note is let
+    // go: nothing is left sounding where the pedal no longer reaches it.
+    fixture.note_on(KEYBOARD, CLAP, 60, 100);
+    fixture.pedal(KEYBOARD, CLAP, 64, 127);
+    fixture.note_off(KEYBOARD, CLAP, 60);
+    fixture.clap_note("sustained", clap_sine::SUSTAINED);
+    fixture.note_on(KEYBOARD, SAMPLER, 57, 110);
+    fixture.sampler_sounds("the sampler's note");
+    fixture.note_off(KEYBOARD, SAMPLER, 57);
+    project["tracks"].as_array_mut().unwrap().swap(SAMPLER as usize, CLAP as usize);
+    fixture.publish(&project);
+    let (moved_clap, moved_sampler) = (SAMPLER, CLAP);
+    fixture.shows("the moved plug-in was told pedal-up", moved_clap, &[(clap_sine::LAST_CONTROLLER, pedal_at(0)), (clap_sine::NOTE_STATE, clap_sine::SILENT)]);
+    fixture.track_fades("the sampler's held note was let go", moved_sampler);
+    fixture.track_fades("and nothing sounds where it was", moved_clap);
+    // The pedal is still down: the plug-in gets it again at its new place.
+    fixture.request("midi.configure", json!({ "track": moved_clap, "instrument": CLAP }));
+    fixture.feed(KEYS, &[0x90, 64, 100]);
+    fixture.shows("the pedal comes with the note", moved_clap, &[(clap_sine::LAST_CONTROLLER, pedal_at(127)), (clap_sine::NOTE_STATE, clap_sine::KEY_DOWN)]);
+    fixture.feed(KEYS, &[0x80, 64, 0]);
+    fixture.shows("sustained at its new place", moved_clap, &[(clap_sine::NOTE_STATE, clap_sine::SUSTAINED)]);
+    fixture.feed(KEYS, &[0xB0, 64, 0]);
+    fixture.shows("and released", moved_clap, &[(clap_sine::LAST_CONTROLLER, pedal_at(0)), (clap_sine::NOTE_STATE, clap_sine::SILENT)]);
     fixture.services.services.shutdown();
 }
 

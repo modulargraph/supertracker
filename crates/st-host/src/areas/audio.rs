@@ -50,7 +50,8 @@
 //! holds, and a pedal still down reaches an instrument again with the next note;
 //! `engine.panic` silences everything and forgets the pedals. An instrument that is replaced
 //! while a pedal is down (another plug-in, a plug-in restored after a crash, another device
-//! or channel) gets the pedal again with the next note played to it.
+//! or channel) gets the pedal again with the next note played to it; one whose track a
+//! publication moves or removes is told pedal-up before the publication.
 //!
 //! Patterns carry notes with gates and no pedal data: all of this is live input only.
 
@@ -162,6 +163,7 @@ pub struct KeyUp {
 
 impl ProjectAudio for Audio {
     fn prepare(&self, project: &Project, replace: bool) -> Result<Value> {
+        self.detach_pedals_of_moved_tracks(project);
         // An opened or replaced project loads every plug-in's saved state again.
         let report = self.engine.publish_with(project, replace).map_err(Error::new)?;
         self.report_samples(report);
@@ -382,6 +384,25 @@ impl Audio {
             Some(_) => controller == st_midi::sustain::SUSTAIN,
             None => false,
         }
+    }
+
+    /// `project` is about to be published. The pedals know the engine's instruments and the
+    /// plug-in instruments by their track's place in the list: a track the project moves or
+    /// removes takes its instrument away from there. While it is still there, the instrument
+    /// is told pedal-up and the notes the host holds on it are let go. (An instrument that is
+    /// replaced where it stands gets the pedal again with its next note; an external
+    /// instrument's device and channel are the MIDI area's to clear.)
+    fn detach_pedals_of_moved_tracks(&self, project: &Project) {
+        let mut pedals = self.pedals();
+        if pedals.is_idle() {
+            return;
+        }
+        let leaving = self.engine.tracks_leaving(project);
+        let effects = pedals.detach(|target| match target {
+            PedalTarget::Engine { track } | PedalTarget::Plugin { track } => leaving.contains(&track),
+            PedalTarget::External { .. } => false,
+        });
+        self.perform(effects, false);
     }
 
     /// The pedals of the sources `lifted` names come up (their input route was taken down).

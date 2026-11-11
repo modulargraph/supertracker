@@ -80,7 +80,7 @@ the standard folders out.
 | Line inputs and Freeze by recording through the bridge, on the null device with the null input's test tone: a route in the project heard on its track's meter and reported in `audio.devices`, paused routes, the remembered input, a hardware track frozen by recording, played from its print, exported and unfrozen (`tests/line_inputs.rs`) | `cargo test -p st-host` |
 | Render cost of the demo song and of a 64-track project | `cargo run --release -p st-audio --example bench` |
 | The library through the bridge, on generated audio files: add a folder, scan, search, favorites and browser state across a restart, kits, a kit saved with the preview of its group bus and auditioned (the file's format, length and where it has audio), the seam to the plug-in list (`tests/library.rs`) | `cargo test -p st-host` |
-| MIDI with in-memory ports: a pattern's notes for an external instrument at their times, all-notes-off on stop and panic, clock against the tempo, a keyboard note that sounds and is acknowledged for recording, MIDI Start/Stop, hot-plug, shutdown (`tests/midi.rs`); no allocation on the render path with MIDI output connected (`tests/midi_realtime.rs`); controllers, channel and poly pressure and pitch bend from `midi.expression` and from a keyboard to an external instrument, the sampler, and the CLAP and VST3 test instruments (`tests/expression.rs`); the sustain pedal from the interface and from keyboards: passed on with its value to the external instrument and to the CLAP and VST3 test instruments (which sustain by themselves), held by the host for the sampler, following the keyboard to another track, on Stop and panic, across a publication, a replaced instrument and a plug-in restored after a crash, with several keyboards and channels, and the length of notes recorded under it (`tests/pedal.rs`) | `cargo test -p st-host` |
+| MIDI with in-memory ports: a pattern's notes for an external instrument at their times, all-notes-off on stop and panic, clock against the tempo, a keyboard note that sounds and is acknowledged for recording, MIDI Start/Stop, hot-plug, shutdown (`tests/midi.rs`); no allocation on the render path with MIDI output connected (`tests/midi_realtime.rs`); controllers, channel and poly pressure and pitch bend from `midi.expression` and from a keyboard to an external instrument, the sampler, and the CLAP and VST3 test instruments (`tests/expression.rs`); the sustain pedal from the interface and from keyboards: passed on with its value to the external instrument and to the CLAP and VST3 test instruments (which sustain by themselves), held by the host for the sampler, following the keyboard to another track, on Stop, at the end of a song and on panic, across a publication, a replaced instrument, a plug-in restored after a crash and reordered tracks, with several keyboards and channels, and the length of notes recorded under it (`tests/pedal.rs`) | `cargo test -p st-host` |
 | The audio core's MIDI seam with a recording hook: blocks with the transport position, notes of external instruments at their frames, all-notes-off on stop and panic, nothing during an offline render (`tests/midi.rs`) | `cargo test -p st-audio` |
 | The Maschine MK3 through the bridge against `st_mk3::fake` (`tests/mk3.rs`); AI control through the bridge with a control-socket client, the setting and the quit fence (`tests/agent.rs`) | `cargo test -p st-host` |
 | Command line, WebSocket framing, file serving, menus, window helpers | `cargo test -p st-app` |
@@ -572,8 +572,12 @@ Behaviour worth knowing:
   silences everything (plug-ins and devices are sent the pedals up with all-notes-off) and
   forgets the pedals. An instrument replaced while a pedal is down (another plug-in, one
   restored after a crash, another device or channel, a device that came back) gets the pedal
-  again with the next note; a device or channel an instrument leaves is sent pedal-up. A
-  keyboard that is unplugged, and an input route that changes, lift their pedals.
+  again with the next note; a device or channel an instrument leaves is sent pedal-up, and so
+  is a plug-in whose track a publication moves or removes (before the publication, which also
+  lets go of the notes the host holds on such a track). A keyboard that is unplugged, and an
+  input route that changes, lift their pedals. When a song ends by itself the render thread
+  silences the external instruments as on Stop; a pedal still down is sent again with the
+  next note.
   Patterns carry notes with gates and no pedal data, so all of this is live input only; while
   a live pedal is down on a plug-in or a device, the notes the song plays on that instrument
   are sustained by it too, as on the instrument itself.

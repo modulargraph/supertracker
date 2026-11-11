@@ -80,6 +80,22 @@ impl AudioEngine {
         self.plugin_instrument(track).map_or(0, |hosted| hosted.pedal_generation())
     }
 
+    /// The tracks (engine channels) that `project`, once published, takes away from the mixer
+    /// strip they have now: tracks it moves to another place in the list or removes. What was
+    /// told to the instrument of such a track by its engine channel (a pedal held down) has to
+    /// be taken back before the publication, while the channel still means that instrument.
+    pub fn tracks_leaving(&self, project: &st_project::Project) -> Vec<usize> {
+        use crate::graph::spec::{GraphSpec, StripKind};
+        let next = GraphSpec::from_project(project);
+        let stays = |track: usize, id: &str| next.strips.iter().any(|strip| strip.kind == StripKind::Track(track) && strip.id == id);
+        let state = self.lock();
+        let leaving = state.core.spec.strips.iter().filter_map(|strip| match strip.kind {
+            StripKind::Track(track) if !stays(track, &strip.id) => Some(track),
+            _ => None,
+        });
+        leaving.collect()
+    }
+
     /// Whether note recording is armed (`transport.recordArm`).
     pub fn record_armed(&self) -> bool {
         self.lock().record_armed

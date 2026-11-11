@@ -57,6 +57,10 @@ fn start(label: &str) -> Fixture {
         services = Some(install(bridge, options).expect("install the host"));
     });
     host.request("ready", json!({})).expect("the handshake");
+    let services = services.unwrap();
+    // No block of a plug-in is given up, however busy the machine: a controller in a block the
+    // plug-in missed would be lost.
+    services.audio.as_ref().unwrap().engine().plugins().expect("plug-in hosting").set_min_deadline(Duration::from_secs(20));
     let track = |index: i64, name: &str| json!({ "id": index, "name": name, "routingID": name, "volume": 1, "pan": 0, "instrument": index });
     let plugin = |name: &str, component: String, format: &str, path: &std::path::Path| {
         json!({ "instanceID": name, "owner": format!("track:{name}"), "kind": "instrument", "slot": 0, "component": component, "format": format, "bundlePath": path, "name": name })
@@ -77,7 +81,7 @@ fn start(label: &str) -> Fixture {
     });
     let published = host.reply_within(host.send("engine.project", json!({ "project": project })), Duration::from_secs(120));
     published.expect("the project and its plug-ins are loaded");
-    Fixture { host, services: services.unwrap(), ports, _folder: folder }
+    Fixture { host, services, ports, _folder: folder }
 }
 
 impl Fixture {

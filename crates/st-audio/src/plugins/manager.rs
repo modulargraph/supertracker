@@ -725,6 +725,9 @@ pub struct PluginManager {
     /// manager then hosts nothing and says so for every plug-in a project wants.
     supervisor: Result<Supervisor, String>,
     options: PluginOptions,
+    /// [`PluginOptions::min_deadline`] for the instances created next, in nanoseconds
+    /// ([`PluginManager::set_min_deadline`]).
+    min_deadline_ns: AtomicU64,
     recovery: Arc<RecoveryStore>,
     catalog: Mutex<Option<Arc<Catalog>>>,
     inner: Mutex<Inner>,
@@ -779,6 +782,7 @@ impl PluginManager {
         };
         let manager = Arc::new(PluginManager {
             supervisor,
+            min_deadline_ns: AtomicU64::new(options.min_deadline.as_nanos().min(u128::from(u64::MAX)) as u64),
             options,
             recovery,
             catalog: Mutex::new(None),
@@ -814,6 +818,14 @@ impl PluginManager {
 
     pub fn is_offline(&self) -> bool {
         self.options.offline
+    }
+
+    /// Changes [`PluginOptions::min_deadline`] for the instances created from now on. A test
+    /// that plays live through a host it did not build the manager for gives every block all
+    /// the time it needs, so that a busy machine never makes a plug-in miss a block (and the
+    /// notes and controllers in it).
+    pub fn set_min_deadline(&self, deadline: Duration) {
+        self.min_deadline_ns.store(deadline.as_nanos().min(u128::from(u64::MAX)) as u64, Ordering::Release);
     }
 
     pub fn recovery(&self) -> &Arc<RecoveryStore> {
@@ -1005,7 +1017,7 @@ impl PluginManager {
             base_requested: AtomicBool::new(false),
             returns_pending: AtomicU32::new(0),
             offline: self.options.offline,
-            min_deadline_ns: self.options.min_deadline.as_nanos() as u64,
+            min_deadline_ns: self.min_deadline_ns.load(Ordering::Acquire),
             control: Mutex::new(HostedControl::default()),
         });
         if let Err(error) = hosted.refresh_parameters() {
