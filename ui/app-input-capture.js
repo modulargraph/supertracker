@@ -39,14 +39,13 @@
     const number = (value, fallback) => ['number', 'boolean'].includes(typeof value) && Number.isFinite(Number(value))
         ? Number(value)
         : fallback;
-    // Compared field by field with the context in the host's acknowledgement, which carries timing: null.
+    // Compared field by field with the context in the host's acknowledgement.
     return {
       version: 1,
       linesPerBeat: clamp(Math.trunc(number(project.linesPerBeat, 4)), 1, 32),
       swing: Math.fround(clamp(Math.fround(number(project.swing, 0)), 0, Math.fround(.95))),
       loopSong: project.loopSong === true,
       bpm: clamp(number(project.bpm, 120), 20, 999),
-      timing: null,
       patterns: project.patterns.map((pat, index) => ({
         id: Math.trunc(number(pat.id, index)),
         length: clamp(Math.trunc(number(pat.length, 64)), 1, 256)

@@ -296,7 +296,7 @@
   // ---- Content drawers (by page data kind) ----------------------------------------------------------
   const NOTE_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
   // A note's gate in rows, or "—" for none (it plays until the next note, OFF or CUT). A step saved
-  // without a gate key keeps the legacy 0.8 rows.
+  // without a gate key is the default 0.8 rows long.
   function gateLabel(s, unit = '') {
     const gate = s.gate === undefined || s.gate === null ? .8 : Number(s.gate);
     return gate > 0 ? gate.toFixed(2) + unit : '—';

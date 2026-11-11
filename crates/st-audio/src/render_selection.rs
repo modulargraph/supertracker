@@ -116,7 +116,7 @@ pub struct Plan {
     pub project: Value,
     /// Exact musical length in frames at `sample_rate`; `None` with a tempo map (the render
     /// then ends where the engine stops).
-    pub musical_frames: Option<u64>,
+    pub musical_frames: u64,
     pub kept_plugins: usize,
     pub warnings: Vec<String>,
 }
@@ -170,15 +170,12 @@ fn reachable_owners(project: &Value, sources: &[String]) -> Vec<String> {
 }
 
 /// Frames of rows `first..=last` at the project's tempo (odd rows are delayed by the swing).
-pub fn musical_frames(project: &Value, first: usize, last: usize, sample_rate: f64) -> Option<u64> {
-    if !project["timing"].is_null() {
-        return None;
-    }
+pub fn musical_frames(project: &Value, first: usize, last: usize, sample_rate: f64) -> u64 {
     let swing = (project["swing"].as_f64().unwrap_or(0.0) as f32).clamp(0.0, 0.95) as f64;
     let lines = project["linesPerBeat"].as_f64().unwrap_or(4.0).clamp(1.0, 32.0).floor();
     let bpm = project["bpm"].as_f64().unwrap_or(120.0).clamp(20.0, 999.0);
     let row = |index: usize| index as f64 + if index % 2 == 1 { swing } else { 0.0 };
-    Some(((row(last + 1) - row(first)) * sample_rate * 60.0 / bpm / lines).round() as u64)
+    ((row(last + 1) - row(first)) * sample_rate * 60.0 / bpm / lines).round() as u64
 }
 
 /// The render project for `request` from the published project (with captured insert state).
@@ -314,7 +311,7 @@ pub fn plan(canonical: &Value, request: &Request, sample_rate: f64) -> Result<Pl
         warnings.push("Audio clips on the selected tracks are not part of a pattern render.".to_string());
     }
     let frames = musical_frames(canonical, request.first_row, request.last_row, sample_rate);
-    if frames.is_some_and(|frames| frames as f64 > MAXIMUM_MUSICAL_SECONDS * sample_rate) {
+    if frames as f64 > MAXIMUM_MUSICAL_SECONDS * sample_rate {
         return Err(format!("The selection is longer than {} minutes. Render a shorter range.", (MAXIMUM_MUSICAL_SECONDS / 60.0) as u32));
     }
     Ok(Plan { project, musical_frames: frames, kept_plugins, warnings })
@@ -352,7 +349,7 @@ pub(crate) struct TailTarget<'a> {
     threshold: f32,
     hold: u64,
     maximum_tail: u64,
-    musical_frames: Option<u64>,
+    musical_frames: u64,
     /// Keep exactly this many frames, whatever sounds (a fixed tail).
     pub(crate) fixed: Option<u64>,
     last_loud: Option<u64>,
@@ -364,8 +361,8 @@ pub(crate) struct TailTarget<'a> {
 }
 
 impl<'a> TailTarget<'a> {
-    pub(crate) fn new(threshold_db: f64, hold: u64, maximum_tail: u64, musical_frames: Option<u64>, cancel: &'a st_samples::CancelToken, cancelled: &'static str, progress: &'a dyn Fn(f64)) -> Self {
-        let expected = (musical_frames.unwrap_or(4 * 48_000) + maximum_tail / 4) as usize;
+    pub(crate) fn new(threshold_db: f64, hold: u64, maximum_tail: u64, musical_frames: u64, cancel: &'a st_samples::CancelToken, cancelled: &'static str, progress: &'a dyn Fn(f64)) -> Self {
+        let expected = (musical_frames + maximum_tail / 4) as usize;
         TailTarget {
             left: Vec::with_capacity(expected),
             right: Vec::with_capacity(expected),
@@ -383,9 +380,9 @@ impl<'a> TailTarget<'a> {
         }
     }
 
-    /// The musical length: as planned, or where the engine stopped.
+    /// The musical length, as planned.
     pub(crate) fn musical(&self) -> u64 {
-        self.musical_frames.unwrap_or(self.left.len() as u64)
+        self.musical_frames
     }
 }
 
@@ -403,18 +400,15 @@ impl RenderTarget for TailTarget<'_> {
         if self.cancel.is_cancelled() {
             return Err(self.cancelled.to_string());
         }
-        if stopped && self.musical_frames.is_none() {
-            self.musical_frames = Some(available);
-        }
         if let Some(total) = self.fixed {
             self.decision = if available >= total { TailDecision::Silent(total) } else { TailDecision::Render };
             return Ok(Some(total));
         }
-        let musical = self.musical_frames.unwrap_or(u64::MAX);
+        let musical = self.musical_frames;
         self.decision = tail_decision(available, self.last_loud, musical, stopped || available >= musical, self.hold, self.maximum_tail);
         if available >= self.reported + 32_768 {
             self.reported = available;
-            let total = if musical == u64::MAX { available * 2 } else { musical + self.maximum_tail };
+            let total = musical + self.maximum_tail;
             (self.progress)((available as f64 / total.max(1) as f64).min(1.0));
         }
         Ok(match self.decision {
@@ -475,7 +469,7 @@ pub fn render_selection(context: &RenderContext<'_>, request: &Request, destinat
     let hold = (request.hold_seconds * rate).round() as u64;
     let maximum_tail = (request.maximum_tail * rate).round() as u64;
     let mut target = TailTarget::new(request.threshold_db, hold, maximum_tail, plan.musical_frames, context.cancel, CANCELLED, &rendering);
-    let summary = offline.run(&[None], plan.musical_frames, &mut target)?;
+    let summary = offline.run(&[None], Some(plan.musical_frames), &mut target)?;
     drop(offline);
 
     (context.progress)(0.92, "writing");

@@ -8,7 +8,7 @@ assert(fixture.includes(exportLine));
 const makeHarness = new Function('require', '__dirname', fixture.slice(0, fixture.indexOf('const tests = [], test =')).replace(exportLine, exportLine.replace('return {', 'return { context,')) + '\nreturn harness;')(require, __dirname);
 const copy = value => JSON.parse(JSON.stringify(value));
 const tick = async () => { for (let i = 0; i < 80; i++) await Promise.resolve(); };
-const clock = (distanceBeats, extra = {}) => ({ distanceBeats, runID: '1', timingRevision: '1', ...extra });
+const clock = (distanceBeats, extra = {}) => ({ distanceBeats, runID: '1', ...extra });
 
 async function harness(options = {}) {
   const h = await makeHarness(), contexts = new Map(), requestIDs = new Map(), timers = new Map(), heldCommands = new Set(), midiEdges = new Map();

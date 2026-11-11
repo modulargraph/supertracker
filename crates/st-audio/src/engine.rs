@@ -511,7 +511,7 @@ impl AudioEngine {
             let mut result = input_base(edge, context, id);
             result["status"] = json!("unavailable");
             result["reason"] = json!(reason);
-            for key in ["applied", "playing", "recording", "mapped"] {
+            for key in ["applied", "playing", "recording"] {
                 result[key] = json!(false);
             }
             result
@@ -582,9 +582,6 @@ impl AudioEngine {
                 result["applied"] = json!(applied);
                 result["playing"] = json!(applied && ack.flags & ST_INPUT_CLOCK_PLAYING != 0);
                 result["recording"] = json!(applied && ack.flags & ST_INPUT_CLOCK_RECORDING != 0);
-                // The engine plays at the project's one tempo: an edge is never on a tempo map.
-                // The interface still reads this key and `timingRevision` below.
-                result["mapped"] = json!(false);
                 result["pattern"] = json!(ack.pattern);
                 result["row"] = json!(ack.row);
                 result["sequence"] = json!(ack.sequence);
@@ -594,7 +591,7 @@ impl AudioEngine {
                     result["graphFrame"] = json!(ack.graph_frame.to_string());
                 }
                 if applied && ack.flags & ST_INPUT_CLOCK_PLAYING != 0 && ack.distance_beats.is_finite() {
-                    result["recordingClock"] = json!({ "distanceBeats": ack.distance_beats, "runID": ack.run_id.to_string(), "timingRevision": "0" });
+                    result["recordingClock"] = json!({ "distanceBeats": ack.distance_beats, "runID": ack.run_id.to_string() });
                 }
                 finished.push((item.completion, result));
             }
@@ -607,7 +604,7 @@ impl AudioEngine {
                 result["status"] = json!("unavailable");
                 result["reason"] = json!(if current { "The audio engine did not acknowledge the input edge in time." } else { "The recording session or arm intent changed before the input was applied." });
                 result["ownershipCurrent"] = json!(current);
-                for key in ["applied", "playing", "recording", "mapped"] {
+                for key in ["applied", "playing", "recording"] {
                     result[key] = json!(false);
                 }
                 finished.push((item.completion, result));
@@ -704,7 +701,7 @@ impl AudioEngine {
             "playing": playing, "songMode": engine.song_mode != 0, "pattern": engine.pattern, "row": engine.row, "sequence": engine.sequence,
             "position": engine.position, "seconds": engine.seconds, "beat": engine.beat, "bpm": engine.bpm, "bar": engine.bar,
             "barStartBeat": engine.bar_start_beat, "numerator": engine.numerator, "denominator": engine.denominator,
-            "timingRevision": "0", "transportSeekRevision": engine.transport_seek_revision.to_string(),
+            "transportSeekRevision": engine.transport_seek_revision.to_string(),
             "peakL": peak_l, "peakR": peak_r, "inputPeakLeft": 0.0, "inputPeakRight": 0.0, "inputMetering": false,
             "trackPeaks": track_peaks, "busPeaks": bus_peaks,
             "routing": routing_status(core),
@@ -1123,7 +1120,7 @@ pub fn recording_context(project: &Project) -> Value {
         .collect();
     json!({
         "version": 1, "linesPerBeat": project.lines_per_beat().clamp(1, 32), "swing": (project.swing() as f32).clamp(0.0, 0.95) as f64,
-        "loopSong": project.loop_song(), "bpm": project.bpm().clamp(20.0, 999.0), "timing": Value::Null,
+        "loopSong": project.loop_song(), "bpm": project.bpm().clamp(20.0, 999.0),
         "patterns": patterns, "sequence": project.sequence.clone().unwrap_or_default(), "clips": clips,
     })
 }

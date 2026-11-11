@@ -389,7 +389,7 @@ pub fn fingerprint(project: &Value, index: usize, hash: ContentHash<'_>) -> Resu
         "plugins": plugins,
         "clips": clips,
         "patterns": patterns,
-        "timing": { "bpm": project["bpm"].as_f64().unwrap_or(120.0), "linesPerBeat": whole(&project["linesPerBeat"], 4), "swing": project["swing"].as_f64().unwrap_or(0.0), "timing": project["timing"], "sequence": sequence },
+        "timing": { "bpm": project["bpm"].as_f64().unwrap_or(120.0), "linesPerBeat": whole(&project["linesPerBeat"], 4), "swing": project["swing"].as_f64().unwrap_or(0.0), "sequence": sequence },
     });
     let mut text = String::new();
     canonical(&payload, &mut text);
@@ -532,7 +532,7 @@ struct PrintJob<'a> {
 fn render_print(context: &RenderContext<'_>, offline: &OfflineRender, owner: &str, job: &PrintJob<'_>, progress: &dyn Fn(f64)) -> Result<Print, String> {
     let rate = RENDER_SAMPLE_RATE as f64;
     offline.play_from(job.pattern, 0, 0, true);
-    let mut target = TailTarget::new(AUTO_THRESHOLD_DB, (AUTO_HOLD_SECONDS * rate) as u64, job.maximum_tail, Some(job.musical_frames), context.cancel, CANCELLED, progress);
+    let mut target = TailTarget::new(AUTO_THRESHOLD_DB, (AUTO_HOLD_SECONDS * rate) as u64, job.maximum_tail, job.musical_frames, context.cancel, CANCELLED, progress);
     target.fixed = job.fixed_tail.map(|tail| job.musical_frames + tail);
     offline.run(&[Some(owner.to_string())], Some(job.musical_frames), &mut target)?;
     let keep = match target.decision {

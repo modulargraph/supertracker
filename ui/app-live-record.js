@@ -53,13 +53,9 @@
         && value.distanceBeats >= 0
         && typeof value.runID === 'string'
         && /^[1-9][0-9]*$/.test(value.runID)
-        && BigInt(value.runID) <= 18446744073709551615n
-        && typeof value.timingRevision === 'string'
-        && /^(0|[1-9][0-9]*)$/.test(value.timingRevision)
-        && BigInt(value.timingRevision) <= 18446744073709551615n ? {
+        && BigInt(value.runID) <= 18446744073709551615n ? {
       distanceBeats: value.distanceBeats,
-      runID: value.runID,
-      timingRevision: value.timingRevision
+      runID: value.runID
     } : null;
   }
 
@@ -101,7 +97,6 @@
     if (!timing.valid
         || !clock
         || clock.runID !== timing.start.runID
-        || clock.timingRevision !== timing.start.timingRevision
         || clock.distanceBeats < timing.last.distanceBeats) {
       timing.valid = false;
       return null;

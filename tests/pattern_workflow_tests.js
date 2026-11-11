@@ -70,7 +70,7 @@ test('a chord played on a MIDI keyboard during step entry lands on one row', asy
     await h.ST.setNoteRecording(true);
     const edges = new Map();
     const pending = (token, note) => { const payload = { on: true, inputOwner: token, recordingPending: true, source: 1, channel: 1, track: 0, instrument: 0, note, velocity: 93 }; edges.set(token, { payload, context: copy(h.window.STInputCapture.recordingContext()), requestID: String(++requestID) }); h.window.nativeEvent({ type: 'midi.note', payload }); };
-    const ack = token => { const { payload: p, context, requestID: id } = edges.get(token); h.window.nativeEvent({ type: 'midi.note', payload: { ...p, recordingPending: false, recordingOnly: true, inputAcknowledgement: { version: 1, inputOwner: token, requestID: id, status: 'applied', applied: true, playing: false, recording: true, mapped: false, on: true, pattern: 7, row: 0, sequence: 0, track: 0, instrument: 0, note: p.note, velocity: p.velocity, applyNote: true, recordingContext: context } } }); };
+    const ack = token => { const { payload: p, context, requestID: id } = edges.get(token); h.window.nativeEvent({ type: 'midi.note', payload: { ...p, recordingPending: false, recordingOnly: true, inputAcknowledgement: { version: 1, inputOwner: token, requestID: id, status: 'applied', applied: true, playing: false, recording: true, on: true, pattern: 7, row: 0, sequence: 0, track: 0, instrument: 0, note: p.note, velocity: p.velocity, applyNote: true, recordingContext: context } } }); };
     [60, 64, 67].forEach((note, i) => { pending('m' + i, note); h.advance(15); });
     ['m0', 'm1', 'm2'].forEach(ack); await tick();
     const rows = project.patterns[0].steps[0];

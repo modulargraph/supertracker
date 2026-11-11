@@ -212,19 +212,19 @@ test('acknowledged native input: held notes record into their own columns, stopp
   h.project.tracks[0].noteColumns = 2;
   h.down('z', 'KeyZ'); h.down('c', 'KeyC');
   const [first, second] = h.captures();
-  h.reply(first, { row: 0, recordingClock: { distanceBeats: 0, runID: '1', timingRevision: '1' } });
-  h.reply(second, { row: 0, recordingClock: { distanceBeats: 0, runID: '1', timingRevision: '1' } });
+  h.reply(first, { row: 0, recordingClock: { distanceBeats: 0, runID: '1' } });
+  h.reply(second, { row: 0, recordingClock: { distanceBeats: 0, runID: '1' } });
   await tick();
   assert.equal(h.step(0).note, 60); assert.equal(h.step(0).columns[0].note, 64);
-  h.up('z', 'KeyZ'); h.reply(h.captures(false)[0], { row: 2, recordingClock: { distanceBeats: .25, runID: '1', timingRevision: '1' } }); await tick();
-  h.up('c', 'KeyC'); h.reply(h.captures(false)[1], { row: 4, recordingClock: { distanceBeats: .5, runID: '1', timingRevision: '1' } }); await tick();
+  h.up('z', 'KeyZ'); h.reply(h.captures(false)[0], { row: 2, recordingClock: { distanceBeats: .25, runID: '1' } }); await tick();
+  h.up('c', 'KeyC'); h.reply(h.captures(false)[1], { row: 4, recordingClock: { distanceBeats: .5, runID: '1' } }); await tick();
   assert.equal(h.step(0).gate, 1); assert.equal(h.step(0).columns[0].gate, 2, 'each column keeps its own held length');
   assert.equal(h.state.undo.length, 1, 'one recording pass is one Undo step');
   // Live: a second note while the first is held lands on a later row in another column, so the first keeps sounding.
   const later = await ackHarness();
   later.project.tracks[0].noteColumns = 2;
-  later.down('z', 'KeyZ'); later.reply(later.captures()[0], { row: 0, recordingClock: { distanceBeats: 0, runID: '1', timingRevision: '1' } }); await tick();
-  later.down('x', 'KeyX'); later.reply(later.captures()[1], { row: 3, recordingClock: { distanceBeats: .75, runID: '1', timingRevision: '1' } }); await tick();
+  later.down('z', 'KeyZ'); later.reply(later.captures()[0], { row: 0, recordingClock: { distanceBeats: 0, runID: '1' } }); await tick();
+  later.down('x', 'KeyX'); later.reply(later.captures()[1], { row: 3, recordingClock: { distanceBeats: .75, runID: '1' } }); await tick();
   assert.equal(later.step(0).note, 60); assert.equal(later.step(3).note, -3); assert.equal(later.step(3).columns[0].note, 62);
   // Stopped: held notes share the cursor row.
   const stopped = await ackHarness();

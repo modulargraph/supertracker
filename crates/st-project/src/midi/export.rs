@@ -354,7 +354,7 @@ pub fn export(project: &Project) -> Result<MidiExport> {
                     warnings.insert("Chord notes beyond the engine's eight-note limit were omitted.");
                 }
                 // Gate 0 is no gate: the note lasts until the next note on this track, an OFF/CUT or the song
-                // end. Ratchet repeats of such a note each last one repeat spacing. A missing gate is the legacy 0.8.
+                // end. Ratchet repeats of such a note each last one repeat spacing. A missing gate is the default 0.8.
                 let raw_gate = step.gate();
                 let open = raw_gate <= 0.0 && ratchet <= 1;
                 let gate = if raw_gate > 0.0 { clamp(raw_gate, 0.01, MAX_GATE) } else { 1.0 };

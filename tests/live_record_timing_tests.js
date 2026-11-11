@@ -5,7 +5,7 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
 const fixture = fs.readFileSync(path.join(__dirname, 'scalar_field_focus_tests.js'), 'utf8');
 const makeHarness = new Function('require', '__dirname', fixture.slice(0, fixture.indexOf('const tests = [], test =')) + '\nreturn harness;')(require, __dirname);
 const copy = value => JSON.parse(JSON.stringify(value));
-const clock = (distanceBeats, extra = {}) => ({ distanceBeats, runID: '1', timingRevision: '9007199254740993', ...extra });
+const clock = (distanceBeats, extra = {}) => ({ distanceBeats, runID: '1', ...extra });
 // exact: notes begin as acknowledged input does (app-input-capture.js), with the engine clock of each edge.
 function harness(exact = true) {
   const h = makeHarness(), warnings = []; let now = 100000, message = '';
@@ -17,7 +17,7 @@ function harness(exact = true) {
   project.patterns[0].length = 32; project.patterns[0].steps.forEach(steps => { steps.length = 32; });
   Object.assign(h.state, { recordPlacement:'live', playing: true, recording: true, keyboardPlay: true, row: 0, track: 0, instrument: 0, status: { playing: true, pattern: 0, row: 0, seconds: 0, beat: 0 }, lastStatusAt: now });
   h.ST.refresh(); h.calls.length = 0;
-  function status(seconds, beat, row = Math.floor(beat * 4), extra = {}) { h.window.nativeEvent({ type: 'status', payload: { playing: true, songMode: true, pattern: 0, sequence: 0, row, position: row, seconds, beat, timingRevision: '9007199254740993', ...extra } }); }
+  function status(seconds, beat, row = Math.floor(beat * 4), extra = {}) { h.window.nativeEvent({ type: 'status', payload: { playing: true, songMode: true, pattern: 0, sequence: 0, row, position: row, seconds, beat, ...extra } }); }
   function midi(on, note = 60, recordingClock, row = 0) { h.window.nativeEvent({ type: 'midi.note', payload: { on, note, velocity: 93, source: 1, channel: 1, track: 0, instrument: 0, pattern: 0, row, ...(recordingClock === undefined ? {} : { recordingClock }) } }); }
   return { ...h, project, warnings, status, midi, advance(seconds) { now += seconds * 1000; }, step: (row = 0) => h.ST.pattern().steps[0][row], begin(row = 0, stamp, note = 60) { return h.ST.recordLiveStep(note, 100, 0, 0, 0, row, [0], stamp, exact ? { exactInput: true } : {}); } };
 }
@@ -99,13 +99,12 @@ test('chords use the earliest compatible onset and last release, with no duratio
   invalid.ST.finishLiveRecord(a); invalid.ST.finishLiveRecord(b, clock(11)); assert.equal(invalid.step().gate, 0); assert.equal(invalid.warnings.length, 1); assert.equal(invalid.state.undo.length, 1);
 });
 
-test('missing, invalid, reversed, reset or revised clocks keep no gate and add no duration Undo', () => {
+test('missing, invalid, reversed or reset clocks keep no gate and add no duration Undo', () => {
   for (const [start, end] of [
     [undefined, clock(2)], [clock(1), undefined], [clock(NaN), clock(2)], [clock(1), clock(Infinity)], [clock('1'), clock(2)],
-    [clock(1), clock(.5)], [clock(1), clock(2, { runID: '2' })], [clock(1), clock(2, { timingRevision: '9007199254740994' })],
-    [clock(1, { runID: '' }), clock(2)], [clock(1), clock(2, { timingRevision: 1 })],
+    [clock(1), clock(.5)], [clock(1), clock(2, { runID: '2' })],
+    [clock(1, { runID: '' }), clock(2)],
     ...['0','run-1','01','18446744073709551616'].map(runID => [clock(1, {runID}), clock(2, {runID})]),
-    ...['map-1','01','18446744073709551616'].map(timingRevision => [clock(1, {timingRevision}), clock(2, {timingRevision})]),
   ]) {
     const h = harness(), record = h.begin(0, start); h.advance(60); h.ST.finishLiveRecord(record, end);
     assert.equal(h.step().gate, 0); assert.equal(h.state.undo.length, 1); assert.equal(h.warnings.length, 1);
