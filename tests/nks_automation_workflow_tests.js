@@ -45,6 +45,8 @@ function prepareSampler(h) {
   h.node('sampler-slice-map').contains=element=>element===button;button.focus();
   return ()=>h.window.STSampler.key({key:'Enter',target:button,preventDefault(){},stopPropagation(){}});
 }
+// Fresh descriptors replace the project's as after a state capture (app-session.js): the mapped controls adopt them first.
+const adoptDescriptors=(h,plugins)=>{h.window.STNKSControls.adoptPlugins(plugins);h.ST.state.project.audioPlugins=plugins;h.ST.refresh();};
 // A routing change through the real transaction: the group's output moves from "no output" to Master.
 function prepareRoutingChange(h) {
   h.loadModule('routing.js');h.p.tracks[0].routingID='fixture-tone';
@@ -234,7 +236,7 @@ function prepareRoutingChange(h) {
   }
   {
     const h=harness();await tick();h.edit(.82);const incoming={...copy(h.plugin),state:'state:0.25'};
-    h.window.nativeEvent({type:'plugins.changed',payload:{plugins:[incoming]}});
+    adoptDescriptors(h,[incoming]);
     assert.equal(h.controls.hasPendingEdits,true,'a late clone of the same native instance must adopt the current gesture');
     assert.equal(await bounded(h.controls.flushEdits()),true);
     assert.equal(h.value,.82);assert.equal(h.p.audioPlugins[0].state,'state:0.82');assert.equal(h.p.instruments[0].plugin.state,'state:0.82');
@@ -245,7 +247,7 @@ function prepareRoutingChange(h) {
     const h=harness();await tick();let finishCapture;const currentState=h.handlers.get('plugin.state');
     h.handlers.set('plugin.state',()=>new Promise(resolve=>{finishCapture=()=>resolve(currentState());}));
     h.edit(.66);const flush=h.controls.flushEdits();await tick();assert.equal(typeof finishCapture,'function');
-    h.window.nativeEvent({type:'plugins.changed',payload:{plugins:[{...copy(h.plugin),state:'state:0.25'}]}});
+    adoptDescriptors(h,[{...copy(h.plugin),state:'state:0.25'}]);
     finishCapture();assert.equal(await bounded(flush),true);assert.equal(h.p.audioPlugins[0].state,'state:0.66');assert.equal(h.value,.66);
     console.log('PASS same-instance descriptor adoption also preserves an already in-flight mapped-control state capture');
   }
@@ -257,7 +259,7 @@ function prepareRoutingChange(h) {
       if(replacementKind==='route')replacement.track=1;
       if(replacementKind==='mapping')replacement.nks.path='/different-preset.nksf';
       const next=replacementKind==='duplicate'?[replacement,copy(replacement)]:[replacement];
-      h.window.nativeEvent({type:'plugins.changed',payload:{plugins:next}});
+      adoptDescriptors(h,next);
       assert.equal(await bounded(h.controls.flushEdits()),false,`${replacementKind}: save must first report canceled old-target input`);
       assert.equal(h.controls.hasPendingEdits,false);assert(!h.calls.some(call=>call.command==='plugin.parameter'));
       assert.equal(h.ST.state.dirty,true);assert.equal(await bounded(h.controls.flushEdits()),true,'an explicit later retry may inspect the replacement');
@@ -269,7 +271,7 @@ function prepareRoutingChange(h) {
     h.handlers.set('plugin.state',()=>new Promise(resolve=>{finishCapture=()=>resolve(currentState());}));
     h.edit(.67);const first=h.controls.flushEdits(),second=h.controls.flushEdits();await tick();
     const replacement={...copy(h.plugin),instanceID:'replacement-after-capture-started',state:'replacement-state'};
-    h.window.nativeEvent({type:'plugins.changed',payload:{plugins:[replacement]}});finishCapture();
+    adoptDescriptors(h,[replacement]);finishCapture();
     assert.deepEqual(await bounded(Promise.all([first,second])),[false,false]);assert.equal(h.p.audioPlugins[0],replacement);assert.equal(h.p.audioPlugins[0].state,'replacement-state');
     assert.equal(h.ST.state.undo.length,0);assert.equal(await bounded(h.controls.flushEdits()),true);
     console.log('PASS replacing an instance during capture rejects every waiting save without installing the retired instance snapshot');

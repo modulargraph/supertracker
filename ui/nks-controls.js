@@ -678,13 +678,12 @@
   }
   function event(type, payload = {}) {
     window.STPluginPages?.event(type, payload);
-    if (type === 'project.loaded' || type === 'project.changed') {
+    if (type === 'project.loaded') {
       savedViews = new WeakMap();
       for (const binding of bindings) { clearTimeout(binding.poll); clearTimeout(binding.entry.timer); binding.entry.pending.clear(); }
       bindings.clear(); return;
     }
-    if (!['status', 'transport.status', 'plugin.parameter', 'plugin.parameters', 'plugin.changed', 'plugins.changed',
-        'audioPlugins.changed'].includes(type)) return;
+    if (!['status', 'plugin.parameter', 'plugin.changed'].includes(type)) return;
     for (const binding of bindings) {
       if (!mounted(binding) || (payload.track !== undefined && Number(payload.track) !== binding.entry.track)) continue;
       if (Date.now() - binding.entry.lastRead > 350) read(binding.entry);

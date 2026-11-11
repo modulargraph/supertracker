@@ -205,7 +205,7 @@ assert.equal(element('automation-playhead').hidden, false);
 assert.ok(Math.abs(parseFloat(element('automation-playhead').style.left) - (96 + 8.5 / 64 * 780) / 9) < 1e-8);
 assert.equal(element('automation-position').textContent, 'Playing · Row 08.50 / 64');
 assert.equal(doc.activeElement, editingAutomation); assert.equal(editingAutomation.value, '0.432');
-win.nativeEvent({ type: 'transport.status', payload: { playing: true, pattern: 1, row: 4, position: 4.25 } });
+win.nativeEvent({ type: 'status', payload: { playing: true, pattern: 1, row: 4, position: 4.25 } });
 assert.equal(element('automation-playhead').hidden, true);
 assert.equal(state.project.activePattern, 0);
 win.nativeEvent({ type: 'status', payload: { playing: false, pattern: 0, row: 8, position: 8.5 } });

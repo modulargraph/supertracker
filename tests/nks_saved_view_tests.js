@@ -80,6 +80,8 @@ async function harness() {
     save: () => bounded(ST.projectAction('save'))
   };
 }
+// Fresh descriptors replace the project's as after a state capture (app-session.js): the mapped controls adopt them first.
+const adoptDescriptors=(h,plugins)=>{h.window.STNKSControls.adoptPlugins(plugins);h.ST.state.project.audioPlugins=plugins;h.ST.refresh();};
 const tests = [], test = (name, run) => tests.push({ name, run });
 const assertPage = (h, page, address) => { assert.equal(h.page().value, String(page)); assert.equal(h.knob().dataset.nksAddress, address); };
 
@@ -196,7 +198,7 @@ test('Undo, actual Open, and instance replacement reset page instead of inheriti
     const h = await harness(); await h.pageTo(1); h.knob().focus(); assert.equal(await h.save(), true); await tick(); assertPage(h, 1, '270544960');
     if (action === 'undo') { h.ST.mutate('rename fixture', p => { p.name = 'Undo this name'; }); h.node('instrument-rename').focus(); await h.ST.perform('undo'); }
     if (action === 'open') { h.handlers.set('project.open', () => ({ project: copy(h.ST.state.project) })); assert.equal(await bounded(h.ST.projectAction('open')), true); }
-    if (action === 'replacement') { const plugins = copy(h.ST.state.project.audioPlugins); plugins[0].instanceID = 'new-instance'; h.window.nativeEvent({ type: 'plugins.changed', payload: { plugins } }); }
+    if (action === 'replacement') { const plugins = copy(h.ST.state.project.audioPlugins); plugins[0].instanceID = 'new-instance'; adoptDescriptors(h,plugins); }
     await tick(); assertPage(h, 0, '17');
   }
 });

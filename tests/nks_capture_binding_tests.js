@@ -44,6 +44,9 @@ async function assertSavedEdit(h, value = .47) {
   assert(writes.some(item => item.payload.address === '17' && item.payload.value === value));
   assert.equal(h.calls.findLast(item => item.command === 'project.save').payload.project.audioPlugins[0].state, `state:${value}`);
 }
+// Fresh descriptors replace the project's as after a state capture (app-session.js): the mapped controls adopt them first.
+const adoptDescriptors=(h,plugins)=>{h.window.STNKSControls.adoptPlugins(plugins);h.ST.state.project.audioPlugins=plugins;h.ST.refresh();};
+
 const tests = [], test = (name, run) => tests.push({ name, run });
 
 test('standalone native snapshot refresh keeps the mounted mapped control usable', async () => {
@@ -113,7 +116,7 @@ for (const mismatch of ['instance', 'component', 'owner', 'mapping', 'duplicate'
 test('a mapped draft revoked by a mismatched native event makes the first Save fail explicitly', async () => {
   const h = await make(); edit(h, '.81');
   const replacement = { ...copy(h.ST.state.project.audioPlugins[0]), instanceID: 'replacement-instance' };
-  h.window.nativeEvent({ type: 'plugins.changed', payload: { plugins: [replacement] } });
+  adoptDescriptors(h,[replacement]);
   assert.equal(await h.save(), false);
   assert(!h.calls.some(item => item.command === 'project.save' || item.command === 'plugin.parameter'));
 });
@@ -132,7 +135,7 @@ test('input during an in-flight engine sync survives a matching native descripto
   h.ST.acceptProject(copy(h.ST.state.project)); await tick(); h.fireTimer(100); await tick(); assert(applying);
   edit(h); const saving = h.save(); await tick();
   assert(!h.calls.some(item => item.command === 'plugin.parameter'));
-  h.window.nativeEvent({ type: 'plugins.changed', payload: { plugins: copy(h.ST.state.project.audioPlugins) } });
+  adoptDescriptors(h,copy(h.ST.state.project.audioPlugins));
   gate.resolve(); assert.equal(await saving, true); assert.equal(h.value(), .47);
 });
 

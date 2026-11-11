@@ -623,23 +623,9 @@
       if(Object.hasOwn(payload,'routing'))receiveStatus(payload.routing);
       return;
     }
-    if(type==='routing.capabilities'){ui.capabilityGeneration++;ui.capabilities=payload.capabilities||payload;ui.capabilityError='';}
-    if (type === 'routing.changed' || type === 'routing.status') {
-      ui.status = payload.status || payload;
-      if (payload.capabilities) {
-        ui.capabilityGeneration++;
-        ui.capabilities = payload.capabilities;
-        ui.capabilityError = '';
-      }
-    }
-    if(type==='project.loaded'||type==='project.new'){ui.capabilityGeneration++;ui.status=null;ui.capabilities=null;ui.capabilityError='';}
-    if (type === 'plugins.changed' || type === 'audioPlugins.changed') {
-      ui.capabilityGeneration++;
-      ui.capabilities = null;
-      ui.capabilityError = '';
-      if (S().state.view === 'mixer') refreshCapabilities();
-    }
-    if(['routing.capabilities','routing.changed','routing.status'].includes(type)&&S().state.view==='mixer')S().refresh();
+    if(type==='routing.capabilities'){ui.capabilityGeneration++;ui.capabilities=payload.capabilities||payload;ui.capabilityError='';if(S().state.view==='mixer')S().refresh();}
+    // The page replaced its project (studio.js passes the notice on): what the host said about the old one is void.
+    if(type==='project.loaded'){ui.capabilityGeneration++;ui.status=null;ui.capabilities=null;ui.capabilityError='';}
   }
 
   async function showOutput(owner = currentOwner(),focusID) {

@@ -16,8 +16,8 @@ function harness(){
   handlers.set('engine.project',p=>{if(failPublish&&!p.replace)return false;native=copy(p.project);return {};});
   handlers.set('engine.snapshot',()=>copy(native));
   handlers.set('plugin.state',p=>copy(native.audioPlugins.find(x=>x.track===p.track&&x.kind===p.kind)||{}));
-  handlers.set('plugin.remove',p=>{native.audioPlugins=native.audioPlugins.filter(x=>x.track!==p.track||x.kind!==p.kind);window.nativeEvent({type:'plugins.changed',payload:{plugins:copy(native.audioPlugins)}});return {};});
-  handlers.set('plugin.load',p=>{native.audioPlugins=native.audioPlugins.filter(x=>x.track!==p.track||x.kind!==p.kind);const v={...p,state:'loaded state'};native.audioPlugins.push(v);window.nativeEvent({type:'plugins.changed',payload:{plugins:copy(native.audioPlugins)}});return v;});
+  handlers.set('plugin.remove',p=>{native.audioPlugins=native.audioPlugins.filter(x=>x.track!==p.track||x.kind!==p.kind);return {};});
+  handlers.set('plugin.load',p=>{native.audioPlugins=native.audioPlugins.filter(x=>x.track!==p.track||x.kind!==p.kind);const v={...p,state:'loaded state'};native.audioPlugins.push(v);return v;});
   handlers.set('sample.load',p=>({path:p.path,name:'New sample',frames:32}));
   handlers.set('sample.edit',()=>({path:'/edited.wav',frames:16}));
   handlers.set('project.save',p=>({saved:true,project:p.project}));
@@ -118,13 +118,6 @@ async function run(){
     console.log('PASS assigning an AU captures the retiring target and commits the replacement with correct Undo');
   }
   {
-    const h=harness(),gate=deferred();h.plugin();h.handlers.set('plugin.remove',()=>gate.promise);
-    const task=h.S.perform('instrumentType:sample');await until(()=>h.calls.some(x=>x.command==='plugin.remove'));
-    h.window.nativeEvent({type:'plugins.changed',payload:{plugins:[{track:2,kind:'effect',slot:0,component:'unrelated',state:'fresh'}]}});
-    assert.equal(h.S.state.project.audioPlugins.find(x=>x.track===0).component,'old');assert.equal(h.S.state.project.audioPlugins.find(x=>x.track===2).state,'fresh');gate.resolve({});assert.equal(await task,true);assert.equal(h.S.state.project.audioPlugins[0].component,'unrelated');
-    console.log('PASS native collection interception protects only retiring instruments and retains unrelated updates');
-  }
-  {
     const h=harness(),gate=deferred();h.handlers.set('sample.load',()=>gate.promise);const task=h.S.loadSample('/new.wav');await until(()=>h.calls.some(x=>x.command==='sample.load'));
     const saving=h.S.projectAction('save');await Promise.resolve();assert(!h.calls.some(x=>x.command==='project.save'));
     await assert.rejects(h.S.loadSample('/second.wav'),/current audio/);gate.resolve({path:'/new.wav',name:'New'});await task;await saving;assert.equal(h.calls.find(x=>x.command==='project.save').payload.project.instruments[0].samplePath,'/new.wav');assert.equal(h.window.STInstrumentEdits.isBusy,false);
@@ -146,12 +139,6 @@ async function run(){
     const read=h.handlers.get('plugin.state');h.window.STFreeze=null;h.handlers.set('plugin.state',p=>{const result=read(p);if(p.track===0&&result.component==='source')throw Error('Replacement state unavailable');return result;});
     assert.equal(await h.S.perform('assignInstrument'),false);assert.equal(h.S.state.undo.length,0);assert.equal(h.native.audioPlugins.find(x=>x.track===0).component,'target');
     console.log('PASS AU replacement refusal and failed post-load state capture restore the retired instance without committing');
-  }
-  {
-    const h=harness();h.plugin();const apply=h.handlers.get('engine.project');
-    h.handlers.set('engine.project',p=>{const result=apply(p);const plugins=copy(h.native.audioPlugins);plugins.forEach(x=>x.name='Native descriptor');h.window.nativeEvent({type:'plugins.changed',payload:{plugins}});return result;});
-    await h.S.loadSample('/new.wav');assert.equal(h.S.state.undo.length,1);assert.equal(h.S.state.undo[0].project.audioPlugins[0].component,'old');
-    console.log('PASS synchronous preparation and candidate plug-in collection events cannot destroy transaction ownership or Undo');
   }
   {
     const h=harness();h.S.state.project.instruments[0].samplePath='/old.wav';let transforms=0;

@@ -94,9 +94,9 @@ test('full last-row progress and a loop wrap use exact endpoints', () => {
   h.tick({ playing: true, pattern: 23, row: 0, position: -2 }); close(headLeft(h), 96 / 9);
 });
 
-test('transport alias and row/fraction fallback are supported', () => {
+test('the row and fraction of a status stand in for a missing position', () => {
   const h = harness();
-  h.tick({ playing: true, pattern: 23, row: 4, fraction: .5 }, 'transport.status');
+  h.tick({ playing: true, pattern: 23, row: 4, fraction: .5 });
   close(headLeft(h), (96 + 4.5 / 64 * 780) / 9); assert.equal(positionLabel(h), 'Playing · Row 04.50 / 64');
   h.tick({ playing: true, pattern: 23, row: 5, rowFraction: .25, position: NaN });
   close(headLeft(h), (96 + 5.25 / 64 * 780) / 9);

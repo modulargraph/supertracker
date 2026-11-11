@@ -120,10 +120,6 @@ test('save and load keep the chain; host snapshots keep instrument owners', asyn
   const saved = JSON.parse(JSON.stringify(h.ST.state.project));
   const reopened = h.ST.normalize(clone(saved));
   same(h.window.STInstrumentEffects.chain(reopened, 0).map(p => [p.slot, p.component]), [[0, 'stfx:eq'], [1, 'stfx:saturator']]);
-  // plugins.changed from the host: instrument-owned descriptors are adopted, not dropped as unknown owners.
-  h.window.nativeEvent({ type: 'plugins.changed', payload: { plugins: clone(h.ST.state.project.audioPlugins).concat([{ owner: 'instrument:9', kind: 'effect', slot: 0, component: 'stfx:eq' }]) } });
-  same(h.window.STInstrumentEffects.chain(h.ST.state.project, 0).map(p => p.component), ['stfx:eq', 'stfx:saturator']);
-  assert(!h.ST.state.project.audioPlugins.some(p => p.owner === 'instrument:9'), 'an instrument the project lacks is not adopted');
 });
 
 test('copies of an instrument take its chain with fresh instance IDs; removing an instrument reindexes chains and lanes', async () => {

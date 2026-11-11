@@ -503,8 +503,8 @@
   }
 
   function event(type, payload = {}) {
-    if (type === 'project.loaded' || type === 'project.changed') { entries.clear(); local.page.clear(); return; }
-    if (!['plugin.parameter', 'plugin.parameters', 'plugin.changed'].includes(type) || !mountedRoot?.isConnected) return;
+    if (type === 'project.loaded') { entries.clear(); local.page.clear(); return; }
+    if (!['plugin.parameter', 'plugin.changed'].includes(type) || !mountedRoot?.isConnected) return;
     const entry = entries.get(mountedRoot.dataset.ppInstance);
     if (entry && Date.now() - entry.lastRead > 350) read(entry);
   }

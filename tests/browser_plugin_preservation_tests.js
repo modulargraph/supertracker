@@ -51,13 +51,6 @@ async function load(h){return h.window.STNKS.loadInstrument('plugin.load',{compo
  console.log('PASS legacy missing routing IDs are stable across native proposal and canonical commit');
  }
  {
- const h=setup();h.plugin(0,'vst3:source');h.S.state.track=1;h.S.state.instrument=0;
- const publish=h.handlers.get('engine.project');let revision=0;
- h.handlers.set('engine.project',payload=>{const result=publish(payload);const plugins=copy(h.native.audioPlugins).map(plugin=>plugin.track===0?{...plugin,latency:++revision}:plugin);h.window.nativeEvent({type:'plugins.changed',payload:{plugins}});return result;});
- assert(await h.S.perform('assignInstrument'),'source descriptor refresh during candidate publication must not invalidate assignment');assert.equal(h.S.state.project.audioPlugins.filter(p=>p.kind==='instrument').length,2);assert.equal(h.S.state.project.tracks[1].instrument,0);
- console.log('PASS source and destination remain protected against native descriptor refresh during assignment publication');
- }
- {
  const h=setup();await h.S.loadSample('/replace-me.wav',0);const before=copy(h.S.state.project),undo=h.S.state.undo.length;
  assert(await h.window.STNKS.loadInstrument('plugin.load',{component:'vst3:replacement'},{stay:true,replaceInstrument:true}));
  assert.equal(h.S.state.project.tracks.length,before.tracks.length);assert.equal(h.S.state.project.instruments.length,before.instruments.length);assert.equal(h.S.state.project.instruments[0].type,'au');assert.equal(h.S.state.project.audioPlugins[0].track,0);assert.equal(h.S.state.undo.length,undo+1);

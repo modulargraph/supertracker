@@ -1890,7 +1890,7 @@
   }
 
   function nativeEvent(type, payload) {
-    if (type === 'status' || type === 'transport.status') {
+    if (type === 'status') {
       updateAutomationPlayback(payload);
       if (ui.scope === 'song' && state().view === 'automation') window.STAutomationSong?.paintPlayhead?.(payload);
       ui.peaks = payload.trackPeaks || []; ui.busPeaks = payload.busPeaks || {};
@@ -1917,7 +1917,7 @@
     }
     window.STAutomationRecord?.event?.(type, payload);
     window.STRouting?.event(type,payload);
-    if (type === 'project.loaded' || type === 'project.new') {
+    if (type === 'project.loaded') {
       ui.pluginGeneration++;
       ui.previewSerial++;
       clearTimeout(ui.previewTimer);

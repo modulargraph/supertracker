@@ -12,8 +12,8 @@
   // `source` is 'simulator' for the on-screen MK3 (mk3-sim.js): its input drives the pages like the hardware's, but
   // is no sign of a connected controller.
   function event(type, payload = {}, source = 'native') {
-    if (type === 'project.loaded' || type === 'project.changed') { cancelGestures({ projectChanged: true }); return; }
-    if (type === 'status' || type === 'transport.status') { watchQueue(payload); return; }
+    if (type === 'project.loaded') { cancelGestures({ projectChanged: true }); return; }
+    if (type === 'status') { watchQueue(payload); return; }
     if (type === 'mk3.input') { if (payload.cancelled
         && !payload.targetOnly) { cancelGestures(); return; } if (!M.connected && st()?.native && source !== 'simulator') { M.connected = true; sent.leds = null; sent.screen = sent.left = sent.right = ''; } input(payload); startTicker(); return; }
     if (type === 'mk3.status') {

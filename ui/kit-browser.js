@@ -671,7 +671,7 @@
       if (Array.isArray(value.kitIndexUpgradeOfflineRoots)) local.status.kitIndexUpgradeOfflineRoots = value.kitIndexUpgradeOfflineRoots;
       if (mounted()) paint();
     }
-    if ((type === 'sample.previewEnded' || type === 'sample.preview.stopped') && local.previewPath && (!value.path || value.path === local.previewPath)) { local.previewPath = ''; updatePreviewMarks(); }
+    if (type === 'sample.previewEnded' && local.previewPath && (!value.path || value.path === local.previewPath)) { local.previewPath = ''; updatePreviewMarks(); }
   }
   function contextItems({ target }) {
     const row = target?.closest?.('[data-kitb-row]'), product = target?.closest?.('[data-kitb-product]');

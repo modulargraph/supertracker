@@ -104,8 +104,8 @@ test('sparse reorder preserves slots, native states and bypass; all pattern effe
   assert.equal(h.calls.findLast(x => x.command === 'engine.project').payload.replace, true);
 });
 
-test('host refreshing opaque plug-in state during the pre-move sync does not cancel the move', async () => {
-  // plugins.changed replaces the descriptors (same instances, new state blobs, other key order), as Ozone 12 on Master did.
+test('fresh opaque plug-in state arriving during the pre-move sync does not cancel the move', async () => {
+  // The descriptors are replaced (same instances, new state blobs, other key order), as a state capture does.
   const h = harness(); await tick(); const base = (command, payload) => command === 'plugin.move' ? response(h.state.project, trackOf(payload), payload.fromSlot, payload.toSlot) : { parameters: [] };
   h.native = (command, payload) => {
     if (command === 'engine.project') h.state.project.audioPlugins = h.state.project.audioPlugins.map((p, i) => ({ state: `refreshed-${i}`, ...p, state: `refreshed-${i}` }));

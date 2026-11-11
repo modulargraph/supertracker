@@ -384,7 +384,7 @@ test('replacement clears old release timers and recent claims without touching t
   h.advance(700);
   assert.equal(h.R._test.rec.gestures.get(`${ref.owner}|${ref.target}`)?.active,true,'a timer from the old session cannot release the new gesture');
   h.R.end(ref); assert.equal(h.R.claimed(ref),true);
-  h.state.project=copy(h.state.project); h.R.event('project.new');
+  h.state.project=copy(h.state.project); h.R.event('project.loaded');
   assert.equal(h.R.claimed(h.ref()),false,'old change-event suppression cannot swallow a new-session base edit');
   assert.equal(h.R._test.rec.pointer,null); assert.equal(h.R._test.rec.wasPlaying,false);
 });

@@ -30,7 +30,7 @@
     };
     await window.STInstrumentEdits.run(sourceIndex, create ? [] : [sourceTrack], async edit => {
       app.stopHeld();
-      if (create) await edit.prepareProject(append, [targetTrack]);
+      if (create) await edit.prepareProject(append);
       const loaded = await edit.native(command, { ...payload, track: targetTrack, kind: 'instrument', slot: 0 });
       if (!loaded?.component || (command === 'plugin.loadNKS' && !loaded.nks)) throw new Error('The host did not return a validated instrument.');
       const captured = await edit.native('plugin.state', { track: targetTrack, kind: 'instrument', slot: 0, instanceID: loaded.instanceID });

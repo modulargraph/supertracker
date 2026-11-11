@@ -8,8 +8,6 @@
       : Array.isArray(value)
       ? '[' + value.map(stable).join(',') + ']'
       : '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + stable(value[key])).join(',') + '}';
-  const identity = plugin => stable([plugin.instanceID, plugin.owner, plugin.track, plugin.kind, plugin.slot, plugin.component, plugin.bundlePath]);
-  const identities = plugins => Array.isArray(plugins) ? plugins.map(identity).sort().join('\n') : null;
   let operation = null;
 
   function blocked() {
@@ -21,13 +19,6 @@
       button.setAttribute('aria-busy', operation ? 'true' : 'false');
     }
   }
-  function interceptPluginEvent(plugins) {
-    // A native proposal must not overwrite the original model before its undo
-    // snapshot exists. Unrelated publications still reach their usual owner.
-    if (!operation?.proposal || identities(plugins) !== operation.identities) return false;
-    operation.pluginEvent = plugins;
-    return true;
-  }
   /* One duplication (a track or a whole group): build the proposal, publish it to the audio host, check every new
      plug-in instance loaded, then commit it as one Undo step. spec: sameSource(), build(), commit(project, proposal),
      noun ('track' / 'group'), label (Undo), done (toast). */
@@ -36,7 +27,7 @@
     if (blocked()) { app().toast(`Finish the current audio or project operation before duplicating a ${spec.noun}.`); return false; }
     const state = app().state, owner = state.project, view = state.view;
     let release;
-    const entry = { phase: 'preparing', proposal: null, promise: new Promise(resolve => { release = resolve; }) };
+    const entry = { phase: 'preparing', promise: new Promise(resolve => { release = resolve; }) };
     operation = entry; updateButtons();
     let attempted = false, committed = false, baseline, nativeGeneration, proposal;
     const sameSource = () => state.project === owner && spec.sameSource();
@@ -56,7 +47,7 @@
         if (!sameSource() || blocked()) return null;
         proposal = spec.build();
         baseline = stable(owner); nativeGeneration = window.STNKSControls?.editGeneration;
-        entry.proposal = proposal.project; entry.identities = identities(proposal.project.audioPlugins || []);
+
         // The strict helper has passed its graph gate before invoking this factory.
         // Hold later native edits until verification and UI commit are complete.
         entry.phase = 'applying'; attempted = true;
@@ -72,8 +63,6 @@
                 : {}), kind: plugin.kind, slot: plugin.slot, instanceID: plugin.instanceID, addresses: [] });
         if (!unchanged()) throw new Error('The project changed while verifying the copied plug-ins. Your newer edits were preserved.');
       }
-      const captureFailure = entry.pluginEvent?.find(plugin => plugin.stateError);
-      if (captureFailure) throw new Error(`${captureFailure.name || 'A copied plug-in'}: ${captureFailure.stateError}`);
       if (window.STBusy.any(['routing', 'export'])) throw new Error(`Another audio operation started. The ${spec.noun} was not duplicated.`);
       app().mutate(spec.label, project => {
         for (const key of Object.keys(project)) delete project[key];
@@ -165,7 +154,6 @@
     duplicate,
     duplicateGroup,
     contextMenu,
-    interceptPluginEvent,
     get isBusy() {
       return !!operation;
     },
@@ -174,7 +162,4 @@
     },
     waitForApply: () => operation?.promise || Promise.resolve()
   };
-  // A duplication owns the plug-in events of the copies it is creating.
-  window.STNativeEvents.intercept(window.STNativeEvents.PLUGIN_EVENTS,
-      payload => window.STTrackDuplicate?.interceptPluginEvent(window.STNativeEvents.plugins(payload)), 50);
 })();

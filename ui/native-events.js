@@ -1,6 +1,5 @@
-/* Native event interceptors: a module that owns an in-flight native operation (a kit import, an
-   instrument edit, a track duplication) can claim the plug-in and sample events that belong to it
-   before the app applies them to the open project.
+/* Host event interceptors: a module that owns an operation in flight (an instrument edit, a render)
+   or a kind of event of its own (AI control) can claim events before the app handles them.
 
      STNativeEvents.intercept(types, handler, order)  register; handler(payload, type) returns true
                                                        to consume the event. Lower order runs first.
@@ -26,9 +25,5 @@
     return false;
   }
 
-  // Plug-in list events carry the list either bare or as payload.plugins.
-  const PLUGIN_EVENTS = ['plugins.changed', 'audioPlugins.changed'];
-  const plugins = payload => payload?.plugins || payload;
-
-  window.STNativeEvents = { intercept, consume, PLUGIN_EVENTS, plugins };
+  window.STNativeEvents = { intercept, consume };
 })();

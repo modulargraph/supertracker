@@ -826,7 +826,7 @@
 
   // ---- Native events ------------------------------------------------------------------
   function event(type, payload = {}) {
-    if (type === 'status' || type === 'transport.status') {
+    if (type === 'status') {
       const revision=payload.transportSeekRevision;
       const seeked=typeof revision==='string'&&rec.seekRevision!==undefined&&revision!==rec.seekRevision;
       if(typeof revision==='string')rec.seekRevision=revision;
@@ -838,7 +838,7 @@
       return;
     }
     if (type === 'midi.message') { midi(payload); return; }
-    if (type === 'project.loaded' || type === 'project.new') {
+    if (type === 'project.loaded') {
       if (rec.pass) abortPass();
       for (const gesture of rec.gestures.values()) clearTimeout(gesture.timer);
       for (const timer of rec.midiChange.values()) clearTimeout(timer);

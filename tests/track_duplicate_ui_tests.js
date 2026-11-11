@@ -24,7 +24,7 @@ function harness() {
   const ST = window.ST;
   ST.state.project = ST.normalize({ name: 'Original', tracks: [{ id: 0, routingID: 'lead', name: 'Lead', instrument: 0, volume: .7, pan: .1 }], instruments: [{ id: 0, name: 'Lead patch', type: 'au', plugin: { instanceID: 'synth', component: 'fixture' } }], patterns: [{ id: 0, length: 4, steps: [[{ note: 60, instrument: 0, fx1: { type: 'plugin', instanceID: 'synth', address: '19', value: .31 } }, null, null, null]], automation: [{ id: 'lane', track: 0, target: 'plugin:instrument:0:19', points: [{ row: 0, value: .31 }] }] }], audioPlugins: [{ track: 0, kind: 'instrument', slot: 0, instanceID: 'synth', component: 'fixture', name: 'Fixture synth', state: 'opaque-original' }, { track: 0, kind: 'effect', slot: 6, instanceID: 'effect', component: 'effect-fixture', state: 'opaque-effect' }] });
   ST.state.engineReady = true; native = copy(ST.state.project);
-  const publish = project => { native = copy(project); window.nativeEvent({ type: 'plugins.changed', payload: { plugins: copy(project.audioPlugins || []) } }); };
+  const publish = project => { native = copy(project); };
   handlers.set('engine.snapshot', () => copy(native));
   handlers.set('engine.project', payload => { publish(payload.project); return {}; });
   handlers.set('plugin.parameters', payload => {
@@ -115,14 +115,6 @@ test('pending mapped edits settle before proposal serialization and later mapped
     assert.equal(payload.audioPlugins.at(-1).state, 'latest mapped patch');
     assert.equal(h.ST.state.undo.length, laterEdit ? 0 : 1);
   }
-});
-test('an unrelated plug-in publication is preserved and invalidates the staged duplicate', async () => {
-  const h = harness(), pending = deferred(); let applies = 0;
-  h.handlers.set('engine.project', async payload => { h.publish(payload.project); if (++applies === 1) await pending.promise; return {}; });
-  const running = h.run(); await tick();
-  const plugins = copy(h.ST.state.project.audioPlugins); plugins[0].instanceID = 'replacement-live-instance';
-  h.window.nativeEvent({ type: 'plugins.changed', payload: { plugins } }); pending.resolve();
-  assert.equal(await running, false); assert.equal(h.ST.state.project.audioPlugins[0].instanceID, 'replacement-live-instance'); assert.equal(h.ST.state.undo.length, 0);
 });
 test('save waits for the native proposal to commit instead of snapshotting staged plug-ins', async () => {
   const h = harness(), pending = deferred(); let applies = 0;

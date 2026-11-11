@@ -350,8 +350,5 @@
     });
   }
 
-  function event(type) {
-    if (type === 'project.loaded') { local.selected.clear(); local.adding = null; }
-  }
-  window.STInsertChain = { render, bind, event, _test: { local, arc, point, selectedOf } };
+  window.STInsertChain = { render, bind, _test: { local, arc, point, selectedOf } };
 })();

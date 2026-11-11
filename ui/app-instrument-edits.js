@@ -42,7 +42,6 @@
       tracks,
       phase: 'preparing',
       changedNative: false,
-      protectedTracks: new Set(tracks),
       sampleEvents: new Map(),
       promise: new Promise(resolve => release = resolve)
     };
@@ -89,12 +88,11 @@
       if (result === false) throw new Error(command + ' was not acknowledged.');
       return result;
     };
-    edit.prepareProject = async (apply, extraTracks = []) => {
+    edit.prepareProject = async apply => {
       requireCurrent();
       edit.phase = 'applying';
       edit.changedNative = true;
       instrumentEditGeneration++;
-      extraTracks.forEach(track => edit.protectedTracks.add(track));
       const result = await syncEngineProject(() => {
         if (!current()) return null;
         const candidate = clone(project);
@@ -197,28 +195,6 @@
       while (instrumentEditOperation) await instrumentEditOperation.promise;
       if (instrumentEditRestoreError) throw instrumentEditRestoreError;
     },
-    interceptPluginEvent(plugins) {
-      const edit = instrumentEditOperation;
-      if (!edit || !edit.protectEvents || !Array.isArray(plugins)) return false;
-      const protectedPlugin = x => x.kind === 'instrument' && edit.protectedTracks.has(x.track);
-      const key = x => stableJSON([x.owner, x.track, x.kind, x.slot ?? 0]);
-      const remaining = plugins.filter(x => !protectedPlugin(x)),
-        merged = [];
-      for (const plugin of state.project.audioPlugins) {
-        if (protectedPlugin(plugin)) {
-          merged.push(plugin);
-          continue;
-        }
-        const index = remaining.findIndex(x => key(x) === key(plugin));
-        if (index >= 0) merged.push(...remaining.splice(index, 1));
-      }
-      merged.push(...remaining);
-      if (stableJSON(merged) !== stableJSON(state.project.audioPlugins)) {
-        window.STNKSControls?.adoptPlugins?.(merged);
-        state.project.audioPlugins = merged;
-      }
-      return true;
-    },
     interceptSampleEvent(payload) {
       const edit = instrumentEditOperation;
       if (!edit || !edit.protectEvents || payload.instrument !== edit.id) return false;
@@ -229,10 +205,8 @@
 
   window.STPendingEdits.register('instrumentEdits', { order: 70, generation: () => window.STInstrumentEdits?.editGeneration ?? 0 });
 
-  // An instrument edit owns the plug-in and sample events of its native transaction.
-  const events = window.STNativeEvents;
-  events.intercept(events.PLUGIN_EVENTS, payload => window.STInstrumentEdits?.interceptPluginEvent?.(events.plugins(payload)), 30);
-  events.intercept('sample.loaded', payload => window.STInstrumentEdits?.interceptSampleEvent?.(payload), 40);
+  // An instrument edit owns the sample events of its own transaction.
+  window.STNativeEvents.intercept('sample.loaded', payload => window.STInstrumentEdits?.interceptSampleEvent?.(payload), 40);
 
   async function removeInstrumentPlugin(track, edit) {
     if (!edit || edit !== instrumentEditOperation) throw new Error('Instrument removal requires an owned edit.');

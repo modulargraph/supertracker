@@ -461,7 +461,7 @@
   }
   function event(type, payload = {}) {
     const session = current; if (!session || !active(session)) return;
-    if (type !== 'status' && type !== 'transport.status' && type !== 'audio.recording') return;
+    if (type !== 'status' && type !== 'audio.recording') return;
     if(type==='audio.recording' && payload.recording===false && (!session.capturePath || payload.path && payload.path!==session.capturePath)) return;
     if (payload.recording === true) session.seenRecording = true;
     if (type === 'audio.recording' && payload.path && payload.recording) session.capturePath = payload.path;

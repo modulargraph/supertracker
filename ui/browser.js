@@ -1668,7 +1668,7 @@
           1500);
       return;
     }
-    if (type === 'sample.previewEnded' || type === 'sample.preview.stopped') {
+    if (type === 'sample.previewEnded') {
       local.previewPath = '';
       if (document.querySelector('.browser-workspace')) paint();
     }

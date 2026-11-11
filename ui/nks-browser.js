@@ -629,7 +629,7 @@
       return;
     }
     if (type === 'library.results' && value.volumes) { local.refreshNeeded = true; if (mounted()) queueSearch(60); }
-    if (type === 'sample.previewEnded' || type === 'sample.preview.stopped') { local.previewGeneration++; local.previewPending = false; local.previewPath = ''; clearTimeout(local.previewTimer); clearTimeout(local.previewEnd); local.previewTimer = null; if (mounted()) updatePreviewMarks(); }
+    if (type === 'sample.previewEnded') { local.previewGeneration++; local.previewPending = false; local.previewPath = ''; clearTimeout(local.previewTimer); clearTimeout(local.previewEnd); local.previewTimer = null; if (mounted()) updatePreviewMarks(); }
   }
   function contextItems({ target }) {
     const row = target?.closest?.('[data-nksb-row]'), product = target?.closest?.('[data-nksb-product]');

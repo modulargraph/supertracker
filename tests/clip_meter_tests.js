@@ -82,12 +82,11 @@ test('the absolute beat of a received status is used without adding the pattern 
 test('a status the arranger did not receive uses the fractional sequence position rather than its beat',()=>{
  const h=harness();h.state.project.patterns[0].length=4;h.state.project.sequence=[0,0];h.state.playing=true;h.state.status={playing:true,sequence:1,position:1.5,beat:900};assert(h.clips.render().includes(`left:${132+1.375*22}px;display:block`));
 });
-test('project replacement, a tempo or meter edit and loaded events end the authority of a received beat',()=>{
+test('project replacement and a tempo or meter edit end the authority of a received beat',()=>{
  const h=harness();h.state.playing=true;status(h,{position:2,beat:99});assert.equal(left(h),132+99*22);
  h.state.project=copy(h.state.project);assert(h.clips.render().includes('left:143px;display:block'));
  status(h,{position:2,beat:99});h.state.project.bpm=121;assert(h.clips.render().includes('left:143px;display:block'));
  status(h,{position:2,beat:99});h.state.project.timeSignature={numerator:5,denominator:4};assert(h.clips.render().includes('left:143px;display:block'));
- status(h,{position:2,beat:99});h.clips.event('project.loaded');assert(h.clips.render().includes('left:143px;display:block'));
 });
 test('mismatched pattern occurrence falls back to current selection and stopped packets hide the line',()=>{
  const h=harness();h.state.sequence=0;h.state.row=3;status(h,{pattern:99});assert.equal(left(h),132+.75*22);status(h,{playing:false});assert.equal(h.nodes.get('clips-playhead').style.display,'none');

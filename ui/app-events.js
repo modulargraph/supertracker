@@ -5,9 +5,9 @@
 
   const app = window.STApp;
   const {
-    $, state, receiveSampleMetadata, toast, acceptProject, refresh, receiveNoteRecordingStatus,
+    $, state, receiveSampleMetadata, toast, refresh, receiveNoteRecordingStatus,
     updateTransport, receiveCountInStatus, updatePlayhead, pianoHighlight, projectAction,
-    perform, latencyNote, receiveAcknowledgedMIDI, endRecordTake, liveRecordGroups, recordIncomingMIDI
+    perform, receiveAcknowledgedMIDI, endRecordTake, liveRecordGroups, recordIncomingMIDI
   } = app;
   // Native menu items arrive here only when the web keyboard handler left the key alone (or from a mouse pick).
   const MODAL_MENU_COMMANDS = new Set(['undo', 'redo', 'selectAll', 'stop', 'save', 'saveAs']);
@@ -21,7 +21,7 @@
       }
     }
     const { type, payload = {} } = event;
-    // Kit imports, instrument edits and track duplications claim the events of their own operation.
+    // An operation in flight (an instrument edit, a render) claims the events that belong to it.
     if (window.STNativeEvents.consume(type, payload)) return;
     window.STMK3?.event?.(type, payload);
     window.STRecording?.event(type, payload);
@@ -29,7 +29,7 @@
     window.STFreeze?.event?.(type, payload);
     window.STNKSControls?.event(type, payload);
     if (type === 'sampler.playheads') { window.STSamplerPlayheads?.receive(payload); return; }
-    if (type === 'status' || type === 'transport.status') {
+    if (type === 'status') {
       if (state.playing
           && payload.playing
           && Number.isFinite(payload.seconds)
@@ -57,8 +57,6 @@
       }
     } else if (type === 'app.quitRequested') {
       app.hostQuitRequested?.();
-    } else if (type === 'project.loaded' || type === 'project.changed') {
-      acceptProject(payload.project || payload);
     } else if (type === 'error') {
       toast(payload.message || payload.error || 'Native operation failed', 'error');
     } else if (type === 'midi.note') {
@@ -84,10 +82,6 @@
       // A plug-in stopped working while the project was open: offer the review (and Retry) at once,
       // unless another dialog is open; "Review interrupted plug-ins" shows the same report later.
       if (!state.modal && payload?.suspects?.some(item => item.requiresReview)) window.STPluginRecovery?.show(payload);
-    } else if (type === 'audio.latency') {
-      state.audio.latencyCompensation = payload;
-      const info = $('#audio-latency');
-      if (info) info.innerHTML = latencyNote(payload);
     } else if (type === 'audio.devices') {
       // Device restores, hot-plugs and live input changes: the mixer and Recording page show the current state.
       state.audio = { ...state.audio, ...payload };
@@ -95,19 +89,6 @@
     } else if (type === 'midi.status') {
       if (payload.devices) state.midi = payload.devices;
       if (payload.type === 'midiError') toast(payload.message, 'error');
-    } else if (type === 'plugins.changed' || type === 'audioPlugins.changed') {
-      // While a kit is staged in the audio host (published, not yet committed), the host's
-      // plug-ins belong to that candidate; the commit brings its own descriptors.
-      if (window.STKitGroups?.isBusy) return;
-      const p = state.project, tracks = new Set((p.tracks || []).map(t => 'track:' + t.routingID)),
-        buses = new Set((p.routing.buses || []).map(b => 'bus:' + b.id));
-      // A descriptor for an owner this project does not have (a superseded candidate) is not adopted.
-      const instruments = new Set((p.instruments || []).map((_, i) => 'instrument:' + i));
-      const plugins = (payload.plugins || payload).filter(x => !x.owner || x.owner === 'master' || tracks.has(x.owner) || buses.has(x.owner)
-          || instruments.has(x.owner));
-      window.STNKSControls?.adoptPlugins?.(plugins);
-      state.project.audioPlugins = plugins;
-      if (state.view === 'mixer' || state.view === 'instrument') refresh();
     } else {
       window.STBrowser?.event(type, payload);
       window.STStudio?.event(type, payload);

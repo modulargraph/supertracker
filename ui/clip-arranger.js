@@ -647,8 +647,7 @@
   }
   function event(type, payload = {}) {
     window.STSong?.event?.(type, payload);
-    if (type === 'project.loaded') receivedStatus=null;
-    if (type === 'status' || type === 'transport.status') {
+    if (type === 'status') {
       receivedStatus={owner:project(),signature:timingSignature(project()),payload};
       const line = document.getElementById('clips-playhead');
       if (line) {
@@ -656,7 +655,7 @@
         line.style.display = payload.playing ? 'block' : 'none';
       }
     }
-    if (type === 'audio.clipLoaded' || type === 'audio.clipsLoaded' || type === 'clip.loaded') {
+    if (type === 'audio.clipLoaded') {
       if (payload.path && payload.duration) {
         local.metadata.set(payload.path, payload);
         local.failed.delete(payload.path);

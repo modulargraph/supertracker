@@ -358,7 +358,7 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the hand
 
 ## Events (host to page)
 
-Events the page handles today, and who will emit them.
+Events the host sends and the page handles, and who emits them.
 
 | Event | Emitter |
 |---|---|
@@ -368,13 +368,11 @@ Events the page handles today, and who will emit them.
 | `project.media.progress` | `st-host` (`st-project` search) |
 | `error` `{message}` | any area; `st-host` uses it for a failed recovery save |
 | `status` (sent 20 times a second with `emit_latest`), `audio.devices` (the output changed by itself, or the input was lost), `sample.error`, `audio.clipError` (a sample or clip file of the published project could not be loaded), `sample.loaded`, `sample.zonesLoaded`, `audio.clipLoaded` (a background decode finished), `sampler.playheads` (`emit_latest`), `sample.previewEnded`, `audio.exportProgress`, `audio.exported`, `render.selectionProgress`, `freeze.progress`, `audio.recording` | `st-audio`: sent today |
-| `transport.status`, `audio.latency`, `audio.clipsLoaded`, `sample.preview.stopped`, `routing.changed`, `routing.error`, `plugins.changed`, `audioPlugins.changed` | `st-audio`: not sent yet (the page still handles the two plug-in list events; the host has no use for them: a publication loads its plug-ins before it answers) |
 | `plugins.catalogue` (scan progress `{scanning, completed, total, path, scanned, cached, failed, plugins}`, and `blocklist` when done), `plugin.parameter` `{owner, kind, slot, instanceID, track?, address, value (normalized), plainValue, source: "editor"}` and `plugin.gesture` `{…, address, begin}` (a value changed, a control grabbed or released, in a plug-in's editor; changes are coalesced, values a plug-in only reports are not sent), `plugin.changed` `{…, what: "parameters" or "latency" or "state" or "editor" or "restored"}`, `plugin.error` `{error, name, lost?}` (a plug-in could not be loaded, or stopped working), `plugins.recovery` (the recovery report, when a plug-in was lost while running: the page opens the review) | `st_host::areas::plugins` from `st_audio::plugins`: sent today |
 | `library.progress`, `library.results`, `library.metadata`, `library.favorite`, `library.error`, `library.kits.progress`, `library.nks.progress` | `st-library`: sent today (from the library's worker threads) |
 | `midi.note` (a key played on a device; with `inputOwner` and `recordingPending` / `recordingOnly` + `inputAcknowledgement` while note recording is armed, `recordingCancelled` when a capture ends without its release), `midi.message` (control changes), `midi.status` (`midiConfiguration`, `midiDevicesChanged`, `midiError`) | `st-midi` and `st_host::areas::midi`: sent today |
 | `mk3.input`, `mk3.status` | `st-mk3`: sent today |
 | `agent.call` `{id, method, params}` (answered with the command `agent.reply`), `agent.status` | `st-agent`: sent today |
-| `project.loaded`, `project.changed`, `project.sequence` | not sent: an AI client's edits are made by the page itself (`STAgent.dispatch`) |
 
 ## Settings
 
@@ -506,7 +504,7 @@ Behaviour worth knowing:
   `au:<type>:<subtype>:<manufacturer>`; a descriptor with any other identity or state encoding is
   reported as not installed or not readable, per plug-in, and keeps its bytes. The interface owns
   the project: `plugin.load`, `.remove` and `.move` change the engine's copy and answer with
-  descriptors; nothing is pushed back with `plugins.changed`. A publication loads its plug-ins
+  descriptors; the host pushes no plug-in list of its own. A publication loads its plug-ins
   before it answers. The recovery store holds a plug-in back after two crashes at load in a row
   (or a load the host did not survive); a crash while playing costs one container and is restored
   with Retry. `plugin.captureBasePatch` is not implemented. Editors report parameter changes with

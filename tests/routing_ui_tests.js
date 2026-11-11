@@ -216,11 +216,11 @@ test('group creation leaves track assignment opt-in and removal reparents childr
   h.R.removeBus(`bus:${created.id}`);h.element('routing-delete-apply').dispatch('click');await waitUntil(()=>focused.includes('bus:g'));assert.equal(h.state.project.routing.outputs['track:a'],'bus:g');assert(!h.state.project.routing.buses.some(bus=>bus.id===created.id));assert(!h.state.project.routing.sends.some(send=>send.id==='from-group'));assert.deepEqual(copy(h.state.project.patterns[0].automation.map(lane=>lane.target)),['volume']);assert.equal(h.state.mixerOwner,'bus:g');
 });
 
-test('capability replies from an obsolete plug-in generation are discarded and refreshed',async()=>{
+test('capability replies from before a project replacement are discarded and refreshed',async()=>{
   const h=harness(),old=deferred(),fresh=capabilities(),seen=[];fresh.sidechains.inputs[0].layoutSignature.name='Current detector';let count=0;
   h.handle(command=>command==='routing.capabilities'?(++count===1?old.promise:fresh):undefined);
   h.ST.refresh=()=>{const value=h.R.capabilities;if(value)seen.push(value.sidechains.inputs[0]?.layoutSignature.name);};
-  const pending=h.R.refreshCapabilities();h.R.event('plugins.changed');old.resolve(capabilities());await pending;await drain();
+  const pending=h.R.refreshCapabilities();h.R.event('project.loaded');old.resolve(capabilities());await pending;await drain();
   assert.equal(count,2);assert.equal(h.R.capabilities.sidechains.inputs[0].layoutSignature.name,'Current detector');assert(!seen.includes('External detector'),'An obsolete reply must never be published to the selector');
 });
 

@@ -356,8 +356,7 @@
   }
 
   function event(type, payload = {}) {
-    if (type === 'status' || type === 'transport.status') paintPlayhead(payload);
-    if (type === 'project.loaded') { local.anchor = null; local.playing = -1; }
+    if (type === 'status') paintPlayhead(payload);
   }
 
   window.STSong = { renderPanel, mount, key, event, contextItems, command, actions, selectBlock, get follow() { return local.follow; } };

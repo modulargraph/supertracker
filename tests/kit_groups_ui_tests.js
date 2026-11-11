@@ -102,22 +102,6 @@ test('Save kit sends the cursor group; Remove kit removes the group and its trac
   assert.equal(h.S.state.undo.length, undo + 1);
 });
 
-test('a kit with bus inserts loads although the host reports the staged candidate\'s plug-ins first', async () => {
-  // The host publishes the candidate before the commit and reports its plug-ins (plugins.changed).
-  // That report must not rewrite the session (which would make the load look superseded) nor
-  // leave descriptors for a bus the session does not have.
-  const h = session(groupProject({ name: '1988 Kit', pads: [0, 1], busInserts: 2 }));
-  const engine = h.handlers.get('engine.project');
-  h.handlers.set('engine.project', payload => {
-    h.window.nativeEvent('plugins.changed', { plugins: copy(payload.project.audioPlugins || []) });
-    return engine ? engine(payload) : {};
-  });
-  assert.equal(await h.KG.loadKit('/Kits/1988 Kit.mxgrp'), true);
-  const p = h.S.state.project, group = h.G.list(p)[0];
-  assert.equal(p.audioPlugins.filter(x => x.owner === `bus:${group.busID}`).length, 2);
-  h.window.nativeEvent('plugins.changed', { plugins: [...copy(p.audioPlugins), { owner: 'bus:gone', kind: 'effect', slot: 0, component: 'x', instanceID: 'stale' }] });
-  assert.ok(!h.S.state.project.audioPlugins.some(x => x.owner === 'bus:gone'), 'a descriptor for a missing bus is not adopted');
-});
 
 test('New empty kit is a group with one empty pad track', () => {
   const h = harness();
