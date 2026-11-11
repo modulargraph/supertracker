@@ -111,19 +111,10 @@ fn note_events(f: &mut Fixture, frames: i32, block: i32) -> Notes {
     out
 }
 
-fn fixed_map(f: &mut Fixture) {
-    let tempo = [ClockTempoEvent { beat: 0.0, bpm: 120.0 }];
-    let meter = [ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
-    assert!(f.e.set_timing_map(&tempo, &meter, 1).is_ok());
-}
-
 /// Row 2's plain note stops the sticky ratchet (it plays once); row 3's effect-only Ratchet then
 /// repeats it.
-fn sticky_ratchet_case(block: i32, mapped: bool) {
+fn sticky_ratchet_case(block: i32) {
     let mut f = Fixture::new(ST_INSTRUMENT_MIDI);
-    if mapped {
-        fixed_map(&mut f);
-    }
     f.step_fx(0, 60, ST_FX_RATCHET, 2.0);
     f.step(2, 64);
     f.step_fx(3, -3, ST_FX_RATCHET, 4.0);
@@ -324,16 +315,6 @@ fn gateless_lifetime() {
         f.play();
         assert!(note_events(&mut f, 12000, 256) == vec![(0, 60), (3000, -60), (3000, 60), (6000, -60)]);
     }
-    // Tempo-mapped playback behaves the same.
-    {
-        let mut f = Fixture::new(ST_INSTRUMENT_MIDI);
-        fixed_map(&mut f);
-        f.step_full(0, 60, 0, 0.0, 0, 0.0, 0.0);
-        f.step_full(3, 64, 0, 0.0, 0, 0.0, 0.0);
-        f.step(6, -1);
-        f.play();
-        assert!(note_events(&mut f, 48000, 256) == vec![(0, 60), (18000, -60), (18000, 64), (36000, -64)]);
-    }
     // A sampler note sounds until the next note releases it, then fades with the release
     // envelope.
     {
@@ -369,10 +350,9 @@ fn gateless_lifetime() {
 
 #[test]
 fn sticky_ratchet() {
-    sticky_ratchet_case(1, false);
-    sticky_ratchet_case(257, false);
-    sticky_ratchet_case(8192, false);
-    sticky_ratchet_case(257, true);
+    sticky_ratchet_case(1);
+    sticky_ratchet_case(257);
+    sticky_ratchet_case(8192);
 }
 
 #[test]

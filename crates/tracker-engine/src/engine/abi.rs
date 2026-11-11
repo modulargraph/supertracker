@@ -1,28 +1,7 @@
 //! The plain data and constants of the engine API: tracks, instruments, steps, events, status,
 //! transport checkpoints, and the bus arithmetic.
 //!
-//! The names keep the `ST` prefix they have always had: the other crates of the workspace import
-//! this module wholesale. The clock structures the engine exchanges (`ClockSpan`,
-//! `ClockTempoEvent`, ...) are those of `crate::clock`, re-exported here.
-
-pub use crate::clock::{
-    ClockContext, ClockMeterEvent, ClockOrigin, ClockSpan, ClockTempoEvent, CLOCK_BOUNDARY_BAR,
-    CLOCK_BOUNDARY_DOMAIN, CLOCK_BOUNDARY_LOOP, CLOCK_BOUNDARY_ORIGIN, CLOCK_DOMAIN_END,
-    CLOCK_GRID_PROJECTION, CLOCK_INVALID, CLOCK_LOOPING, CLOCK_MAX_SPAN, CLOCK_OK,
-    CLOCK_OUTSIDE_DOMAIN, CLOCK_PLAYING, CLOCK_PREROLL, CLOCK_RECORDING,
-};
-// The clock's items under the names this module's `ST`-prefixed family had for them: the other
-// crates import this module wholesale.
-pub use crate::clock::{
-    ClockContext as STClockContext, ClockMeterEvent as STClockMeterEvent, ClockOrigin as STClockOrigin,
-    ClockSpan as STClockSpan, ClockTempoEvent as STClockTempoEvent, CLOCK_BOUNDARY_BAR as ST_CLOCK_BOUNDARY_BAR,
-    CLOCK_BOUNDARY_DOMAIN as ST_CLOCK_BOUNDARY_DOMAIN, CLOCK_BOUNDARY_LOOP as ST_CLOCK_BOUNDARY_LOOP,
-    CLOCK_BOUNDARY_ORIGIN as ST_CLOCK_BOUNDARY_ORIGIN, CLOCK_DOMAIN_END as ST_CLOCK_DOMAIN_END,
-    CLOCK_GRID_PROJECTION as ST_CLOCK_GRID_PROJECTION, CLOCK_INVALID as ST_CLOCK_INVALID,
-    CLOCK_LOOPING as ST_CLOCK_LOOPING, CLOCK_MAX_SPAN as ST_CLOCK_MAX_SPAN, CLOCK_OK as ST_CLOCK_OK,
-    CLOCK_OUTSIDE_DOMAIN as ST_CLOCK_OUTSIDE_DOMAIN, CLOCK_PLAYING as ST_CLOCK_PLAYING,
-    CLOCK_PREROLL as ST_CLOCK_PREROLL, CLOCK_RECORDING as ST_CLOCK_RECORDING,
-};
+//! The names carry the `ST` prefix: the mixer crate imports this module wholesale.
 
 pub const ST_MIN_RETURN_BUS: i32 = 16;
 pub const ST_TRACK_SANITY_LIMIT: i32 = 1024;
@@ -144,13 +123,9 @@ pub const ST_INPUT_ACK_CAPACITY: usize = 4096;
 pub const ST_INPUT_ACK_APPLIED: i32 = 1;
 pub const ST_INPUT_ACK_DISCONTINUITY: i32 = 2;
 pub const ST_INPUT_ACK_CONTROL_FLUSH: i32 = 3;
+/// Bits of `STInputAck::flags`: the transport was playing / armed for recording at the edge.
 pub const ST_INPUT_CLOCK_PLAYING: i32 = 1;
-pub const ST_INPUT_CLOCK_MAPPED: i32 = 2;
 pub const ST_INPUT_CLOCK_RECORDING: i32 = 4;
-
-pub const ST_ENGINE_CLOCK_NOT_PREPARED: i32 = -2;
-pub const ST_ENGINE_CLOCK_NOT_RETAINED: i32 = -3;
-pub const ST_ENGINE_CLOCK_HISTORY_FRAMES: usize = 262144;
 
 pub const ST_VOICE_POSITION_CAPACITY: usize = 64;
 pub const ST_VOICE_POSITION_RELEASING: i32 = 1;
@@ -353,11 +328,13 @@ pub struct STEvent {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct STInputAck {
     pub request_id: u64,
+    /// Changes whenever the transport's timeline does (Play, Stop, Seek, a tempo or arrangement
+    /// change): `distance_beats` of two acknowledgements compare only within one run.
     pub run_id: u64,
-    pub timing_revision: u64,
     pub render_frame: i64,
     /// `INT64_MIN` for direct/non-bus render.
     pub graph_frame: i64,
+    /// Quarter beats played in this run up to the edge, counted through song loops.
     pub distance_beats: f64,
     pub edge: i32,
     pub track: i32,
@@ -393,7 +370,6 @@ pub struct STStatus {
     pub bar: i64,
     pub numerator: i32,
     pub denominator: i32,
-    pub timing_revision: u64,
     pub recording: i32,
     /// Pending `queue_jump` target, -1 none.
     pub queued_pattern: i32,
@@ -419,12 +395,6 @@ pub struct STTransportState {
     pub row_remaining: f64,
     pub row_duration: f64,
     pub transport_frames: f64,
-    pub timing_version: i32,
-    pub timing_revision: u64,
-    pub beat: f64,
-    pub pattern_origin_beat: f64,
-    pub loop_beat_offset: f64,
-    pub loop_iteration: i64,
     pub recording: i32,
     pub pattern_clip_frame: i64,
     pub pattern_clip_pattern: i32,

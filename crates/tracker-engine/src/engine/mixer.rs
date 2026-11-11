@@ -51,9 +51,6 @@ impl<'a> Rt<'a> {
     /// frame 0, as the live chain would ring over the loop point. The oldest tail yields when
     /// all slots ring.
     pub fn push_song_tails(&mut self) {
-        if self.p.timing.is_some() {
-            return;
-        }
         let tails = &mut self.e.song_tails;
         for clip in 0..self.p.song_tail_clips.len() {
             let mut slot = tails.iter().position(|tail| !tail.active);
@@ -112,10 +109,6 @@ impl<'a> Rt<'a> {
     /// Frames from the pattern's row 0 to row `r`.
     fn pattern_row_frame(&self, r: i32) -> f64 {
         let p = self.p;
-        let origin = self.e.pattern_origin_beat;
-        if let Some(timing) = &p.timing {
-            return timing.frame(origin + p.beat_for_row(r)).wrapping_sub(timing.frame(origin)) as f64;
-        }
         p.beat_for_row(r) * 60.0 / p.bpm * self.e.sample_rate
     }
 
@@ -132,18 +125,12 @@ impl<'a> Rt<'a> {
         // trigger is still pending.
         let begin = self.pattern_row_frame(self.e.row);
         let end = self.pattern_row_frame(self.e.row + 1);
-        let timing_matches = if state.timing_version == 0 {
-            p.timing.is_none()
-        } else {
-            p.timing.as_ref().is_some_and(|timing| state.timing_revision == timing.revision)
-        };
         let saved = state.pattern_clip_valid == 1
             && state.pattern_clip_pattern == self.e.pattern
             && (state.pattern_clip_looped == 0 || state.pattern_clip_looped == 1)
             && state.pattern_clip_frame >= 0
             && state.pattern_clip_frame as f64 >= begin.floor()
-            && state.pattern_clip_frame as f64 <= end.ceil()
-            && timing_matches;
+            && state.pattern_clip_frame as f64 <= end.ceil();
         let e = &mut *self.e;
         e.pattern_clip_frame = if saved {
             state.pattern_clip_frame
@@ -322,15 +309,11 @@ impl<'a> Rt<'a> {
                 continue;
             }
             let Some(sample) = p.asset_sample(clip.asset) else { continue };
-            let elapsed = if p.timing.is_some() {
-                (transport_frames - clip.mapped_start as f64) / sample_rate
-            } else {
-                seconds - clip.start_beat * 60.0 / p.bpm
-            };
+            let elapsed = seconds - clip.start_beat * 60.0 / p.bpm;
             if elapsed < 0.0 {
                 continue;
             }
-            let duration = p.clip_seconds(sample_rate, clip);
+            let duration = p.clip_seconds(clip);
             if elapsed >= duration {
                 continue;
             }
@@ -372,19 +355,13 @@ impl<'a> Rt<'a> {
     fn metronome_click(&mut self, wet_l: &mut f32, wet_r: &mut f32) {
         let p = self.p;
         let e = &mut *self.e;
-        let context = &e.musical_context;
-        let mapped = p.timing.is_some();
-        let bar_beat = ((e.musical_beat - context.bar_start_beat) * context.denominator as f64 / 4.0).floor() as i64;
-        let beat = if mapped {
-            context.bar.wrapping_mul(32).wrapping_add(bar_beat)
-        } else {
-            (e.transport_frames * p.bpm * p.denominator as f64 / (e.sample_rate * 240.0)) as i64
-        };
+        // The meter's beat (a quarter note for x/4) the transport frame lies in.
+        let beat = (e.transport_frames * p.bpm * p.denominator as f64 / (e.sample_rate * 240.0)) as i64;
         if beat != e.click_beat {
             e.click_beat = beat;
             e.click_age = 0.0;
             e.click_phase = 0.0;
-            e.click_accent = if mapped { bar_beat == 0 } else { beat % cmax(1, p.numerator) as i64 == 0 };
+            e.click_accent = beat % cmax(1, p.numerator) as i64 == 0;
         }
         self.click_sample(p.metronome_volume, wet_l, wet_r);
     }
@@ -404,7 +381,7 @@ impl<'a> Rt<'a> {
         if size < 2 || e.delay_r.len() != size {
             return (0.0, 0.0);
         }
-        let seconds = if p.delay_beats > 0.0 { p.delay_beats * 60.0 / cmax(1.0, e.effective_bpm) } else { p.delay_time as f64 };
+        let seconds = if p.delay_beats > 0.0 { p.delay_beats * 60.0 / cmax(1.0, p.bpm) } else { p.delay_time as f64 };
         let delay_samples = clamp(seconds * e.sample_rate, 1.0, (size - 1) as f64);
         let mut read = e.delay_pos as f64 - delay_samples;
         // A tiny negative read rounds up to exactly size(): that is position 0, not one past the
@@ -524,12 +501,6 @@ impl<'a> Rt<'a> {
                 if self.e.playing && !self.e.sequence_finished {
                     self.trigger_row();
                 }
-            }
-            if p.timing.is_some() || cache || self.e.pending_input_count != 0 {
-                self.update_clock();
-            }
-            if cache {
-                self.retain_clock(graph_start.wrapping_add(f as u64));
             }
             if self.e.pending_input_count != 0 {
                 self.finish_input_acks(true, cache, graph_start.wrapping_add(f as u64));

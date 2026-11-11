@@ -4,7 +4,7 @@
 //! (`laneValue`, `emitLaneAutomation`, `automation`, `emitMixState`).
 
 use super::abi::*;
-use super::project::{lane_track, Lane, Pattern, PluginStepFX, Project, Step, EXTRA_COLUMNS};
+use super::project::{lane_track, Lane, Pattern, PluginStepFX, Step, EXTRA_COLUMNS};
 use super::state::*;
 use super::tables::*;
 use super::util::{clamp, cmax, finite, lowest_bit, random_bipolar};
@@ -50,21 +50,10 @@ struct Hits<'s> {
 
 const UNISON: [i32; ST_MAX_CHORD] = [0; ST_MAX_CHORD];
 
-/// `laneValue`: the lane's value at pattern position `pos` (rows), or at `musical_beat` for a
-/// stepped lane under a timing map.
-fn lane_value(p: &Project, musical_beat: f64, row_base_beat: f64, l: &Lane, mut pos: f64) -> f64 {
+/// The lane's value at pattern position `pos` (rows).
+fn lane_value(l: &Lane, mut pos: f64) -> f64 {
     let points = &l.points;
     let (Some(front), Some(back)) = (points.first(), points.last()) else { return 0.0 };
-    if p.timing.is_some() && l.interpolation == 1 {
-        // upper_bound: the first point whose mapped beat lies after the current beat.
-        let next = points.partition_point(|point| {
-            let whole = point.row.floor() as i32;
-            let start = p.beat_for_row(whole);
-            let end = p.beat_for_row(whole.wrapping_add(1));
-            !(musical_beat < row_base_beat + start + (point.row - whole as f64) * (end - start))
-        });
-        return if next == 0 { front.value } else { points[next - 1].value };
-    }
     if l.interpolation == 1 {
         pos += 1e-10;
     }
@@ -258,41 +247,6 @@ impl<'a> Rt<'a> {
             }
         }
         None
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn schedule_mapped(
-        &mut self,
-        track: i32,
-        instrument: i32,
-        note: i32,
-        velocity: i32,
-        onset: f64,
-        end: f64,
-        hits: &Hits,
-    ) {
-        let loop_beat_offset = self.e.loop_beat_offset;
-        if let Some(s) = self.scheduled_slot() {
-            *s = Scheduled::NEW;
-            s.active = true;
-            s.mapped = true;
-            s.onset_beat = onset + loop_beat_offset;
-            s.end_beat = end + loop_beat_offset;
-            s.track = track;
-            s.instrument = instrument;
-            s.note = note;
-            s.velocity = velocity;
-            s.offset = hits.offset;
-            s.reverse = hits.reverse;
-            s.glide = hits.glide;
-            s.arp = hits.arp;
-            s.slice = hits.slice;
-            s.sequence_track = hits.lane;
-            s.open = end < 0.0;
-            self.e.scheduled_count += 1;
-            return;
-        }
-        self.sh.dropped_events.fetch_add(1, Ordering::Relaxed);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -736,22 +690,13 @@ impl<'a> Rt<'a> {
         let spacing = row_duration * (1.0 - micro) as f64 / ratchet as f64;
         let open = !(sp.gate > 0.0) && ratchet <= 1;
         let gate = if sp.gate > 0.0 { clamp(sp.gate as f64, 0.01, 256.0) } else { 1.0 };
-        let mapped = self.p.timing.is_some();
         let count = clamp(hits.count, 0, ST_MAX_CHORD as i32) as usize;
         for r in 0..ratchet {
             for n in 0..count {
                 let note = sp.note.wrapping_add(hits.chord[n]);
-                if mapped {
-                    let beat_span = self.e.row_end_beat - self.e.row_start_beat;
-                    let beat_spacing = beat_span * (1.0 - micro) as f64 / ratchet as f64;
-                    let onset = self.e.row_start_beat + beat_span * micro as f64 + r as f64 * beat_spacing;
-                    let end = if open { -1.0 } else { onset + beat_spacing * gate };
-                    self.schedule_mapped(hits.channel, hits.instrument, note, sp.velocity, onset, end, hits);
-                } else {
-                    let delay = row_duration * micro as f64 + r as f64 * spacing;
-                    let length = if open { -1.0 } else { cmax(1.0, spacing * gate) };
-                    self.schedule(hits.channel, hits.instrument, note, sp.velocity, delay, length, hits);
-                }
+                let delay = row_duration * micro as f64 + r as f64 * spacing;
+                let length = if open { -1.0 } else { cmax(1.0, spacing * gate) };
+                self.schedule(hits.channel, hits.instrument, note, sp.velocity, delay, length, hits);
             }
         }
     }
@@ -798,19 +743,10 @@ impl<'a> Rt<'a> {
             state.row_locks = 0;
         }
         let row = self.e.row;
-        if let Some(timing) = &p.timing {
-            self.e.row_start_beat = self.row_base_beat() + p.beat_for_row(row);
-            self.e.row_end_beat = self.row_base_beat() + p.beat_for_row(row + 1);
-            let end = timing.frame(self.e.row_end_beat) as f64;
-            self.e.row_duration = end - timing.frame(self.e.row_start_beat) as f64;
-            self.e.row_remaining = end - self.e.transport_frames;
-        } else {
-            // `sign * swing` is single precision; the sum with 1.0 is double, as in C++.
-            let sign: f32 = if row & 1 != 0 { -1.0 } else { 1.0 };
-            self.e.row_duration =
-                self.e.sample_rate * 60.0 / p.bpm / p.lpb as f64 * (1.0 + (sign * p.swing) as f64);
-            self.e.row_remaining += self.e.row_duration;
-        }
+        // `sign * swing` is single precision; the sum with 1.0 is double.
+        let sign: f32 = if row & 1 != 0 { -1.0 } else { 1.0 };
+        self.e.row_duration = self.e.sample_rate * 60.0 / p.bpm / p.lpb as f64 * (1.0 + (sign * p.swing) as f64);
+        self.e.row_remaining += self.e.row_duration;
         for ratchet in self.tb.lane_ratchets.iter_mut() {
             ratchet.handled = false;
         }
@@ -849,8 +785,6 @@ impl<'a> Rt<'a> {
             return;
         }
         let pos = if self.e.sequence_finished { pattern.length as f64 } else { self.musical_position() };
-        let row_base_beat = self.row_base_beat();
-        let musical_beat = self.e.musical_beat;
         let frame = self.e.total_frames as u64;
         let track_count = p.track_count;
         let e = &mut *self.e;
@@ -859,7 +793,7 @@ impl<'a> Rt<'a> {
             if !(l.track >= 0 && l.track < track_count) || l.points.is_empty() {
                 continue;
             }
-            let v = lane_value(p, musical_beat, row_base_beat, l, pos) as f32;
+            let v = lane_value(l, pos) as f32;
             let Some(t) = self.tb.track_state.get_mut(l.track as usize) else { continue };
             if (t.row_locks & (1u64 << (l.target as u32 & 63))) != 0 || e.plugin_lane_locked[index] {
                 state.known = false;
@@ -894,7 +828,7 @@ impl<'a> Rt<'a> {
                 continue;
             }
             if !l.points.is_empty() {
-                let value = lane_value(p, musical_beat, row_base_beat, l, pos);
+                let value = lane_value(l, pos);
                 emit_lane_automation(&e.out, self.sh, frame, p.host_map, l, state, value, ST_EVENT_HOST_PARAMETER);
             }
         }
@@ -913,12 +847,7 @@ impl<'a> Rt<'a> {
                 let bit = lowest_bit(active);
                 active &= active - 1;
                 let Some(&s) = self.e.scheduled.get(group * 64 + bit) else { continue };
-                let due = if s.mapped {
-                    self.e.musical_beat + self.e.loop_beat_offset >= s.onset_beat
-                } else {
-                    s.due <= self.e.total_frames
-                };
-                if !due {
+                if !(s.due <= self.e.total_frames) {
                     continue;
                 }
                 if lane_track(s.sequence_track) < track_count {
@@ -927,7 +856,7 @@ impl<'a> Rt<'a> {
                         instrument: s.instrument,
                         note: s.note,
                         velocity: s.velocity,
-                        gate: if s.mapped { -1.0 } else { s.gate },
+                        gate: s.gate,
                         offset: s.offset,
                         reverse: s.reverse,
                         glide: s.glide,
@@ -936,7 +865,6 @@ impl<'a> Rt<'a> {
                         slice: s.slice,
                         preview: false,
                         preview_pitch: 0.0,
-                        mapped_end: if s.mapped && !s.open { s.end_beat } else { -1.0 },
                         sequence_track: s.sequence_track,
                     });
                 }

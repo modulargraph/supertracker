@@ -1,13 +1,11 @@
-//! The immutable project snapshot: C++ `Sample`, `Zone`, `Instrument`, `Step`, `Lane`, `Column`,
-//! `Pattern`, the clip structures and `Project` from `TrackerEngine.cpp`, plus the project-only
-//! arithmetic the control and render threads share (`patternRows`, `beatForRow`, song duration,
-//! `compileTiming`).
+//! The immutable project snapshot: `Sample`, `Zone`, `Instrument`, `Step`, `Lane`, `Column`,
+//! `Pattern`, the clip structures and `Project`, plus the project-only arithmetic the control
+//! and render threads share (`pattern_rows`, `beat_for_row`, song duration).
 //!
 //! A project is edited as a draft on the control thread, deep-copied at commit (pattern columns
 //! and lane lists are shared copy-on-write) and handed to the render thread, which only reads it.
 
 use super::abi::*;
-use super::timing::EngineTiming;
 use super::tables::ChannelTables;
 use super::util::{cmax, cmin};
 use std::ptr::NonNull;
@@ -353,8 +351,6 @@ pub struct AudioClip {
     pub fade_in: f32,
     pub fade_out: f32,
     pub muted: bool,
-    pub mapped_start: i64,
-    pub mapped_end: i64,
 }
 
 /// Pattern-mode clip (Track Freeze print of one pattern); see `add_pattern_clip`.
@@ -392,12 +388,6 @@ impl Default for TrackVoice {
 
 #[derive(Clone)]
 pub struct Project {
-    pub timing: Option<Arc<EngineTiming>>,
-    pub pattern_origin_beat: f64,
-    pub occurrence_beats: Vec<f64>,
-    pub occurrence_frames: Vec<i64>,
-    pub mapped_pattern_start: i64,
-    pub mapped_pattern_end: i64,
     pub bpm: f64,
     pub lpb: i32,
     pub track_count: i32,
@@ -464,12 +454,6 @@ impl Default for Project {
 impl Project {
     pub fn new() -> Project {
         Project {
-            timing: None,
-            pattern_origin_beat: 0.0,
-            occurrence_beats: Vec::new(),
-            occurrence_frames: Vec::new(),
-            mapped_pattern_start: 0,
-            mapped_pattern_end: 0,
             bpm: 120.0,
             lpb: 4,
             track_count: 8,
@@ -572,11 +556,9 @@ impl Project {
         ((r as f32 + if r % 2 != 0 { self.swing } else { 0.0 }) / self.lpb as f32) as f64
     }
 
-    /// `clipSeconds`
-    pub fn clip_seconds(&self, sample_rate: f64, clip: &AudioClip) -> f64 {
-        if self.timing.is_some() {
-            return clip.mapped_end.wrapping_sub(clip.mapped_start) as f64 / sample_rate;
-        }
+    /// How long a timeline clip plays, in seconds: its duration in beats at the project tempo,
+    /// or what its source holds after the offset when that is shorter (or no duration is set).
+    pub fn clip_seconds(&self, clip: &AudioClip) -> f64 {
         let Some(sample) = self.asset_sample(clip.asset) else { return 0.0 };
         let available = cmax(0.0, sample.l.len() as f64 / sample.rate - clip.source_offset);
         if clip.duration_beats > 0.0 {
@@ -586,22 +568,9 @@ impl Project {
         }
     }
 
-    /// `mappedSongFrames`
-    pub fn mapped_song_frames(&self) -> i64 {
-        let mut end = self.occurrence_frames.last().copied().unwrap_or(0);
-        for clip in &self.audio_clips {
-            if !clip.muted {
-                end = cmax(end, clip.mapped_end);
-            }
-        }
-        end
-    }
-
-    /// `projectedSongDuration`
-    pub fn projected_song_duration(&self, sample_rate: f64) -> f64 {
-        if self.timing.is_some() {
-            return self.mapped_song_frames() as f64 / sample_rate;
-        }
+    /// The song's length in seconds: its sequence, or the end of the last unmuted clip when
+    /// that is later.
+    pub fn song_duration(&self) -> f64 {
         let mut rows = 0.0f64;
         for &index in &self.sequence {
             rows += self.pattern_rows(index);
@@ -609,71 +578,15 @@ impl Project {
         let mut seconds = rows * 60.0 / self.bpm / self.lpb as f64;
         for clip in &self.audio_clips {
             if !clip.muted {
-                seconds = cmax(seconds, clip.start_beat * 60.0 / self.bpm + self.clip_seconds(sample_rate, clip));
+                seconds = cmax(seconds, clip.start_beat * 60.0 / self.bpm + self.clip_seconds(clip));
             }
         }
         seconds
     }
 
-    /// The song's length in frames: the seconds of [`Project::projected_song_duration`] times the
-    /// rate (that product, in that order, is what the transport compares against).
+    /// The song's length in frames: the seconds of [`Project::song_duration`] times the rate
+    /// (that product, in that order, is what the transport compares against).
     pub fn effective_song_frames(&self, sample_rate: f64) -> f64 {
-        self.projected_song_duration(sample_rate) * sample_rate
-    }
-
-    /// `compileTiming`: resolve occurrence, pattern and clip bounds against the timing map.
-    pub fn compile_timing(&mut self, sample_rate: f64) -> Result<(), String> {
-        self.occurrence_beats.clear();
-        self.occurrence_frames.clear();
-        let Some(timing) = self.timing.clone() else { return Ok(()) };
-        self.occurrence_beats.reserve(self.sequence.len() + 1);
-        self.occurrence_frames.reserve(self.sequence.len() + 1);
-        let mut beat = 0.0f64;
-        for position in 0..self.sequence.len() {
-            let index = self.sequence[position];
-            self.occurrence_beats.push(beat);
-            self.occurrence_frames.push(timing.frame(beat));
-            beat += self.pattern_rows(index) / self.lpb as f64;
-            if beat > 1000000.0 {
-                return Err("Song exceeds timing map domain of1000000 quarter beats.".into());
-            }
-        }
-        self.occurrence_beats.push(beat);
-        self.occurrence_frames.push(timing.frame(beat));
-        let pattern_end = self.pattern_origin_beat + self.pattern_rows(self.active_pattern) / self.lpb as f64;
-        for index in 0..self.patterns.len() {
-            if self.pattern_origin_beat + self.pattern_rows(index as i32) / self.lpb as f64 > 1000000.0 {
-                return Err("Pattern timing origin plus length exceeds map domain.".into());
-            }
-        }
-        if pattern_end > 1000000.0 {
-            return Err("Pattern timing origin plus length exceeds map domain.".into());
-        }
-        self.mapped_pattern_start = timing.frame(self.pattern_origin_beat);
-        self.mapped_pattern_end = timing.frame(pattern_end);
-        for index in 0..self.audio_clips.len() {
-            let mut clip = self.audio_clips[index];
-            if clip.start_beat + clip.duration_beats > 1000000.0 {
-                return Err("Clip end exceeds timing map domain.".into());
-            }
-            clip.mapped_start = timing.frame(clip.start_beat);
-            self.audio_clips[index].mapped_start = clip.mapped_start;
-            let sample = self.asset_sample(clip.asset);
-            let available = match sample {
-                Some(sample) => cmax(0.0, sample.l.len() as f64 / sample.rate - clip.source_offset),
-                None => 0.0,
-            };
-            let source_end = clip.mapped_start as f64 + (available * sample_rate).ceil();
-            let limit = if clip.duration_beats > 0.0 {
-                timing.frame(clip.start_beat + clip.duration_beats) as f64
-            } else {
-                source_end
-            };
-            if cmin(source_end, limit) > timing.frame(1000000.0) as f64 {
-                return Err("Clip source duration exceeds timing map domain.".into());
-            }
-            self.audio_clips[index].mapped_end = cmin(source_end, limit) as i64;
-        }
-        Ok(())
+        self.song_duration() * sample_rate
     }
 }

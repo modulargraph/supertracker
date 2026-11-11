@@ -1,19 +1,12 @@
-//! Timestamped bus history (ported from the C++ engine's `TrackerEngine.cpp`): `renderCached` (render_bus/render_channel),
-//! the per-bus rings (`writeRing`, `zeroRing`, `silenceRing`), retained clock metadata
-//! (`retainClock`) and the queries over it (`prerollClock`, `clock_span`).
+//! Timestamped bus history: `render_bus` / `render_channel` and the per-bus rings behind them.
 //!
 //! Serialized graph pulls may overlap and use different frame counts; only an uncached suffix
 //! advances the sequencer and DSP, existing ranges are copied without advancing music twice.
 
-use super::abi::*;
-use super::timing::fixed_clock_context;
 use super::state::*;
 use super::tables::*;
 use super::util::{cmax, cmin};
 use std::sync::atomic::Ordering;
-
-const LIMIT_52: i64 = 1i64 << 52;
-const LIMIT_30: i64 = 1i64 << 30;
 
 /// Render thread. A bus that was silent since `silent_from` has stale ring contents there; zero
 /// the still-readable part of that gap before writing real audio.
@@ -67,56 +60,6 @@ fn silence(buffer: &mut Option<&mut [f32]>) {
     }
 }
 
-/// Why [`Render::clock_span`] has no span to give.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SpanError {
-    /// An argument is out of range.
-    Invalid,
-    /// The frame lies outside the timing map's domain.
-    OutsideDomain,
-    /// The frame has not been rendered yet (or the history was reset).
-    NotPrepared,
-    /// The frame is older than the retained history.
-    NotRetained,
-}
-
-impl SpanError {
-    /// The numeric code of this error (`CLOCK_INVALID`, `CLOCK_OUTSIDE_DOMAIN`,
-    /// `ST_ENGINE_CLOCK_NOT_PREPARED`, `ST_ENGINE_CLOCK_NOT_RETAINED`); success is `CLOCK_OK`.
-    pub const fn status(self) -> i32 {
-        match self {
-            SpanError::Invalid => CLOCK_INVALID,
-            SpanError::OutsideDomain => CLOCK_OUTSIDE_DOMAIN,
-            SpanError::NotPrepared => ST_ENGINE_CLOCK_NOT_PREPARED,
-            SpanError::NotRetained => ST_ENGINE_CLOCK_NOT_RETAINED,
-        }
-    }
-
-    /// `None` for `CLOCK_OK`.
-    fn from_status(status: i32) -> Option<SpanError> {
-        match status {
-            CLOCK_OK => None,
-            CLOCK_OUTSIDE_DOMAIN => Some(SpanError::OutsideDomain),
-            ST_ENGINE_CLOCK_NOT_PREPARED => Some(SpanError::NotPrepared),
-            ST_ENGINE_CLOCK_NOT_RETAINED => Some(SpanError::NotRetained),
-            _ => Some(SpanError::Invalid),
-        }
-    }
-}
-
-impl std::fmt::Display for SpanError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(match self {
-            SpanError::Invalid => "The span request is out of range.",
-            SpanError::OutsideDomain => "The frame lies outside the timing map.",
-            SpanError::NotPrepared => "The frame has not been rendered yet.",
-            SpanError::NotRetained => "The frame is older than the retained history.",
-        })
-    }
-}
-
-impl std::error::Error for SpanError {}
-
 impl Render {
     fn write_ring(&self, ring: &mut BusRingState, l: &[f32], r: &[f32], start: u64) {
         if ring.generation != self.cache_generation {
@@ -162,8 +105,8 @@ impl Render {
     }
 
     /// Extends the bus history to `time + frames` without copying anything out: what
-    /// [`Render::render_bus`] does before it reads. For hosts that only need the events and
-    /// clock history of a range.
+    /// [`Render::render_bus`] does before it reads. For hosts that only need the events of a
+    /// range.
     pub fn prepare_history(&mut self, sh: &Shared, time: u64, frames: u32) {
         if self.engine_id != sh.engine_id || frames == 0 || frames as usize > CACHE_CAPACITY || time > u64::MAX - frames as u64 {
             return;
@@ -210,11 +153,8 @@ impl Render {
         }
         if !self.cache_valid {
             self.cache_generation = self.cache_generation.wrapping_add(1);
-            self.release_clock_origin();
-            self.timing_epoch = self.timing_epoch.wrapping_add(1);
             self.cache_begin = time;
             self.cache_end = time;
-            self.clock_begin = time;
             self.cache_valid = true;
         }
         let end = time + n as u64;
@@ -250,9 +190,6 @@ impl Render {
             self.cache_end += count as u64;
             if self.cache_end - self.cache_begin > CACHE_CAPACITY as u64 {
                 self.cache_begin = self.cache_end - CACHE_CAPACITY as u64;
-            }
-            if self.cache_end - self.clock_begin > CLOCK_CAPACITY as u64 {
-                self.clock_begin = self.cache_end - CLOCK_CAPACITY as u64;
             }
         }
         // SAFETY: as above; the tables are those of the project in use.
@@ -305,242 +242,6 @@ impl Render {
             if let Some(tail) = out.get_mut(lost + count..) {
                 tail.fill(0.0);
             }
-        }
-    }
-
-    /// Clock context before the first prepared timestamp: the immutable initial map/consumed
-    /// transport origin (PREROLL if playing, no backward loop); a stopped origin holds.
-    fn preroll_clock(&self, graph_frame: i64, content: i64, requested: u32, latency: i64, out: &mut ClockSpan) -> i32 {
-        let origin_graph = self.cache_origin_graph as i64;
-        if !self.cache_origin_valid || content >= origin_graph || origin_graph.wrapping_sub(content) > LIMIT_30 {
-            return ST_ENGINE_CLOCK_NOT_RETAINED;
-        }
-        let origin = &self.cache_origin_clock;
-        let active = (origin.flags & CLOCK_PLAYING) != 0;
-        let frame = self.cache_origin_transport + (if active { content.wrapping_sub(origin_graph) as f64 } else { 0.0 });
-        let mut result = ClockSpan::default();
-        let c = &mut result.context;
-        if !self.cache_origin_timing.is_null() {
-            // SAFETY: the cache origin pins this map (`origin_pins`), so `collect()` keeps it
-            // alive until `release_clock_origin`.
-            let timing = unsafe { &*self.cache_origin_timing };
-            if timing.context(frame as i64, c) != CLOCK_OK {
-                return CLOCK_OUTSIDE_DOMAIN;
-            }
-        } else {
-            fixed_clock_context(c, frame, self.sample_rate, origin.bpm, origin.numerator, origin.denominator);
-        }
-        let song_frame = c.song_frame;
-        c.graph_frame = graph_frame;
-        c.content_graph_frame = content;
-        c.revision = origin.revision;
-        c.epoch = origin.epoch;
-        c.loop_iteration = 0;
-        c.loop_start_beat = origin.loop_start_beat;
-        c.loop_end_beat = origin.loop_end_beat;
-        c.flags = (c.flags & CLOCK_DOMAIN_END)
-            | (origin.flags & (CLOCK_PLAYING | CLOCK_LOOPING | CLOCK_RECORDING))
-            | (if active { CLOCK_PREROLL } else { 0 });
-        let translated =
-            |value: i64| if value == i64::MAX { value } else { graph_frame.wrapping_add(value).wrapping_sub(song_frame) };
-        c.next_boundary_frame = if active { translated(c.next_boundary_frame) } else { i64::MAX };
-        c.next_quarter_beat_frame = if active { translated(c.next_quarter_beat_frame) } else { i64::MAX };
-        c.next_quarter_grid_frame = translated(c.next_quarter_grid_frame);
-        let origin_frame = origin_graph.wrapping_add(latency);
-        if c.next_boundary_frame > origin_frame {
-            c.next_boundary_frame = origin_frame;
-            c.next_boundary_kinds = CLOCK_BOUNDARY_ORIGIN;
-        } else if c.next_boundary_frame == origin_frame {
-            c.next_boundary_kinds |= CLOCK_BOUNDARY_ORIGIN;
-        }
-        if c.next_quarter_beat_frame >= origin_frame {
-            c.next_quarter_beat_frame = if origin.next_quarter_beat_frame == i64::MAX {
-                origin.next_quarter_beat_frame
-            } else {
-                origin.next_quarter_beat_frame.wrapping_add(latency)
-            };
-        }
-        if c.next_quarter_beat_frame == i64::MAX {
-            c.flags |= CLOCK_GRID_PROJECTION;
-        }
-        result.frames = cmin(requested as i64, cmax(0, c.next_boundary_frame.wrapping_sub(graph_frame))) as u32;
-        *out = result;
-        CLOCK_OK
-    }
-
-    /// The musical clock of rendered graph time: the context at `graph_frame` and how many of
-    /// the `requested` frames (1..=65536) share it. `latency` (0..=2^30) is the upstream latency
-    /// subtracted before the lookup. Only time the bus history covers can be asked for (and the
-    /// pre-roll before its origin); a span ends where the context changes.
-    pub fn clock_span(&self, sh: &Shared, graph_frame: i64, requested: u32, latency: i64) -> Result<ClockSpan, SpanError> {
-        if self.engine_id != sh.engine_id {
-            return Err(SpanError::Invalid);
-        }
-        let mut span = ClockSpan::default();
-        match SpanError::from_status(self.clock_span_status(sh, graph_frame, requested, latency, &mut span)) {
-            None => Ok(span),
-            Some(error) => Err(error),
-        }
-    }
-
-    /// `clock_span` with its result as a status code; `out` is written only for `CLOCK_OK`.
-    fn clock_span_status(&self, sh: &Shared, graph_frame: i64, requested: u32, latency: i64, out: &mut ClockSpan) -> i32 {
-        if requested < 1
-            || requested > CLOCK_MAX_SPAN
-            || latency < 0
-            || latency > LIMIT_30
-            || graph_frame < -LIMIT_52
-            || graph_frame > LIMIT_52
-        {
-            return CLOCK_INVALID;
-        }
-        let content = graph_frame - latency;
-        if !self.cache_valid || self.observed_cache_epoch != sh.cache_epoch.load(Ordering::Acquire) {
-            return ST_ENGINE_CLOCK_NOT_PREPARED;
-        }
-        if self.cache_origin_valid && content < self.cache_origin_graph as i64 {
-            return self.preroll_clock(graph_frame, content, requested, latency, out);
-        }
-        if content < 0 || (content as u64) < self.clock_begin {
-            return ST_ENGINE_CLOCK_NOT_RETAINED;
-        }
-        let content_frame = content as u64;
-        if content_frame >= self.cache_end {
-            return ST_ENGINE_CLOCK_NOT_PREPARED;
-        }
-        let at = |frame: u64| self.cached_clock[(frame % CLOCK_CAPACITY as u64) as usize];
-        let mut result = ClockSpan { context: at(content_frame), frames: 0 };
-        let c = &mut result.context;
-        c.graph_frame = graph_frame;
-        c.content_graph_frame = content;
-        if c.next_boundary_frame != i64::MAX {
-            c.next_boundary_frame = c.next_boundary_frame.wrapping_add(latency);
-        }
-        if c.next_quarter_beat_frame != i64::MAX {
-            c.next_quarter_beat_frame = c.next_quarter_beat_frame.wrapping_add(latency);
-        }
-        if c.next_quarter_grid_frame != i64::MAX {
-            c.next_quarter_grid_frame = c.next_quarter_grid_frame.wrapping_add(latency);
-        }
-        let mut count =
-            cmin(requested as u64, cmin(self.cache_end - content_frame, (LIMIT_52 - graph_frame + 1) as u64)) as u32;
-        if c.next_boundary_frame != i64::MAX {
-            count = cmin(count as i64, cmax(0, c.next_boundary_frame.wrapping_sub(graph_frame))) as u32;
-        }
-        let changed = (1..count).find(|&n| {
-            let next = at(content_frame + n as u64);
-            next.epoch != c.epoch || next.revision != c.revision
-        });
-        if let Some(n) = changed {
-            count = n;
-            c.next_boundary_frame = graph_frame + n as i64;
-            c.next_boundary_kinds = CLOCK_BOUNDARY_ORIGIN;
-        }
-        result.frames = count;
-        *out = result;
-        CLOCK_OK
-    }
-
-}
-
-impl<'a> Rt<'a> {
-    /// Record the clock context of one newly rendered graph frame.
-    pub fn retain_clock(&mut self, graph_frame: u64) {
-        let slot = (graph_frame % CLOCK_CAPACITY as u64) as usize;
-        if graph_frame > (1u64 << 52) {
-            if let Some(entry) = self.e.cached_clock.get_mut(slot) {
-                *entry = ClockContext::default();
-            }
-            return;
-        }
-        let p = self.p;
-        let mut c = self.e.musical_context;
-        c.graph_frame = graph_frame as i64;
-        c.content_graph_frame = c.graph_frame;
-        let transport_frames = self.e.transport_frames;
-        let song_frame = transport_frames as i64;
-        c.song_frame = song_frame;
-        let graph = c.graph_frame;
-        let translate = |frame: i64| if frame == i64::MAX { frame } else { graph.wrapping_add(frame).wrapping_sub(song_frame) };
-        c.next_boundary_frame = translate(c.next_boundary_frame);
-        c.next_quarter_beat_frame = translate(c.next_quarter_beat_frame);
-        c.next_quarter_grid_frame = translate(c.next_quarter_grid_frame);
-        if self.e.playing && (self.e.song_mode || p.timing.is_some()) {
-            // A section loops before the song endpoint, except when playback started beyond the
-            // section and must first finish the outro.
-            let section = self.song_loop_active();
-            let in_section = section && self.e.sequence <= self.song_loop_last();
-            let endpoint =
-                if in_section { self.occurrence_start_frames(self.song_loop_last() + 1) } else { self.e.song_end_frames };
-            let end: i64 = if self.e.song_mode {
-                endpoint.ceil() as i64
-            } else {
-                match &p.timing {
-                    Some(timing) => timing.frame(self.e.pattern_origin_beat + self.pattern_domain_end_beat()),
-                    None => 0,
-                }
-            };
-            let until: i64 =
-                if p.timing.is_some() { end.wrapping_sub(song_frame) } else { (endpoint - transport_frames).ceil() as i64 };
-            let boundary = graph.wrapping_add(cmax(1, until));
-            let kind = if (c.flags & CLOCK_LOOPING) != 0 { CLOCK_BOUNDARY_LOOP } else { CLOCK_BOUNDARY_DOMAIN };
-            if boundary < c.next_boundary_frame {
-                c.next_boundary_frame = boundary;
-                c.next_boundary_kinds = kind;
-            } else if boundary == c.next_boundary_frame {
-                c.next_boundary_kinds |= kind;
-            }
-            if c.next_quarter_beat_frame >= boundary {
-                c.next_quarter_beat_frame = i64::MAX;
-                if (c.flags & CLOCK_LOOPING) != 0 {
-                    let first = c.loop_start_beat.ceil();
-                    if first < c.loop_end_beat {
-                        let rate = self.e.sample_rate;
-                        let (lo, next) = match &p.timing {
-                            Some(timing) => (timing.frame(c.loop_start_beat), timing.frame(first)),
-                            None => (0, (first * 60.0 / p.bpm * rate).ceil() as i64),
-                        };
-                        if next < end {
-                            if section && p.timing.is_none() {
-                                let start = self.occurrence_start_frames(p.song_loop_start);
-                                let overshoot = if self.e.sequence <= self.song_loop_last() {
-                                    transport_frames + until as f64 - endpoint
-                                } else {
-                                    0.0
-                                };
-                                let target = first * 60.0 / p.bpm * rate;
-                                c.next_quarter_beat_frame =
-                                    boundary.wrapping_add(cmax(0.0, (target - start - overshoot).ceil()) as i64);
-                            } else {
-                                c.next_quarter_beat_frame = boundary.wrapping_add(next).wrapping_sub(lo);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if c.next_quarter_beat_frame == i64::MAX {
-            c.flags |= CLOCK_GRID_PROJECTION;
-        } else {
-            c.flags &= !CLOCK_GRID_PROJECTION;
-        }
-        let origin = !self.e.cache_origin_valid;
-        let e = &mut *self.e;
-        if origin {
-            e.cache_origin_clock = c;
-            e.cache_origin_transport = transport_frames;
-            e.cache_origin_graph = graph_frame;
-            e.cache_origin_timing = match &p.timing {
-                Some(timing) => {
-                    timing.origin_pins.fetch_add(1, Ordering::Relaxed);
-                    &**timing as *const _
-                }
-                None => std::ptr::null(),
-            };
-            e.cache_origin_valid = true;
-        }
-        if let Some(entry) = e.cached_clock.get_mut(slot) {
-            *entry = c;
         }
     }
 }

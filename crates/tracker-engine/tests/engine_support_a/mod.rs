@@ -7,16 +7,14 @@
 //! * `realtime` and `assert_zero_render_allocations`: the C++ tests' replaced `operator new`
 //!   with its thread-local "render in progress" flag.
 //! * `tone`: the C++ tests' `engine_test_tone.hpp`.
-//! * `core_helpers`, `timing_helpers`: the fixtures and helpers of the two C++ programs.
+//! * `core_helpers`: the fixtures and helpers of the core test programs.
 #![allow(dead_code, clippy::too_many_arguments)]
 
 pub mod core_helpers;
-pub mod timing_helpers;
 pub mod tone;
 
 use std::cell::Cell;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tracker_engine::clock::{ClockMeterEvent, ClockSpan, ClockTempoEvent, CLOCK_OK};
 use tracker_engine::engine::edits::Pcm;
 use tracker_engine::engine::host;
 use tracker_engine::engine::{STEvent, STInstrument, STStatus, STStep, STTrack, STTransportState};
@@ -226,14 +224,14 @@ half_methods! { ControlHalf, control_half;
     fn commit_update(&mut self) {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
-        let _ = control.commit(shared, sample_rate);
+        let _ = control.commit(shared);
     }
     /// `commit_update_checked`: the error is the text the C function wrote into its
     /// error buffer.
     fn commit_update_checked(&mut self) -> Result<(), String> {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
-        control.commit(shared, sample_rate)
+        control.commit(shared)
     }
     fn cancel_update(&mut self) {
         #[allow(unused_variables)]
@@ -252,21 +250,6 @@ half_methods! { ControlHalf, control_half;
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
         control.set_timing(bpm, lines_per_beat, swing, master_volume);
-    }
-    fn set_timing_map(&mut self, tempos: &[ClockTempoEvent], meters: &[ClockMeterEvent], revision: u64) -> Result<(), String> {
-        #[allow(unused_variables)]
-        let (control, shared, sample_rate) = self.half.parts();
-        control.set_timing_map(sample_rate, tempos, meters, revision)
-    }
-    fn clear_timing_map(&mut self) {
-        #[allow(unused_variables)]
-        let (control, shared, sample_rate) = self.half.parts();
-        control.clear_timing_map();
-    }
-    fn set_pattern_timing_origin(&mut self, beat: f64) -> bool {
-        #[allow(unused_variables)]
-        let (control, shared, sample_rate) = self.half.parts();
-        control.set_pattern_timing_origin(beat)
     }
     fn set_metronome(&mut self, enabled: i32, numerator: i32, denominator: i32, volume: f32) {
         #[allow(unused_variables)]
@@ -359,13 +342,13 @@ half_methods! { ControlHalf, control_half;
     fn set_sample(&mut self, instrument: i32, left: &[f32], rate: f64) -> bool {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
-        control.set_sample(shared, sample_rate, instrument, Some(Pcm { left, right: None, rate }))
+        control.set_sample(shared, instrument, Some(Pcm { left, right: None, rate }))
     }
     /// `set_sample(e, instrument, nullptr, nullptr, 0, rate)`: remove the sample.
     fn clear_sample(&mut self, instrument: i32) -> bool {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
-        control.set_sample(shared, sample_rate, instrument, None)
+        control.set_sample(shared, instrument, None)
     }
     fn set_slice_points(&mut self, instrument: i32, positions: &[f32]) {
         #[allow(unused_variables)]
@@ -383,7 +366,6 @@ half_methods! { ControlHalf, control_half;
         let (control, shared, sample_rate) = self.half.parts();
         control.add_sample_zone(
             shared,
-            sample_rate,
             instrument,
             Pcm { left, right: None, rate },
             key_low,
@@ -399,7 +381,7 @@ half_methods! { ControlHalf, control_half;
     fn set_audio_asset(&mut self, asset: i32, left: &[f32], rate: f64) -> bool {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
-        control.set_audio_asset(shared, sample_rate, asset, Some(Pcm { left, right: None, rate }))
+        control.set_audio_asset(shared, asset, Some(Pcm { left, right: None, rate }))
     }
     fn clear_audio_clips(&mut self) {
         #[allow(unused_variables)]
@@ -414,7 +396,7 @@ half_methods! { ControlHalf, control_half;
     fn duration(&mut self, song_mode: i32) -> f64 {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
-        control.duration(sample_rate, song_mode != 0)
+        control.duration(song_mode != 0)
     }
 
     // ---- commands ----
@@ -504,16 +486,6 @@ half_methods! { RenderHalf, render_half;
     /// One output bus at a graph time, counted as a render-thread call.
     fn render_bus_into(&mut self, bus: i32, sample_time: u64, left: &mut [f32], right: &mut [f32]) {
         realtime(|| self.half.render_bus(bus, sample_time, left, right));
-    }
-    /// The clock span as a status: `out` is written only when the result is `CLOCK_OK`.
-    fn clock_span(&mut self, graph_frame: i64, requested_frames: u32, upstream_latency_frames: i64, out: &mut ClockSpan) -> i32 {
-        match realtime(|| self.half.clock_span(graph_frame, requested_frames, upstream_latency_frames)) {
-            Ok(span) => {
-                *out = span;
-                CLOCK_OK
-            }
-            Err(error) => error.status(),
-        }
     }
     fn capture_transport(&mut self) -> STTransportState {
         realtime(|| self.half.capture_transport())

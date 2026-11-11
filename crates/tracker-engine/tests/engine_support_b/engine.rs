@@ -61,8 +61,8 @@ impl Engine {
 
     /// `commit_update_checked`: the error text instead of `0` + buffer.
     pub fn commit_update_checked(&mut self) -> Result<(), String> {
-        let (c, sh, rate) = self.control();
-        c.commit(sh, rate)
+        let (c, sh, _) = self.control();
+        c.commit(sh)
     }
 
     pub fn cancel_update(&mut self) {
@@ -78,24 +78,6 @@ impl Engine {
 
     pub fn set_timing(&mut self, bpm: f64, lines_per_beat: i32, swing: f32, master_volume: f32) {
         self.control().0.set_timing(bpm, lines_per_beat, swing, master_volume);
-    }
-
-    pub fn set_timing_map(
-        &mut self,
-        tempos: &[ClockTempoEvent],
-        meters: &[ClockMeterEvent],
-        revision: u64,
-    ) -> Result<(), String> {
-        let (c, _, rate) = self.control();
-        c.set_timing_map(rate, tempos, meters, revision)
-    }
-
-    pub fn clear_timing_map(&mut self) {
-        self.control().0.clear_timing_map();
-    }
-
-    pub fn set_pattern_timing_origin(&mut self, beat: f64) -> bool {
-        self.control().0.set_pattern_timing_origin(beat)
     }
 
     pub fn set_metronome(&mut self, enabled: bool, numerator: i32, denominator: i32, volume: f32) {
@@ -237,14 +219,14 @@ impl Engine {
 
     /// `set_sample(e, instrument, left, right, frames, rate)` with PCM.
     pub fn set_sample(&mut self, instrument: i32, left: &[f32], right: Option<&[f32]>, rate: f64) -> bool {
-        let (c, sh, engine_rate) = self.control();
-        c.set_sample(sh, engine_rate, instrument, Some(Pcm { left, right, rate }))
+        let (c, sh, _) = self.control();
+        c.set_sample(sh, instrument, Some(Pcm { left, right, rate }))
     }
 
     /// `set_sample(e, instrument, nullptr, nullptr, 0, rate)`: clears the sample.
     pub fn clear_sample(&mut self, instrument: i32) -> bool {
-        let (c, sh, engine_rate) = self.control();
-        c.set_sample(sh, engine_rate, instrument, None)
+        let (c, sh, _) = self.control();
+        c.set_sample(sh, instrument, None)
     }
 
     pub fn set_slice_points(&mut self, instrument: i32, positions: &[f32]) {
@@ -252,8 +234,8 @@ impl Engine {
     }
 
     pub fn set_sample_cycle(&mut self, instrument: i32, frames: i32) -> bool {
-        let (c, sh, rate) = self.control();
-        c.set_sample_cycle(sh, rate, instrument, frames)
+        let (c, sh, _) = self.control();
+        c.set_sample_cycle(sh, instrument, frames)
     }
 
     pub fn clear_zones(&mut self, instrument: i32) {
@@ -262,14 +244,14 @@ impl Engine {
 
     /// `set_audio_asset` with PCM.
     pub fn set_audio_asset(&mut self, asset: i32, left: &[f32], right: Option<&[f32]>, rate: f64) -> bool {
-        let (c, sh, engine_rate) = self.control();
-        c.set_audio_asset(sh, engine_rate, asset, Some(Pcm { left, right, rate }))
+        let (c, sh, _) = self.control();
+        c.set_audio_asset(sh, asset, Some(Pcm { left, right, rate }))
     }
 
     /// `set_audio_asset(e, asset, nullptr, nullptr, 0, rate)`: clears the slot.
     pub fn clear_audio_asset(&mut self, asset: i32) -> bool {
-        let (c, sh, engine_rate) = self.control();
-        c.set_audio_asset(sh, engine_rate, asset, None)
+        let (c, sh, _) = self.control();
+        c.set_audio_asset(sh, asset, None)
     }
 
     pub fn clear_audio_clips(&mut self) {
@@ -312,8 +294,7 @@ impl Engine {
 
     /// `duration(e, songMode)`
     pub fn duration(&mut self, song_mode: bool) -> f64 {
-        let (c, _, rate) = self.control();
-        c.duration(rate, song_mode)
+        self.control().0.duration(song_mode)
     }
 
     // ---- commands ----
@@ -457,17 +438,6 @@ impl Engine {
 
     pub fn reset_render_cache(&self) {
         self.e.status().reset_render_cache();
-    }
-
-    /// The clock span as a status; `out` is written only for `CLOCK_OK`.
-    pub fn clock_span(&mut self, graph_frame: i64, requested: u32, latency: i64, out: &mut ClockSpan) -> i32 {
-        match self.e.render().clock_span(graph_frame, requested, latency) {
-            Ok(span) => {
-                *out = span;
-                CLOCK_OK
-            }
-            Err(error) => error.status(),
-        }
     }
 
     pub fn capture_transport(&mut self) -> STTransportState {

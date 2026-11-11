@@ -10,10 +10,8 @@ use super::abi::*;
 use super::control::Control;
 use super::project::*;
 use super::state::*;
-use super::timing::EngineTiming;
 use super::util::{clamp, cmin, finite, finite64};
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::Arc;
 
 /// Planar PCM handed to the engine (copied; `right` defaults to `left`).
 #[derive(Clone, Copy)]
@@ -136,8 +134,8 @@ impl Control {
     }
 
     /// "Publishes at once outside an update": commit unless a begin/commit transaction is open.
-    fn publish_outside_update(&mut self, sh: &Shared, sample_rate: f64) -> bool {
-        self.updating || self.commit(sh, sample_rate).is_ok()
+    fn publish_outside_update(&mut self, sh: &Shared) -> bool {
+        self.updating || self.commit(sh).is_ok()
     }
 
     /// Give a new sample to the engine's sample list and return a counted reference to it.
@@ -159,41 +157,6 @@ impl Control {
         p.lpb = clamp(lines_per_beat, 1, 32);
         p.swing = clamp(finite(swing, 0.0), 0.0, 0.95);
         p.master = clamp(finite(master_volume, 0.7), 0.0, 2.0);
-    }
-
-    /// Failure leaves the draft map unchanged.
-    pub fn set_timing_map(
-        &mut self,
-        sample_rate: f64,
-        tempos: &[ClockTempoEvent],
-        meters: &[ClockMeterEvent],
-        revision: u64,
-    ) -> Result<(), String> {
-        let map = Arc::new(EngineTiming::new(sample_rate, tempos, meters, revision)?);
-        let map = match &self.view().timing {
-            Some(existing) if existing.matches(&map) => existing.clone(),
-            _ => {
-                self.timing_maps.push(map.clone());
-                map
-            }
-        };
-        self.edit().timing = Some(map);
-        Ok(())
-    }
-
-    /// Back to the single project tempo of `set_timing`.
-    pub fn clear_timing_map(&mut self) {
-        self.edit().timing = None;
-    }
-
-    /// The quarter beat of the timing map at which the pattern timeline starts. False (and no
-    /// change) for a beat outside 0..=1000000.
-    pub fn set_pattern_timing_origin(&mut self, beat: f64) -> bool {
-        if !beat.is_finite() || beat < 0.0 || beat > 1000000.0 {
-            return false;
-        }
-        self.edit().pattern_origin_beat = beat;
-        true
     }
 
     /// The metronome: on/off, the meter that places its accents, and its volume.
@@ -663,7 +626,7 @@ impl Control {
 
     /// `None` clears the instrument's sample. Publishes at once outside
     /// an update.
-    pub fn set_sample(&mut self, sh: &Shared, sample_rate: f64, instrument: i32, pcm: Option<Pcm>) -> bool {
+    pub fn set_sample(&mut self, sh: &Shared, instrument: i32, pcm: Option<Pcm>) -> bool {
         if !self.view().has_instrument(instrument) {
             return false;
         }
@@ -679,7 +642,7 @@ impl Control {
             }
         };
         self.edit().instruments[index].set_sample(reference);
-        self.publish_outside_update(sh, sample_rate)
+        self.publish_outside_update(sh)
     }
 
     /// An empty list clears the manual slices.
@@ -699,7 +662,7 @@ impl Control {
 
     /// Frames per wavetable cycle of an instrument's sample (0, or
     /// `ST_WAVETABLE_MIN_FRAME`..=`ST_WAVETABLE_MAX_FRAME`). Publishes at once outside an update.
-    pub fn set_sample_cycle(&mut self, sh: &Shared, sample_rate: f64, instrument: i32, frames: i32) -> bool {
+    pub fn set_sample_cycle(&mut self, sh: &Shared, instrument: i32, frames: i32) -> bool {
         if !self.view().has_instrument(instrument)
             || frames < 0
             || (frames > 0 && (frames < ST_WAVETABLE_MIN_FRAME || frames > ST_WAVETABLE_MAX_FRAME))
@@ -707,7 +670,7 @@ impl Control {
             return false;
         }
         self.edit().instruments[instrument as usize].cycle_frames = frames;
-        self.publish_outside_update(sh, sample_rate)
+        self.publish_outside_update(sh)
     }
 
     /// Removes every key/velocity zone of an instrument.
@@ -724,7 +687,6 @@ impl Control {
     pub fn add_sample_zone(
         &mut self,
         sh: &Shared,
-        sample_rate: f64,
         instrument: i32,
         pcm: Pcm,
         key_low: i32,
@@ -752,7 +714,7 @@ impl Control {
         zone.tune = clamp(finite(tune, 0.0), -96.0, 96.0);
         zone.volume = clamp(finite(volume, 1.0), 0.0, 2.0);
         self.edit().instruments[index].zones.push(zone);
-        self.publish_outside_update(sh, sample_rate)
+        self.publish_outside_update(sh)
     }
 
     /// Start, end and loop points of one zone as fractions of its sample (0..=1), and its pan.
@@ -816,7 +778,7 @@ impl Control {
     }
 
     /// `None` clears the slot. Publishes at once outside an update.
-    pub fn set_audio_asset(&mut self, sh: &Shared, sample_rate: f64, asset: i32, pcm: Option<Pcm>) -> bool {
+    pub fn set_audio_asset(&mut self, sh: &Shared, asset: i32, pcm: Option<Pcm>) -> bool {
         if asset < 0 || asset >= AUDIO_ASSETS as i32 {
             return false;
         }
@@ -833,7 +795,7 @@ impl Control {
             }
         };
         self.edit().audio_assets[index].sample = reference;
-        self.publish_outside_update(sh, sample_rate)
+        self.publish_outside_update(sh)
     }
 
     /// Song clips, pattern clips and song tail clips.
@@ -876,8 +838,6 @@ impl Control {
             fade_in: clamp(finite(fade_in, 0.005), 0.0, 3600.0),
             fade_out: clamp(finite(fade_out, 0.005), 0.0, 3600.0),
             muted,
-            mapped_start: 0,
-            mapped_end: 0,
         });
     }
 
@@ -919,17 +879,14 @@ impl Control {
         p.song_tail_clips.push(SongTailClip { asset, track, start: start_frame, gain: clamp(finite(gain, 1.0), 0.0, 4.0) });
     }
 
-    /// Excludes release/send tails; Pattern mode uses the active pattern.
-    pub fn duration(&self, sample_rate: f64, song_mode: bool) -> f64 {
+    /// The published song's length in seconds, or the active pattern's when `song_mode` is
+    /// false. Excludes release and send tails.
+    pub fn duration(&self, song_mode: bool) -> f64 {
         let p = &self.control;
         if song_mode {
-            return p.projected_song_duration(sample_rate);
+            return p.song_duration();
         }
-        if p.timing.is_some() {
-            p.mapped_pattern_end.wrapping_sub(p.mapped_pattern_start) as f64 / sample_rate
-        } else {
-            p.pattern_rows(p.active_pattern) * 60.0 / p.bpm / p.lpb as f64
-        }
+        p.pattern_rows(p.active_pattern) * 60.0 / p.bpm / p.lpb as f64
     }
 
     // ---- commands (the control thread is the command ring's single producer) ----
@@ -951,7 +908,8 @@ impl Control {
         self.queue_transport(sh, Command::new(CMD_COUNT_IN, song_mode as i32, clamp(bars, 1, 4), 0, 0, 0.0), false);
     }
 
-    /// Queues the recording flag of the transport (`STStatus::recording`, `CLOCK_RECORDING`).
+    /// Queues the recording flag of the transport (`STStatus::recording`,
+    /// `ST_INPUT_CLOCK_RECORDING` on input acknowledgements).
     pub fn set_recording(&mut self, sh: &Shared, enabled: bool) {
         self.queue(sh, &Command::new(CMD_RECORDING, enabled as i32, 0, 0, 0, 0.0));
     }

@@ -320,7 +320,7 @@ impl ProjectSync {
     /// The engine asset holding the audio of `path` (a frozen track's print), installed if it is
     /// not yet; `None` while the file is not decoded or cannot be. Like timeline clips, prints
     /// share the engine's 256 asset slots, one per distinct file.
-    fn print_asset(&mut self, control: &mut tracker_engine::engine::control::Control, shared: &tracker_engine::engine::state::Shared, sample_rate: f64, path: &str, report: &mut ApplyReport) -> Result<Option<i32>, String> {
+    fn print_asset(&mut self, control: &mut tracker_engine::engine::control::Control, shared: &tracker_engine::engine::state::Shared, path: &str, report: &mut ApplyReport) -> Result<Option<i32>, String> {
         if !self.clip_assets.contains_key(path) {
             let used: Vec<i32> = self.clip_assets.values().map(|(slot, _)| *slot).collect();
             let Some(slot) = (0..256).find(|slot| !used.contains(slot)) else { return Ok(None) };
@@ -330,7 +330,7 @@ impl ProjectSync {
         let (slot, installed) = self.clip_assets[path];
         let identity = pcm.as_ref().map(|pcm| Arc::as_ptr(pcm) as usize);
         if installed != identity {
-            let accepted = control.set_audio_asset(shared, sample_rate, slot, pcm.as_ref().map(|pcm| Pcm { left: &pcm.left, right: Some(&pcm.right), rate: pcm.sample_rate }));
+            let accepted = control.set_audio_asset(shared, slot, pcm.as_ref().map(|pcm| Pcm { left: &pcm.left, right: Some(&pcm.right), rate: pcm.sample_rate }));
             if pcm.is_some() && !accepted {
                 return Err(format!("The engine could not load the frozen audio {path}."));
             }
@@ -361,10 +361,9 @@ impl ProjectSync {
         let mut report = ApplyReport::default();
         let tracks = project.track_list();
         let instruments = project.instrument_list();
-        let (control, shared, sample_rate) = engine.parts();
+        let (control, shared, _) = engine.parts();
         control.begin_update(shared);
         control.clear_project();
-        control.clear_timing_map();
         control.set_host_automation_map(spec.host_map);
         control.set_host_mixing_tracks(true, &[], true);
         control.set_timing(project.bpm(), clamp_i32(project.lines_per_beat()), project.swing() as f32, project.master_volume() as f32);
@@ -415,14 +414,14 @@ impl ProjectSync {
             if self.instrument_samples[index] != installed {
                 match &pcm {
                     Some(pcm) => {
-                        if !control.set_sample(shared, sample_rate, index as i32, Some(Pcm { left: &pcm.left, right: Some(&pcm.right), rate: pcm.sample_rate })) {
+                        if !control.set_sample(shared, index as i32, Some(Pcm { left: &pcm.left, right: Some(&pcm.right), rate: pcm.sample_rate })) {
                             return Err(format!("The engine could not load the sample of instrument {}.", index + 1));
                         }
-                        control.set_sample_cycle(shared, sample_rate, index as i32, pcm.cycle_frames.unwrap_or(0) as i32);
+                        control.set_sample_cycle(shared, index as i32, pcm.cycle_frames.unwrap_or(0) as i32);
                         report.samples_installed += 1;
                     }
                     None => {
-                        control.set_sample(shared, sample_rate, index as i32, None);
+                        control.set_sample(shared, index as i32, None);
                     }
                 }
                 self.instrument_samples[index] = installed;
@@ -437,7 +436,6 @@ impl ProjectSync {
                     let Some(pcm) = pcm else { continue };
                     let accepted = control.add_sample_zone(
                         shared,
-                        sample_rate,
                         index as i32,
                         Pcm { left: &pcm.left, right: Some(&pcm.right), rate: pcm.sample_rate },
                         clamp_i32(zone.key_low()),
@@ -458,7 +456,7 @@ impl ProjectSync {
         }
         for index in count..self.instrument_samples.len() {
             if self.instrument_samples[index].take().is_some() {
-                control.set_sample(shared, sample_rate, index as i32, None);
+                control.set_sample(shared, index as i32, None);
             }
             if self.zone_signatures[index].take().is_some() {
                 control.clear_zones(index as i32);
@@ -608,7 +606,7 @@ impl ProjectSync {
         let stale: Vec<String> = self.clip_assets.keys().filter(|path| !wanted.contains(&path.as_str())).cloned().collect();
         for path in stale {
             if let Some((slot, Some(_))) = self.clip_assets.remove(&path) {
-                control.set_audio_asset(shared, sample_rate, slot, None);
+                control.set_audio_asset(shared, slot, None);
             }
         }
         for clip in clips {
@@ -624,7 +622,7 @@ impl ProjectSync {
             let (slot, installed) = self.clip_assets[path];
             let identity = pcm.as_ref().map(|pcm| Arc::as_ptr(pcm) as usize);
             if installed != identity {
-                let accepted = control.set_audio_asset(shared, sample_rate, slot, pcm.as_ref().map(|pcm| Pcm { left: &pcm.left, right: Some(&pcm.right), rate: pcm.sample_rate }));
+                let accepted = control.set_audio_asset(shared, slot, pcm.as_ref().map(|pcm| Pcm { left: &pcm.left, right: Some(&pcm.right), rate: pcm.sample_rate }));
                 if pcm.is_some() && !accepted {
                     return Err(format!("The engine could not load the audio clip {path}."));
                 }
@@ -649,9 +647,9 @@ impl ProjectSync {
             match print {
                 crate::freeze::EnginePrint::Pattern { track, pattern, head, loop_print } => {
                     // Both files are asked for at once, so that they are decoded together.
-                    let head = self.print_asset(control, shared, sample_rate, head, &mut report)?;
+                    let head = self.print_asset(control, shared, head, &mut report)?;
                     let loop_asset = match loop_print {
-                        Some(path) => self.print_asset(control, shared, sample_rate, path, &mut report)?.unwrap_or(-1),
+                        Some(path) => self.print_asset(control, shared, path, &mut report)?.unwrap_or(-1),
                         None => -1,
                     };
                     if let Some(head) = head {
@@ -659,14 +657,14 @@ impl ProjectSync {
                     }
                 }
                 crate::freeze::EnginePrint::SongTail { track, path, start_frame } => {
-                    if let Some(asset) = self.print_asset(control, shared, sample_rate, path, &mut report)? {
+                    if let Some(asset) = self.print_asset(control, shared, path, &mut report)? {
                         control.add_song_tail_clip(asset, *track as i32, *start_frame, 1.0);
                     }
                 }
             }
         }
         report.problems.dedup();
-        control.commit(shared, sample_rate)?;
+        control.commit(shared)?;
         self.epoch = control.pattern_epoch();
         self.context = context;
         self.patterns = sent;

@@ -12,8 +12,8 @@
 //!   the next block boundary, consumes transport and note commands from a bounded
 //!   single-producer/single-consumer ring, and never blocks, locks, allocates or frees. Replaced
 //!   projects go onto a lock-free retired list.
-//! * `collect()` on the control thread destroys retired projects and the samples and timing maps
-//!   nothing refers to any more.
+//! * `collect()` on the control thread destroys retired projects and the samples nothing refers
+//!   to any more.
 //! * Status, peaks and the voice playhead snapshot are atomics / seqlocks readable anywhere
 //!   ([`host::StatusHandle`]).
 //!
@@ -25,15 +25,14 @@
 //! | [`abi`] | the plain data and constants of the API (`STStep`, `STEvent`, `STStatus`, `ST_*`), bus arithmetic |
 //! | [`edits`] | the control thread's operations: project setters and command producers (methods of `Control`) |
 //! | [`control`] | draft/commit/collect, the render tables of a project, engine construction and destruction |
-//! | [`render_cache`] | bus history (`render_bus`, `render_channel`), retained clock/freeze history and span queries |
-//! | [`transport`] | project adoption, Play/Stop/Seek, clock, loops, queued jumps, input acks, checkpoints |
+//! | [`render_cache`] | bus history (`render_bus`, `render_channel`) |
+//! | [`transport`] | project adoption, Play/Stop/Seek, the musical clock, loops, queued jumps, input acks, checkpoints |
 //! | [`sequencer`] | row and step triggering, step effects, ratchets, plug-in locks, automation lanes |
 //! | [`voice`] | note start and end, and all voice DSP |
 //! | [`mixer`] | the block renderer: channel mix, sends (delay/reverb), metronome, timeline clips |
-//! | [`project`] | samples, zones, instruments, steps, lanes, patterns, the project and its timing compilation |
-//! | [`tables`] | per-channel render tables, bus rings, peak store, freeze history |
+//! | [`project`] | samples, zones, instruments, steps, lanes, patterns, the project |
+//! | [`tables`] | per-channel render tables, bus rings, peak store |
 //! | [`state`] | the data of the two halves and of what they share; `Voice`, `Scheduled`, `Command` |
-//! | [`timing`] | the engine's use of `crate::clock` |
 //! | [`util`] | `clamp`/`cmin`/`cmax`, `Ring`, `FloatBlock`, the random generator |
 //!
 //! The modules below `host` and `abi` are public because the mixer crate uses a few of their
@@ -68,7 +67,6 @@ pub mod render_cache;
 pub mod sequencer;
 pub mod state;
 pub mod tables;
-pub mod timing;
 pub mod transport;
 pub mod util;
 pub mod voice;
@@ -78,4 +76,4 @@ mod tests;
 
 pub use abi::*;
 pub use host::Engine;
-pub use render_cache::SpanError;
+

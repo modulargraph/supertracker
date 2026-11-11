@@ -16,7 +16,6 @@ use engine_support_a::core_helpers::*;
 use engine_support_a::tone::*;
 use engine_support_a::{assert_zero_render_allocations, Engine, SetOnDrop};
 use std::sync::atomic::{AtomicBool, Ordering};
-use tracker_engine::clock::{ClockMeterEvent, ClockSpan, ClockTempoEvent, CLOCK_LOOPING, CLOCK_OK};
 use tracker_engine::engine::*;
 
 // Pattern loop range: rows 0..15 each carry note 60+row; one row is 6000 frames at 120 BPM, 4 LPB.
@@ -112,33 +111,6 @@ fn test_pattern_loop_range() {
         e.set_pattern_loop(1, 2);
         e.play(0);
         assert_notes(&note_ons(&mut e, 24000), &[(0, 61), (4500, 62), (12000, 61), (16500, 62)]);
-    }
-    // Mapped timing: the loop is the clock's loop domain and musical beats stay continuous for scheduling.
-    {
-        let mut e = Engine::new();
-        configure_loop_music(&mut e, 0.0);
-        e.begin_update();
-        let tempos = [ClockTempoEvent { beat: 0.0, bpm: 120.0 }];
-        let meters = [ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
-        assert!(e.set_timing_map(&tempos, &meters, 5).is_ok());
-        assert!(e.commit_update_checked().is_ok());
-        e.set_pattern_loop(4, 7);
-        e.play(0);
-        let on = note_ons(&mut e, 12 * 6000);
-        assert!(on.len() == 12);
-        for i in 0..on.len() {
-            assert!((on[i].frame as i64 - (i * 6000) as i64).abs() <= 1);
-            assert!(on[i].e.note == 64 + (i % 4) as i32);
-        }
-        note_ons(&mut e, 1000);
-        let status = e.status();
-        assert!(status.row == 4 && status.beat >= 1.0 && status.beat < 1.1);
-        let mut span = ClockSpan::default();
-        let mut a = Audio::new(512);
-        bus_render(&mut e, 0, 0, &mut a);
-        assert!(e.clock_span(100, 64, 0, &mut span) == CLOCK_OK);
-        assert!(span.context.flags & CLOCK_LOOPING != 0);
-        assert!((span.context.loop_start_beat - 1.0).abs() < 1e-9 && (span.context.loop_end_beat - 2.0).abs() < 1e-9);
     }
     assert_zero_render_allocations();
 }
@@ -309,25 +281,6 @@ fn test_queued_jumps() {
         e.queue_jump(-1, 1);
         let _on = note_ons(&mut e, 17 * 6000);
         assert!(e.status().song_mode == 1 && e.status().sequence == 1);
-    }
-    // Mapped timing: the jump is sample-accurate on the clock and keeps musical time continuous.
-    {
-        let mut e = Engine::new();
-        configure_queue_music(&mut e, &[0]);
-        e.begin_update();
-        let tempos = [ClockTempoEvent { beat: 0.0, bpm: 120.0 }];
-        let meters = [ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
-        assert!(e.set_timing_map(&tempos, &meters, 9).is_ok());
-        assert!(e.commit_update_checked().is_ok());
-        e.play(0);
-        note_ons(&mut e, 6000);
-        e.queue_jump(1, -1);
-        let on = note_ons(&mut e, 17 * 6000);
-        assert!(on.len() == 17);
-        assert!(on[14].e.note == 75);
-        assert!(on[15].e.note == 80 && (on[15].frame as i64 - (15 * 6000) as i64).abs() <= 1);
-        assert!(on[16].e.note == 81 && (on[16].frame as i64 - (16 * 6000) as i64).abs() <= 1);
-        assert!(e.status().pattern == 1);
     }
     // Live voices keep sounding over a queued pattern change.
     {

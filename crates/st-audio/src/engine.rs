@@ -121,10 +121,10 @@ impl Core {
         let (mut control, render, status) = host::split(sample_rate).ok_or_else(|| format!("The audio engine cannot run at {sample_rate} Hz."))?;
         {
             // The host mixes from the first block on.
-            let (edit, shared, rate) = control.parts();
+            let (edit, shared, _) = control.parts();
             edit.begin_update(shared);
             edit.set_host_mixing_tracks(true, &[], true);
-            edit.commit(shared, rate)?;
+            edit.commit(shared)?;
         }
         let mut compiler = Compiler::new(inserts, sample_rate, MAX_BLOCK);
         let spec = GraphSpec::empty();
@@ -396,8 +396,8 @@ impl AudioEngine {
     /// Song (or active pattern) duration in seconds, as the engine computes it.
     pub fn duration(&self, song: bool) -> f64 {
         let mut state = self.lock();
-        let (control, _, rate) = state.core.control.parts();
-        control.duration(rate, song)
+        let (control, _, _) = state.core.control.parts();
+        control.duration(song)
     }
 
     // ---- transport -----------------------------------------------------------------------
@@ -582,7 +582,9 @@ impl AudioEngine {
                 result["applied"] = json!(applied);
                 result["playing"] = json!(applied && ack.flags & ST_INPUT_CLOCK_PLAYING != 0);
                 result["recording"] = json!(applied && ack.flags & ST_INPUT_CLOCK_RECORDING != 0);
-                result["mapped"] = json!(applied && ack.flags & ST_INPUT_CLOCK_MAPPED != 0);
+                // The engine plays at the project's one tempo: an edge is never on a tempo map.
+                // The interface still reads this key and `timingRevision` below.
+                result["mapped"] = json!(false);
                 result["pattern"] = json!(ack.pattern);
                 result["row"] = json!(ack.row);
                 result["sequence"] = json!(ack.sequence);
@@ -592,7 +594,7 @@ impl AudioEngine {
                     result["graphFrame"] = json!(ack.graph_frame.to_string());
                 }
                 if applied && ack.flags & ST_INPUT_CLOCK_PLAYING != 0 && ack.distance_beats.is_finite() {
-                    result["recordingClock"] = json!({ "distanceBeats": ack.distance_beats, "runID": ack.run_id.to_string(), "timingRevision": ack.timing_revision.to_string() });
+                    result["recordingClock"] = json!({ "distanceBeats": ack.distance_beats, "runID": ack.run_id.to_string(), "timingRevision": "0" });
                 }
                 finished.push((item.completion, result));
             }
@@ -702,7 +704,7 @@ impl AudioEngine {
             "playing": playing, "songMode": engine.song_mode != 0, "pattern": engine.pattern, "row": engine.row, "sequence": engine.sequence,
             "position": engine.position, "seconds": engine.seconds, "beat": engine.beat, "bpm": engine.bpm, "bar": engine.bar,
             "barStartBeat": engine.bar_start_beat, "numerator": engine.numerator, "denominator": engine.denominator,
-            "timingRevision": engine.timing_revision.to_string(), "transportSeekRevision": engine.transport_seek_revision.to_string(),
+            "timingRevision": "0", "transportSeekRevision": engine.transport_seek_revision.to_string(),
             "peakL": peak_l, "peakR": peak_r, "inputPeakLeft": 0.0, "inputPeakRight": 0.0, "inputMetering": false,
             "trackPeaks": track_peaks, "busPeaks": bus_peaks,
             "routing": routing_status(core), "routingFailure": Value::Null,

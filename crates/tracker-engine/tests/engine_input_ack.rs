@@ -18,23 +18,9 @@ fn render(e: &mut Engine, count: u32) {
     realtime(|| e.render_null(count));
 }
 
-fn tempos() -> [ClockTempoEvent; 3] {
-    [
-        ClockTempoEvent { beat: 0.0, bpm: 120.0 },
-        ClockTempoEvent { beat: 0.5, bpm: 60.0 },
-        ClockTempoEvent { beat: 1.5, bpm: 180.0 },
-    ]
-}
-
-fn meters() -> [ClockMeterEvent; 2] {
-    [
-        ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 },
-        ClockMeterEvent { beat: 0.75, numerator: 7, denominator: 8 },
-    ]
-}
-
-/// C++ `fixture(e, mapped = true, rows = 4, songLoop = false, swing = 0, variable = true)`.
-fn fixture_with(e: &mut Engine, mapped: bool, rows: i32, song_loop: bool, swing: f32, variable: bool) {
+/// One track with a sine instrument, two patterns of `rows` rows in the song (120 BPM, 4 lines
+/// per beat: a row lasts 6000 frames), host mixing on.
+fn fixture_with(e: &mut Engine, rows: i32, song_loop: bool, swing: f32) {
     e.begin_update();
     e.clear_project();
     e.set_track_count(1);
@@ -56,23 +42,12 @@ fn fixture_with(e: &mut Engine, mapped: bool, rows: i32, song_loop: bool, swing:
     track.reverb_send = 0.0;
     e.set_track(0, track);
     e.set_host_mixing(true, 1);
-    if mapped {
-        let (tempos, meters) = (tempos(), meters());
-        assert!(e
-            .set_timing_map(&tempos[..if variable { 3 } else { 1 }], &meters[..if variable { 2 } else { 1 }], 91)
-            .is_ok());
-    }
     assert!(e.commit_update_checked().is_ok());
 }
 
-/// `fixture(e)`
+/// The fixture with four rows per pattern, no song loop and no swing.
 fn fixture(e: &mut Engine) {
-    fixture_with(e, true, 4, false, 0.0, true);
-}
-
-/// `fixture(e, mapped)`
-fn fixture_mapped(e: &mut Engine, mapped: bool) {
-    fixture_with(e, mapped, 4, false, 0.0, true);
+    fixture_with(e, 4, false, 0.0);
 }
 
 /// C++ `edge(e, id, type = ST_INPUT_NOTE_ON, apply = false)`.
@@ -119,7 +94,7 @@ fn zero_render_allocations() {
 }
 
 #[test]
-fn exact_applied_onset_row_and_quarter_beat_distance_across_tempo_meter_boundaries() {
+fn exact_applied_onset_row_and_quarter_beat_distance_across_rows_and_patterns() {
     let mut e = Engine::new();
     fixture(&mut e);
     e.play(1);
@@ -127,12 +102,8 @@ fn exact_applied_onset_row_and_quarter_beat_distance_across_tempo_meter_boundari
     render(&mut e, 1);
     let first = ack(&mut e);
     assert!(first.status == ST_INPUT_ACK_APPLIED && first.pattern == 0 && first.row == 0 && first.sequence == 0);
-    assert!(
-        first.request_id == 1
-            && first.timing_revision == 91
-            && first.graph_frame == i64::MIN
-            && first.render_frame == 0
-    );
+    assert!(first.request_id == 1 && first.graph_frame == i64::MIN && first.render_frame == 0);
+    assert!(first.flags == ST_INPUT_CLOCK_PLAYING);
     equal(first.distance_beats, 0.0);
     render(&mut e, 5999);
     assert!(edge_off(&mut e, 2));
@@ -140,7 +111,8 @@ fn exact_applied_onset_row_and_quarter_beat_distance_across_tempo_meter_boundari
     let row = ack(&mut e);
     assert!(row.row == 1 && row.render_frame == 6000 && row.run_id == first.run_id);
     equal(row.distance_beats, 0.25);
-    render(&mut e, 57999);
+    // Row 3 of the second pattern starts 7 rows (1.75 beats) into the song.
+    render(&mut e, 35999);
     assert!(edge(&mut e, 3));
     render(&mut e, 1);
     let late = ack(&mut e);
@@ -148,7 +120,7 @@ fn exact_applied_onset_row_and_quarter_beat_distance_across_tempo_meter_boundari
         late.pattern == 1
             && late.row == 3
             && late.sequence == 1
-            && late.render_frame == 64000
+            && late.render_frame == 42000
             && late.run_id == first.run_id
     );
     equal(late.distance_beats, 1.75);
@@ -159,56 +131,52 @@ fn exact_applied_onset_row_and_quarter_beat_distance_across_tempo_meter_boundari
 #[test]
 fn swung_pattern_onset_arm_changes_and_three_complete_loops_retain_recording_run_identity() {
     let mut e = Engine::new();
-    fixture_with(&mut e, true, 2, false, 0.5, false);
-    e.begin_update();
-    assert!(e.set_pattern_timing_origin(0.25));
-    e.commit_update();
+    // Swing 0.5: row 0 lasts 9000 frames, row 1 lasts 3000.
+    fixture_with(&mut e, 2, false, 0.5);
     e.play(0);
     assert!(edge(&mut e, 1));
     render(&mut e, 1);
     let first = ack(&mut e);
-    equal(first.distance_beats, 0.25);
+    equal(first.distance_beats, 0.0);
     render(&mut e, 8999);
     assert!(edge(&mut e, 2));
     e.set_recording(true);
     render(&mut e, 1);
     let swung = ack(&mut e);
     assert!(swung.row == 1 && swung.run_id == first.run_id && (swung.flags & ST_INPUT_CLOCK_RECORDING) != 0);
-    equal(swung.distance_beats, 0.625);
+    equal(swung.distance_beats, 0.375);
     render(&mut e, 26999);
     assert!(edge_off(&mut e, 3));
     render(&mut e, 1);
     let looped = ack(&mut e);
-    equal(looped.distance_beats, 1.75);
+    equal(looped.distance_beats, 1.5);
     assert!(looped.row == 0 && looped.run_id == first.run_id);
     zero_render_allocations();
 }
 
 #[test]
-fn mapped_fixed_song_wraps_and_unwrapped_legacy_pattern_travel_count_every_cycle() {
-    for mapped in [false, true] {
-        let mut e = Engine::new();
-        fixture_with(&mut e, mapped, 2, true, 0.0, false);
-        e.play(1);
-        assert!(edge(&mut e, 1));
-        render(&mut e, 1);
-        let first = ack(&mut e);
-        render(&mut e, 71999);
-        assert!(edge_off(&mut e, 2));
-        render(&mut e, 1);
-        let last = ack(&mut e);
-        equal(last.distance_beats - first.distance_beats, 3.0);
-        assert!(last.run_id == first.run_id);
-    }
-    let mut legacy = Engine::new();
-    fixture_with(&mut legacy, false, 2, false, 0.0, true);
-    legacy.play(0);
-    assert!(edge(&mut legacy, 1));
-    render(&mut legacy, 36001);
-    let first = ack(&mut legacy);
-    assert!(edge(&mut legacy, 2));
-    render(&mut legacy, 1);
-    let last = ack(&mut legacy);
+fn song_wraps_and_pattern_travel_count_every_cycle() {
+    let mut e = Engine::new();
+    fixture_with(&mut e, 2, true, 0.0);
+    e.play(1);
+    assert!(edge(&mut e, 1));
+    render(&mut e, 1);
+    let first = ack(&mut e);
+    render(&mut e, 71999);
+    assert!(edge_off(&mut e, 2));
+    render(&mut e, 1);
+    let last = ack(&mut e);
+    equal(last.distance_beats - first.distance_beats, 3.0);
+    assert!(last.run_id == first.run_id);
+    let mut pattern = Engine::new();
+    fixture_with(&mut pattern, 2, false, 0.0);
+    pattern.play(0);
+    assert!(edge(&mut pattern, 1));
+    render(&mut pattern, 36001);
+    let first = ack(&mut pattern);
+    assert!(edge(&mut pattern, 2));
+    render(&mut pattern, 1);
+    let last = ack(&mut pattern);
     equal(last.distance_beats - first.distance_beats, 36001.0 / 24000.0);
     zero_render_allocations();
 }
@@ -257,7 +225,7 @@ fn command_order_discontinuities_stopped_endpoints_restore_and_zero_audio_flush_
 }
 
 #[test]
-fn ordinary_publication_and_identical_timing_retain_run_semantic_map_edits_break_it() {
+fn ordinary_publication_retains_the_run_and_timeline_edits_break_it() {
     let mut e = Engine::new();
     fixture(&mut e);
     e.play(1);
@@ -272,29 +240,23 @@ fn ordinary_publication_and_identical_timing_retain_run_semantic_map_edits_break
     assert!(edge(&mut e, 2));
     render(&mut e, 1);
     assert!(ack(&mut e).run_id == first.run_id);
-    e.begin_update();
-    let (mut t, m) = (tempos(), meters());
-    assert!(e.set_timing_map(&t, &m, 91).is_ok());
-    e.commit_update();
-    assert!(edge(&mut e, 3));
-    render(&mut e, 1);
-    assert!(ack(&mut e).run_id == first.run_id);
-    e.begin_update();
-    t[1].bpm = 70.0;
-    assert!(e.set_timing_map(&t, &m, 92).is_ok());
-    e.commit_update();
-    assert!(edge(&mut e, 4));
-    render(&mut e, 1);
-    let changed = ack(&mut e);
-    assert!(changed.run_id != first.run_id && changed.timing_revision == 92);
+    // A clip that ends after the sequence moves the song's end.
     let pcm = [0.0f32; 16];
     e.begin_update();
     assert!(e.set_audio_asset(0, &pcm, Some(&pcm), 48000.0));
     e.add_audio_clip(0, 0, 4.0, 0.25, 0.0, 1.0, 0.0, 0.0, false);
     e.commit_update();
-    assert!(edge(&mut e, 5));
+    assert!(edge(&mut e, 3));
     render(&mut e, 1);
-    assert!(ack(&mut e).run_id != changed.run_id);
+    let extended = ack(&mut e);
+    assert!(extended.run_id != first.run_id);
+    // A tempo change rescales the timeline.
+    e.begin_update();
+    e.set_timing(100.0, 4, 0.0, 1.0);
+    e.commit_update();
+    assert!(edge(&mut e, 4));
+    render(&mut e, 1);
+    assert!(ack(&mut e).run_id != extended.run_id);
     let mut unsequenced = Engine::new();
     fixture(&mut unsequenced);
     unsequenced.begin_update();
@@ -304,31 +266,13 @@ fn ordinary_publication_and_identical_timing_retain_run_semantic_map_edits_break
     unsequenced.play(0);
     assert!(edge(&mut unsequenced, 1));
     render(&mut unsequenced, 1);
-    let mut prior = ack(&mut unsequenced);
+    let prior = ack(&mut unsequenced);
     unsequenced.begin_update();
     unsequenced.set_pattern(2, 3);
     unsequenced.commit_update();
     assert!(edge(&mut unsequenced, 2));
     render(&mut unsequenced, 1);
     assert!(ack(&mut unsequenced).run_id != prior.run_id);
-    let mut collision = Engine::new();
-    fixture(&mut collision);
-    collision.play(1);
-    assert!(edge(&mut collision, 1));
-    render(&mut collision, 1);
-    prior = ack(&mut collision);
-    let same_length = [
-        ClockTempoEvent { beat: 0.0, bpm: 120.0 },
-        ClockTempoEvent { beat: 0.5, bpm: 80.0 },
-        ClockTempoEvent { beat: 1.0, bpm: 48.0 },
-        ClockTempoEvent { beat: 1.5, bpm: 180.0 },
-    ];
-    collision.begin_update();
-    assert!(collision.set_timing_map(&same_length, &m, 91).is_ok());
-    collision.commit_update();
-    assert!(edge(&mut collision, 2));
-    render(&mut collision, 1);
-    assert!(ack(&mut collision).run_id != prior.run_id);
     zero_render_allocations();
 }
 
@@ -340,8 +284,8 @@ fn same_bits(a: &[f32], b: &[f32]) -> bool {
 #[test]
 fn opt_in_note_pcm_equals_ordinary_apis_capture_only_sustain_release_leaves_voice_sounding() {
     let (mut ordinary, mut tracked) = (Engine::new(), Engine::new());
-    fixture_mapped(&mut ordinary, false);
-    fixture_mapped(&mut tracked, false);
+    fixture(&mut ordinary);
+    fixture(&mut tracked);
     ordinary.note_on(0, 0, 60, 100);
     assert!(edge_with(&mut tracked, 1, ST_INPUT_NOTE_ON, true));
     let (mut al, mut ar, mut bl, mut br) = ([0.0f32; 1024], [0.0f32; 1024], [0.0f32; 1024], [0.0f32; 1024]);
@@ -395,7 +339,7 @@ fn cached_overlapping_pulls_neither_duplicate_nor_prematurely_apply_acks_reset_b
 #[test]
 fn a_note_on_in_the_second_half_of_a_row_is_placed_on_the_next_row() {
     let mut e = Engine::new();
-    fixture_mapped(&mut e, false);
+    fixture(&mut e);
     e.play(0);
     render(&mut e, 1000);
     assert!(edge(&mut e, 1));
@@ -429,7 +373,7 @@ fn row_one_note(e: &mut Engine) {
 fn the_placed_row_skips_its_own_trigger_of_the_early_note_once() {
     for early in [false, true] {
         let mut e = Engine::new();
-        fixture_mapped(&mut e, false);
+        fixture(&mut e);
         row_one_note(&mut e);
         e.play(0);
         render(&mut e, 4000);
@@ -449,7 +393,7 @@ fn the_placed_row_skips_its_own_trigger_of_the_early_note_once() {
 fn seek_restore_and_panic_forget_a_pending_early_note_its_row_triggers() {
     for transport in 0..3 {
         let mut e = Engine::new();
-        fixture_mapped(&mut e, false);
+        fixture(&mut e);
         row_one_note(&mut e);
         e.play(0);
         render(&mut e, 4000);

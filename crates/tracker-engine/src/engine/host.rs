@@ -8,7 +8,7 @@
 //!
 //! * [`ControlHalf`]: project edits, commit, transport and note commands. One per engine, not
 //!   clonable, every operation needs `&mut self`: whoever holds it is the control thread.
-//! * [`RenderHalf`]: rendering, bus history, clock queries, events. One per engine, not
+//! * [`RenderHalf`]: rendering, bus history, events. One per engine, not
 //!   clonable, `&mut self`: whoever holds it is the audio thread.
 //! * [`StatusHandle`]: status, peaks, the voice playhead snapshot and the request mailboxes.
 //!   Clonable; any thread.
@@ -48,9 +48,9 @@
 //!    (and the samples they point to) between engines and give a ring a second producer, so
 //!    each engine has an identity and every such method checks it: a foreign `Shared` makes the
 //!    call a no-op (silence, `false`, an error), never an exchange.
-//! 5. **Raw pointers inside `Render`** (`current`, `tb`, the pinned timing map) refer to
-//!    projects, tables and maps that the engine keeps alive until the render half has let go of
-//!    them (`retired` list, `origin_pins`, sample reference counts); `Control::collect` frees
+//! 5. **Raw pointers inside `Render`** (`current`, `tb`, the samples of voices) refer to
+//!    projects, tables and samples that the engine keeps alive until the render half has let go
+//!    of them (`retired` list, sample reference counts); `Control::collect` frees
 //!    only what was handed back. The fields are private to the crate, and the constructors of
 //!    `Control`, `Render` and `Shared` are too, so safe code outside cannot forge that state.
 //! 6. **Drop.** `EngineCore` is dropped by the last `Arc`, when no handle and therefore no
@@ -61,9 +61,8 @@
 //! stopped graph. Calling them between blocks is memory-safe (they need the render half, like
 //! rendering) but changes what plays.
 
-use super::abi::{ClockSpan, STEvent, STInputAck, STStatus, STTransportState, STVoicePosition};
+use super::abi::{STEvent, STInputAck, STStatus, STTransportState, STVoicePosition};
 use super::control::Control;
-use super::render_cache::SpanError;
 use super::state::{Render, EngineCore, Shared};
 use super::tables::{TablesState, MAX_BLOCK};
 use super::util::cmin;
@@ -163,8 +162,8 @@ impl ControlHalf {
 
     /// Compile and publish the edits made since the last commit.
     pub fn commit(&mut self) -> Result<(), String> {
-        let (control, shared, rate) = self.parts();
-        control.commit(shared, rate)
+        let (control, shared, _) = self.parts();
+        control.commit(shared)
     }
 
     /// The next input acknowledgement, if the render thread has produced one. The control half
@@ -227,7 +226,7 @@ impl RenderHalf {
     ///
     /// With host mixing on (`Control::set_host_mixing_tracks`) a track bus holds the track's raw
     /// instrument and clip signal and the return bus holds the metronome. Bus history for
-    /// [`RenderHalf::render_bus`] is not kept by this call; clock history is.
+    /// [`RenderHalf::render_bus`] is not kept by this call.
     pub fn render_block(&mut self, time: u64, frames: u32) -> u32 {
         let (render, shared) = self.parts();
         render.render_block(shared, time, frames)
@@ -245,12 +244,6 @@ impl RenderHalf {
     /// ring's single consumer.
     pub fn pop_event(&mut self) -> Option<STEvent> {
         self.engine.shared.pop_event()
-    }
-
-    /// See [`Render::clock_span`].
-    pub fn clock_span(&mut self, graph_frame: i64, requested: u32, latency: i64) -> Result<ClockSpan, SpanError> {
-        let (render, shared) = self.parts();
-        render.clock_span(shared, graph_frame, requested, latency)
     }
 
     /// A checkpoint of the transport and of everything that sounds (stopped graph).
@@ -354,10 +347,7 @@ impl Render {
         // explicit cache reset would.
         if !self.cache_valid || time != self.cache_end {
             self.cache_generation = self.cache_generation.wrapping_add(1);
-            self.release_clock_origin();
-            self.timing_epoch = self.timing_epoch.wrapping_add(1);
             self.cache_end = time;
-            self.clock_begin = time;
             self.cache_valid = true;
         }
         let count = cmin(frames, MAX_BLOCK as u32);
@@ -368,9 +358,6 @@ impl Render {
         self.cache_end += count as u64;
         // No bus history is written here: nothing before `cache_end` can be read back.
         self.cache_begin = self.cache_end;
-        if self.cache_end - self.clock_begin > super::tables::CLOCK_CAPACITY as u64 {
-            self.clock_begin = self.cache_end - super::tables::CLOCK_CAPACITY as u64;
-        }
         count
     }
 }
@@ -391,7 +378,7 @@ mod tests {
         assert!(split(1_000.0).is_none(), "an unsupported rate gives no engine");
         let (mut control, mut render, status) = split(48_000.0).expect("an engine");
         {
-            let (edit, shared, rate) = control.parts();
+            let (edit, shared, _) = control.parts();
             edit.begin_update(shared);
             edit.set_host_mixing_tracks(true, &[], true);
             assert!(edit.set_track_count(2) && edit.set_instrument_count(1));
@@ -402,7 +389,7 @@ mod tests {
             instrument.volume = 1.0;
             edit.set_instrument(0, instrument);
             let tone = vec![0.5f32; 4_800];
-            assert!(edit.set_sample(shared, rate, 0, Some(Pcm { left: &tone, right: None, rate: 48_000.0 })));
+            assert!(edit.set_sample(shared, 0, Some(Pcm { left: &tone, right: None, rate: 48_000.0 })));
             edit.set_pattern(0, 16);
             edit.set_step(0, 0, 0, STStep { note: 60, instrument: 0, velocity: 127, gate: 0.0, ..Default::default() }, None);
             edit.set_sequence(&[0], false, 0);

@@ -1,39 +1,21 @@
-//! Transport and command handling (ported from the C++ engine's `TrackerEngine.cpp`): project adoption and the
-//! command queue (`refresh`), Play/Stop/Seek/count-in, the musical clock (`updateClock`), timeline
-//! resolution, row advance with song/pattern loops and queued jumps, input acknowledgements,
-//! status publication and the quiescent flush used by transport checkpoints.
+//! Transport and command handling: project adoption and the command queue (`refresh`),
+//! Play/Stop/Seek/count-in, the musical clock (`update_clock`), timeline resolution, row advance
+//! with song/pattern loops and queued jumps, input acknowledgements, status publication and the
+//! quiescent flush used by transport checkpoints.
+//!
+//! The transport counts frames at the project's one tempo: a row lasts
+//! `rate * 60 / bpm / lines per beat` frames (swing lengthens even rows and shortens odd ones),
+//! and beats, bars and seconds are derived from the frame count.
 
 use super::abi::*;
-use super::timing::fixed_clock_context;
 use super::project::Project;
 use super::state::*;
 use super::tables::LaneEventState;
-use super::util::{clamp, cmax, cmin, finite, finite64};
+use super::util::{clamp, cmax, cmin, finite, finite64, next_down};
 use super::voice::{NoteOn, VoiceSink};
 use std::sync::atomic::{fence, Ordering};
-use std::sync::Arc;
-
-/// Whether two projects share the same timing map object (C++ `shared_ptr` equality).
-fn same_map(a: &Project, b: &Project) -> bool {
-    match (&a.timing, &b.timing) {
-        (None, None) => true,
-        (Some(x), Some(y)) => Arc::ptr_eq(x, y),
-        _ => false,
-    }
-}
 
 impl Render {
-    /// A render-side release changes only an atomic. `collect()` owns destruction.
-    pub fn release_clock_origin(&mut self) {
-        if !self.cache_origin_timing.is_null() {
-            // SAFETY: the pin taken in `retain_clock` keeps this map alive: `collect()` frees a
-            // map only when its pin count is zero.
-            unsafe { &*self.cache_origin_timing }.origin_pins.fetch_sub(1, Ordering::Release);
-        }
-        self.cache_origin_timing = std::ptr::null();
-        self.cache_origin_valid = false;
-    }
-
     pub fn reset_input_run(&mut self) {
         if self.input_run_id != 0 {
             self.input_run_id = if self.input_run_id == u64::MAX { 0 } else { self.input_run_id + 1 };
@@ -77,7 +59,6 @@ impl Render {
             return;
         }
         self.cache_valid = false;
-        self.release_clock_origin();
         self.process(sh, left, right, frames, false, 0, 0);
     }
 
@@ -136,7 +117,6 @@ impl Render {
         // view ends with this function, before any later adoption.
         let mut rt = unsafe { Rt::attach(self, sh) };
         rt.run_commands();
-        rt.update_clock();
         // This request has a separate mailbox: AU graph preparation may call it on the audio
         // thread while the single UI producer writes normal commands.
         if sh.automation_refresh_requested.swap(false, Ordering::AcqRel) {
@@ -188,22 +168,10 @@ impl Render {
         // from `pending`, so this thread owns it; published projects are immutable.
         let (old, next): (&Project, &Project) = unsafe { (&*old_ptr, &*next_ptr) };
         let rate = self.sample_rate;
-        let mut previous_beat = match &old.timing {
-            Some(timing) => timing.beat(self.transport_frames as i64),
-            None => self.transport_frames * old.bpm / (60.0 * rate),
-        };
-        let map_changed = !same_map(old, next);
-        if map_changed && old.timing.is_none() && next.timing.is_some() && !self.song_mode {
-            let fraction =
-                if self.row_has_started { clamp(1.0 - self.row_remaining / self.row_duration, 0.0, 1.0) } else { 0.0 };
-            previous_beat = next.pattern_origin_beat
-                + old.beat_for_row(self.row)
-                + fraction * (old.beat_for_row(self.row + 1) - old.beat_for_row(self.row));
-        }
-        // Legacy (unmapped) frames are bpm-relative: rescale them so a tempo change keeps the
-        // musical position (Song mode re-resolves its row from these frames) and the current row
-        // ends at the new tempo.
-        if old.timing.is_none() && next.timing.is_none() && old.bpm != next.bpm {
+        // Transport frames are bpm-relative: rescale them so a tempo change keeps the musical
+        // position (Song mode re-resolves its row from these frames) and the current row ends
+        // at the new tempo.
+        if old.bpm != next.bpm {
             let scale = old.bpm / next.bpm;
             self.transport_frames *= scale;
             if self.row_has_started && self.row_remaining < 1e99 {
@@ -214,7 +182,7 @@ impl Render {
             // frame counts too: keep their musical positions.
             let total = self.total_frames;
             for s in self.scheduled.iter_mut() {
-                if s.active && !s.mapped {
+                if s.active {
                     s.due = total + (s.due - total) * scale;
                     if s.gate > 0.0 {
                         s.gate = cmax(1.0, s.gate * scale);
@@ -227,10 +195,7 @@ impl Render {
                 }
             }
         }
-        let mut arrangement_changed = old.sequence != next.sequence
-            || old.lpb != next.lpb
-            || old.swing != next.swing
-            || old.pattern_origin_beat != next.pattern_origin_beat;
+        let mut arrangement_changed = old.sequence != next.sequence || old.lpb != next.lpb || old.swing != next.swing;
         if !arrangement_changed {
             for &index in &next.sequence {
                 if index >= old.patterns.len() as i32 || old.pattern_length(index) != next.pattern_length(index) {
@@ -239,21 +204,15 @@ impl Render {
                 }
             }
         }
-        let timeline_changed = arrangement_changed || old.bpm != next.bpm || map_changed;
+        let timeline_changed = arrangement_changed || old.bpm != next.bpm;
         let next_song_end_frames = next.effective_song_frames(rate);
         let input_pattern_changed = self.pattern >= next.patterns.len() as i32
             || old.pattern_length(self.pattern) != next.pattern_length(self.pattern);
-        let maps_differ = match (&old.timing, &next.timing) {
-            (Some(a), Some(b)) => map_changed && !a.matches(b),
-            _ => false,
-        };
         let input_timeline_changed = arrangement_changed
             || input_pattern_changed
             || self.song_end_frames != next_song_end_frames
             || old.bpm != next.bpm
-            || old.loop_song != next.loop_song
-            || old.timing.is_some() != next.timing.is_some()
-            || maps_differ;
+            || old.loop_song != next.loop_song;
         if input_timeline_changed {
             self.reset_input_run();
         }
@@ -275,64 +234,13 @@ impl Render {
         self.pattern = clamp(self.pattern, 0, next.patterns.len() as i32 - 1);
         self.row = clamp(self.row, 0, next.pattern_length(self.pattern) - 1);
         self.sequence = clamp(self.sequence, 0, next.sequence.len() as i32 - 1);
-        self.pattern_origin_beat = next.pattern_origin_beat;
-        if map_changed {
-            self.transport_frames = match &next.timing {
-                Some(timing) => timing.frame(previous_beat) as f64,
-                None => previous_beat * 60.0 / next.bpm * rate,
-            };
-            let offset = self.loop_beat_offset;
-            for v in self.voices.iter_mut() {
-                if !(v.active && v.sequenced) {
-                    continue;
-                }
-                if next.timing.is_some() && old.timing.is_none() && v.gate >= 0.0 {
-                    v.mapped_gate_end = previous_beat + offset + v.gate * old.bpm / (60.0 * rate);
-                    v.gate = -1.0;
-                } else if next.timing.is_none() && v.mapped_gate_end >= 0.0 {
-                    v.gate = cmax(0.0, v.mapped_gate_end - previous_beat - offset) * 60.0 / next.bpm * rate;
-                    v.mapped_gate_end = -1.0;
-                }
-            }
-            if next.timing.is_none() {
-                let total = self.total_frames;
-                for s in self.scheduled.iter_mut() {
-                    if s.active && s.mapped {
-                        s.due = total + cmax(0.0, s.onset_beat - previous_beat - offset) * 60.0 / next.bpm * rate;
-                        s.gate = if s.open { -1.0 } else { cmax(1.0, (s.end_beat - s.onset_beat) * 60.0 / next.bpm * rate) };
-                        s.mapped = false;
-                    }
-                }
-            }
-        }
-        let old_pattern_origin_beat = old.pattern_origin_beat;
         {
             // SAFETY: render thread; `current` is now the adopted project, and this view ends
             // before the next adoption.
             let mut rt = unsafe { Rt::attach(self, sh) };
-            if timeline_changed {
-                rt.e.timing_epoch = rt.e.timing_epoch.wrapping_add(1);
-                if rt.p.timing.is_some() {
-                    rt.resolve_mapped_timeline(arrangement_changed);
-                } else if rt.e.playing && rt.e.song_mode {
-                    rt.resolve_timeline();
-                } else if map_changed && !rt.e.song_mode {
-                    let p = rt.p;
-                    let mut local = cmax(0.0, previous_beat - old_pattern_origin_beat);
-                    let width = p.pattern_rows(rt.e.pattern) / p.lpb as f64;
-                    local %= width;
-                    rt.e.transport_frames = local * 60.0 / p.bpm * rate;
-                    rt.e.row = 0;
-                    while rt.e.row + 1 < p.pattern_length(rt.e.pattern) && p.beat_for_row(rt.e.row + 1) <= local {
-                        rt.e.row += 1;
-                    }
-                    let start = p.beat_for_row(rt.e.row) * 60.0 / p.bpm * rate;
-                    let end = p.beat_for_row(rt.e.row + 1) * 60.0 / p.bpm * rate;
-                    rt.e.row_duration = end - start;
-                    rt.e.row_has_started = rt.e.transport_frames > start;
-                    rt.e.row_remaining = if rt.e.row_has_started { end - rt.e.transport_frames } else { 0.0 };
-                }
-            } else if rt.e.playing && rt.e.song_mode && rt.e.sequence_finished {
+            // A playing song finds its row again when the timeline changed under it, or when
+            // the sequence had ended (a longer arrangement or a clip tail may continue it).
+            if rt.e.playing && rt.e.song_mode && (timeline_changed || rt.e.sequence_finished) {
                 rt.resolve_timeline();
             }
         }
@@ -370,7 +278,6 @@ impl Render {
             rt.publish_transport();
         }
         self.cache_valid = false;
-        self.release_clock_origin();
         self.out.suppress_events = false;
         sh.automation_refresh_requested.store(true, Ordering::Release);
     }
@@ -463,9 +370,8 @@ impl<'a> Rt<'a> {
 
     /// The second half of C++ `refresh()`: drain the command ring.
     ///
-    /// A concurrent producer may refill the command ring while it is drained. Only opt-in input
-    /// edges consume this bounded batch; legacy-only command processing and its ordering remain
-    /// unchanged.
+    /// A concurrent producer may refill the command ring while it is drained; the batch is
+    /// bounded by the input acknowledgements one block can hold.
     fn run_commands(&mut self) {
         while self.e.pending_input_count < MAX_COMMANDS {
             let Some(c) = self.sh.commands.pop() else { break };
@@ -482,7 +388,6 @@ impl<'a> Rt<'a> {
                     self.e.count_in_total = 0;
                     self.reset_pattern_clips();
                     self.e.reset_input_run();
-                    self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
                     self.e.playing = false;
                     self.clear_plugin_locks();
                     self.reset_automation_events();
@@ -496,10 +401,6 @@ impl<'a> Rt<'a> {
                     self.clear_queued();
                     self.reset_pattern_clips();
                     self.e.reset_input_run();
-                    self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
-                    self.e.clock_loop_iteration = 0;
-                    self.e.loop_beat_offset = 0.0;
-                    self.e.pattern_origin_beat = self.p.pattern_origin_beat;
                     self.all_off(true, false);
                     self.e.pattern = self.valid_pattern(c.a);
                     self.e.row = clamp(c.b, 0, self.p.pattern_length(self.e.pattern) - 1);
@@ -559,12 +460,7 @@ impl<'a> Rt<'a> {
                     }
                 }
                 CMD_LIVE_PARAM => self.set_live_param(c.a, c.b, c.value),
-                CMD_RECORDING => {
-                    if self.e.recording != (c.a != 0) {
-                        self.e.recording = c.a != 0;
-                        self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
-                    }
-                }
+                CMD_RECORDING => self.e.recording = c.a != 0,
                 CMD_PATTERN_LOOP => {
                     let (mut start, mut end) = (c.a, c.b);
                     if start < 0 || end < start {
@@ -580,14 +476,6 @@ impl<'a> Rt<'a> {
                         continue;
                     }
                     self.e.reset_input_run();
-                    self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
-                    if self.e.playing && self.p.timing.is_some() {
-                        let before = self.e.transport_frames;
-                        self.resolve_mapped_timeline(false);
-                        if self.e.transport_frames != before {
-                            self.clear_scheduled();
-                        }
-                    }
                 }
                 CMD_INPUT_NOTE => self.input_note_command(&c),
                 _ => {}
@@ -660,7 +548,9 @@ impl<'a> Rt<'a> {
     }
 
     pub fn finish_input_acks(&mut self, audio_frame: bool, cached: bool, graph_frame: u64) {
-        let p = self.p;
+        if audio_frame {
+            self.update_clock();
+        }
         let e = &mut *self.e;
         let count = cmin(e.pending_input_count, e.pending_input_acks.len());
         for n in 0..count {
@@ -683,10 +573,8 @@ impl<'a> Rt<'a> {
                 ST_INPUT_ACK_APPLIED
             };
             if ack.status == ST_INPUT_ACK_APPLIED {
-                ack.timing_revision = p.timing.as_ref().map_or(0, |timing| timing.revision);
                 ack.distance_beats = e.musical_beat + e.input_loop_beats;
                 ack.flags = (if e.playing { ST_INPUT_CLOCK_PLAYING } else { 0 })
-                    | (if p.timing.is_some() { ST_INPUT_CLOCK_MAPPED } else { 0 })
                     | (if e.recording { ST_INPUT_CLOCK_RECORDING } else { 0 });
                 if !ack.distance_beats.is_finite() || ack.distance_beats < 0.0 {
                     ack.status = ST_INPUT_ACK_DISCONTINUITY;
@@ -709,10 +597,6 @@ impl<'a> Rt<'a> {
         self.clear_ratchets();
         self.reset_pattern_clips();
         self.e.reset_input_run();
-        self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
-        self.e.clock_loop_iteration = 0;
-        self.e.loop_beat_offset = 0.0;
-        self.e.pattern_origin_beat = p.pattern_origin_beat;
         self.all_off(true, keep_live_voices);
         self.e.playing = true;
         self.e.song_mode = song;
@@ -736,38 +620,16 @@ impl<'a> Rt<'a> {
         self.clear_queued();
     }
 
-    /// Count-in: one click per meter beat (tempo/meter at the start position), then Play at the
-    /// exact frame.
+    /// Count-in: one click per beat of the project's meter, then Play at the exact frame.
     fn begin_count_in(&mut self, song: bool, bars: i32) {
         if self.e.playing {
             return;
         }
         let p = self.p;
-        let mut bpm = p.bpm;
-        let mut numerator = p.numerator;
-        let mut denominator = p.denominator;
-        if let Some(timing) = &p.timing {
-            let seq = clamp(self.e.sequence, 0, p.sequence.len() as i32 - 1);
-            let pat =
-                if song { self.valid_pattern(self.sequence_pattern(seq)) } else { self.valid_pattern(p.active_pattern) };
-            let r = clamp(self.e.row, 0, p.pattern_length(pat) - 1);
-            let base = if song {
-                p.occurrence_beats.get(seq as u32 as usize).copied().unwrap_or(0.0)
-            } else {
-                p.pattern_origin_beat
-            };
-            let beat = base + p.beat_for_row(r);
-            let mut context = ClockContext::default();
-            if timing.context(timing.frame(beat), &mut context) == CLOCK_OK && context.bpm > 0.0 {
-                bpm = context.bpm;
-                numerator = context.numerator;
-                denominator = context.denominator;
-            }
-        }
         let e = &mut *self.e;
-        let click = (e.sample_rate * 60.0 / cmax(1.0, bpm) * 4.0 / cmax(1, denominator) as f64).round() as i64;
+        let click = (e.sample_rate * 60.0 / cmax(1.0, p.bpm) * 4.0 / cmax(1, p.denominator) as f64).round() as i64;
         e.count_in_click = cmax(1, click);
-        e.count_in_bar = cmax(1, numerator) as i64;
+        e.count_in_bar = cmax(1, p.numerator) as i64;
         e.count_in_total = e.count_in_click.wrapping_mul(e.count_in_bar).wrapping_mul(clamp(bars, 1, 4) as i64);
         e.count_in_elapsed = 0;
         e.count_in_song = song;
@@ -803,12 +665,9 @@ impl<'a> Rt<'a> {
         cmin(self.p.song_loop_end, self.p.sequence.len() as i32 - 1)
     }
 
+    /// The quarter beat at which sequence entry `index` starts.
     pub fn occurrence_beat(&self, index: i32) -> f64 {
         let p = self.p;
-        if p.timing.is_some() {
-            let at = clamp(index, 0, p.sequence.len() as i32) as usize;
-            return p.occurrence_beats.get(at).copied().unwrap_or(0.0);
-        }
         let mut rows = 0.0f64;
         let mut n = 0;
         while n < index && n < p.sequence.len() as i32 {
@@ -819,12 +678,7 @@ impl<'a> Rt<'a> {
     }
 
     pub fn occurrence_start_frames(&self, index: i32) -> f64 {
-        let p = self.p;
-        if p.timing.is_some() {
-            let at = clamp(index, 0, p.sequence.len() as i32) as usize;
-            return p.occurrence_frames.get(at).copied().unwrap_or(0) as f64;
-        }
-        self.occurrence_beat(index) * self.e.sample_rate * 60.0 / p.bpm
+        self.occurrence_beat(index) * self.e.sample_rate * 60.0 / self.p.bpm
     }
 
     /// Continue at the section start. From a row boundary the fractional overshoot is kept;
@@ -832,13 +686,8 @@ impl<'a> Rt<'a> {
     fn loop_song_section(&mut self, from_index: i32, exact: bool, target: i32) {
         let start = if target >= 0 { target } else { self.p.song_loop_start };
         let beats = self.occurrence_beat(from_index) - self.occurrence_beat(start);
-        self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
-        self.e.clock_loop_iteration = self.e.clock_loop_iteration.wrapping_add(1);
         self.e.input_loop_beats += beats;
         self.e.click_beat = -1;
-        if self.p.timing.is_some() {
-            self.e.loop_beat_offset += beats;
-        }
         if exact {
             self.e.transport_frames = self.occurrence_start_frames(start);
             self.e.row_remaining = 0.0;
@@ -866,151 +715,44 @@ impl<'a> Rt<'a> {
         cmin(self.e.loop_end_row, self.p.pattern_length(self.e.pattern) - 1)
     }
 
-    /// Pattern-relative beats for the mapped loop domain; the whole pattern without a range.
-    fn pattern_domain_start_beat(&self) -> f64 {
-        if self.pattern_loop_active() {
-            self.p.beat_for_row(self.e.loop_start_row)
-        } else {
-            0.0
-        }
-    }
-
-    pub fn pattern_domain_end_beat(&self) -> f64 {
-        if self.pattern_loop_active() {
-            self.p.beat_for_row(self.pattern_loop_end() + 1)
-        } else {
-            self.p.pattern_rows(self.e.pattern) / self.p.lpb as f64
-        }
-    }
-
-    pub fn row_base_beat(&self) -> f64 {
-        if self.e.song_mode {
-            self.p.occurrence_beats.get(self.e.sequence as u32 as usize).copied().unwrap_or(0.0)
-        } else {
-            self.e.pattern_origin_beat
-        }
-    }
-
+    /// The position in the pattern, in rows, with the fraction of the current row played.
     pub fn musical_position(&self) -> f64 {
         let e = &*self.e;
-        if self.p.timing.is_some() {
-            e.row as f64
-                + clamp((e.musical_beat - e.row_start_beat) / cmax(1e-12, e.row_end_beat - e.row_start_beat), 0.0, 1.0)
-        } else {
-            e.row as f64 + clamp(1.0 - e.row_remaining / e.row_duration, 0.0, 1.0)
-        }
+        e.row as f64 + clamp(1.0 - e.row_remaining / e.row_duration, 0.0, 1.0)
     }
 
+    /// The musical clock of the transport frame: the beat, the bar number and the beat at which
+    /// that bar starts, from the project's tempo and meter.
+    ///
+    /// Seeks keep fractional frames and the tempo goes up to 999 BPM, so the bar is found from
+    /// the exact frame (including negative startup time), not from the rounded beat alone.
     pub fn update_clock(&mut self) {
         let p = self.p;
-        let rate = self.e.sample_rate;
-        if let Some(timing) = &p.timing {
-            let frame = clamp(self.e.transport_frames, 0.0, timing.maximum_frame as f64) as i64;
-            if timing.context(frame, &mut self.e.musical_context) != CLOCK_OK {
-                self.e.musical_context = ClockContext::default();
-            }
-            self.e.musical_beat = self.e.musical_context.beat;
-            self.e.effective_bpm = self.e.musical_context.bpm;
-        } else {
-            self.e.effective_bpm = p.bpm;
-            fixed_clock_context(
-                &mut self.e.musical_context,
-                self.e.transport_frames,
-                rate,
-                p.bpm,
-                p.numerator,
-                p.denominator,
-            );
-            self.e.musical_beat = self.e.musical_context.beat;
-        }
-        let song_mode = self.e.song_mode;
-        let mut flags = (self.e.musical_context.flags & CLOCK_DOMAIN_END)
-            | (if self.e.playing { CLOCK_PLAYING } else { 0 })
-            | (if self.e.recording { CLOCK_RECORDING } else { 0 });
-        self.e.musical_context.epoch = self.e.timing_epoch;
-        self.e.musical_context.loop_iteration = self.e.clock_loop_iteration;
-        if (song_mode && p.loop_song) || (!song_mode && p.timing.is_some()) {
-            flags |= CLOCK_LOOPING;
-            let (start, end) = if song_mode {
-                let end = match &p.timing {
-                    Some(timing) => timing.beat(self.e.song_end_frames as i64),
-                    None => self.e.song_end_frames * p.bpm / (60.0 * rate),
-                };
-                (0.0, end)
-            } else {
-                (
-                    self.e.pattern_origin_beat + self.pattern_domain_start_beat(),
-                    self.e.pattern_origin_beat + self.pattern_domain_end_beat(),
-                )
-            };
-            self.e.musical_context.loop_start_beat = start;
-            self.e.musical_context.loop_end_beat = end;
-        }
-        if self.song_loop_active() {
-            flags |= CLOCK_LOOPING;
-            self.e.musical_context.loop_start_beat = self.occurrence_beat(p.song_loop_start);
-            self.e.musical_context.loop_end_beat = self.occurrence_beat(self.song_loop_last() + 1);
-        }
-        let context = &mut self.e.musical_context;
-        if !self.e.playing {
-            context.next_boundary_frame = i64::MAX;
-            context.next_boundary_kinds = 0;
-            context.next_quarter_beat_frame = i64::MAX;
-        }
-        if context.next_quarter_beat_frame == i64::MAX {
-            flags |= CLOCK_GRID_PROJECTION;
-        }
-        context.flags = flags;
-    }
-
-    pub fn resolve_mapped_timeline(&mut self, clear: bool) {
-        let p = self.p;
-        let Some(timing) = &p.timing else { return };
-        if self.e.song_mode {
-            let at = self.e.transport_frames as i64;
-            let next = p.occurrence_frames.partition_point(|&frame| frame <= at) as i32;
-            self.e.sequence = clamp(next - 1, 0, p.sequence.len() as i32 - 1);
-            self.e.pattern = self.sequence_pattern(self.e.sequence);
-            let last = p.occurrence_frames.last().copied().unwrap_or(0);
-            if self.e.transport_frames >= last as f64 {
-                self.e.sequence_finished = true;
-                self.e.row = p.pattern_length(self.e.pattern) - 1;
-                self.e.row_remaining = 1e100;
-                if clear {
-                    self.clear_scheduled();
-                }
-                self.update_clock();
-                return;
-            }
-        } else {
-            let start = timing.frame(self.e.pattern_origin_beat) as f64;
-            let end = timing.frame(self.e.pattern_origin_beat + self.pattern_domain_end_beat()) as f64;
-            self.e.transport_frames = clamp(self.e.transport_frames, start, end - 1.0);
-        }
-        self.e.sequence_finished = false;
-        let base = self.row_base_beat();
-        let (mut lo, mut hi) = (0, p.pattern_length(self.e.pattern));
-        while lo + 1 < hi {
-            let mid = (lo + hi) / 2;
-            if timing.frame(base + p.beat_for_row(mid)) as f64 <= self.e.transport_frames {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
         let e = &mut *self.e;
-        e.row = lo;
-        e.row_start_beat = base + p.beat_for_row(e.row);
-        e.row_end_beat = base + p.beat_for_row(e.row + 1);
-        let start = timing.frame(e.row_start_beat) as f64;
-        let end = timing.frame(e.row_end_beat) as f64;
-        e.row_duration = end - start;
-        e.row_has_started = e.transport_frames > start;
-        e.row_remaining = if e.row_has_started { end - e.transport_frames } else { 0.0 };
-        if clear {
-            self.clear_scheduled();
+        let (frame, rate, bpm) = (e.transport_frames, e.sample_rate, p.bpm);
+        let mut beat = frame * bpm / (60.0 * rate);
+        let width = p.numerator as f64 * 4.0 / p.denominator as f64;
+        let mut bar = (beat / width).floor() as i64;
+        // Frames from the transport frame to the first sample not earlier than `beat`.
+        let offset = |beat: f64| -> i64 { (beat * (60.0 * rate) / bpm - frame).ceil() as i64 };
+        for _ in 0..2 {
+            if offset(bar as f64 * width) > 0 {
+                bar = bar.wrapping_sub(1);
+            } else if offset(bar.wrapping_add(1) as f64 * width) <= 0 {
+                bar = bar.wrapping_add(1);
+            } else {
+                break;
+            }
         }
-        self.update_clock();
+        let bar_start = bar as f64 * width;
+        let bar_end = bar.wrapping_add(1) as f64 * width;
+        beat = cmax(beat, bar_start);
+        if beat >= bar_end {
+            beat = next_down(bar_end);
+        }
+        e.musical_beat = beat;
+        e.bar = bar.wrapping_add(1);
+        e.bar_start_beat = bar_start;
     }
 
     /// Publish the transport status snapshot (seqlock on `status_publication`).
@@ -1023,12 +765,11 @@ impl<'a> Rt<'a> {
         let relaxed = Ordering::Relaxed;
         sh.status_seek_revision.store(e.seek_revision, relaxed);
         sh.status_beat.store(e.musical_beat, relaxed);
-        sh.status_bpm.store(e.effective_bpm, relaxed);
-        sh.status_bar.store(e.musical_context.bar, relaxed);
-        sh.status_bar_start.store(e.musical_context.bar_start_beat, relaxed);
-        sh.status_numerator.store(e.musical_context.numerator, relaxed);
-        sh.status_denominator.store(e.musical_context.denominator, relaxed);
-        sh.status_timing_revision.store(e.musical_context.revision, relaxed);
+        sh.status_bpm.store(self.p.bpm, relaxed);
+        sh.status_bar.store(e.bar, relaxed);
+        sh.status_bar_start.store(e.bar_start_beat, relaxed);
+        sh.status_numerator.store(self.p.numerator, relaxed);
+        sh.status_denominator.store(self.p.denominator, relaxed);
         sh.status_playing.store(e.playing as i32, relaxed);
         sh.status_recording.store(e.recording as i32, relaxed);
         sh.status_song_mode.store(e.song_mode as i32, relaxed);
@@ -1050,13 +791,9 @@ impl<'a> Rt<'a> {
         sh.status_publication.fetch_add(1, Ordering::SeqCst);
     }
 
-    /// Legacy (unmapped) Song mode: find the sequence position and row of `transport_frames`.
+    /// Song mode: find the sequence position and row of `transport_frames`.
     pub fn resolve_timeline(&mut self) {
         let p = self.p;
-        if p.timing.is_some() {
-            self.resolve_mapped_timeline(true);
-            return;
-        }
         let mut cursor = 0.0f64;
         let base = self.e.sample_rate * 60.0 / p.bpm / p.lpb as f64;
         for s in 0..p.sequence.len() {
@@ -1096,14 +833,6 @@ impl<'a> Rt<'a> {
     pub fn seek_frames(&self) -> f64 {
         let p = self.p;
         let e = &*self.e;
-        if let Some(timing) = &p.timing {
-            let base = if e.song_mode {
-                p.occurrence_beats.get(e.sequence as u32 as usize).copied().unwrap_or(0.0)
-            } else {
-                e.pattern_origin_beat
-            };
-            return timing.frame(base + p.beat_for_row(e.row)) as f64;
-        }
         let mut rows = 0.0f64;
         if e.song_mode {
             let mut n = 0;
@@ -1122,19 +851,8 @@ impl<'a> Rt<'a> {
             self.loop_song_section(p.sequence.len() as i32, true, -1);
             return;
         }
-        self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
         if p.loop_song {
-            self.e.clock_loop_iteration = self.e.clock_loop_iteration.wrapping_add(1);
-            self.e.input_loop_beats += match &p.timing {
-                Some(timing) => timing.beat(self.e.song_end_frames as i64),
-                None => self.e.song_end_frames * p.bpm / (60.0 * self.e.sample_rate),
-            };
-        }
-        if p.timing.is_some() {
-            self.e.loop_beat_offset = 0.0;
-            self.clear_scheduled();
-        }
-        if p.loop_song {
+            self.e.input_loop_beats += self.e.song_end_frames * p.bpm / (60.0 * self.e.sample_rate);
             self.push_song_tails();
             self.e.sequence = 0;
             self.e.pattern = self.valid_pattern(self.sequence_pattern(0));
@@ -1235,10 +953,6 @@ impl<'a> Rt<'a> {
         }
         self.e.row = if self.pattern_loop_active() { self.e.loop_start_row } else { 0 };
         self.reset_pattern_clips();
-        self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
-        self.e.clock_loop_iteration = 0;
-        self.e.loop_beat_offset = 0.0;
-        self.e.pattern_origin_beat = p.pattern_origin_beat;
         self.e.sequence_finished = false;
         self.reset_track_state(true);
         self.e.transport_frames = self.seek_frames();
@@ -1247,9 +961,8 @@ impl<'a> Rt<'a> {
     }
 
     /// At a pattern (or loop-range) end: continue sample-accurately in the queued
-    /// pattern/sequence position. `from_beat` is the pattern-relative beat being left. Voices
-    /// keep sounding, as at a natural pattern change.
-    fn take_queued_jump(&mut self, from_beat: f64) -> bool {
+    /// pattern/sequence position. Voices keep sounding, as at a natural pattern change.
+    fn take_queued_jump(&mut self) -> bool {
         let p = self.p;
         if self.e.queued_pattern < 0 {
             return false;
@@ -1268,17 +981,7 @@ impl<'a> Rt<'a> {
             return true;
         }
         self.e.pattern = self.valid_pattern(target);
-        let start = if self.pattern_loop_active() { self.e.loop_start_row } else { 0 };
-        let to = p.beat_for_row(start);
-        if let Some(timing) = &p.timing {
-            self.e.loop_beat_offset += from_beat - to;
-            self.e.input_loop_beats += from_beat - to;
-            self.e.transport_frames = timing.frame(self.e.pattern_origin_beat + to) as f64;
-            self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
-            self.e.clock_loop_iteration = self.e.clock_loop_iteration.wrapping_add(1);
-            self.e.click_beat = -1;
-        }
-        self.e.row = start;
+        self.e.row = if self.pattern_loop_active() { self.e.loop_start_row } else { 0 };
         self.reset_track_state(true);
         true
     }
@@ -1288,20 +991,10 @@ impl<'a> Rt<'a> {
         // Pattern loop range: at (or past) its last row, continue sample-accurately at its first
         // row.
         if self.pattern_loop_active() && self.e.row >= self.pattern_loop_end() {
-            if self.take_queued_jump(p.beat_for_row(self.e.row + 1)) {
+            if self.take_queued_jump() {
                 return;
             }
-            let from = p.beat_for_row(self.e.row + 1);
-            let to = p.beat_for_row(self.e.loop_start_row);
             self.e.row = self.e.loop_start_row;
-            if let Some(timing) = &p.timing {
-                self.e.loop_beat_offset += from - to;
-                self.e.input_loop_beats += from - to;
-                self.e.transport_frames = timing.frame(self.e.pattern_origin_beat + to) as f64;
-                self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
-                self.e.clock_loop_iteration = self.e.clock_loop_iteration.wrapping_add(1);
-                self.e.click_beat = -1;
-            }
             return;
         }
         self.e.row += 1;
@@ -1309,7 +1002,7 @@ impl<'a> Rt<'a> {
             return;
         }
         self.e.row = 0;
-        if self.take_queued_jump(p.pattern_rows(self.e.pattern) / p.lpb as f64) {
+        if self.take_queued_jump() {
             return;
         }
         if self.song_loop_active() && self.e.sequence == self.song_loop_last() {
@@ -1317,15 +1010,6 @@ impl<'a> Rt<'a> {
             return;
         }
         if !self.e.song_mode {
-            if let Some(timing) = &p.timing {
-                let width = p.pattern_rows(self.e.pattern) / p.lpb as f64;
-                self.e.loop_beat_offset += width;
-                self.e.input_loop_beats += width;
-                self.e.transport_frames = timing.frame(self.e.pattern_origin_beat) as f64;
-                self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
-                self.e.clock_loop_iteration = self.e.clock_loop_iteration.wrapping_add(1);
-                self.e.click_beat = -1;
-            }
             return;
         }
         self.e.sequence += 1;
@@ -1348,7 +1032,6 @@ impl<'a> Rt<'a> {
     /// `capture_transport` after the quiescent flush: the exact frame-domain cursor.
     pub fn capture_transport(&self) -> STTransportState {
         let e = &*self.e;
-        let timing = self.p.timing.as_ref();
         STTransportState {
             playing: e.playing as i32,
             song_mode: e.song_mode as i32,
@@ -1360,12 +1043,6 @@ impl<'a> Rt<'a> {
             row_remaining: e.row_remaining,
             row_duration: e.row_duration,
             transport_frames: e.transport_frames,
-            timing_version: if timing.is_some() { 1 } else { 0 },
-            timing_revision: timing.map_or(0, |timing| timing.revision),
-            beat: e.musical_beat,
-            pattern_origin_beat: e.pattern_origin_beat,
-            loop_beat_offset: e.loop_beat_offset,
-            loop_iteration: e.clock_loop_iteration,
             recording: e.recording as i32,
             pattern_clip_frame: e.pattern_clip_frame,
             pattern_clip_pattern: e.pattern_clip_pattern,
@@ -1416,36 +1093,6 @@ impl<'a> Rt<'a> {
         } else {
             -1
         };
-        self.e.pattern_origin_beat = p.pattern_origin_beat;
-        self.e.loop_beat_offset = 0.0;
-        self.e.clock_loop_iteration = 0;
-        self.e.timing_epoch = self.e.timing_epoch.wrapping_add(1);
-        if let Some(timing) = &p.timing {
-            let width = p.pattern_rows(self.e.pattern) / p.lpb as f64;
-            if state.timing_version == 1 {
-                self.e.pattern_origin_beat =
-                    clamp(finite64(state.pattern_origin_beat, p.pattern_origin_beat), 0.0, 1000000.0 - width);
-                self.e.loop_beat_offset = clamp(finite64(state.loop_beat_offset, 0.0), 0.0, 1e12);
-                self.e.clock_loop_iteration = clamp(state.loop_iteration, 0, 1i64 << 52);
-            }
-            self.e.transport_frames = clamp(self.e.transport_frames, 0.0, timing.frame(1000000.0) as f64);
-            if state.timing_version == 1 && state.timing_revision != timing.revision {
-                self.e.transport_frames = timing.frame(clamp(finite64(state.beat, 0.0), 0.0, 1000000.0)) as f64;
-                self.resolve_mapped_timeline(true);
-            } else {
-                self.e.row_start_beat = self.row_base_beat() + p.beat_for_row(self.e.row);
-                self.e.row_end_beat = self.row_base_beat() + p.beat_for_row(self.e.row + 1);
-            }
-            self.update_clock();
-            let mut previous = ClockContext::default();
-            if self.e.transport_frames > 0.0
-                && timing.context((self.e.transport_frames as i64).wrapping_sub(1), &mut previous) == CLOCK_OK
-            {
-                self.e.click_beat = previous.bar.wrapping_mul(32).wrapping_add(
-                    ((previous.beat - previous.bar_start_beat) * previous.denominator as f64 / 4.0).floor() as i64,
-                );
-            }
-        }
         self.restore_pattern_clips(state);
         self.reset_track_state(false);
         self.e.out.suppress_events = false;

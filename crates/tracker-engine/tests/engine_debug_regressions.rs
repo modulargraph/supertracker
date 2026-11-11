@@ -26,7 +26,7 @@ fn audio(e: &mut Engine, count: usize) -> Vec<f32> {
     l
 }
 
-fn setup(e: &mut Engine, mapped: bool, rows: i32) {
+fn setup(e: &mut Engine, rows: i32) {
     e.begin_update();
     e.set_track_count(1);
     e.set_timing(120.0, 4, 0.0, 1.0);
@@ -36,12 +36,6 @@ fn setup(e: &mut Engine, mapped: bool, rows: i32) {
     e.set_host_mixing(true, 1);
     e.set_pattern(0, rows);
     e.set_sequence(&[0], false, 0);
-    if mapped {
-        let tempo = [ClockTempoEvent { beat: 0.0, bpm: 120.0 }];
-        let meter = [ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
-        let result = e.set_timing_map(&tempo, &meter, 55);
-        require(result.is_ok(), result.as_ref().err().map_or("", |error| error.as_str()));
-    }
     let result = e.commit_update_checked();
     require(result.is_ok(), result.as_ref().err().map_or("", |error| error.as_str()));
 }
@@ -69,9 +63,9 @@ fn temporary_song_render(e: &mut Engine) {
     audio(e, 73);
 }
 
-fn checkpoint_print(mapped: bool, after_wrap: bool) {
+fn checkpoint_print(after_wrap: bool) {
     let mut e = Engine::new();
-    setup(&mut e, mapped, 4);
+    setup(&mut e, 4);
     install_print(&mut e);
     e.play(0);
     audio(&mut e, if after_wrap { 25000 } else { 1000 });
@@ -82,13 +76,7 @@ fn checkpoint_print(mapped: bool, after_wrap: bool) {
     let pcm = print_pcm();
     let sign: f32 = if after_wrap { -1.0 } else { 1.0 };
     if (out[0] - sign * pcm[1000]).abs() > 1e-7f32 {
-        println!(
-            "checkpoint mapped={} loop={} actual={} expected={}",
-            mapped as i32,
-            after_wrap as i32,
-            out[0],
-            sign * pcm[1000]
-        );
+        println!("checkpoint loop={} actual={} expected={}", after_wrap as i32, out[0], sign * pcm[1000]);
     }
     for n in 0..out.len() {
         require(
@@ -99,121 +87,64 @@ fn checkpoint_print(mapped: bool, after_wrap: bool) {
     require(e.status().row == 0 && e.status().playing != 0, "Checkpoint musical row preserved");
 }
 
-fn section_clock(mapped: bool) {
-    let mut e = Engine::new();
-    setup(&mut e, mapped, 1);
-    e.begin_update();
-    e.set_pattern(1, 1);
-    e.set_pattern(2, 1);
-    e.set_sequence(&[0, 1, 2], true, 0);
-    e.set_song_loop(1, 1);
-    e.commit_update();
-    e.play(1);
-    let mut l = vec![0.0f32; 16000];
-    let mut r = vec![0.0f32; l.len()];
-    realtime(|| e.render_bus(0, 0, &mut l, &mut r));
-    let mut span = ClockSpan::default();
-    require(e.clock_span(6000, 1, 0, &mut span) == CLOCK_OK, "Retained section context");
-    if span.context.next_boundary_frame != 12000 {
-        println!("section mapped={} boundary={} expected=12000", mapped as i32, span.context.next_boundary_frame);
-    }
-    require(
-        span.context.next_boundary_frame == 12000,
-        "Section loop context predicts actual loop boundary, not song end",
-    );
-    require(span.context.next_boundary_kinds & CLOCK_BOUNDARY_LOOP != 0, "Section loop boundary kind");
-    require(span.context.next_quarter_beat_frame == i64::MAX, "No integer beat is reachable in a .25-.5 beat loop");
-    require(
-        e.clock_span(12000, 1, 0, &mut span) == CLOCK_OK && span.context.song_frame == 6000,
-        "Section wraps exact project frame",
-    );
-}
-
-fn section_next_quarter(mapped: bool) {
-    let mut e = Engine::new();
-    setup(&mut e, mapped, 1);
-    e.begin_update();
-    e.set_pattern(1, 4);
-    e.set_pattern(2, 1);
-    e.set_sequence(&[0, 1, 2], true, 0);
-    e.set_song_loop(1, 1);
-    e.commit_update();
-    e.play(1);
-    let mut l = vec![0.0f32; 31000];
-    let mut r = vec![0.0f32; l.len()];
-    realtime(|| e.render_bus(0, 0, &mut l, &mut r));
-    let mut span = ClockSpan::default();
-    require(e.clock_span(27000, 1, 0, &mut span) == CLOCK_OK, "Section next-beat context");
-    require(span.context.next_boundary_frame == 30000, "Quarter query loop boundary");
-    require(span.context.next_quarter_beat_frame == 48000, "Next quarter after wrap must subtract nonzero loop origin");
-    require(
-        e.clock_span(27127, 1, 127, &mut span) == CLOCK_OK && span.context.next_quarter_beat_frame == 48127,
-        "Upstream PDC shifts next quarter exactly once",
-    );
-}
-
 fn checkpoint_bounds() {
-    for mapped in [false, true] {
-        let mut e = Engine::new();
-        setup(&mut e, mapped, 4);
-        install_print(&mut e);
-        e.play(0);
-        audio(&mut e, 7250);
-        let good = e.capture_transport();
-        for invalid in 0..5 {
-            let mut state = good;
-            if invalid == 0 {
-                state.pattern_clip_valid = 0;
-                state.pattern_clip_frame = 0;
-                state.pattern_clip_pattern = 0;
-                state.pattern_clip_looped = 0;
-            }
-            if invalid == 1 {
-                state.pattern_clip_frame = i64::MAX;
-            }
-            if invalid == 2 {
-                state.pattern_clip_frame = -1;
-            }
-            if invalid == 3 {
-                state.pattern_clip_pattern = 99;
-            }
-            if invalid == 4 {
-                state.pattern_clip_looped = 2;
-            }
-            temporary_song_render(&mut e);
-            realtime(|| e.restore_transport(state, true));
-            let out = audio(&mut e, 64);
-            let pcm = print_pcm();
-            for n in 0..out.len() {
-                require(
-                    out[n] == pcm[7250 + n],
-                    "Invalid/default print checkpoint reconstructs row-local head position",
-                );
-            }
+    let mut e = Engine::new();
+    setup(&mut e, 4);
+    install_print(&mut e);
+    e.play(0);
+    audio(&mut e, 7250);
+    let good = e.capture_transport();
+    for invalid in 0..5 {
+        let mut state = good;
+        if invalid == 0 {
+            state.pattern_clip_valid = 0;
+            state.pattern_clip_frame = 0;
+            state.pattern_clip_pattern = 0;
+            state.pattern_clip_looped = 0;
+        }
+        if invalid == 1 {
+            state.pattern_clip_frame = i64::MAX;
+        }
+        if invalid == 2 {
+            state.pattern_clip_frame = -1;
+        }
+        if invalid == 3 {
+            state.pattern_clip_pattern = 99;
+        }
+        if invalid == 4 {
+            state.pattern_clip_looped = 2;
         }
         temporary_song_render(&mut e);
-        e.restore_transport(good, false);
-        let silent = audio(&mut e, 100);
-        require(silent.iter().all(|&x| x == 0.0), "Canceled export must not resume frozen PCM");
-    }
-}
-
-fn checkpoint_at_boundary() {
-    for mapped in [false, true] {
-        let mut e = Engine::new();
-        setup(&mut e, mapped, 4);
-        install_print(&mut e);
-        e.play(0);
-        audio(&mut e, 24000);
-        let state = e.capture_transport();
-        require(state.row_remaining == 0.0, "Pending wrap boundary");
-        temporary_song_render(&mut e);
-        e.restore_transport(state, true);
+        realtime(|| e.restore_transport(state, true));
         let out = audio(&mut e, 64);
         let pcm = print_pcm();
         for n in 0..out.len() {
-            require(out[n] == -pcm[n], "Pending natural wrap restores then selects steady loop print");
+            require(
+                out[n] == pcm[7250 + n],
+                "Invalid/default print checkpoint reconstructs row-local head position",
+            );
         }
+    }
+    temporary_song_render(&mut e);
+    e.restore_transport(good, false);
+    let silent = audio(&mut e, 100);
+    require(silent.iter().all(|&x| x == 0.0), "Canceled export must not resume frozen PCM");
+}
+
+fn checkpoint_at_boundary() {
+    let mut e = Engine::new();
+    setup(&mut e, 4);
+    install_print(&mut e);
+    e.play(0);
+    audio(&mut e, 24000);
+    let state = e.capture_transport();
+    require(state.row_remaining == 0.0, "Pending wrap boundary");
+    temporary_song_render(&mut e);
+    e.restore_transport(state, true);
+    let out = audio(&mut e, 64);
+    let pcm = print_pcm();
+    for n in 0..out.len() {
+        require(out[n] == -pcm[n], "Pending natural wrap restores then selects steady loop print");
     }
 }
 
@@ -222,7 +153,7 @@ fn silent_sample_region() {
         [ST_MODE_ONESHOT, ST_MODE_FORWARD, ST_MODE_REVERSE, ST_MODE_PINGPONG, ST_MODE_GRANULAR, ST_MODE_WAVETABLE]
     {
         let mut e = Engine::new();
-        setup(&mut e, false, 4);
+        setup(&mut e, 4);
         let mut pcm = vec![0.8f32; 1024];
         pcm[256..768].fill(0.0);
         e.begin_update();
@@ -255,7 +186,7 @@ fn silent_sample_region() {
 
 fn silent_slice() {
     let mut e = Engine::new();
-    setup(&mut e, false, 4);
+    setup(&mut e, 4);
     let mut pcm = vec![0.8f32; 1024];
     pcm[512..].fill(0.0);
     e.begin_update();
@@ -276,12 +207,11 @@ fn silent_slice() {
     require(out.iter().all(|&v| v == 0.0), "Pitched silent slice must not borrow preceding slice audio");
 }
 
-/// Legacy (unmapped) frames are bpm-relative: a tempo change while playing keeps the row in both
-/// modes.
-fn legacy_tempo_change() {
+/// Transport frames are bpm-relative: a tempo change while playing keeps the row in both modes.
+fn tempo_change() {
     for song in [0, 1] {
         let mut e = Engine::new();
-        setup(&mut e, false, 16);
+        setup(&mut e, 16);
         e.begin_update();
         e.set_sequence(&[0, 0], false, 0);
         e.commit_update();
@@ -306,7 +236,7 @@ fn legacy_tempo_change() {
 /// older note first, or its later note-off cuts the newer note short inside the plug-in.
 fn external_retrigger() {
     let mut e = Engine::new();
-    setup(&mut e, false, 8);
+    setup(&mut e, 8);
     e.begin_update();
     let mut instrument = default_instrument();
     instrument.type_ = ST_INSTRUMENT_AU;
@@ -346,50 +276,14 @@ fn external_retrigger() {
 }
 
 #[test]
-fn fixed_pattern_head_checkpoint() {
-    checkpoint_print(false, false);
+fn pattern_head_checkpoint() {
+    checkpoint_print(false);
     zero_render_allocations();
 }
 
 #[test]
-fn mapped_pattern_head_checkpoint() {
-    checkpoint_print(true, false);
-    zero_render_allocations();
-}
-
-#[test]
-fn fixed_pattern_loop_checkpoint() {
-    checkpoint_print(false, true);
-    zero_render_allocations();
-}
-
-#[test]
-fn mapped_pattern_loop_checkpoint() {
-    checkpoint_print(true, true);
-    zero_render_allocations();
-}
-
-#[test]
-fn fixed_section_retained_clock() {
-    section_clock(false);
-    zero_render_allocations();
-}
-
-#[test]
-fn mapped_section_retained_clock() {
-    section_clock(true);
-    zero_render_allocations();
-}
-
-#[test]
-fn fixed_section_next_quarter_and_pdc() {
-    section_next_quarter(false);
-    zero_render_allocations();
-}
-
-#[test]
-fn mapped_section_next_quarter_and_pdc() {
-    section_next_quarter(true);
+fn pattern_loop_checkpoint() {
+    checkpoint_print(true);
     zero_render_allocations();
 }
 
@@ -418,8 +312,8 @@ fn silent_pitched_slice() {
 }
 
 #[test]
-fn legacy_tempo_change_keeps_position() {
-    legacy_tempo_change();
+fn tempo_change_keeps_position() {
+    tempo_change();
     zero_render_allocations();
 }
 

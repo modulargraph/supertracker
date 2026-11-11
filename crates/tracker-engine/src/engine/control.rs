@@ -4,9 +4,8 @@
 //!
 //! One serial control thread owns everything here. It publishes a complete immutable project
 //! through `Shared::pending`; the render thread adopts it and hands the previous one back on the
-//! `Shared::retired` list, which `collect()` frees together with unreferenced samples and maps.
+//! `Shared::retired` list, which `collect()` frees together with unreferenced samples.
 
-use super::timing::EngineTiming;
 use super::project::{Project, Sample};
 use super::state::{Command, Render, Rt, EngineCore, Shared};
 use super::tables::{BusRing, ChannelTables, PeakStore};
@@ -35,7 +34,6 @@ pub struct Control {
     pub(crate) control: Box<Project>,
     pub(crate) updating: bool,
     pub(crate) samples: Vec<Box<Sample>>,
-    pub(crate) timing_maps: Vec<Arc<EngineTiming>>,
     /// Control-owned bus history, keyed by logical bus so renumbering keeps it.
     pub(crate) track_rings: Vec<Option<Arc<BusRing>>>,
     pub(crate) return_ring: Option<Arc<BusRing>>,
@@ -87,7 +85,7 @@ impl Control {
         project
     }
 
-    /// Destroy retired projects, then samples and timing maps nothing refers to any more.
+    /// Destroy retired projects, then the samples nothing refers to any more.
     pub fn collect(&mut self, sh: &Shared) {
         if !self.owns(sh) {
             return;
@@ -101,7 +99,6 @@ impl Control {
             retired = project.retired_next;
         }
         self.samples.retain(|sample| sample.refs.load(Ordering::Acquire) != 0);
-        self.timing_maps.retain(|map| !(Arc::strong_count(map) == 1 && map.origin_pins.load(Ordering::Acquire) == 0));
     }
 
     /// `normalize`: pad the track list to the return bus and cache the solo state.
@@ -159,12 +156,12 @@ impl Control {
 
     /// Compile, validate and publish the draft. On failure the previous published project stays
     /// and the draft is retained for further edits.
-    pub fn commit(&mut self, sh: &Shared, sample_rate: f64) -> Result<(), String> {
+    pub fn commit(&mut self, sh: &Shared) -> Result<(), String> {
         if !self.owns(sh) {
             return Err(FOREIGN_ENGINE.into());
         }
         let Some(mut draft) = self.draft.take() else { return Ok(()) };
-        match self.prepare(sh, sample_rate, &mut draft) {
+        match self.prepare(sh, &mut draft) {
             Ok(()) => {}
             Err(problem) => {
                 self.draft = Some(draft);
@@ -185,9 +182,8 @@ impl Control {
         Ok(())
     }
 
-    fn prepare(&mut self, sh: &Shared, sample_rate: f64, draft: &mut Project) -> Result<(), String> {
+    fn prepare(&mut self, sh: &Shared, draft: &mut Project) -> Result<(), String> {
         Self::normalize(draft);
-        draft.compile_timing(sample_rate)?;
         // Only lane lists edited in this draft can be unsorted; shared ones were sorted when
         // first published (and cannot be mutated here).
         for pattern in &mut draft.patterns {
@@ -224,7 +220,6 @@ impl EngineCore {
             control: Box::new(Project::new()),
             updating: false,
             samples: Vec::new(),
-            timing_maps: Vec::new(),
             track_rings: Vec::new(),
             return_ring: None,
             peak_stores: Vec::new(),
@@ -257,7 +252,6 @@ impl Drop for EngineCore {
     fn drop(&mut self) {
         let EngineCore { shared, render, control, .. } = self;
         let render = render.get_mut();
-        render.release_clock_origin();
         // SAFETY: no render call overlaps destruction (API contract), so this thread stands in
         // for the render thread; no adoption happens while the view exists.
         unsafe { Rt::attach(render, shared) }.all_off(true, false);
@@ -273,6 +267,6 @@ impl Drop for EngineCore {
             drop(unsafe { Box::from_raw(current) });
         }
         control.get_mut().collect(shared);
-        // The draft and control projects, then the samples, maps and rings, drop with `Control`.
+        // The draft and control projects, then the samples and rings, drop with `Control`.
     }
 }

@@ -4,7 +4,6 @@
 use super::tone::{load_test_tone, test_tone_instrument, TEST_SINE};
 use super::Engine;
 use std::f64::consts::PI;
-use tracker_engine::clock::{ClockMeterEvent, ClockTempoEvent};
 use tracker_engine::engine::*;
 
 /// `configure(e)` without a type argument (C++ default `type=-1`): instrument 0 is a sustained
@@ -250,17 +249,6 @@ pub fn temporary_export(e: &mut Engine) {
     render(e, &mut a);
     e.panic();
     e.seek(0, 0, 0);
-}
-
-/// C++ `installTestTiming(e,meterChange)`: 120 BPM, 60 BPM from beat 0.375; with `meter_change`
-/// also 5/8 from there. Revision 17.
-pub fn install_test_timing(e: &mut Engine, meter_change: bool) {
-    let tempos = [ClockTempoEvent { beat: 0.0, bpm: 120.0 }, ClockTempoEvent { beat: 0.375, bpm: 60.0 }];
-    let meters = [
-        ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 },
-        ClockMeterEvent { beat: 0.375, numerator: 5, denominator: 8 },
-    ];
-    assert!(e.set_timing_map(&tempos, &meters[..if meter_change { 2 } else { 1 }], 17).is_ok());
 }
 
 /// C++ `configureLoopMusic(e,swing)`: rows 0..15 each carry note 60+row; one row is 6000

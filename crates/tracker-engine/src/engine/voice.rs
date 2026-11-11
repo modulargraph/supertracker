@@ -34,7 +34,6 @@ pub struct NoteOn {
     pub preview: bool,
     pub preview_pitch: f32,
     /// Mapped gate end in beats; negative = none.
-    pub mapped_end: f64,
     pub sequence_track: i32,
 }
 
@@ -55,7 +54,6 @@ impl NoteOn {
             slice: -1,
             preview: false,
             preview_pitch: 0.0,
-            mapped_end: -1.0,
             sequence_track: -1,
         }
     }
@@ -702,12 +700,12 @@ fn route_modulation(m: &mut Modulation, value: f32, depth: f32, target: i32) {
 }
 
 #[inline(always)]
-fn modulation(v: &mut Voice, sample_rate: f64, effective_bpm: f64) -> Modulation {
+fn modulation(v: &mut Voice, sample_rate: f64, bpm: f64) -> Modulation {
     let mut m = Modulation { cutoff_octaves: 0.0, pitch: 0.0, volume: 1.0, pan: 0.0, position: 0.0, grain_size: 1.0 };
     m.cutoff_octaves = filter_envelope(v, sample_rate) * v.p.filter_env_amount / 12.0;
     let p = v.p;
-    let rate1 = if p.lfo_sync != 0 { effective_bpm / (60.0 * p.lfo_beats as f64) } else { p.lfo_rate as f64 };
-    let rate2 = if p.lfo2_sync != 0 { effective_bpm / (60.0 * p.lfo2_beats as f64) } else { p.lfo2_rate as f64 };
+    let rate1 = if p.lfo_sync != 0 { bpm / (60.0 * p.lfo_beats as f64) } else { p.lfo_rate as f64 };
+    let rate2 = if p.lfo2_sync != 0 { bpm / (60.0 * p.lfo2_beats as f64) } else { p.lfo2_rate as f64 };
     let source1 = if p.lfo_depth > 0.0 || rate1 > 0.0 {
         lfo_sample(&mut v.lfo_phase, rate1, p.lfo_shape, &mut v.lfo_random, &mut v.lfo_rng, p.lfo_depth > 0.0, sample_rate)
     } else {
@@ -815,7 +813,7 @@ impl<'a> Rt<'a> {
     pub fn note_on(&mut self, n: NoteOn) {
         let p = self.p;
         let NoteOn { track, instrument, note, velocity, gate, offset, reverse, glide, arp, .. } = n;
-        let NoteOn { from_sequencer, slice, preview, preview_pitch, mapped_end, mut sequence_track, .. } = n;
+        let NoteOn { from_sequencer, slice, preview, preview_pitch, mut sequence_track, .. } = n;
         if !self.channel_enabled(track) || note < 0 || note > 127 {
             return;
         }
@@ -911,7 +909,6 @@ impl<'a> Rt<'a> {
                 v.note = note;
                 v.velocity = velocity_level;
                 v.gate = gate;
-                v.mapped_gate_end = mapped_end;
                 v.onset_frame = total_frames;
                 v.off_sent = false;
                 if v.external {
@@ -943,7 +940,6 @@ impl<'a> Rt<'a> {
                     && v.sequenced
                     && v.sequence_track == sequence_track
                     && v.gate < 0.0
-                    && v.mapped_gate_end < 0.0
                     && v.onset_frame < total_frames
                 {
                     self.release(index);
@@ -1009,7 +1005,6 @@ impl<'a> Rt<'a> {
         v.p = instrument_data.p;
         v.velocity = velocity_level;
         v.gate = gate;
-        v.mapped_gate_end = mapped_end;
         v.onset_frame = total_frames;
         v.glide = glide as f64;
         v.arp = arp;
@@ -1185,7 +1180,6 @@ impl<'a> Rt<'a> {
                 slice,
                 preview: true,
                 preview_pitch: pitch,
-                mapped_end: -1.0,
                 sequence_track: -1,
             });
         }
@@ -1344,9 +1338,6 @@ impl<'a> Rt<'a> {
         let Some(v) = e.voices.get_mut(index) else { return (0.0, 0.0) };
         let mut sink = VoiceSink { masks: &mut e.active_voice_masks, out: &e.out, sh: self.sh };
         let (mut l, mut r) = (0.0f32, 0.0f32);
-        if v.mapped_gate_end >= 0.0 && e.musical_beat + e.loop_beat_offset >= v.mapped_gate_end {
-            sink.release(v, index);
-        }
         if v.gate >= 0.0 {
             if v.gate <= 0.0 {
                 sink.release(v, index);
@@ -1364,7 +1355,7 @@ impl<'a> Rt<'a> {
         if !v.active {
             return (l, r);
         }
-        let m = modulation(v, sample_rate, e.effective_bpm);
+        let m = modulation(v, sample_rate, p.bpm);
         let bend = self.tb.pitch_bend.get(track).copied().unwrap_or(0.0);
         // The pitch sum is single precision (`int + float + ...`), widened afterwards.
         let mut pitch = (v.note as f32 + v.p.tune + t.pitch + bend + m.pitch) as f64;
@@ -1372,11 +1363,7 @@ impl<'a> Rt<'a> {
             pitch += v.glide * (1.0 - (-v.lifetime / (sample_rate * 0.1)).exp());
         }
         if v.arp != 0 {
-            let stage = if p.timing.is_some() {
-                ((e.musical_beat + e.loop_beat_offset) * 12.0).floor() as i32 % 3
-            } else {
-                (e.total_frames / (sample_rate * 60.0 / p.bpm / 12.0)) as i32 % 3
-            };
+            let stage = (e.total_frames / (sample_rate * 60.0 / p.bpm / 12.0)) as i32 % 3;
             pitch += if stage == 1 {
                 ((v.arp >> 4) & 15) as f64
             } else if stage == 2 {

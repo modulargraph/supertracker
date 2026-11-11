@@ -11,7 +11,6 @@
 //! channel tables it is currently using.
 
 use super::abi::*;
-use super::timing::EngineTiming;
 use super::control::Control;
 use super::project::{Project, Sample};
 use super::tables::*;
@@ -200,7 +199,6 @@ pub struct Voice {
     pub loop_begin: f64,
     pub loop_end: f64,
     pub grain_phase: f64,
-    pub mapped_gate_end: f64,
     pub gate: f64,
     pub onset_frame: f64,
     pub elapsed: f64,
@@ -301,7 +299,6 @@ impl Voice {
         loop_begin: 0.0,
         loop_end: 0.0,
         grain_phase: 0.0,
-        mapped_gate_end: -1.0,
         gate: -1.0,
         onset_frame: 0.0,
         elapsed: 0.0,
@@ -366,11 +363,7 @@ pub struct Scheduled {
     pub reverse: i32,
     pub arp: i32,
     pub slice: i32,
-    pub mapped: bool,
-    pub onset_beat: f64,
-    pub end_beat: f64,
     pub sequence_track: i32,
-    pub open: bool,
 }
 
 impl Scheduled {
@@ -387,11 +380,7 @@ impl Scheduled {
         reverse: -1,
         arp: 0,
         slice: -1,
-        mapped: false,
-        onset_beat: 0.0,
-        end_beat: 0.0,
         sequence_track: -1,
-        open: false,
     };
 }
 
@@ -531,7 +520,6 @@ pub struct Shared {
     pub(crate) status_bar: AtomicI64,
     pub(crate) status_numerator: AtomicI32,
     pub(crate) status_denominator: AtomicI32,
-    pub(crate) status_timing_revision: AtomicU64,
     pub(crate) peak_l: AtomicF32,
     pub(crate) peak_r: AtomicF32,
     pub(crate) dropped_commands: AtomicU64,
@@ -588,7 +576,6 @@ impl Shared {
             status_bar: AtomicI64::new(1),
             status_numerator: AtomicI32::new(4),
             status_denominator: AtomicI32::new(4),
-            status_timing_revision: AtomicU64::new(0),
             peak_l: AtomicF32::new(0.0),
             peak_r: AtomicF32::new(0.0),
             dropped_commands: AtomicU64::new(0),
@@ -666,7 +653,6 @@ impl Shared {
             s.bar = self.status_bar.load(relaxed);
             s.numerator = self.status_numerator.load(relaxed);
             s.denominator = self.status_denominator.load(relaxed);
-            s.timing_revision = self.status_timing_revision.load(relaxed);
             s.queued_pattern = self.status_queued_pattern.load(relaxed);
             s.queued_sequence = self.status_queued_sequence.load(relaxed);
             s.count_in = self.status_count_in.load(relaxed);
@@ -829,18 +815,10 @@ pub struct Render {
     pub(crate) comb_r: [Comb; 8],
     pub(crate) ap_l: [Allpass; 4],
     pub(crate) ap_r: [Allpass; 4],
-    pub(crate) cached_clock: Box<[ClockContext]>,
     pub(crate) cache_generation: u64,
-    /// Pinned through `EngineTiming::origin_pins` while non-null.
-    pub(crate) cache_origin_timing: *const EngineTiming,
-    pub(crate) cache_origin_clock: ClockContext,
-    pub(crate) cache_origin_transport: f64,
-    pub(crate) cache_origin_graph: u64,
-    pub(crate) cache_origin_valid: bool,
     pub(crate) observed_cache_epoch: u64,
     pub(crate) cache_begin: u64,
     pub(crate) cache_end: u64,
-    pub(crate) clock_begin: u64,
     pub(crate) cache_valid: bool,
     pub(crate) playing: bool,
     pub(crate) recording: bool,
@@ -882,15 +860,11 @@ pub struct Render {
     pub(crate) row_duration: f64,
     pub(crate) transport_frames: f64,
     pub(crate) total_frames: f64,
+    /// The musical clock of `transport_frames` as `Rt::update_clock` last derived it: the
+    /// quarter beat, the bar (from 1) and the beat at which that bar starts.
     pub(crate) musical_beat: f64,
-    pub(crate) effective_bpm: f64,
-    pub(crate) pattern_origin_beat: f64,
-    pub(crate) loop_beat_offset: f64,
-    pub(crate) row_start_beat: f64,
-    pub(crate) row_end_beat: f64,
-    pub(crate) timing_epoch: u64,
-    pub(crate) clock_loop_iteration: i64,
-    pub(crate) musical_context: ClockContext,
+    pub(crate) bar: i64,
+    pub(crate) bar_start_beat: f64,
     pub(crate) rng: u32,
     pub(crate) live_params: [LiveParam; 64],
     pub(crate) live_param_count: usize,
@@ -957,17 +931,10 @@ impl Render {
             comb_r: COMB_SIZES.map(|size| comb(size + 23)),
             ap_l: ALLPASS_SIZES.map(allpass),
             ap_r: ALLPASS_SIZES.map(|size| allpass(size + 23)),
-            cached_clock: boxed_slice(CLOCK_CAPACITY),
             cache_generation: 1,
-            cache_origin_timing: std::ptr::null(),
-            cache_origin_clock: ClockContext::default(),
-            cache_origin_transport: 0.0,
-            cache_origin_graph: 0,
-            cache_origin_valid: false,
             observed_cache_epoch: 0,
             cache_begin: 0,
             cache_end: 0,
-            clock_begin: 0,
             cache_valid: false,
             playing: false,
             recording: false,
@@ -1004,14 +971,8 @@ impl Render {
             transport_frames: 0.0,
             total_frames: 0.0,
             musical_beat: 0.0,
-            effective_bpm: 120.0,
-            pattern_origin_beat: 0.0,
-            loop_beat_offset: 0.0,
-            row_start_beat: 0.0,
-            row_end_beat: 0.25,
-            timing_epoch: 1,
-            clock_loop_iteration: 0,
-            musical_context: ClockContext::default(),
+            bar: 1,
+            bar_start_beat: 0.0,
             rng: 0xa173cc79,
             live_params: [LiveParam::NONE; 64],
             live_param_count: 0,

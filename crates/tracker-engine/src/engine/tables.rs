@@ -14,7 +14,6 @@ use std::sync::Arc;
 
 pub const MAX_BLOCK: usize = 4096;
 pub const CACHE_CAPACITY: usize = 65536;
-pub const CLOCK_CAPACITY: usize = ST_ENGINE_CLOCK_HISTORY_FRAMES;
 /// `ST_TARGET_LAST_INSTRUMENT - ST_TARGET_ATTACK + 1`
 pub const INSTRUMENT_TARGETS: usize = (ST_TARGET_LAST_INSTRUMENT - ST_TARGET_ATTACK + 1) as usize;
 

@@ -2,7 +2,6 @@
 //! in `tests/`; these cover the same ground in miniature and run first).
 
 use super::host::{ControlHalf, Engine, RenderHalf};
-use super::render_cache::SpanError;
 use super::*;
 
 const RATE: f64 = 48000.0;
@@ -30,8 +29,8 @@ fn commit(control: &mut ControlHalf) {
 
 fn load_sine(control: &mut ControlHalf, instrument: i32) {
     let wave: Vec<f32> = (0..4800).map(|n| (n as f32 * 0.05).sin() * 0.5).collect();
-    let (edit, shared, rate) = control.parts();
-    assert!(edit.set_sample(shared, rate, instrument, Some(edits::Pcm { left: &wave, right: None, rate: RATE })));
+    let (edit, shared, _) = control.parts();
+    assert!(edit.set_sample(shared, instrument, Some(edits::Pcm { left: &wave, right: None, rate: RATE })));
 }
 
 fn set_note(control: &mut ControlHalf, row: i32, note: i32) {
@@ -85,9 +84,9 @@ fn rejects_invalid_engines_and_foreign_shared_state() {
     let (control, render_half, status) = one.halves();
     let (other_control, other_render, other_status) = other.halves();
     let (_, foreign, _) = other_control.parts();
-    let (edit, _, rate) = control.parts();
+    let (edit, _, _) = control.parts();
     assert!(edit.set_track_count(4));
-    assert_eq!(edit.commit(foreign, rate), Err(control::FOREIGN_ENGINE.to_string()));
+    assert_eq!(edit.commit(foreign), Err(control::FOREIGN_ENGINE.to_string()));
     edit.play(foreign, 1);
     assert!(!edit.input_note(foreign, 1, ST_INPUT_NOTE_ON, 0, 0, 60, 100, 1));
     assert!(!edit.set_instrument_parameter(foreign, 0, ST_TARGET_CUTOFF, 0.5));
@@ -102,7 +101,6 @@ fn rejects_invalid_engines_and_foreign_shared_state() {
     render_state.render_bus(foreign, 0, 0, &mut buffer, &mut second);
     assert_eq!(buffer, [0.0; 8]);
     assert_eq!(render_state.render_block(foreign, 0, 64), 0);
-    assert_eq!(render_state.clock_span(foreign, 0, 1, 0), Err(SpanError::Invalid));
     assert_eq!(render_state.forget_external_voices(foreign, 0), 0);
     // Both engines still work with their own.
     control.commit().expect("the first engine commits its own draft");
@@ -194,7 +192,7 @@ fn queued_transport_is_reported_until_rendered() {
 #[test]
 fn bus_history_is_not_rendered_twice() {
     let mut engine = engine();
-    let (control, audio, status) = engine.halves();
+    let (control, audio, _) = engine.halves();
     begin_project(control, default_instrument());
     load_sine(control, 0);
     set_note(control, 0, 60);
@@ -213,10 +211,6 @@ fn bus_history_is_not_rendered_twice() {
     let mut beyond = vec![5.0f32; 64];
     audio.render_bus(17, 1000, &mut beyond, &mut right[..64]);
     assert!(beyond.iter().all(|&x| x == 0.0));
-    let span = audio.clock_span(1000, 100, 0).expect("rendered time has a clock");
-    assert_eq!((span.frames, span.context.graph_frame, span.context.bpm), (100, 1000, 120.0));
-    assert_eq!(audio.clock_span(5000, 100, 0), Err(SpanError::NotPrepared));
-    assert_eq!(SpanError::NotPrepared.status(), ST_ENGINE_CLOCK_NOT_PREPARED);
     // The argument rules: silence and no rendering for what the history cannot hold.
     let mut refused = vec![5.0f32; 64];
     audio.render_bus(-1, 1000, &mut refused, &mut right[..64]);
@@ -229,29 +223,17 @@ fn bus_history_is_not_rendered_twice() {
     audio.render_bus(0, 1000, &mut oversized, &mut oversized_right);
     assert!(oversized.iter().chain(&oversized_right).all(|&x| x == 0.0), "more than the history holds is silent");
     audio.render_bus(0, 1600, &mut [], &mut []);
-    assert_eq!(audio.clock_span(1600, 1, 0), Err(SpanError::NotPrepared), "zero frames render nothing");
     audio.prepare_history(1600, 100);
-    assert_eq!(audio.clock_span(1600, 100, 0).map(|span| span.frames), Ok(100));
-    // A new timestamp epoch forgets the history.
-    status.reset_render_cache();
-    assert_eq!(audio.clock_span(1000, 100, 0), Err(SpanError::NotPrepared));
 }
 
 #[test]
-fn checked_commit_reports_problems_and_keeps_the_published_project() {
+fn a_commit_without_pattern_edits_keeps_the_pattern_epoch() {
     let mut engine = engine();
     let control = engine.control();
     begin_project(control, default_instrument());
     commit(control);
-    let (edit, shared, rate) = control.parts();
-    let duration = edit.duration(rate, true);
-    assert_eq!(duration, 2.0); // 16 rows at 8 rows per second
-    let tempos = [ClockTempoEvent { beat: 0.0, bpm: 5.0 }];
-    let meters = [ClockMeterEvent { beat: 0.0, numerator: 4, denominator: 4 }];
-    assert!(edit.set_timing_map(rate, &tempos, &meters, 1).is_err_and(|problem| !problem.is_empty()));
-    assert!(edit.set_timing_map(rate, &[], &meters, 1).is_err(), "an empty event list is rejected");
-    assert_eq!(edit.duration(rate, true), duration);
-    edit.cancel_update();
+    let (edit, shared, _) = control.parts();
+    assert_eq!(edit.duration(true), 2.0); // 16 rows at 8 rows per second
     let epoch = edit.pattern_epoch();
     edit.begin_update(shared);
     edit.set_timing(90.0, 4, 0.0, 1.0);
@@ -272,21 +254,21 @@ fn pcm_is_validated_before_it_is_stored() {
     let control = engine.control();
     begin_project(control, default_instrument());
     commit(control);
-    let (edit, shared, rate) = control.parts();
+    let (edit, shared, _) = control.parts();
     let pcm = |left: &'static [f32], rate: f64| Some(edits::Pcm { left, right: None, rate });
-    assert!(!edit.set_sample(shared, rate, 0, pcm(&[], RATE)), "no frames");
-    assert!(!edit.set_sample(shared, rate, 0, pcm(&[0.5], 10.0)), "an unusable rate");
-    assert!(!edit.set_sample(shared, rate, 0, Some(edits::Pcm { left: &[0.5, 0.5], right: Some(&[0.5]), rate: RATE })));
-    assert!(!edit.set_sample(shared, rate, 5000, pcm(&[0.5], RATE)), "no such instrument");
+    assert!(!edit.set_sample(shared, 0, pcm(&[], RATE)), "no frames");
+    assert!(!edit.set_sample(shared, 0, pcm(&[0.5], 10.0)), "an unusable rate");
+    assert!(!edit.set_sample(shared, 0, Some(edits::Pcm { left: &[0.5, 0.5], right: Some(&[0.5]), rate: RATE })));
+    assert!(!edit.set_sample(shared, 5000, pcm(&[0.5], RATE)), "no such instrument");
     assert!(edit.draft.is_none(), "a rejected sample leaves no draft behind");
-    assert!(!edit.set_audio_asset(shared, rate, 256, pcm(&[0.5], RATE)), "no such asset slot");
+    assert!(!edit.set_audio_asset(shared, 256, pcm(&[0.5], RATE)), "no such asset slot");
     assert!(edit.draft.is_none());
-    assert!(!edit.set_audio_asset(shared, rate, 0, pcm(&[], RATE)));
+    assert!(!edit.set_audio_asset(shared, 0, pcm(&[], RATE)));
     assert!(edit.draft.is_some(), "a valid slot opens the draft before the PCM is looked at");
     edit.cancel_update();
-    assert!(edit.set_audio_asset(shared, rate, 0, pcm(&[0.5], RATE)));
-    assert!(edit.set_sample(shared, rate, 0, pcm(&[0.5], RATE)));
-    assert!(edit.set_sample(shared, rate, 0, None), "clearing a sample");
+    assert!(edit.set_audio_asset(shared, 0, pcm(&[0.5], RATE)));
+    assert!(edit.set_sample(shared, 0, pcm(&[0.5], RATE)));
+    assert!(edit.set_sample(shared, 0, None), "clearing a sample");
 }
 
 /// The control thread republishes the project and replaces PCM while the render thread plays:
