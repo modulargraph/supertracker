@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::json;
 use st_midi::memory::{MemoryPorts, Sent};
-use st_midi::{ClockSettings, InputRouting, Message, MidiOptions, MidiService, ReturnCompensation};
+use st_midi::{ClockSettings, InputRouting, MidiOptions, MidiService, ReturnCompensation};
 
 fn wait_for(what: &str, mut condition: impl FnMut() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -234,13 +234,22 @@ fn all_notes_off_and_panic_reach_every_external_channel_once() {
     assert_eq!(ports.sent_messages(500), [[0xB0, 64, 0], [0xB0, 66, 0], [0xB0, 67, 0], [0xB0, 123, 0], [0xB0, 120, 0]]);
     assert_eq!(ports.sent_messages(600), [[0xB9, 64, 0], [0xB9, 66, 0], [0xB9, 67, 0], [0xB9, 123, 0], [0xB9, 120, 0]]);
 
-    // Expression for an external instrument goes to its device on its channel.
+    // Channel messages for an external instrument go to its device on its channel, timed
+    // like its notes and in the order they were handed over: a key comes up, the pedal goes
+    // down, a key is struck, all at one frame.
     ports.clear_sent();
-    assert!(service.send_to_instrument(3, Message::new(0xB0, 1, 64)));
-    assert!(!service.send_to_instrument(1, Message::new(0xB0, 1, 64)), "not an external instrument");
-    assert!(!service.send_to_instrument(2, Message::new(0xB0, 1, 64)), "its device is absent");
-    wait_for("the controller", || ports.sent().len() == 1);
-    assert_eq!(ports.sent_messages(600), [[0xB9, 1, 64]]);
+    midi.begin_block(service.clock().now() + 20_000_000, 512, 48_000.0);
+    assert!(midi.note(3, true, 60, 100, 0));
+    assert!(midi.note(3, false, 60, 0, 100));
+    assert!(midi.message(3, 0xB5, 64, 127, 100), "the channel is the instrument's");
+    assert!(midi.note(3, true, 62, 90, 100));
+    assert!(midi.message(3, 0xE0, 0, 96, 100));
+    assert!(midi.message(3, 0xB0, 64, 0, 99), "an earlier frame leaves earlier");
+    assert!(!midi.message(1, 0xB0, 1, 64, 0), "not an external instrument");
+    assert!(midi.message(2, 0xB0, 1, 64, 0), "external, its device absent: nothing is sent");
+    wait_for("the scheduled messages", || ports.sent().len() == 6);
+    assert_eq!(ports.sent_messages(600), [[0x99, 60, 100], [0xB9, 64, 0], [0x89, 60, 0], [0xB9, 64, 127], [0x99, 62, 90], [0xE9, 0, 96]]);
+    assert!(ports.sent_messages(500).is_empty());
 }
 
 #[test]

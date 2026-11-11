@@ -60,11 +60,13 @@ pub trait InputTarget: Send + Sync {
     fn pedal(&self, pedal: &RoutedPedal);
     /// The input route changed: every pedal of a MIDI device counts as lifted.
     fn lift_pedals(&self);
-    /// A controller, program change, channel or poly pressure or pitch-bend message for the
-    /// instrument of a track that is not an external MIDI instrument: the engine's own voices
-    /// take what they use (pitch bend, the modulation wheel), a plug-in instrument gets the
-    /// message. `message.status` is the kind, without a channel.
-    fn message(&self, track: usize, message: Message);
+    /// A controller, program change, channel or poly pressure or pitch-bend message for
+    /// `instrument`, played on `track`. The receiver puts it where the notes of that
+    /// instrument go, so that both keep their order: the engine's own voices take what they
+    /// use (pitch bend, the modulation wheel), a plug-in instrument gets the message, and
+    /// for an external MIDI instrument it leaves through [`RenderOutput::message`], timed
+    /// like its notes. `message.status` is the kind, without a channel.
+    fn message(&self, track: usize, instrument: usize, message: Message);
     /// Silence the engine (all notes off arrived). External instruments are silenced by the
     /// service.
     fn panic(&self);
@@ -401,24 +403,11 @@ impl MidiService {
         self.inner.panic_external();
     }
 
-    /// Sends a channel message to an external instrument's device on its channel
-    /// (`message.status` is the kind; the channel is the instrument's). Returns false when the
-    /// instrument is not external or its device is absent.
-    pub fn send_to_instrument(&self, instrument: usize, message: Message) -> bool {
-        self.inner.send_to_instrument(instrument, message)
-    }
-
     /// Counts the changes of an external instrument's route: another device, another channel,
     /// a device that went away and came back. What the device was told before a change (a pedal
     /// held down) is void after it. 0 for an instrument that never was external.
     pub fn route_generation(&self, instrument: usize) -> u64 {
         lock(&self.inner.routes).resolved.get(instrument).map_or(0, |resolved| resolved.generation)
-    }
-
-    /// Tracks moved to other engine channels or were removed (see
-    /// [`InputRouter::remap_tracks`]).
-    pub fn remap_tracks(&self, moves: &[(usize, Option<usize>)]) {
-        lock(&self.inner.router).remap_tracks(moves);
     }
 
     /// The clock settings and outputs, as `midi.clock` returns them.
@@ -583,10 +572,8 @@ impl Inner {
                     }
                 }
                 InputAction::Forward { track, instrument, message } => {
-                    if !self.send_to_instrument(instrument, message) && !self.host().route(instrument).external {
-                        if let Some(target) = &target {
-                            target.message(track, message);
-                        }
+                    if let Some(target) = &target {
+                        target.message(track, instrument, message);
                     }
                 }
                 InputAction::Control { message, source } => {
@@ -615,17 +602,6 @@ impl Inner {
                     }
                 }
             }
-        }
-    }
-
-    fn send_to_instrument(&self, instrument: usize, message: Message) -> bool {
-        let resolved = lock(&self.routes).resolved.get(instrument).copied().unwrap_or_default();
-        match (resolved.external, resolved.output) {
-            (true, Some(route)) => {
-                self.host().send_to(route, Message::new((message.status & 0xF0) | resolved.channel, message.data1, message.data2), 0);
-                true
-            }
-            _ => false,
         }
     }
 

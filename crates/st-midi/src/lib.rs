@@ -20,8 +20,10 @@
 //! # Output timing
 //!
 //! The audio callback hands over each event with its frame offset in the render block
-//! ([`RenderOutput::note`], [`RenderOutput::clock`]); the event's device time is the block's device
-//! time plus the offset ([`schedule::note_timestamp`]). Nothing on that path allocates, locks or
+//! ([`RenderOutput::note`], [`RenderOutput::message`], [`RenderOutput::clock`]); the event's device
+//! time is the block's device time plus the offset ([`schedule::note_timestamp`]). Notes and the
+//! channel messages played live with them (pedals, controllers, pressure, pitch bend) share that
+//! path, and messages for the same time leave in the order they were handed over. Nothing on that path allocates, locks or
 //! calls the system: messages cross to the sender thread through a bounded lock-free queue, and
 //! routes and clock outputs reach the audio thread as atomically published words.
 //!

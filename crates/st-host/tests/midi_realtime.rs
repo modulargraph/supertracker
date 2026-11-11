@@ -101,12 +101,14 @@ fn midi_output_from_the_render_thread_never_allocates() {
     render_counted(&engine, 50);
     engine.play(&PlayOptions { song: true, from_start: true, ..PlayOptions::default() });
     render_counted(&engine, 200);
-    // Expression for the external instrument goes out from this thread (its device, its
-    // channel); the engine has no use for it. The render thread keeps to its own queue.
+    // Expression and the pedals for the external instrument are queued with its live notes
+    // and leave from the render thread, timed like them (its device, its channel). The
+    // engine's own voices and plug-ins have no use for what is played to this track.
     for step in 0..64u8 {
-        assert!(service.send_to_instrument(0, st_midi::Message::new(0xD0, step, 0)) && service.send_to_instrument(0, st_midi::Message::new(0xA0, 60, step)));
-        // So does a pedal (the render thread's part is pedal-up with all-notes-off, below).
-        assert!(service.send_to_instrument(0, st_midi::Message::new(0xB0, 64, step * 2)));
+        engine.note_on(0, 0, 90, 100);
+        assert!(engine.external_expression(0, [0xD0, step, 0]) && engine.external_expression(0, [0xA0, 60, step]));
+        assert!(engine.external_expression(0, [0xB0, 64, step * 2]));
+        engine.note_off(0, 90);
         assert!(!engine.expression(0, [0xD0, step, 0]));
         render_counted(&engine, 3);
     }
@@ -122,5 +124,6 @@ fn midi_output_from_the_render_thread_never_allocates() {
     for (what, wanted) in [("note-ons", 0x90u8), ("clock pulses", 0xF8), ("Start", 0xFA), ("Stop", 0xFC), ("all notes off", 0xB0), ("channel pressure", 0xD0), ("poly pressure", 0xA0)] {
         assert!(sent.iter().any(|message| message[0] == wanted), "{what} were sent: {} messages", sent.len());
     }
+    assert!(sent.contains(&vec![0xB0, 64, 126]), "the pedal's last value was sent");
     engine.set_midi_output(None);
 }

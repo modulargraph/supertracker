@@ -60,8 +60,8 @@ impl InputTarget for Engine {
     fn lift_pedals(&self) {
         self.push("lift pedals".into());
     }
-    fn message(&self, track: usize, message: Message) {
-        self.push(format!("message t{track} {:#04x} {} {}", message.status, message.data1, message.data2));
+    fn message(&self, track: usize, instrument: usize, message: Message) {
+        self.push(format!("message t{track} i{instrument} {:#04x} {} {}", message.status, message.data1, message.data2));
     }
     fn panic(&self) {
         self.push("panic".into());
@@ -158,10 +158,11 @@ fn notes_reach_the_engine_and_the_interface() {
 #[test]
 fn controllers_pedals_and_transport() {
     let f = Fixture::new();
-    // Controllers, pitch bend, channel and poly pressure and a program change go to the engine
-    // as they are (it bends its own voices and passes them to a plug-in instrument).
+    // Controllers, pitch bend, channel and poly pressure and a program change go to the engine's
+    // side as they are, with the place they are played to (it bends its own voices, passes them
+    // to a plug-in instrument, or times them for an external instrument's device like its notes).
     f.play(11, &[0xB0, 7, 99, 0xE0, 0, 96, 0xD0, 30, 0xA0, 60, 45, 0xC0, 5]);
-    assert_eq!(f.engine.take(), ["message t0 0xb0 7 99", "message t0 0xe0 0 96", "message t0 0xd0 30 0", "message t0 0xa0 60 45", "message t0 0xc0 5 0"]);
+    assert_eq!(f.engine.take(), ["message t0 i0 0xb0 7 99", "message t0 i0 0xe0 0 96", "message t0 i0 0xd0 30 0", "message t0 i0 0xa0 60 45", "message t0 i0 0xc0 5 0"]);
     assert_eq!(f.events("midi.message"), [json!({"status": 0xB0, "data1": 7, "data2": 99, "source": 11})], "only control changes are reported");
 
     // The pedals go to the engine's side with the place they are played to and their values;
@@ -200,19 +201,22 @@ fn controllers_pedals_and_transport() {
 #[test]
 fn an_external_instrument_plays_through_from_its_keyboard() {
     let f = Fixture::new();
-    // Device 22 is instrument 1's input: its notes go to track 1, its controllers to the synth's channel.
+    // Device 22 is instrument 1's input: its notes go to track 1, and its controllers the same
+    // way, to the receiver of the notes: it times both for the synth (`RenderOutput`), so
+    // that they reach the device in the order they were played. The service sends the device
+    // nothing by itself.
     f.play(22, &[0x90, 48, 70]);
     assert_eq!(f.engine.take(), ["on t1 i1 n48 v70"]);
     f.ports.clear_sent();
     f.play(22, &[0xB0, 1, 50, 0xE0, 0, 64, 0xD0, 99, 0xA0, 48, 33]);
-    wait_for("the controllers on the device", || f.ports.sent_messages(500).len() == 4);
-    assert_eq!(f.ports.sent_messages(500), [vec![0xB3, 1, 50], vec![0xE3, 0, 64], vec![0xD3, 99], vec![0xA3, 48, 33]], "on the instrument's own channel");
-    assert!(f.engine.take().is_empty(), "not sent to the engine as well");
-    // With its device unplugged the messages are dropped, not handed to a plug-in.
+    assert_eq!(f.engine.take(), ["message t1 i1 0xb0 1 50", "message t1 i1 0xe0 0 64", "message t1 i1 0xd0 99 0", "message t1 i1 0xa0 48 33"]);
+    // With its device unplugged the messages go the same way (they are dropped where the
+    // notes are, at the output).
     f.ports.remove_output(500);
     f.service.refresh_devices();
     f.play(22, &[0xB0, 1, 51]);
-    assert!(f.engine.take().is_empty());
+    assert_eq!(f.engine.take(), ["message t1 i1 0xb0 1 51"]);
+    assert!(f.ports.sent_messages(500).iter().all(|message| message[0] & 0xF0 == 0xB0 && [64, 66, 67, 123].contains(&message[1])), "nothing but what clears a route: {:?}", f.ports.sent_messages(500));
 }
 
 #[test]
@@ -308,7 +312,6 @@ fn commands_speak_the_pages_json() {
     f.play(22, &[0x91, 61, 100]);
     assert!(f.engine.take().is_empty());
     f.service.set_input_blocked(false);
-    f.service.remap_tracks(&[(0, Some(1))]);
     f.service.shutdown();
     f.service.shutdown();
 }

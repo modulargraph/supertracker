@@ -149,9 +149,9 @@ pub enum InputAction {
     /// counts as lifted.
     LiftPedals,
     /// Pass a controller, program change, channel or poly pressure or pitch-bend message on to
-    /// the instrument: to its device when it is external, to the engine otherwise (its own
-    /// voices and a plug-in instrument on the track). `message.status` carries the kind only
-    /// (channel 0).
+    /// the instrument, the way its notes go (the engine's own voices, a plug-in instrument on
+    /// the track, or the device of an external instrument). `message.status` carries the kind
+    /// only (channel 0).
     Forward {
         /// Engine channel.
         track: usize,
@@ -400,20 +400,6 @@ impl InputRouter {
         self.note_destinations.clear();
         self.expanded.clear();
     }
-
-    /// Tracks moved to other engine channels (`Some(to)`) or were removed (`None`): held keys
-    /// follow their track, so later releases reach the right channel.
-    pub fn remap_tracks(&mut self, moves: &[(usize, Option<usize>)]) {
-        let moves: HashMap<usize, Option<usize>> = moves.iter().copied().collect();
-        self.note_destinations.retain(|_, destination| match moves.get(&destination.0) {
-            None => true,
-            Some(Some(to)) => {
-                destination.0 = *to;
-                true
-            }
-            Some(None) => false,
-        });
-    }
 }
 
 #[cfg(test)]
@@ -604,7 +590,7 @@ mod tests {
     }
 
     #[test]
-    fn route_changes_release_everything_and_moved_tracks_keep_their_notes() {
+    fn route_changes_release_everything() {
         let mut router = router();
         router.handle(Message::new(0x90, 60, 100), 5, false);
         router.handle(Message::new(0x90, 62, 100), 6, false);
@@ -612,17 +598,15 @@ mod tests {
         router.handle(Message::new(0x91, 70, 100), 5, false);
         router.handle(Message::new(0x90, 72, 100), 5, false);
         router.handle(Message::new(0x80, 72, 0), 5, false);
-        // Track 0 becomes track 7.
-        router.remap_tracks(&[(0, Some(7))]);
-        assert_eq!(router.handle(Message::new(0x80, 62, 0), 6, false), [InputAction::NoteOff(note(62, 0, 1, 6, 7, 0))]);
+        // A release goes to the place its note-on went to, as the router knew it then. (Which
+        // track that is by now, after the tracks were moved, is known where the instruments
+        // are: the receiver of the notes keeps the keys that are down.)
+        assert_eq!(router.handle(Message::new(0x80, 62, 0), 6, false), [InputAction::NoteOff(note(62, 0, 1, 6, 0, 0))]);
         // The keys still down are released in their devices' names; the pedals count as lifted.
         let released = router.release_all();
-        assert_eq!(released, [InputAction::Release(note(60, 0, 1, 5, 7, 0)), InputAction::Release(note(70, 0, 2, 5, 7, 0)), InputAction::LiftPedals]);
+        assert_eq!(released, [InputAction::Release(note(60, 0, 1, 5, 0, 0)), InputAction::Release(note(70, 0, 2, 5, 0, 0)), InputAction::LiftPedals]);
         assert_eq!(router.release_all(), [InputAction::LiftPedals]);
         assert!(router.handle(Message::new(0x80, 60, 0), 5, false).is_empty(), "released notes are forgotten");
-        router.handle(Message::new(0x90, 60, 100), 5, false);
-        router.remap_tracks(&[(0, None)]);
-        assert!(router.handle(Message::new(0x80, 60, 0), 5, false).is_empty(), "a removed track's notes are gone with it");
         router.handle(Message::new(0x90, 60, 100), 5, false);
         router.clear();
         assert_eq!(router.release_all(), [InputAction::LiftPedals], "a panic forgets without releasing");

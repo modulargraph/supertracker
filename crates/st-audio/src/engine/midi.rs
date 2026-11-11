@@ -1,6 +1,7 @@
 //! What MIDI needs from [`AudioEngine`]: the output hook of its renderers, the two facts a
 //! live MIDI note asks for (is note recording armed, where is the transport), where
-//! controllers, pressure and pitch bend played live go ([`AudioEngine::expression`]), and what
+//! controllers, pressure and pitch bend played live go ([`AudioEngine::expression`],
+//! [`AudioEngine::external_expression`]), and what
 //! the pedals need to know about the instrument a note is played on
 //! ([`AudioEngine::instrument_kind`], [`AudioEngine::plugin_pedal`]). A child
 //! module of [`crate::engine`], so that these additions stay out of that file. The seam itself
@@ -119,6 +120,38 @@ impl AudioEngine {
             _ => None,
         });
         leaving.collect()
+    }
+
+    /// Waits until the render thread has applied what was queued for it before this call
+    /// (live notes and channel messages) and handed the result to the instruments: two
+    /// render calls from now, since the one in progress may have looked at the queue already.
+    /// For a caller that takes something back from an instrument before it changes the
+    /// project under it. False when that did not happen within `timeout` (no device is
+    /// running: an engine that renders offline; a stream that stalled).
+    pub fn settle_live_input(&self, timeout: std::time::Duration) -> bool {
+        let (shared, running) = {
+            let state = self.lock();
+            (state.core.shared.clone(), state.stream.as_ref().is_some_and(|stream| stream.is_alive()))
+        };
+        if !running {
+            return false;
+        }
+        let deadline = std::time::Instant::now() + timeout;
+        let (mut last, mut calls) = (shared.frames(), 0);
+        loop {
+            let frames = shared.frames();
+            if frames != last {
+                last = frames;
+                calls += 1;
+                if calls == 2 {
+                    return true;
+                }
+            }
+            if std::time::Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
     }
 
     /// Whether note recording is armed (`transport.recordArm`).

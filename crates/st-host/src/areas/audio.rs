@@ -56,6 +56,30 @@
 //! publication moves or removes is told pedal-up before the publication.
 //!
 //! Patterns carry notes with gates and no pedal data: all of this is live input only.
+//!
+//! # One stream of live input per instrument
+//!
+//! What is played live for an instrument reaches it in the order it was played. Notes,
+//! pedals, controllers, pressure and pitch bend all go through the engine's command queue
+//! (`AudioEngine::note_on`, `note_off`, `expression`, `external_expression`) and come out
+//! with the next audio block, at its first frame, in that order: for the engine's own
+//! voices, for a plug-in instrument (which gets the block's events as one list), and for an
+//! external MIDI instrument (whose device gets them timed alike, `st_midi::RenderOutput`).
+//! A pedal pressed after a key came up never catches that note, however close the two were.
+//!
+//! # Held keys
+//!
+//! `note.on`, `note.off` and MIDI input name a track by its place in the list. [`Audio`]
+//! keeps every key that is down with the place it was played to. A key release finds its
+//! key by the place the key-down named, so it ends the note it started and nothing else.
+//! A publication that moves or removes the track of a held key takes the instrument away
+//! from that place: before it is published, the note is released where it sounds (and
+//! what a pedal held there is let go, and the pedal comes up), and the host waits for the
+//! audio thread to have delivered that. The later key release then does nothing: it does
+//! not reach the track that stands at that place now. A track that stays where it is keeps
+//! its keys, also when its instrument is replaced: the key release goes to the voices the
+//! key started (a replaced plug-in or a device route that changed is silenced as a whole,
+//! by the plug-in host and by `st-midi`).
 
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -119,12 +143,14 @@ pub struct Audio {
     samples: Arc<DecodedSamples>,
     events: EventSink,
     settings: Arc<Settings>,
-    /// The pedals that are down, of the interface and of MIDI devices, and what they hold
-    /// (see the module documentation). Locked while what a message leads to is carried out,
-    /// so that messages of several sources take effect in the order they arrived.
-    pedals: Mutex<SustainState>,
+    /// The pedals that are down and the keys that are down, of the interface and of MIDI
+    /// devices (see the module documentation). Locked while what a message leads to is
+    /// carried out, so that messages of several sources take effect in the order they arrived.
+    live: Mutex<LiveInput>,
     /// Told when a note that a sustain pedal kept sounding ends ([`Audio::on_sustained_note_end`]).
     sustained_note_end: OnceLock<SustainedNoteEnd>,
+    /// Told when the host released a key in its player's name ([`Audio::on_key_ended`]).
+    key_ended: OnceLock<KeyEnded>,
     /// Sample problems already reported, so a publication repeats none.
     reported: Mutex<Vec<st_audio::SampleProblem>>,
     /// Called on `transport.stop` and `engine.panic`: Stop also cancels a running export.
@@ -135,12 +161,32 @@ pub struct Audio {
     external_midi: OnceLock<Arc<dyn ExternalInstruments>>,
 }
 
-/// The devices of external MIDI instruments, as the MIDI area offers them to live playing.
+/// Live input as the host keeps it.
+#[derive(Default)]
+struct LiveInput {
+    /// The pedals that are down and what they hold.
+    pedals: SustainState,
+    /// The keys that are down.
+    keys: Vec<HeldKey>,
+}
+
+/// A key that is down: who holds it, and the place it was played to.
+struct HeldKey {
+    source: i32,
+    channel: u8,
+    note: u8,
+    /// The track as the key-down named it (its place in the list then).
+    track: i32,
+    /// The host released the note already, because a publication took the instrument away
+    /// from that place: the key's own release has nothing left to end.
+    ended: bool,
+}
+
+/// The devices of external MIDI instruments, as the MIDI area knows them.
 pub trait ExternalInstruments: Send + Sync {
-    /// Sends a channel message (`[status, data1, data2]`) to the device of an external MIDI
-    /// instrument, on the instrument's channel. `None` when the instrument is not an external
-    /// MIDI instrument; `Some(false)` when it is and its device is absent.
-    fn send(&self, instrument: usize, message: [u8; 3]) -> Option<bool>;
+    /// Whether `instrument` is an external MIDI instrument, and if so whether its device is
+    /// present: `None` for any other instrument, `Some(false)` for one whose device is absent.
+    fn present(&self, instrument: usize) -> Option<bool>;
     /// Counts the changes of the instrument's route: another device, another channel, a
     /// device that came back. A pedal the device was sent before a change is void after it.
     fn generation(&self, instrument: usize) -> u64;
@@ -149,6 +195,9 @@ pub trait ExternalInstruments: Send + Sync {
 /// Called with `(source, channel, note, where it sounded)` when a note whose key was released
 /// under a sustain pedal ends.
 pub type SustainedNoteEnd = Box<dyn Fn(i32, u8, u8, PedalTarget) + Send + Sync>;
+
+/// Called with `(source, channel, note)` when the host has released a held key's note itself.
+pub type KeyEnded = Box<dyn Fn(i32, u8, u8) + Send + Sync>;
 
 /// What became of a released key ([`Audio::key_up`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,7 +214,7 @@ pub struct KeyUp {
 
 impl ProjectAudio for Audio {
     fn prepare(&self, project: &Project, replace: bool) -> Result<Value> {
-        self.detach_pedals_of_moved_tracks(project);
+        self.release_tracks_that_leave(project);
         // An opened or replaced project loads every plug-in's saved state again.
         let report = self.engine.publish_with(project, replace).map_err(Error::new)?;
         self.report_samples(report);
@@ -286,9 +335,8 @@ impl Audio {
         &self.samples
     }
 
-    /// Where `midi.expression` and the pedals send what belongs to an external MIDI instrument
-    /// (the MIDI area sets it; without it external instruments get nothing). Only the first
-    /// call counts.
+    /// Who knows the external MIDI instruments and their devices (the MIDI area sets it;
+    /// without it no instrument counts as external). Only the first call counts.
     pub fn set_external_midi(&self, devices: Arc<dyn ExternalInstruments>) {
         let _ = self.external_midi.set(devices);
     }
@@ -300,10 +348,35 @@ impl Audio {
         let _ = self.sustained_note_end.set(receiver);
     }
 
-    // ---- the pedals (see the module documentation) -----------------------------------------
+    /// Who hears when the host has released a held key's note itself, because a publication
+    /// moved or removed its track (the MIDI area: a key it is recording loses its capture).
+    /// Only the first call counts.
+    pub fn on_key_ended(&self, receiver: KeyEnded) {
+        let _ = self.key_ended.set(receiver);
+    }
 
-    fn pedals(&self) -> std::sync::MutexGuard<'_, SustainState> {
-        self.pedals.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    // ---- the pedals and the keys (see the module documentation) ----------------------------
+
+    fn live(&self) -> std::sync::MutexGuard<'_, LiveInput> {
+        self.live.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Whether `instrument` is an external MIDI instrument, and whether its device is there.
+    fn external(&self, instrument: i32) -> Option<bool> {
+        self.external_midi.get().and_then(|devices| devices.present(instrument.max(0) as usize))
+    }
+
+    /// A channel message (a controller, pressure, pitch bend, a program change) played live
+    /// on `track` for `instrument`: it goes where the notes of that instrument go, behind
+    /// the ones played before it (see "One stream of live input per instrument"). For an
+    /// external MIDI instrument that is its device, on its channel; for any other the
+    /// engine (its own voices take pitch bend and the modulation wheel, a plug-in
+    /// instrument on the track gets the message). Returns whether something took it.
+    pub fn play_message(&self, track: i32, instrument: i32, message: [u8; 3]) -> bool {
+        match self.external(instrument) {
+            Some(present) => present && self.engine.external_expression(instrument, message),
+            None => self.engine.expression(track, message),
+        }
     }
 
     /// What a note played on `track` with `instrument` sounds on, and that instrument's
@@ -321,11 +394,12 @@ impl Audio {
         }
     }
 
-    /// Sends a channel message to an instrument with a pedal of its own.
+    /// Sends a channel message to an instrument with a pedal of its own, behind the notes
+    /// played to it so far.
     fn send_to(&self, target: PedalTarget, message: [u8; 3]) -> bool {
         match target {
             PedalTarget::Plugin { track } => self.engine.expression(track as i32, message),
-            PedalTarget::External { instrument } => self.external_midi.get().and_then(|devices| devices.send(instrument, message)).unwrap_or(false),
+            PedalTarget::External { instrument } => self.external(instrument as i32) == Some(true) && self.engine.external_expression(instrument as i32, message),
             PedalTarget::Engine { .. } => false,
         }
     }
@@ -360,18 +434,28 @@ impl Audio {
     /// reaches the instrument first. Returns what the note sounds on.
     pub fn key_down(&self, source: i32, channel: u8, track: i32, instrument: i32, note: u8) -> PedalTarget {
         let (target, generation) = self.pedal_target(track, instrument);
-        let mut pedals = self.pedals();
-        let effects = pedals.note_on(source, channel, note, track.max(0) as usize, target, generation);
+        let mut live = self.live();
+        let effects = live.pedals.note_on(source, channel, note, track.max(0) as usize, target, generation);
         self.perform(effects, false);
+        // The key is down at this place (struck again, it is the same key).
+        live.keys.retain(|key| (key.source, key.channel, key.note, key.track) != (source, channel, note, track));
+        live.keys.push(HeldKey { source, channel, note, track, ended: false });
         target
     }
 
-    /// The key was released. The caller sends the note-off when the answer says so. What the
-    /// note sounds on is what its key-down found; `instrument` only counts for a key that was
-    /// not seen going down.
+    /// The key was released: `track` is the place its key-down named. The caller sends the
+    /// note-off (to that place) when the answer says so. What the note sounds on is what its
+    /// key-down found; `instrument` only counts for a key that was not seen going down. A
+    /// key whose note the host has released already (its track was moved or removed) has
+    /// nothing left to end: no note-off is to be sent, and the pedals are not asked.
     pub fn key_up(&self, source: i32, channel: u8, track: i32, instrument: i32, note: u8) -> KeyUp {
         let (otherwise, _) = self.pedal_target(track, instrument);
-        let (target, sustained) = self.pedals().note_off(source, channel, note, track.max(0) as usize, otherwise);
+        let mut live = self.live();
+        let held = live.keys.iter().position(|key| (key.source, key.channel, key.note, key.track) == (source, channel, note, track)).map(|index| live.keys.swap_remove(index));
+        if held.is_some_and(|key| key.ended) {
+            return KeyUp { target: otherwise, sustained: false, send_note_off: false };
+        }
+        let (target, sustained) = live.pedals.note_off(source, channel, note, track.max(0) as usize, otherwise);
         KeyUp { target, sustained, send_note_off: target.has_pedal() || !sustained }
     }
 
@@ -382,8 +466,8 @@ impl Audio {
     /// for an instrument of the engine (the sustain pedal only).
     pub fn pedal(&self, source: i32, channel: u8, controller: u8, value: u8, destination: Option<(i32, i32)>) -> bool {
         let played = destination.map(|(track, instrument)| self.pedal_target(track, instrument));
-        let mut pedals = self.pedals();
-        let effects = pedals.pedal(source, channel, controller, value, played);
+        let mut live = self.live();
+        let effects = live.pedals.pedal(source, channel, controller, value, played);
         let unreached = self.perform(effects, false);
         match played {
             Some((target, _)) if target.has_pedal() => !unreached.contains(&target),
@@ -392,47 +476,76 @@ impl Audio {
         }
     }
 
-    /// `project` is about to be published. The pedals know the engine's instruments and the
-    /// plug-in instruments by their track's place in the list: a track the project moves or
-    /// removes takes its instrument away from there. While it is still there, the instrument
-    /// is told pedal-up and the notes the host holds on it are let go. (An instrument that is
-    /// replaced where it stands gets the pedal again with its next note; an external
-    /// instrument's device and channel are the MIDI area's to clear.)
-    fn detach_pedals_of_moved_tracks(&self, project: &Project) {
-        let mut pedals = self.pedals();
-        if pedals.is_idle() {
-            return;
+    /// `project` is about to be published. Keys and pedals know an instrument by its track's
+    /// place in the list: a track the project moves or removes takes its instrument away
+    /// from there. While it is still there, every key held on it is released (the note ends
+    /// where it sounds; the key's own release will find nothing to end), the instrument is
+    /// told pedal-up, and the notes the host holds on it under a pedal are let go. Then the
+    /// audio thread is given the time to deliver all that, before the project changes what
+    /// stands at those places. (An instrument that is replaced where it stands keeps its
+    /// keys and gets the pedal again with its next note; an external instrument's device and
+    /// channel are the MIDI area's to clear.)
+    fn release_tracks_that_leave(&self, project: &Project) {
+        let mut ended = Vec::new();
+        {
+            let mut live = self.live();
+            if live.pedals.is_idle() && live.keys.iter().all(|key| key.ended) {
+                return;
+            }
+            let leaving = self.engine.tracks_leaving(project);
+            if leaving.is_empty() {
+                return;
+            }
+            // The pedals first: a plug-in or a device lets go of what its pedal holds with
+            // the pedal-up, and of the keys that are down with their note-offs after it.
+            let effects = live.pedals.detach(|target| match target {
+                PedalTarget::Engine { track } | PedalTarget::Plugin { track } => leaving.contains(&track),
+                PedalTarget::External { .. } => false,
+            });
+            let told = !effects.is_empty();
+            self.perform(effects, false);
+            for key in live.keys.iter_mut().filter(|key| !key.ended && leaving.contains(&(key.track.max(0) as usize))) {
+                self.engine.note_off(key.track, i32::from(key.note));
+                key.ended = true;
+                ended.push((key.source, key.channel, key.note));
+            }
+            if !told && ended.is_empty() {
+                return;
+            }
         }
-        let leaving = self.engine.tracks_leaving(project);
-        let effects = pedals.detach(|target| match target {
-            PedalTarget::Engine { track } | PedalTarget::Plugin { track } => leaving.contains(&track),
-            PedalTarget::External { .. } => false,
-        });
-        self.perform(effects, false);
+        if let Some(receiver) = self.key_ended.get() {
+            for (source, channel, note) in &ended {
+                receiver(*source, *channel, *note);
+            }
+        }
+        // The note-offs and pedal-ups are commands for the audio thread, by track index: they
+        // have to be carried out before the publication gives those indexes to other tracks.
+        self.engine.settle_live_input(std::time::Duration::from_millis(250));
     }
 
     /// The pedals of the sources `lifted` names come up (their input route was taken down).
     pub fn lift_pedals(&self, lifted: impl Fn(i32) -> bool) {
-        let mut pedals = self.pedals();
-        let effects = pedals.lift(lifted);
+        let mut live = self.live();
+        let effects = live.pedals.lift(lifted);
         self.perform(effects, false);
     }
 
     /// The transport stops: every instrument is told pedal-up and what the host holds is let
     /// go. Call before the engine is stopped: the note-offs go ahead of the stop.
     pub fn silence_pedals(&self) {
-        let mut pedals = self.pedals();
-        let effects = pedals.silence();
+        let mut live = self.live();
+        let effects = live.pedals.silence();
         self.perform(effects, false);
     }
 
     /// A panic: the engine, the plug-ins and the devices are silenced as a whole (and told
-    /// pedal-up there); the pedals are forgotten.
+    /// pedal-up there); the pedals and the keys are forgotten.
     pub fn forget_pedals(&self) {
-        let mut pedals = self.pedals();
-        let effects = pedals.silence();
+        let mut live = self.live();
+        let effects = live.pedals.silence();
         self.perform(effects, true);
-        pedals.clear();
+        live.pedals.clear();
+        live.keys.clear();
     }
 
     /// Tells the interface about samples that cannot be loaded, each once: `sample.error` for an
@@ -593,9 +706,10 @@ impl Audio {
     /// whose channel is `owner` (`track:<routingID>`; the track of the last note without
     /// one). `value` is -1..1 for pitch bend and 0..1 otherwise.
     ///
-    /// The message goes where a key played on a MIDI keyboard would send it:
+    /// The message goes where a key played on a MIDI keyboard would send it, behind the notes
+    /// played before it ([`Audio::play_message`]):
     ///
-    /// - an external MIDI instrument: to its device, on its channel;
+    /// - an external MIDI instrument: to its device, on its channel, timed like its notes;
     /// - a plug-in instrument: to the plug-in, with its next block (`AudioEngine::expression`);
     /// - the engine's own instruments: pitch bend (two semitones either way) and the
     ///   modulation wheel (controller 1); they have no use for the rest.
@@ -643,8 +757,7 @@ impl Audio {
             },
             (other, _) => fail!("Unsupported expression kind: {other}."),
         };
-        let external = self.external_midi.get().and_then(|devices| devices.send(instrument.max(0) as usize, message));
-        let sent = external.unwrap_or_else(|| self.engine.expression(track, message));
+        let sent = self.play_message(track, instrument, message);
         Ok(json!({ "sent": sent, "owner": owner, "instrument": instrument }))
     }
 
@@ -772,7 +885,7 @@ pub fn install(commands: &mut Commands, session: &crate::Session, settings: &Arc
         // Choosing the input opens nothing: it is opened when something uses it.
         let _ = engine.live().inputs().configure(&st_audio::inputs::InputRequest { uid: Some(input), ..Default::default() });
     }
-    let audio = Arc::new(Audio { engine, samples, events: events.clone(), settings: settings.clone(), pedals: Mutex::default(), sustained_note_end: OnceLock::new(), reported: Mutex::default(), stop_hooks: Mutex::default(), line_inputs: Mutex::new(json!([])), external_midi: OnceLock::new() });
+    let audio = Arc::new(Audio { engine, samples, events: events.clone(), settings: settings.clone(), live: Mutex::default(), sustained_note_end: OnceLock::new(), key_ended: OnceLock::new(), reported: Mutex::default(), stop_hooks: Mutex::default(), line_inputs: Mutex::new(json!([])), external_midi: OnceLock::new() });
     session.attach_audio(audio.clone());
     commands
         .with(&audio)

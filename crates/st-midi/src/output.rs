@@ -449,6 +449,7 @@ impl SenderLoop {
 /// midi.clock(0.0, true, 120.0);                    // transport position: beat, playing, tempo
 /// let external = midi.note(3, true, 60, 100, 128); // instrument 3, note-on at frame 128
 /// if !external { /* the engine or a plug-in plays it */ }
+/// midi.message(3, 0xB0, 64, 127, 128);             // its sustain pedal, after that note
 /// ```
 pub struct RenderOutput {
     queue: Producer<TimedMessage>,
@@ -492,6 +493,25 @@ impl RenderOutput {
             let time = note_timestamp(self.host_time, frame_offset, self.ticks_per_frame, route.lead);
             let status = if on { 0x90 } else { 0x80 } | route.channel;
             self.push(TimedMessage { time, output, message: Message::new(status, note.min(127), velocity.min(127)) });
+        }
+        true
+    }
+
+    /// A channel message played live for `instrument` (a controller, a pedal, pressure, pitch
+    /// bend, a program change; `status` is the kind, the channel is the instrument's), at
+    /// `frame_offset` frames into the block. It is timed like a note of that frame and leaves
+    /// after the notes and messages handed over before it: a pedal and the keys around it
+    /// reach the device in the order they were played. Returns true when the instrument is an
+    /// external MIDI instrument (the message was scheduled, or dropped because the device is
+    /// absent).
+    pub fn message(&mut self, instrument: usize, status: u8, data1: u8, data2: u8, frame_offset: i32) -> bool {
+        let route = self.route(instrument);
+        if !route.external {
+            return false;
+        }
+        if let (Some(output), 0x80..=0xE0) = (route.output, status & 0xF0) {
+            let time = note_timestamp(self.host_time, frame_offset, self.ticks_per_frame, route.lead);
+            self.push(TimedMessage { time, output, message: Message::new((status & 0xF0) | route.channel, data1 & 0x7F, data2 & 0x7F) });
         }
         true
     }

@@ -89,9 +89,6 @@ fn start(label: &str) -> Fixture {
     });
     host.request("ready", json!({})).expect("the handshake");
     let services = services.unwrap();
-    // No block of a plug-in is given up, however busy the machine: a live note or a pedal in a
-    // block the plug-in missed would be lost, and with it what the test waits for.
-    services.audio.as_ref().unwrap().engine().plugins().expect("plug-in hosting").set_min_deadline(Duration::from_secs(20));
     let track = |index: i64, name: &str| json!({ "id": index, "name": name, "routingID": name, "volume": 1, "pan": 0, "instrument": index });
     let plugin = |name: &str, component: String, format: &str, path: &std::path::Path| {
         json!({ "instanceID": name, "owner": format!("track:{name}"), "kind": "instrument", "slot": 0, "component": component, "format": format, "bundlePath": path, "name": name })
