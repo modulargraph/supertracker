@@ -1,28 +1,35 @@
 //! Recording to a file: the master output, or an input device.
 //!
 //! ```text
-//!  audio thread (render or input callback)        writer thread ("audio-recording")
+//!  render thread                                  writer thread ("audio-recording")
 //!  ---------------------------------------        ---------------------------------
 //!  Tap::capture(time, left, right)   ~~ ring ~~>   drain -> WavWriter (24-bit PCM) -> file
 //! ```
 //!
-//! A [`Recording`] is one take. Its [`Tap`] is given to whoever has the audio: the live output
-//! stage for the master ([`crate::live`]), the input stream for an input ([`crate::inputs`]).
-//! The tap copies frames into a preallocated single-producer/single-consumer ring and does
-//! nothing else: no allocation, no lock, no I/O, and when the writer falls behind (the ring
-//! holds four seconds) frames are counted as dropped instead of waiting. The writer thread
-//! drains the ring every few milliseconds into the file.
+//! A [`Recording`] is one take. Its [`Tap`] is given to the live output stage ([`crate::live`]),
+//! which has the audio of both kinds of take: the mixed output for the master, and for an
+//! input the chosen input channels as their feed delivers them on the output's clock
+//! ([`crate::inputs`]). The tap copies frames into a preallocated
+//! single-producer/single-consumer ring and does nothing else: no allocation, no lock, no I/O,
+//! and when the writer falls behind (the ring holds four seconds) frames are counted as
+//! dropped instead of waiting. The writer thread drains the ring every few milliseconds into
+//! the file.
 //!
-//! Start and stop happen on the source's clock: the tap notes the frame of the first block it
-//! captures and, once a stop was requested, the frame at which it stopped, so the file holds
-//! exactly the frames `start..end` of that clock ([`Finished::start_frame`]). For the master
-//! that clock is the renderer's graph time, which is what makes a take line up with the song:
-//! frame `n` of the file is what the mixer put out at graph frame `start + n`.
+//! # The clock of a file
+//!
+//! Every take is on the output's clock, at the engine's sample rate. Start and stop happen on
+//! the renderer's graph time: the tap notes the frame of the first block it captures and, once
+//! a stop was requested, the frame at which it stopped, so the file holds exactly the frames
+//! `start..end` of that clock ([`Finished::start_frame`]), one per frame the output rendered.
+//! That is what makes a take line up with the song over its whole length: frame `n` of a
+//! master take is what the mixer put out at graph frame `start + n`, and frame `n` of an input
+//! take is what the input's feed delivered there. Why an input take is not the input device's
+//! own frames at its own rate is said in [`crate::live`].
 //!
 //! Latency compensation of an input take: what arrives from an input device was played
-//! against what was heard, so it is late by the output's and the input's latency. The first
-//! `skip_frames` frames of the take are therefore left out of the file ([`Recording::start`]),
-//! which moves the take that far ahead.
+//! against what was heard, so it is late by the output's latency, the input's, and the delay
+//! of the input's feed. The first `skip_frames` frames of the take are therefore left out of
+//! the file ([`Recording::start`]), which moves the take that far ahead.
 
 use st_samples::wav::{WavEncoding, WavSpec, WavWriter};
 use std::cell::UnsafeCell;

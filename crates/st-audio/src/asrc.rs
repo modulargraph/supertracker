@@ -162,13 +162,16 @@ impl Converter {
         self.position as f64 + self.fraction as f64 / ONE as f64
     }
 
-    /// Moves the read position. The window is emptied: [`Converter::wanted`] asks for the
-    /// frames around the new position again.
+    /// Moves the read position. Forward, the frames the window already holds stay in it.
+    /// Backward, the window is emptied: [`Converter::wanted`] asks for the frames around the
+    /// new position again.
     pub fn seek(&mut self, position: f64) {
         let whole = position.floor();
         self.position = whole as i64;
         self.fraction = (((position - whole) * ONE as f64) as u64).min(ONE - 1);
-        self.len = 0;
+        if self.position - self.kernel.half() as i64 + 1 < self.base {
+            self.len = 0;
+        }
     }
 
     /// The input frames to supply before `frames` output frames (at most
@@ -444,6 +447,43 @@ mod tests {
         let last = positions[frames - 1].floor() as i64;
         assert!((positions[frames - 1] - (consumed - ratio(frames - 1))).abs() < 1e-3, "{} against {consumed}", positions[frames - 1]);
         assert_eq!(supplied, last + kernel.half() as i64 + 1);
+    }
+
+    #[test]
+    fn a_jump_forward_keeps_the_frames_it_has_and_a_jump_back_asks_for_them_again() {
+        let kernel = Arc::new(Kernel::new(48_000.0, 48_000.0));
+        let mut converter = Converter::new(kernel.clone(), 2.0, 64);
+        let one = step(1.0);
+        let mut render = |converter: &mut Converter, expected: Option<(i64, usize)>| {
+            let asked = converter.wanted(64, one);
+            if let Some(expected) = expected {
+                assert_eq!(asked, expected);
+            }
+            let (left, right) = converter.input(asked.1);
+            for index in 0..asked.1 {
+                left[index] = (asked.0 + index as i64) as f32;
+                right[index] = left[index];
+            }
+            let (mut left, mut right) = ([0.0f32; 64], [0.0f32; 64]);
+            converter.render(one, &mut left, &mut right);
+            left
+        };
+        // From position 1 000: frames 957 up to 1 107 for the first 64 output frames. A ramp
+        // comes out as itself at whole positions.
+        converter.seek(1_000.0);
+        let out = render(&mut converter, Some((957, 64 + 87)));
+        assert!((out[0] - 1_000.0).abs() < 1e-2 && (out[63] - 1_063.0).abs() < 1e-2, "{} {}", out[0], out[63]);
+        // Forward by ten frames: only the frames beyond those it holds are asked for.
+        converter.seek(converter.position() + 10.0);
+        let out = render(&mut converter, Some((1_108, 74)));
+        assert!((out[0] - 1_074.0).abs() < 1e-2);
+        // Forward beyond the window, and back behind it: the whole window anew.
+        converter.seek(5_000.5);
+        let out = render(&mut converter, Some((4_957, 64 + 87)));
+        assert!((out[0] - 5_000.5).abs() < 1e-2);
+        converter.seek(4_000.0);
+        let out = render(&mut converter, Some((3_957, 64 + 87)));
+        assert!((out[0] - 4_000.0).abs() < 1e-2);
     }
 
     /// Runs a loop against two clocks that differ by `drift` (relative), with timestamps that

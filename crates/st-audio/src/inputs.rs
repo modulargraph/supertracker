@@ -64,31 +64,42 @@
 //! rate or not. Their crystals differ by tens to hundreds of parts per million, so the reader
 //! resamples by a ratio it measures ([`crate::asrc`]):
 //!
-//! * **Time.** Both threads read one monotonic clock when their callback begins. With every
-//!   block the input thread publishes when it arrived and how many frames have arrived in
-//!   all; the reader extends that to the moment of its own callback: `head = frames + (now -
+//! * **Time.** Both threads read one monotonic clock when their callback begins (the
+//!   system's, not the devices' own timestamps: `cpal` does not promise that the timestamps
+//!   of two streams count from one origin). With every block the input thread publishes when
+//!   it arrived and how many frames have arrived in all; the reader extends that to the moment of its own callback: `head = frames + (now -
 //!   then) * input rate`, the frame the input has reached if frames came one by one instead
 //!   of in blocks. The feed's delay is the distance from the read position to that head.
 //!   Counting the frames in the ring instead would jump by a whole block each time the two
-//!   callbacks slip past each other, and the pitch with it.
+//!   callbacks slip past each other, and the pitch with it. What the reader cannot see is a
+//!   constant: if one device's callbacks are later on average than the other's, the delay
+//!   is off by the difference.
 //! * **Delay.** The delay is held at `output block * ratio + input block + half the filter +
 //!   margin` input frames: an output block is read in one instant, the input arrives a block
 //!   at a time, the filter reads 44 frames ahead, and the margin (half the duration of the
 //!   longer block, at least 1 ms and at most 5 ms) is for callbacks that come late.
 //!   [`LineFeed::latency`] is that in output frames. For two 48 kHz devices with 512-frame
 //!   blocks it is 1 310 frames (27 ms), with 64-frame blocks 222 frames (4.6 ms); the
-//!   one-clock feed's is 512 and 64. What varies is how well the loop holds it: within a
-//!   frame or two once it has the ratio, and by up to 5 frames for a device 200 ppm off (23
-//!   frames for 1 000 ppm) in the seconds it takes to find it.
+//!   one-clock feed's is 512 and 64. What varies is how well the loop holds it. With
+//!   callbacks that come up to half a millisecond late (`tests/two_clocks.rs`) the delay
+//!   stays within 3 frames of the figure once the loop has the ratio and within 4 while it
+//!   finds it; without that jitter a device 200 ppm off moves it by 5 frames at most in the
+//!   first seconds (23 frames for 1 000 ppm) and by a tenth of a frame after a minute.
+//! * **Start.** The reader is silent for a tenth of a second while it measures where the
+//!   input is, and starts at the mean of what it measured: one callback's time is only as
+//!   exact as that callback was punctual.
 //! * **Ratio.** [`crate::asrc::RateLoop`] turns the error of the delay into the ratio of each
-//!   block; [`LineFeed::drift_ppm`] is the difference of the clocks it has measured.
+//!   block; [`LineFeed::drift_ppm`] is the difference of the clocks it has measured. A feed
+//!   made while another of the same stream has run for twenty seconds starts from that
+//!   one's measurement (a take begins at the right pitch).
 //! * **Late input** (frames a block needs have not arrived: a USB hiccup): the block gets
 //!   silence in their place and keeps its place in time. When the frames arrive after all,
 //!   those whose time has passed are dropped, and the delay is what it was: no offset
 //!   remains. One incident counts as one underrun.
 //! * **A jump** (the delay is away from its target by more than half a block and the margin
 //!   for a tenth of a second: one side lost frames or stood still): the read position is put
-//!   back on the target at once, keeping the measured ratio. Too little waiting means silence
+//!   back on the target at once, by the mean of the error in that tenth of a second, keeping
+//!   the measured ratio. Too little waiting means silence
 //!   until the input has caught up, and counts as an underrun unless the incident was counted
 //!   already; too much waiting drops the oldest frames, and counts as an overrun. So does an
 //!   input ring that ran full because nobody read it: what waited in it is stale and dropped.
@@ -309,9 +320,11 @@ impl Reader {
                     self.starving = true;
                 }
                 // By the mean of what was measured meanwhile, as at the start.
-                self.converter.seek(self.converter.position() + self.errors.0 / self.errors.1 as f64);
+                let mean = self.errors.0 / self.errors.1 as f64;
+                self.converter.seek(self.converter.position() + mean);
                 self.rate.settle();
                 (self.astray, self.errors) = (0.0, (0.0, 0));
+                error -= mean;
             }
             self.rate.held()
         } else {
@@ -1648,6 +1661,32 @@ mod tests {
         assert!(!inputs.line_retry_due());
     }
 
+    #[test]
+    fn an_input_opens_at_the_engines_rate_or_at_its_nearest_and_one_clock_is_only_assumed_where_it_is_certain() {
+        use cpal::SampleFormat::{F32, I16};
+        let range = |channels, min, max, format| cpal::SupportedStreamConfigRange::new(channels, cpal::SampleRate(min), cpal::SampleRate(max), cpal::SupportedBufferSize::Unknown, format);
+        let chosen = |configs: Vec<cpal::SupportedStreamConfigRange>, preferred| choose_input(configs, preferred).map(|(config, rate)| (rate, config.channels(), config.sample_format()));
+        // A device that has the engine's rate: with the most channels, float before integers.
+        let interface = vec![range(2, 44_100, 44_100, I16), range(2, 48_000, 48_000, F32), range(8, 48_000, 48_000, I16), range(8, 48_000, 48_000, F32), range(8, 96_000, 96_000, F32)];
+        assert_eq!(chosen(interface, 48_000), Some((48_000, 8, F32)));
+        // A microphone that has not: its nearest rate, whichever side it is on.
+        assert_eq!(chosen(vec![range(1, 16_000, 16_000, I16), range(1, 44_100, 44_100, I16)], 48_000), Some((44_100, 1, I16)));
+        assert_eq!(chosen(vec![range(2, 22_050, 22_050, F32), range(2, 88_200, 192_000, F32)], 48_000), Some((88_200, 2, F32)));
+        assert_eq!(chosen(vec![range(2, 8_000, 32_000, F32)], 44_100), Some((32_000, 2, F32)));
+        assert_eq!(chosen(Vec::new(), 48_000), None);
+        assert!(convertible(44_100.0, 48_000.0) && convertible(8_000.0, 96_000.0) && convertible(192_000.0, 44_100.0));
+        assert!(!convertible(1_000.0, 48_000.0) && !convertible(384_000.0, 44_100.0) && !convertible(8_000.0, 192_000.0));
+
+        // Two names are one clock only when they are the same and name one device for certain.
+        use crate::device::same_clock;
+        assert!(!same_clock("", "") && !same_clock("Scarlett 2i2 USB", "USB Microphone") && !same_clock("null", "Scarlett 2i2 USB"));
+        assert_eq!(same_clock("hw:CARD=USB,DEV=0", "hw:CARD=USB,DEV=0"), cfg!(any(target_os = "linux", target_os = "macos")));
+        assert!(!same_clock("hw:CARD=USB,DEV=0", "plughw:CARD=USB,DEV=0"));
+        // A sound server's door on Linux may lead to different hardware on each side.
+        assert_eq!(same_clock("default", "default"), cfg!(target_os = "macos"));
+        assert_eq!(same_clock("pipewire", "pipewire"), cfg!(target_os = "macos"));
+    }
+
     /// An input with a clock of its own at `rate` in blocks of `block`, routed as one stereo
     /// line input of an engine at 48 kHz with blocks of `output_block`.
     fn separate(rate: u32, block: u32, output_block: u32) -> (Inputs, Arc<LineFeed>) {
@@ -1671,6 +1710,16 @@ mod tests {
         // From 44.1 kHz in blocks of 441 frames (10 ms): 256 output frames are 235.2 input
         // frames, the margin is 5 ms; in output frames the whole is 1.088 times as much.
         assert_eq!(separate(44_100, 441, 256).1.latency(), ((235.2f64 + 441.0 + 46.0 + 220.5).ceil() * 48_000.0 / 44_100.0).round() as u32);
+        // An output that turns out to ask for larger blocks than it was opened with: the
+        // routes are resolved again, and the feed is one for that block.
+        let (inputs, feed) = separate(48_000, 512, 512);
+        inputs.set_output_block(512);
+        assert!(!inputs.line_retry_due());
+        inputs.set_output_block(1_024);
+        assert!(inputs.line_retry_due());
+        let states = inputs.set_line_routes(&[LineRoute { track: 0, device_uid: "null:manual:48000:512".to_string(), channels: [0, 1] }], false);
+        let LineState::Live { feed: larger, .. } = &states[0] else { panic!("not live: {states:?}") };
+        assert!(!Arc::ptr_eq(&feed, larger) && larger.latency() == 1_024 + 512 + 44 + 2 + 240 && !inputs.line_retry_due());
         // A rate that cannot be converted is refused with a reason.
         let inputs = Inputs::default();
         inputs.set_format(48_000.0, 256, "Speakers");

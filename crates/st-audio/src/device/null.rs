@@ -8,7 +8,9 @@
 //!
 //! The null device is also the clock of the null input of its engine: before each block it
 //! delivers that block's worth of input ([`NullDuplex`]), so input and output never drift
-//! apart, as on an audio interface that has both.
+//! apart, as on an audio interface that has both. (The free-running null input of the tests
+//! has a timer thread of its own instead, and is then a second device with a second clock:
+//! [`crate::inputs::NULL_FREE_INPUT`].)
 
 use super::{OutputStream, SharedRenderer, NULL_DEVICE};
 use crate::inputs::NullDuplex;

@@ -76,7 +76,7 @@ the standard folders out.
 |---|---|
 | Bridge guarantees, session and settings commands, catalogue; the audio commands on the null device (`tests/audio.rs`) | `cargo test -p st-host` |
 | The audio core: unit tests, offline renders against the mixer's rules (`tests/offline.rs`), the demo song, transport, devices (`tests/playback.rs`), no allocation on the render path (`tests/realtime.rs`), kit previews of generated kits with a built-in effect and a plug-in in a container (`tests/kit_preview.rs`) | `cargo test -p st-audio` |
-| Line inputs: a manual input through a track's inserts, fader and meter, delay compensation of its latency, paused routes, the tap on a strip (`tests/line_inputs.rs`), no allocation on the input and render paths with line inputs and a tap (`tests/realtime.rs`); Freeze by recording in real time on the null device, a recorded print against the offline print of the same track, cancelled and disturbed takes (`tests/freeze_recording.rs`) | `cargo test -p st-audio` |
+| Line inputs: a manual input through a track's inserts, fader and meter, delay compensation of its latency, paused routes, the tap on a strip (`tests/line_inputs.rs`), no allocation on the input and render paths with line inputs and a tap (`tests/realtime.rs`); an input on a clock of its own in simulated time: the converter's distortion and frame count (unit tests of `asrc.rs`), ten minutes at +200 ppm, -200 ppm and from 44.1 kHz without a gap or a skip, a stall with a burst, lost input, a stalled output, a 44.1 kHz input into a track and into a take at the engine's rate (`tests/two_clocks.rs`), no allocation in any of that (`tests/realtime.rs`); Freeze by recording in real time on the null device, a recorded print against the offline print of the same track, cancelled and disturbed takes (`tests/freeze_recording.rs`) | `cargo test -p st-audio` |
 | Line inputs and Freeze by recording through the bridge, on the null device with the null input's test tone: a route in the project heard on its track's meter and reported in `audio.devices`, paused routes, the remembered input, a hardware track frozen by recording, played from its print, exported and unfrozen (`tests/line_inputs.rs`) | `cargo test -p st-host` |
 | Render cost of the demo song and of a 64-track project | `cargo run --release -p st-audio --example bench` |
 | The library through the bridge, on generated audio files: add a folder, scan, search, favorites and browser state across a restart, kits, a kit saved with the preview of its group bus and auditioned (the file's format, length and where it has audio), the seam to the plug-in list (`tests/library.rs`) | `cargo test -p st-host` |
@@ -432,7 +432,13 @@ Exercised on Linux (Ubuntu 24.04, x86-64):
   track's inserts, fader and meter and in the delay compensation, paused routes, a print recorded
   in real time that equals the offline print of the track's notes plus the input frame for frame
   (song, head and loop prints), cancelled and disturbed takes, the frozen track played and
-  exported; and in Chromium (`run.js`): Live input ticked in the mixer, the tone on the track's
+  exported; an input on a second clock (the test tone from a timer thread of its own at
+  44.1 kHz under the null output at 48 kHz): the route converted and reported so, the tone at
+  its level on the track and at its pitch in a take. What is exact about two clocks (no gap in
+  ten minutes, the pitch to a few parts per million, the delay to a few frames, recovery from
+  stalls) is measured in simulated time, where the test places every callback of both devices
+  (`cargo test -p st-audio --test two_clocks`): real threads on a busy machine cannot promise
+  it; and in Chromium (`run.js`): Live input ticked in the mixer, the tone on the track's
   meter, the route gone with Undo.
 - Termination: `supertracker --serve` ends on SIGTERM with its services shut down (checked by hand:
   the control socket is removed, exit status 143).
@@ -455,9 +461,19 @@ Not exercised anywhere yet:
   missing devices.
 - **Audio from a real device**: no input device has been opened. `cpal` input streams, line inputs
   from hardware (the latency they are given in the delay compensation is an estimate from what the
-  devices report; the gaps and skips when an input and an output device drift apart; the
-  microphone permission on macOS, which the first opened input asks for) and Freeze by recording
-  of a real return have only run on the null devices, where input and output share one clock.
+  devices report; the microphone permission on macOS, which the first opened input asks for) and
+  Freeze by recording of a real return have only run on the null devices. An input on another
+  device than the output is resampled onto the output's clock; that has run against simulated
+  clocks and a timer thread only. What hardware has to show: how punctual the callbacks of
+  `cpal`'s Core Audio and ALSA streams are (the converter follows the two clocks by the time each
+  callback begins, read from the system's monotonic clock, not by the devices' own timestamps;
+  callbacks later than the feed's margin of 1 to 5 ms cost a counted gap, and if one device's
+  callbacks are later on average than the other's, the real delay differs from the reported one
+  by that much), whether a device
+  delivers the block size it was asked for (the feeds are made for the largest block seen on
+  either side, and made anew when a larger one arrives), how a USB device behaves when it drops
+  out, and that two streams on one device really run in step where the host assumes one clock
+  (the same device name on macOS, the same `CARD=` name on Linux).
 - **Everything macOS**: the AppKit window (transparent title bar, full-size content), `window.titleBar`
   dragging, the application menu and its standard items, `rfd` panels and the alert for a hung page,
   context menus through `show_context_menu_for_nsview`, `Event::Opened` (files opened from Finder),
@@ -524,6 +540,11 @@ Behaviour worth knowing:
   sent as an event) says which routes are live and why the others are paused. The input device
   chosen with `audio.configure` is remembered; a route is live only while its `deviceUID` is that
   input. Opening a project with enabled routes opens the input device.
+- The input and the output may be two devices with two clocks and two sample rates. Everything
+  that brings input audio into the mix (line inputs, monitoring, the source of Freeze by
+  recording, takes of the input) is then resampled onto the output's clock by a ratio the host
+  measures (`st_audio::asrc`, `st_audio::inputs`); one device with one clock passes its frames
+  through unchanged. A take of the input is a file at the engine's rate on the output's clock.
 - Plug-ins: every plug-in runs in a `supertracker-plugin-container` process (CLAP, VST3, Audio
   Units; no VST2, no in-process hosting). Components are named `clap:<id>`, `vst3:<class id>`,
   `au:<type>:<subtype>:<manufacturer>`; a descriptor with any other identity or state encoding is

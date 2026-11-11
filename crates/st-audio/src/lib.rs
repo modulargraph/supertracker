@@ -23,6 +23,7 @@
 //! | [`kit_preview`] | the audio preview a kit is saved with: its group bus in the selected pattern, rendered on a private engine |
 //! | [`graph`] | the mixer: spec, compiler and render plan, delay compensation, automation, inserts, send effects, meters, the renderer |
 //! | [`device`] | outputs: `cpal` devices and the null device |
+//! | [`asrc`] | the converter between two devices' clocks: a windowed-sinc interpolator with a variable ratio and the loop that measures the ratio |
 //! | [`midi`] | the MIDI seam: what the render thread tells MIDI output (external instruments, clock) |
 //! | [`plugins`] | plug-in hosting: the plug-ins of a project as instances in container processes ([`plugins::PluginManager`]), as processors of the graph ([`plugins::PluginInsert`]), the catalogue of installed plug-ins and the recovery store |
 //!
@@ -48,16 +49,26 @@
 //! strip, ahead of its inserts. The project is the only description: every publication tells
 //! [`inputs::Inputs`] the enabled routes, the live ones become sources of the mixer
 //! ([`graph::spec::LineInputSpec`]), and their audio crosses from the input thread to the
-//! render thread through one ring per route ([`inputs::LineFeed`], which also says what happens
-//! when the input's clock and the output's disagree). `engine/lines.rs` has the latency a
-//! hardware return is given in the delay compensation.
+//! render thread through one feed per route ([`inputs::LineFeed`]). `engine/lines.rs` has the
+//! latency a hardware return is given in the delay compensation.
+//!
+//! # Two clocks
+//!
+//! The input and the output may be two devices. Then they have two clocks, which differ by
+//! tens to hundreds of parts per million whatever their nominal rates are, and possibly two
+//! sample rates. Every feed from such an input (line inputs, the monitored channels, the
+//! source of an input take) resamples onto the output's clock by a ratio it measures from the
+//! times of the two devices' callbacks ([`asrc`], [`inputs`]); its delay is constant, known
+//! and compensated. An input that is certain to share the output's clock (one device, or the
+//! null devices) passes its frames through unchanged. Recorded files are on the output's
+//! clock at the engine's rate ([`live`]).
 //!
 //! # Platforms
 //!
 //! Tested on Linux (ALSA through `cpal`; building needs `libasound2-dev`). The macOS (CoreAudio)
 //! device code is `cpal`'s and has only been type-checked for `aarch64-apple-darwin`. No input
 //! device has been opened anywhere: inputs, line inputs and Freeze by recording are tested on
-//! the null devices.
+//! the null devices, and two clocks in simulated time (`tests/two_clocks.rs`).
 
 // The status object is one large `json!` literal.
 #![recursion_limit = "256"]
