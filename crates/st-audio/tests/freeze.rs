@@ -142,7 +142,7 @@ fn a_frozen_track_plays_what_the_live_track_played() {
     let result = freeze_track(&context, &offline(0, None, 10.0), &fixture.folder.join("Freezes"), &hash).unwrap();
     let record = result["record"].clone();
     assert_eq!((result["releasedPlugins"].clone(), record["dormantPluginIDs"].clone(), record["tailMode"].clone(), record["method"].clone()), (json!(2), json!(["comp", "limit"]), json!("auto"), json!("offline")));
-    assert_eq!((record["version"].clone(), record["sampleRate"].clone(), record["musicalFrames"].clone(), record["musicalEndBeat"].clone()), (json!(1), json!(48_000.0), json!(192_000), json!(8.0)));
+    assert_eq!((record["sampleRate"].clone(), record["musicalFrames"].clone(), record["musicalEndBeat"].clone()), (json!(48_000.0), json!(192_000), json!(8.0)));
     assert_eq!(record["frames"].as_u64().unwrap(), record["musicalFrames"].as_u64().unwrap() + record["tailFrames"].as_u64().unwrap());
     let tail = record["tailFrames"].as_u64().unwrap();
     assert!(tail > 0 && tail < 480_000, "the auto tail ends where the chain is silent ({tail} frames)");

@@ -184,7 +184,7 @@ fn a_frozen_tracks_input_is_closed() {
     rig.run(4);
     assert!(peak(&rig.left) > 0.2);
     // A print (any file name: it is not found, which is a sample problem, not an error).
-    project["tracks"][0]["frozen"] = json!({ "version": 1, "id": "f", "path": "/nowhere/print.wav", "sha256": "", "sampleRate": 48000, "frames": 1000, "musicalFrames": 900, "tailFrames": 100, "musicalEndBeat": 4 });
+    project["tracks"][0]["frozen"] = json!({ "id": "f", "path": "/nowhere/print.wav", "sha256": "", "sampleRate": 48000, "frames": 1000, "musicalFrames": 900, "tailFrames": 100, "musicalEndBeat": 4 });
     rig.engine.publish(&parse(&project)).unwrap();
     let frozen = row(&rig.engine, 0);
     assert_eq!((frozen["state"].clone(), frozen["status"].clone()), (json!("paused"), json!("The track is frozen: its input is closed while it plays its print.")));

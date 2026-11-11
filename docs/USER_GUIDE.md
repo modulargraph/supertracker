@@ -34,7 +34,7 @@ These structure keys work from every workspace (also while a text field has focu
 | `Cmd+Shift+N` | New pattern |
 | `Cmd+T` / `Cmd+Shift+T` | Add track / duplicate the selected track |
 
-Plain `[` / `]` still change the keyboard octave. Projects use the `.supertracker` extension. Saving collects referenced sample files into a neighboring `.media` folder by default; keep that folder beside the project when moving it. Recovery data is stored under `~/Library/Application Support/SuperTracker`.
+Plain `[` / `]` still change the keyboard octave. Projects use the `.supertracker` extension. A project file names the format it was written in; a project, template, recovery copy or kit written in another format (by an earlier or a later version of SuperTracker) is not opened, and the message says so. Nothing is converted. Saving collects referenced sample files into a neighboring `.media` folder by default; keep that folder beside the project when moving it. Recovery data is stored under `~/Library/Application Support/SuperTracker`.
 
 New/Open, MIDI import and loading the demo offer Save, Discard or Cancel when the session has changes. Save completes before replacement; a canceled or failed save leaves the current session. Edits made in a vendor AU window are captured for this decision. A failed or malformed native state capture prevents an unsafe save or session replacement. Opening a project from Finder uses the same flow and waits for application startup or the current session transition. Hidden-WebKit/Bridge tests verify save/open, media collection and recovery. The physical QA run canceled a native Save panel and saved a private fixture; its destination field used accessibility entry. Complete file/close-dialog and Finder workflows remain unverified.
 

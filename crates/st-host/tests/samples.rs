@@ -32,7 +32,7 @@ fn project(sample: &str) -> Value {
     rows[0] = json!({ "note": 60, "instrument": 0, "velocity": 110, "gate": 0 });
     rows[8] = rows[0].clone();
     json!({
-        "version": 1, "bpm": 120, "linesPerBeat": 4, "masterVolume": 1,
+        "version": 2, "bpm": 120, "linesPerBeat": 4, "masterVolume": 1,
         "tracks": [{ "id": 0, "name": "a", "routingID": "a", "volume": 1, "pan": 0, "instrument": 0 }],
         "instruments": [{ "id": 0, "type": "sample", "samplePath": sample, "mode": "oneshot", "volume": 1, "attack": 0, "sustain": 1, "release": 0.05 }],
         "patterns": [{ "id": 0, "length": 16, "steps": [rows], "automation": [] }],

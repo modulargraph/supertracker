@@ -54,7 +54,7 @@ pub fn project(tracks: usize) -> Value {
         })
         .collect();
     json!({
-        "version": 1, "bpm": 120, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
+        "version": 2, "bpm": 120, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
         "tracks": names.iter().enumerate().map(|(index, name)| json!({ "id": index, "name": name, "routingID": name, "volume": 1, "pan": 0, "instrument": 0 })).collect::<Vec<_>>(),
         "instruments": [{ "id": 0, "type": "sample", "samplePath": TONE, "mode": "forward", "volume": 1, "attack": 0, "decay": 0.01, "sustain": 1, "release": 0.01 }],
         "patterns": [{ "id": 0, "length": 16, "steps": steps, "automation": [] }],

@@ -30,17 +30,9 @@ The default kit folder is `~/Documents/SuperTracker/Kits`. **Rescan library** re
 
 To load a sample onto one pad, put the cursor on that member track and use the Samples browser's **Replace selected instrument** (Option-Return). **Add sample on new track** (Return) adds an ordinary track.
 
-## Older projects
+## Kits from other versions
 
-Projects saved with the earlier kit lanes are converted when they open:
-
-- Each kit becomes a group.
-- Each Sound that had a source or notes becomes a member track.
-- Stacked hits become notes on their member's row, with pitch, velocity, gate, chords and FX.
-- Sound mix, inserts and automation move to the member. The kit's group mix and inserts stay on the group bus.
-- Choke and mono settings carry over.
-
-A message lists what was converted. The file on disk is unchanged until you save.
+A `.stkit` package names its format in its header. A kit written in another format than this version's is not loaded, and the browser shows the reason with the kit; nothing is converted. Save the group again to get a current package.
 
 ## Maschine compatibility
 

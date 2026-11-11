@@ -3,7 +3,7 @@
 use crate::json::{model, string_enum};
 use serde_json::Value;
 
-/// Insert slots per mixer channel (`MixerChannel.insertSlotCount`, the interface's `INSERT_SLOTS`).
+/// Insert slots per mixer channel (the interface's `INSERT_SLOTS`).
 pub const INSERT_SLOTS: i64 = 16;
 
 string_enum! {

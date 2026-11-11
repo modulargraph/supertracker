@@ -272,7 +272,7 @@ fn a_pattern_a_track_and_other_formats() {
     assert!(fixture.export(&float32(&fixture.path("x.wav"), "song"), &none, &|_, _| {}).unwrap_err().contains("line inputs"));
     // Frozen, the track plays its print and its input is closed: the song can be rendered
     // (here the print's file does not exist, so the track is silent).
-    live_input["tracks"][0]["frozen"] = json!({ "version": 1, "id": "f", "path": fixture.path("print.wav"), "sha256": "", "sampleRate": 48000, "frames": 1000, "musicalFrames": 900, "tailFrames": 100, "musicalEndBeat": 4 });
+    live_input["tracks"][0]["frozen"] = json!({ "id": "f", "path": fixture.path("print.wav"), "sha256": "", "sampleRate": 48000, "frames": 1000, "musicalFrames": 900, "tailFrames": 100, "musicalEndBeat": 4 });
     fixture.live.publish(&parse(&live_input)).unwrap();
     fixture.export(&float32(&fixture.path("frozen-input.wav"), "song"), &none, &|_, _| {}).unwrap();
 }

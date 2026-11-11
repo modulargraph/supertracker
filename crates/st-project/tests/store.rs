@@ -1,5 +1,5 @@
-//! Project files and sessions. Ported from tests/ProjectStoreTests.swift and
-//! tests/ProjectStoreBoundaryTests.swift, plus atomicity and collection idempotence.
+//! Project files and sessions: reading and writing, the media folder, recovery, templates,
+//! atomicity and collection idempotence.
 
 mod common;
 
@@ -125,11 +125,11 @@ fn zones_clips_takes_and_extensionless_files_are_collected() {
     fs::write(&alternate, [4u8, 3, 2, 1]).unwrap();
     let text = |path: &Path| path.to_string_lossy().into_owned();
     let project = Project::from_value(json!({
-        "version": 1, "name": "Complex", "bpm": 120, "tracks": [{ "id": 0, "routingID": "t0" }], "routing": {},
+        "version": 2, "name": "Complex", "bpm": 120, "tracks": [{ "id": 0, "routingID": "t0" }], "routing": {},
         "instruments": [{ "id": 0, "samplePath": text(&source), "zones": [{ "samplePath": text(&source), "rootNote": 60 }] }],
         "patterns": [{ "id": 0, "length": 4, "steps": [[]] }], "sequence": [0],
         "audioClips": [{ "id": "phrase", "track": 0, "startBeat": 0.0, "durationBeats": 4.0, "path": text(&source),
-            "takeSet": { "version": 1, "activeID": "a", "takes": [{ "id": "a", "path": text(&source), "sourceOffset": 0.0 }, { "id": "b", "path": text(&alternate), "sourceOffset": 0.0 }] } }],
+            "takeSet": { "activeID": "a", "takes": [{ "id": "a", "path": text(&source), "sourceOffset": 0.0 }, { "id": "b", "path": text(&alternate), "sourceOffset": 0.0 }] } }],
         "mediaManifest": [{ "path": text(&source) }, { "path": text(&alternate) }]
     }))
     .unwrap();
@@ -263,7 +263,11 @@ fn a_recovery_copy_failure_does_not_fail_the_save() {
 fn an_unreadable_recovery_file_is_kept_aside() {
     let root = TempDir::new("unreadable");
     let mut session = Session::new(root.join("support")).unwrap();
-    let bytes = br#"{"version":1,"name":"Newer build","tracks":[]}"#;
+    let mut other = minimal(None).to_value();
+    other["version"] = json!(st_project::model::FORMAT_VERSION + 1);
+    other["name"] = json!("Newer build");
+    let text = other.to_string();
+    let bytes = text.as_bytes();
     fs::write(session.recovery_file(), bytes).unwrap();
     let startup = session.startup().unwrap();
     assert!(startup.project.is_none() && startup.origin == StartupOrigin::Blank);
@@ -376,7 +380,7 @@ fn templates_and_the_startup_session() {
     let sample = root.join("template.wav");
     fs::write(&sample, b"template audio").unwrap();
     let hardware = Project::from_value(json!({
-        "version": 1, "name": "Eight tracks", "bpm": 120,
+        "version": 2, "name": "Eight tracks", "bpm": 120,
         "tracks": (0..8).map(|index| json!({ "id": index, "routingID": format!("t{index}"), "name": format!("Track {}", index + 1), "instrument": if index < 3 { index } else { -1 } })).collect::<Vec<_>>(),
         "instruments": (0..3).map(|index| json!({ "id": index, "name": format!("Synth {index} Editor"), "type": "midi", "samplePath": if index == 0 { sample.to_string_lossy().into_owned() } else { String::new() } })).collect::<Vec<_>>(),
         "patterns": [{ "id": 0, "length": 64, "steps": (0..8).map(|_| vec![Value::Null; 64]).collect::<Vec<_>>(), "automation": [] }],

@@ -22,7 +22,7 @@ use std::fs;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
-/// The most bytes [`hash_file`] reads by default (4 GiB), as the Swift host's save budget.
+/// The most bytes [`hash_file`] reads by default (4 GiB).
 pub const DEFAULT_HASH_LIMIT: u64 = 4_294_967_296;
 
 /// Rewrites every media path of `project`. `transform` returns the new path, or `None` to keep

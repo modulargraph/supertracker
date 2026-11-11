@@ -1,18 +1,17 @@
 //! The limits the host enforces. Each case changes one thing in a valid project and expects the
-//! message a user would read. Sources: ProjectStore.validate, AudioRouting.parse,
-//! AudioRoutingAutomation, AudioPluginStepFX, AudioFreezeTrack.Record.parse (Swift host) and the
-//! assertions of tests/ProjectStoreTests.swift that concern validation.
+//! message a user would read.
 
 mod common;
 
 use serde_json::{json, Value};
+use st_project::model::FORMAT_VERSION;
 use st_project::validate::*;
 use st_project::Project;
 
 /// A valid project: two tracks, a group bus and a return bus.
 fn base() -> Value {
     json!({
-        "version": 1, "name": "Valid", "bpm": 120, "masterVolume": 0.7,
+        "version": 2, "name": "Valid", "bpm": 120, "masterVolume": 0.7,
         "tracks": [{ "id": 0, "routingID": "t0", "volume": 0.8, "pan": 0 }, { "id": 1, "routingID": "t1" }],
         "instruments": [{ "id": 0, "type": "sample" }],
         "patterns": [{ "id": 0, "length": 16, "steps": [[], []], "automation": [] }],
@@ -54,8 +53,15 @@ fn the_base_project_is_valid() {
 
 #[test]
 fn version_tempo_and_sizes() {
-    assert_eq!(rejected(|p| p["version"] = json!(100)), "This project uses an unsupported format version.");
-    assert_eq!(rejected(|p| p["version"] = json!("1")), "This project uses an unsupported format version.");
+    // One number is read; every other one, and a project without one, gets the same message.
+    assert_eq!(base()["version"], json!(FORMAT_VERSION));
+    for version in [json!(FORMAT_VERSION - 1), json!(FORMAT_VERSION + 1), json!(0), json!(FORMAT_VERSION.to_string()), json!(FORMAT_VERSION as f64 + 0.5), Value::Null] {
+        assert_eq!(rejected(|p| p["version"] = version), OTHER_VERSION);
+    }
+    assert_eq!(rejected(|p| { p.as_object_mut().unwrap().remove("version"); }), OTHER_VERSION);
+    assert_eq!(OTHER_VERSION, "This project was made by a different version of SuperTracker and cannot be opened by this one.");
+    // The version is checked first: whatever else another format holds is not looked at.
+    assert_eq!(rejected(|p| { p["version"] = json!(1); p.as_object_mut().unwrap().remove("routing"); p["bpm"] = json!(0); }), OTHER_VERSION);
     for bpm in [json!(-10.0), json!(19.9), json!(400.5), json!("120"), Value::Null] {
         assert_eq!(rejected(|p| p["bpm"] = bpm), "Project tempo must be between 20 and 400 BPM.");
     }
@@ -313,14 +319,13 @@ fn live_inputs_of_tracks() {
 
 #[test]
 fn track_freeze_records() {
-    let record = json!({ "version": 1, "id": "f", "path": "/p.wav", "sha256": "", "sampleRate": 48000, "frames": 1000, "musicalFrames": 900, "tailFrames": 100, "musicalEndBeat": 16 });
+    let record = json!({ "id": "f", "path": "/p.wav", "sha256": "", "sampleRate": 48000, "frames": 1000, "musicalFrames": 900, "tailFrames": 100, "musicalEndBeat": 16 });
     let with = |change: &dyn Fn(&mut Value)| {
         let mut changed = record.clone();
         change(&mut changed);
         rejected(|p| p["tracks"][0]["frozen"] = changed)
     };
     accepted(|p| p["tracks"][0]["frozen"] = record.clone());
-    assert_eq!(with(&|r| r["version"] = json!(2)), "Track 1: Unsupported freeze record version.");
     assert_eq!(with(&|r| r["path"] = json!("")), "Track 1: Freeze record is missing path.");
     assert_eq!(with(&|r| r["frames"] = json!(999)), "Track 1: Freeze record has inconsistent frame counts.");
     assert_eq!(with(&|r| r["sampleRate"] = json!(4000)), "Track 1: Freeze record has inconsistent frame counts.");
@@ -330,19 +335,18 @@ fn track_freeze_records() {
     assert_eq!(rejected(|p| { p["tracks"][0]["name"] = json!("Bass"); p["tracks"][0]["frozen"] = json!(true); }), "Bass: the freeze record must be an object.");
 }
 
-/// Older layouts are not converted (no ProjectMigration); they are refused with a message that says why.
+/// An instrument is a sampler, a plug-in or an external MIDI instrument; anything else is refused
+/// instead of being played as a sampler.
 #[test]
-fn older_layouts_are_refused() {
-    let older = |what: &str| format!("This project was saved in an older layout ({what}) that this version no longer reads. Open and save it with a version of SuperTracker that converts it, then open it again.");
-    assert_eq!(rejected(|p| p["timing"] = json!({ "version": 1, "tempos": [{ "id": "a", "beat": 0, "bpm": 120 }], "meters": [] })), older("a tempo map"));
-    assert_eq!(rejected(|p| p["kits"] = json!([])), older("kit lanes"));
-    assert_eq!(rejected(|p| p["tracks"][1]["kind"] = json!("kit")), older("kit lanes"));
-    assert_eq!(rejected(|p| p["instruments"][0] = json!({ "type": "synth", "waveform": "saw" })), older("the built-in synth instrument"));
-    assert_eq!(rejected(|p| p["instruments"][0] = json!({ "type": "drum", "drumModel": "kick" })), older("the built-in synth instrument"));
-    assert_eq!(rejected(|p| p["instruments"][0] = json!({ "name": "Old", "waveform": "sine" })), older("the built-in synth instrument"));
-    // `waveform` on a sampler is inert leftover, not an old layout.
-    accepted(|p| p["instruments"][0] = json!({ "type": "sample", "waveform": "sine", "samplePath": "builtin:wavetables/Basic/Sine.wav" }));
-    accepted(|p| p["instruments"][0] = json!({ "waveform": "sine", "samplePath": "/a.wav" }));
+fn instrument_types() {
+    for kind in ["sample", "au", "midi"] {
+        accepted(|p| p["instruments"][0]["type"] = json!(kind));
+    }
+    for kind in [json!("synth"), json!(3), Value::Null] {
+        assert_eq!(rejected(|p| p["instruments"][0]["type"] = kind), "Instrument 1 has an unknown type.");
+    }
+    // Keys the format does not name are kept and ignored.
+    accepted(|p| p["instruments"][0]["waveform"] = json!("sine"));
 }
 
 #[test]

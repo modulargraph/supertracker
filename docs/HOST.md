@@ -205,7 +205,7 @@ brief; `?` marks optional fields. Where a shape is abbreviated ("…"), the hand
 | `project.autosave` | `{project?}` | {saved: true} or {saved: false, deferred: true} | implemented | Recovery copy; deferred while a save or session change is in flight. The host also writes it every 20 s. |
 | `project.media.chooseRoot` | `{}` | {path} or {cancelled: true} | implemented | Folder chooser. |
 | `project.new` | `{templateID?, blank?}` | {project} from a template, or null (the page uses its blank project) | implemented | Uses the default template unless blank. |
-| `project.open` | `{path?}` | {project, path, dirty} or {cancelled: true} | implemented | Open panel without a path. Projects in a retired layout are refused with st-project's message. |
+| `project.open` | `{path?}` | {project, path, dirty} or {cancelled: true} | implemented | Open panel without a path. A project of another format version is refused with st-project's message. |
 | `project.save` | `{project?, path?, collectSamples?}` | {project, path, saved: true, recoveryWarning?} or {cancelled: true} | implemented | The document and its media folder. Plug-in state is captured through engine.snapshot first; a plug-in whose state cannot be read fails the save with its name. |
 | `project.saveAs` | `{project?, path?, collectSamples?}` | as project.save | implemented | Always asks where unless a path is given. |
 | `ready` | `{}` | {version, commands, project, dirty, path, roots, plugins, audio, midi, pluginRecovery?, warning?, audioError?, openPath?} | implemented | The handshake. roots, plugins, audio, midi and pluginRecovery come from library.roots, plugins.list, audio.devices, midi.devices and plugins.recovery when those are registered, and are empty until then. |
@@ -514,8 +514,10 @@ Behaviour worth knowing:
   to" is not consulted.
 - The page reserves room for the traffic lights (`body.native .topbar`) under every host, also where
   the window has its own title bar and in a browser.
-- One project layout. `st-project` refuses older layouts with its own message; `st-library` refuses
-  kit packages of the retired kit-lane layout. Nothing is migrated.
+- One format each, named by a number. A project says its format in `version`; `st-project` reads
+  `FORMAT_VERSION` and refuses every other number with one message (project files, templates and
+  the recovery copy alike). `st-library` does the same for the header of a kit package. Nothing
+  is migrated.
 - A termination signal (SIGINT, SIGTERM, SIGHUP) ends the host through the same shutdown as Quit,
   without asking about unsaved changes (the recovery copy is written first). What `midir` cannot
   do is listed in `cargo doc -p st-midi` (`midir_backend`).

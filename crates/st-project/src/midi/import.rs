@@ -315,8 +315,8 @@ pub fn import_file(path: &Path) -> Result<Project> {
 /// Converts the bytes of a Standard MIDI File into a new project named `name`.
 /// `source` is recorded in `midiImport.source` (the file's path).
 ///
-/// The project uses the standard mixer layout of a new session (routing version 1, one mixer
-/// channel per track) and validates. Fails with a readable message for files that are not SMF
+/// The project has the mixer of a new session (one channel per track, all into the master) and
+/// validates. Fails with a readable message for files that are not SMF
 /// type 0/1 with PPQN timing, are malformed, or contain no notes.
 pub fn import(bytes: &[u8], name: &str, source: &str) -> Result<Project> {
     if bytes.len() as u64 > MAX_FILE_BYTES {
@@ -711,7 +711,7 @@ pub fn import(bytes: &[u8], name: &str, source: &str) -> Result<Project> {
         ..MidiImportInfo::default()
     };
     Ok(Project {
-        version: Some(1),
+        version: Some(crate::model::FORMAT_VERSION),
         name: Some(name.to_string()),
         bpm: Some(bpm),
         lines_per_beat: Some(4),

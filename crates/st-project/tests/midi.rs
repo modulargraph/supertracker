@@ -1,6 +1,5 @@
-//! Standard MIDI File import and export. Ported from tests/MIDIFileTests.swift: the fixtures are
-//! built byte by byte here and exported files are decoded by an independent reader below.
-//! Not ported: `tempoMapExport` (the project tempo map `timing` is a retired layout).
+//! Standard MIDI File import and export: the fixtures are built byte by byte here and exported
+//! files are decoded by an independent reader below.
 
 mod common;
 
@@ -153,9 +152,10 @@ fn decode(bytes: &[u8]) -> Decoded {
     Decoded { format, track_count, division, events }
 }
 
-/// The project of a test: `value` with what every project has and these tests leave out (a
-/// routing table, a routing identity for each track).
+/// The project of a test: `value` with what every project has and these tests leave out (the
+/// format version, a routing table, a routing identity for each track).
 fn project(mut value: Value) -> Project {
+    value["version"] = json!(st_project::model::FORMAT_VERSION);
     if value.get("routing").is_none() {
         value["routing"] = json!({});
     }
@@ -171,7 +171,7 @@ fn project(mut value: Value) -> Project {
 
 /// One track with `rows` as its steps in one pattern.
 fn one_track(name: &str, rows: Vec<Value>, track: Value, instrument: Value) -> Project {
-    project(json!({ "version": 1, "name": name, "bpm": 120.0, "linesPerBeat": 4, "tracks": [track], "instruments": [instrument],
+    project(json!({ "name": name, "bpm": 120.0, "linesPerBeat": 4, "tracks": [track], "instruments": [instrument],
         "patterns": [{ "id": 0, "name": "A", "length": rows.len(), "steps": [rows], "automation": [] }], "sequence": [0] }))
 }
 
@@ -402,7 +402,7 @@ fn overlapping_same_pitch_notes_end_at_next_onset() {
 #[test]
 fn sequence_export_and_roundtrip() {
     let song = project(json!({
-        "version": 1, "name": "Sequence test", "bpm": 120.0, "linesPerBeat": 4,
+        "name": "Sequence test", "bpm": 120.0, "linesPerBeat": 4,
         "tracks": [{ "id": 0, "name": "Keys", "instrument": 0, "volume": 0.8, "pan": 0.0 }],
         "instruments": [{ "id": 0, "name": "Keys", "type": "sample", "midiChannel": 3, "midiProgram": 10 }],
         "patterns": [
@@ -482,7 +482,7 @@ fn many_track_export() {
     let count = 40;
     let tracks: Vec<Value> = (0..count).map(|index| json!({ "id": index, "name": format!("T{index}"), "instrument": 0, "volume": 0.8, "pan": 0.0 })).collect();
     let steps: Vec<Vec<Value>> = (0..count).map(|track| rows(16, &[(0, json!({ "note": 36 + track, "instrument": 0, "velocity": 100, "gate": 1.0 }))])).collect();
-    let mut song = json!({ "version": 1, "name": "Forty tracks", "bpm": 120.0, "linesPerBeat": 4, "tracks": tracks,
+    let mut song = json!({ "name": "Forty tracks", "bpm": 120.0, "linesPerBeat": 4, "tracks": tracks,
         "instruments": [{ "id": 0, "name": "Synth", "type": "sample", "midiChannel": null }], "patterns": [{ "id": 0, "name": "A", "length": 16, "steps": steps }], "sequence": [0] });
     let exported = export(&project(song.clone())).unwrap();
     let decoded = decode(&exported.bytes);

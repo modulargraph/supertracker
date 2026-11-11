@@ -25,8 +25,6 @@ model! {
     /// A clip's takes. The active take's `path` and `sourceOffset` are mirrored on the clip itself,
     /// which is what playback reads.
     pub struct TakeSet {
-        /// Take list version; only 1 exists.
-        "version" => version: i64,
         /// The `id` of the take the clip plays.
         "activeID" => active_id: String,
         /// The takes (1..=32).
@@ -35,11 +33,8 @@ model! {
 }
 
 impl TakeSet {
-    /// Index of the active take, when the set is version 1 and exactly one take has `activeID`.
+    /// Index of the active take, when exactly one take has `activeID`.
     pub fn active_index(&self) -> Option<usize> {
-        if self.version != Some(1) {
-            return None;
-        }
         let active = self.active_id.as_deref()?;
         let takes = self.takes.as_ref()?;
         if takes.len() > MAX_TAKES {
@@ -132,8 +127,6 @@ model! {
     /// The print's `sha256` is its identity: a file with other content never replaces it
     /// (saving and relinking both check).
     pub struct FreezeRecord {
-        /// Record version; only 1 exists.
-        "version" => version: i64,
         /// Identity of this freeze.
         "id" => id: String,
         /// The song print (media path).

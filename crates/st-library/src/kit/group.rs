@@ -5,7 +5,7 @@
 //! A group project is a small project document holding exactly that:
 //!
 //! ```json
-//! { "version": 1, "name": "My kit", "bpm": 120, "linesPerBeat": 4,
+//! { "version": 2, "name": "My kit", "bpm": 120, "linesPerBeat": 4,
 //!   "tracks": [ { "id": 0, "name": "Kick", "routingID": "…", "groupID": "g", "pad": 0, "instrument": 0, … } ],
 //!   "instruments": [ { "id": 0, "type": "sample", "samplePath": "…", … } ],
 //!   "groups": [ { "id": "g", "name": "My kit", "busID": "b", … } ],
@@ -44,9 +44,6 @@ fn index_of(value: Option<&Value>) -> Option<usize> {
 /// Checks that `project` has the shape of a group project. The message names what is wrong.
 pub fn validate(project: &Value) -> Result<()> {
     let Some(object) = project.as_object() else { return Err(Error::invalid("Kit project state must be a JSON object.")) };
-    if object.contains_key("kits") {
-        return Err(Error::invalid("This kit uses the retired kit-lane layout (a `kits` list) and cannot be read. Save it again from a current session."));
-    }
     let array = |key: &str, limit: usize, message: &str| -> Result<&[Value]> {
         match object.get(key) {
             None => Ok(&[]),
@@ -302,7 +299,7 @@ pub fn extract_group(project: &Value, group_id: &str) -> Result<ExtractedGroup> 
         object.insert("mixerCollapsed".to_string(), json!(false));
     }
     let mut result = json!({
-        "version": 1,
+        "version": st_project::model::FORMAT_VERSION,
         "name": name,
         "bpm": project.get("bpm").cloned().filter(Value::is_number).unwrap_or(json!(120)),
         "linesPerBeat": project.get("linesPerBeat").cloned().filter(Value::is_number).unwrap_or(json!(4)),

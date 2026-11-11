@@ -6,7 +6,7 @@ const project = {
   routing: {buses: [], outputs: {}, sends: [], sidechains: []},
   patterns: [{id: 0, length: 1, steps: [[null]]}], sequence: [0],
   audioClips: [{id: 'clip', track: 0, path: '/takes/current.wav', startBeat: 4, durationBeats: 8, sourceOffset: .2,
-    takeSet: {version: 1, activeID: 'a', takes: [
+    takeSet: {activeID: 'a', takes: [
       {id: 'a', name: 'Original', path: '/takes/current.wav', sourceOffset: .2, sourceDuration: 8},
       {id: 'b', name: 'Alternate', path: '/takes/alternate.wav', sourceOffset: .4, sourceDuration: 9}
     ]}}]

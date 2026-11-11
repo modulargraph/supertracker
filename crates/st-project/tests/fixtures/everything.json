@@ -1,5 +1,4 @@
 {
- "version": 1,
  "name": "Everything",
  "bpm": 116,
  "linesPerBeat": 4,
@@ -48,7 +47,6 @@
    "reverbSend": 0.38,
    "routingID": "fx0006",
    "frozen": {
-    "version": 1,
     "id": "frz-1",
     "path": "/Prints/pad.wav",
     "sha256": "abababababababababababababababababababababababababababababababab",
@@ -3023,6 +3021,7 @@
    "state": "AAAA"
   }
  ],
+ "version": 2,
  "timeSignature": {
   "numerator": 7,
   "denominator": 8
@@ -3149,7 +3148,6 @@
    "fadeOut": 0.2,
    "muted": false,
    "takeSet": {
-    "version": 1,
     "activeID": "take-2",
     "takes": [
      {

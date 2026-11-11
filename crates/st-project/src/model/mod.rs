@@ -10,8 +10,9 @@
 //!   value, `track.volume()` is what plays).
 //! * **Nothing is dropped**: each object keeps unknown keys, `null`s and unreadable values in
 //!   its `extra` map and writes them back (see [`crate::json`]).
-//! * **Only the current layout**: older layouts are not converted;
-//!   [`crate::validate::validate`] rejects them with a message.
+//! * **One format**: a project says which format it is in with `version`, and
+//!   [`crate::validate::validate`] refuses every number but [`FORMAT_VERSION`]. Nothing is
+//!   converted.
 //!
 //! Media paths (samples, clips, prints) are absolute while a project is open and relative to the
 //! project file on disk; [`crate::media`] knows which fields those are.
@@ -32,6 +33,11 @@ use crate::error::{Error, Result};
 use crate::json::{model, Json};
 use serde_json::Value;
 use std::collections::BTreeMap;
+
+/// The project format this crate reads and writes (`project.version`). It changes whenever a
+/// project written before the change would no longer mean the same, or be refused, after it.
+/// `PROJECT_VERSION` in `ui/app-project-model.js` is the same number.
+pub const FORMAT_VERSION: i64 = 2;
 
 model! {
     /// A track's live audio input (`line-inputs.js`): channels of an audio device mixed into
@@ -331,8 +337,8 @@ model! {
 model! {
     /// The project document.
     pub struct Project {
-        /// Format version; only 1 exists. Absent reads as 1.
-        "version" => version: i64 = 1,
+        /// Format version: [`FORMAT_VERSION`]. Required; a project with another number is refused.
+        "version" => version: i64,
         /// Session name.
         "name" => name: String,
         /// Tempo, 20..400.

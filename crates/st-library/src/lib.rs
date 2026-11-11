@@ -105,11 +105,12 @@
 //! functions themselves only name locations and have not run on macOS or Windows yet. The
 //! crate is type-checked for `aarch64-apple-darwin`.
 //!
-//! # No older layouts
+//! # One format each
 //!
-//! Only current formats are read. A kit package in the retired kit-lane layout (header
-//! version 1), an index cache of another version and the Swift host's JSON index are not
-//! converted: kits are refused with a message that says so, caches are rebuilt.
+//! Each file says which format it is in with one number, checked in one place: a kit package
+//! with another number than [`kit::FORMAT_VERSION`] is refused, an index cache of another
+//! version is rebuilt, a library metadata file of another version is refused. Nothing is
+//! converted.
 
 pub mod api;
 mod error;

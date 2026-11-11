@@ -45,8 +45,10 @@ use std::path::{Path, PathBuf};
 
 /// File extensions the library treats as kits.
 pub const EXTENSIONS: [&str; 2] = ["stkit", "mxgrp"];
-/// The header version this crate reads and writes.
-pub const FORMAT_VERSION: u64 = 2;
+/// The kit package format this crate reads and writes (the header's `version`). It changes with
+/// the package layout and with the project format of `project.json`
+/// ([`st_project::model::FORMAT_VERSION`]); a package with another number is refused.
+pub const FORMAT_VERSION: u64 = 3;
 /// Largest `project.json`.
 pub const MAXIMUM_PROJECT_BYTES: u64 = 64 * 1024 * 1024;
 /// Largest `kit.json`.
@@ -333,14 +335,10 @@ fn inside(folder: &Path, relative: &str) -> Result<PathBuf> {
 
 fn validate_header(header: &Map<String, Value>) -> Result<()> {
     if header.get("format").and_then(Value::as_str) != Some("supertracker-kit") || header.get("projectFile").and_then(Value::as_str) != Some("project.json") {
-        return Err(failure("Unsupported or malformed SuperTracker kit format."));
+        return Err(failure("This folder is not a SuperTracker kit."));
     }
-    match header.get("version") {
-        Some(Value::Number(version)) if version.as_f64() == Some(FORMAT_VERSION as f64) => {}
-        Some(Value::Number(version)) if version.as_f64() == Some(1.0) => {
-            return Err(failure("This kit was saved in the retired kit-lane layout (version 1) and cannot be read. Save it again from a current session."))
-        }
-        _ => return Err(failure("Unsupported or malformed SuperTracker kit format.")),
+    if header.get("version").and_then(Value::as_u64) != Some(FORMAT_VERSION) {
+        return Err(failure("This kit was made by a different version of SuperTracker and cannot be opened by this one."));
     }
     for key in ["name", "type", "id", "author", "expansion", "source"] {
         match header.get(key) {

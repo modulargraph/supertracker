@@ -3,8 +3,8 @@
 //!
 //! The document itself (validation, project files and their media folder, the recovery copy,
 //! templates, MIDI files) is `st-project`'s; this module is the bridge side of it. Errors from
-//! `st-project` reach the interface with their text unchanged, including the one that rejects a
-//! project in a retired layout.
+//! `st-project` reach the interface with their text unchanged, including the one that refuses a
+//! project of another format version.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};

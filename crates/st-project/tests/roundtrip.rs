@@ -217,8 +217,8 @@ fn absent_fields_stay_absent_and_read_as_documented_defaults() {
     let text = r#"{"instruments":[{}],"patterns":[{"steps":[[{},null]]}],"tracks":[{}]}"#;
     let project = Project::from_json(text).unwrap();
     assert_eq!(project.to_json(), text, "nothing is added on the way out");
-    // app-project-model.js normalize / AudioProject.apply defaults.
-    assert_eq!((project.version(), project.bpm(), project.lines_per_beat(), project.swing(), project.master_volume()), (1, 120.0, 4, 0.0, 0.7));
+    // The defaults of normalize in app-project-model.js. The version has none: it is required.
+    assert_eq!((project.version, project.bpm(), project.lines_per_beat(), project.swing(), project.master_volume()), (None, 120.0, 4, 0.0, 0.7));
     assert_eq!((project.metronome(), project.metronome_volume(), project.active_pattern(), project.loop_song()), (false, 0.4, 0, false));
     assert_eq!((project.meter(), project.song_sequence(), project.display_name()), ((4, 4), vec![0], "Untitled session"));
     let track = &project.track_list()[0];

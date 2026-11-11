@@ -60,7 +60,7 @@ const SYNTH: i32 = 700;
 fn project() -> Value {
     let rows: Vec<Value> = (0..16).map(|row| if row % 2 == 0 { json!({ "note": 48 + row, "instrument": 0, "velocity": 100 }) } else { Value::Null }).collect();
     json!({
-        "version": 1, "name": "MIDI", "bpm": 174, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
+        "version": 2, "name": "MIDI", "bpm": 174, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
         "tracks": [{ "id": 0, "name": "Synth", "routingID": "synth", "volume": 1, "pan": 0, "instrument": 0 }],
         "instruments": [{ "id": 0, "type": "midi", "name": "Synth", "midiOutput": SYNTH, "midiChannel": 1 }],
         "patterns": [{ "id": 0, "length": 16, "steps": [rows], "automation": [] }],

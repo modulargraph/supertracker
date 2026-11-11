@@ -1,5 +1,4 @@
 {
- "version": 1,
  "name": "Midnight transmission",
  "bpm": 116,
  "linesPerBeat": 4,
@@ -2714,6 +2713,7 @@
   "mix": 0.25
  },
  "audioPlugins": [],
+ "version": 2,
  "timeSignature": {
   "numerator": 4,
   "denominator": 4

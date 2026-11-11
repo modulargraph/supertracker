@@ -18,7 +18,7 @@ The active-take dropdown and visible Previous/Next controls offer the same choic
 
 ## Saved media and compatibility
 
-Each clip may contain `takeSet: { version: 1, activeID, takes }`. A take stores `id`, `name`, `path`, `sourceOffset` and, for newly created groups, verified `sourceDuration` in seconds. The clip's ordinary `path` and `sourceOffset` always describe the active take, so the current audio engine requires no take-specific rendering path. Split and duplicate operations copy the arrays rather than sharing mutable data.
+Each clip may contain `takeSet: { activeID, takes }`. A take stores `id`, `name`, `path`, `sourceOffset` and, for newly created groups, verified `sourceDuration` in seconds. The clip's ordinary `path` and `sourceOffset` always describe the active take, so the current audio engine requires no take-specific rendering path. Split and duplicate operations copy the arrays rather than sharing mutable data.
 
 Portable Save collects both active and inactive take source files; shared sources across split regions are copied once. Open resolves their relative paths. Missing-media inspection and relinking include inactive alternatives. Relinking an active reference keeps the outer clip and embedded active take path consistent. Conflicting replacements for those linked references are rejected before application. Removing an alternative removes only its project reference and never deletes its source file.
 

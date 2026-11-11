@@ -28,7 +28,7 @@ console.log('PASS live-input freeze by recording, disabled/unrelated routes, and
   const node = id => { if (!nodes.has(id)) nodes.set(id, { id, value: '', checked: false, hidden: false, disabled: false, textContent: '', focus() {} }); return nodes.get(id); };
   const live = { tracks: [{ routingID: 'hw', name: 'Hardware', instrument: 0, audioInput: { enabled: true, deviceUID: 'interface', channels: [0, 1], gain: 1 } }],
     patterns: [{ id: 0, length: 16, steps: [[{ note: 60, instrument: 0 }]] }], instruments: [{}], sequence: [0], bpm: 120, linesPerBeat: 4, audioPlugins: [] };
-  const record = { version: 1, id: 'rec-1', path: '/Freezes/hardware-song.wav', method: 'recorded', patternPrints: [], unprintedPatterns: [0] };
+  const record = { id: 'rec-1', path: '/Freezes/hardware-song.wav', method: 'recorded', patternPrints: [], unprintedPatterns: [0] };
   const state = { project: live, track: 0, modal: null, playing: false, native: true };
   const ST = { state, escapeHTML: String, toast: (text, kind) => toasts.push({ text, kind }), perform() {}, waitForEngineUpdate: async () => {},
     openModal(title, body, footer, options) { state.modal = options.kind; node('st-freeze-tail').value = '10'; node('st-freeze-auto').checked = true; node('st-freeze-patterns').checked = true; node('st-freeze-monitor').checked = true; },

@@ -79,7 +79,7 @@ impl Drop for TempDir {
 pub fn minimal(sample: Option<&Path>) -> st_project::Project {
     let sample = sample.map(|path| path.to_string_lossy().into_owned()).unwrap_or_default();
     st_project::Project::from_value(serde_json::json!({
-        "version": 1, "name": "Test", "bpm": 120.0, "tracks": [{ "id": 0, "routingID": "t0" }],
+        "version": 2, "name": "Test", "bpm": 120.0, "tracks": [{ "id": 0, "routingID": "t0" }],
         "instruments": [{ "id": 0, "samplePath": sample }],
         "patterns": [{ "id": 0, "length": 64, "steps": [[]] }], "sequence": [0], "routing": {}
     }))

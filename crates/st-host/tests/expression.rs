@@ -66,7 +66,7 @@ fn start(label: &str) -> Fixture {
         json!({ "instanceID": name, "owner": format!("track:{name}"), "kind": "instrument", "slot": 0, "component": component, "format": format, "bundlePath": path, "name": name })
     };
     let project = json!({
-        "version": 1, "name": "Expression", "bpm": 120, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
+        "version": 2, "name": "Expression", "bpm": 120, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
         "tracks": [track(EXTERNAL, "hardware"), track(SAMPLER, "sampler"), track(CLAP, "clap"), track(VST3, "vst3")],
         "instruments": [
             { "id": 0, "type": "midi", "name": "Hardware", "midiOutput": SYNTH, "midiChannel": 3 },

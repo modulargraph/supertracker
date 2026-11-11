@@ -27,7 +27,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-/// Bounds of a search or inspection. The defaults are the Swift host's.
+/// Bounds of a search or inspection.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Limits {
     /// Files a search looks at (250,000).
@@ -504,7 +504,7 @@ fn references(project: &Project, project_file: Option<&Path>) -> Vec<Ref> {
         for (field, path) in [(Field::Path, &item.path), (Field::SamplePath, &item.sample_path)] {
             push(format!("/audioClips/{clip}/{}", field.key()), ReferenceKind::Clip, label.clone(), path, Location::Clip { clip, field }, None);
         }
-        if let Some(set) = item.take_set.as_ref().filter(|set| set.version == Some(1)) {
+        if let Some(set) = &item.take_set {
             for (take, entry) in set.takes.iter().flatten().take(32).enumerate() {
                 let name = entry.name.clone().unwrap_or_else(|| format!("Take {}", take + 1));
                 push(format!("/audioClips/{clip}/takeSet/takes/{take}/path"), ReferenceKind::Take, format!("{label} · {name}"), &entry.path, Location::Take { clip, take }, None);

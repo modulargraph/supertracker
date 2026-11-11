@@ -159,7 +159,7 @@ fn a_track_is_frozen_reported_and_unfrozen() {
     assert_eq!(host.request("freeze.status", json!({})).unwrap(), json!({ "tracks": [], "busy": false }));
     let result = long_request(host, "freeze.track", json!({ "track": 1, "maxTail": 2 })).unwrap();
     let record = result["record"].clone();
-    assert_eq!((record["version"].clone(), record["tailMode"].clone(), record["dormantPluginIDs"].clone(), result["releasedPlugins"].clone()), (json!(1), json!("auto"), json!(["comp"]), json!(1)));
+    assert_eq!((record["tailMode"].clone(), record["dormantPluginIDs"].clone(), result["releasedPlugins"].clone()), (json!("auto"), json!(["comp"]), json!(1)));
     let print = record["path"].as_str().unwrap();
     assert!(print.starts_with(&*fixture.folder.path().join("support").join("Freezes").to_string_lossy()) && std::path::Path::new(print).is_file(), "{print}");
     assert!(result["audioPlugins"].as_array().is_some_and(|plugins| plugins.len() == 1 && plugins[0]["state"].is_string()), "the plug-in state captured for the print comes back");

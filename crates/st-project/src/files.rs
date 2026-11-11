@@ -24,7 +24,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The extension of project files.
 pub const PROJECT_EXTENSION: &str = "supertracker";
-/// Project files at or above this size are not opened (`ProjectStore.read`).
+/// Project files at or above this size are not opened.
 pub const MAX_PROJECT_FILE_BYTES: u64 = 100_000_000;
 /// The most bytes of frozen prints a save verifies (4 GiB); a single print up to 1 GiB.
 pub const FREEZE_VERIFY_BUDGET: u64 = 4_294_967_296;

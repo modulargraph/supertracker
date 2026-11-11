@@ -161,7 +161,7 @@ fn a_recorded_print_of_a_software_track_is_its_offline_print() {
     let progress = Mutex::new(Vec::new());
     let recorded = fixture.freeze(&request(FreezeMethod::Record, Some(0.25), 10.0, true), &cancel, &|fraction, phase| progress.lock().unwrap().push((fraction, phase.to_string()))).unwrap();
     let (record, reference) = (&recorded["record"], &offline["record"]);
-    assert_eq!((record["method"].clone(), record["tailMode"].clone(), record["sampleRate"].clone(), record["version"].clone()), (json!("recorded"), json!("fixed"), json!(48_000.0), json!(1)));
+    assert_eq!((record["method"].clone(), record["tailMode"].clone(), record["sampleRate"].clone()), (json!("recorded"), json!("fixed"), json!(48_000.0)));
     assert_eq!((record["musicalFrames"].clone(), record["tailFrames"].clone(), record["frames"].clone(), record["musicalEndBeat"].clone()), (json!(SONG), json!(12_000), json!(SONG + 12_000), json!(4.0)));
     assert_eq!((record["dormantPluginIDs"].clone(), recorded["releasedPlugins"].clone(), record["unprintedPatterns"].clone(), recorded["notes"].clone()), (json!(["late", "g"]), json!(2), json!([]), json!([])));
     assert_eq!(record["fingerprint"], reference["fingerprint"], "the same source, whichever way it is printed");

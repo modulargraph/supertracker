@@ -28,7 +28,7 @@ fn project(bpm: f64) -> Value {
     let mut rows = vec![Value::Null; 16];
     (rows[0], rows[4], rows[8]) = (note(60), note(62), note(64));
     json!({
-        "version": 1, "name": "MIDI", "bpm": bpm, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
+        "version": 2, "name": "MIDI", "bpm": bpm, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
         "tracks": [
             { "id": 0, "name": "Synth", "routingID": "synth", "volume": 1, "pan": 0, "instrument": 0 },
             { "id": 1, "name": "Sine", "routingID": "sine", "volume": 1, "pan": 0, "instrument": 1 }

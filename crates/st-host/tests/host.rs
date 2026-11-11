@@ -69,7 +69,7 @@ impl Fixture {
 
 fn project(name: &str) -> Value {
     json!({
-        "version": 1, "name": name, "bpm": 120,
+        "version": 2, "name": name, "bpm": 120,
         "tracks": [{"name": "Track 01", "routingID": "track-1", "instrument": 0}],
         "instruments": [{"name": "Instrument 01", "type": "sample", "samplePath": ""}],
         "patterns": [{"id": 0, "length": 64, "steps": [[{"note": 60, "instrument": 0}]]}],
@@ -459,15 +459,18 @@ fn the_recovery_timer_writes_without_being_asked() {
 }
 
 #[test]
-fn a_project_in_a_retired_layout_is_refused_with_st_projects_own_words() {
+fn a_project_of_another_format_version_is_refused_with_st_projects_own_words() {
     let fixture = Fixture::new();
-    let mut old = project("Old");
-    old["timing"] = json!({"tempoMap": [{"beat": 0, "bpm": 90}]});
-    let expected = "This project was saved in an older layout (a tempo map) that this version no longer reads. Open and save it with a version of SuperTracker that converts it, then open it again.";
-    assert_eq!(fixture.host.request("engine.project", json!({"project": old})), Err(expected.to_string()));
-    let file = fixture.file("Old.supertracker");
-    std::fs::write(&file, old.to_string()).unwrap();
-    assert_eq!(fixture.host.request("project.open", json!({"path": file})), Err(expected.to_string()));
+    let expected = st_project::validate::OTHER_VERSION.to_string();
+    for version in [json!(st_project::model::FORMAT_VERSION - 1), json!(st_project::model::FORMAT_VERSION + 1), Value::Null] {
+        let mut other = project("Other");
+        other["version"] = version;
+        assert_eq!(fixture.host.request("engine.project", json!({"project": other})), Err(expected.clone()));
+        let file = fixture.file("Other.supertracker");
+        std::fs::write(&file, other.to_string()).unwrap();
+        assert_eq!(fixture.host.request("project.open", json!({"path": file})), Err(expected.clone()));
+        assert_eq!(fixture.host.request("project.templates.save", json!({"name": "Other", "project": other})), Err(expected.clone()));
+    }
     assert!(fixture.services.session.project().is_none());
 }
 

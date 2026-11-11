@@ -595,7 +595,7 @@ impl ImportedGroup {
         }
         outputs.insert(format!("bus:{bus_id}"), json!("master"));
         json!({
-            "version": 1, "name": self.name, "tracks": tracks, "instruments": instruments,
+            "version": st_project::model::FORMAT_VERSION, "name": self.name, "tracks": tracks, "instruments": instruments,
             "groups": [{ "id": group_id, "name": self.name, "collapsed": false, "mixerCollapsed": false, "busID": bus_id, "importNotes": self.warnings }],
             "audioPlugins": plugins,
             "routing": { "buses": [{ "id": bus_id, "name": self.name, "type": "group", "groupID": group_id, "volume": 1.0, "pan": 0.0, "mute": false, "solo": false }],

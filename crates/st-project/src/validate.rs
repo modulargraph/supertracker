@@ -1,11 +1,6 @@
-//! What the host checks before it accepts a project: counts, ranges, finite numbers and
-//! references that must resolve. Reading ([`Project::from_json`]) is lenient; this is the gate.
-//!
-//! The limits come from the Swift host this crate replaces: `ProjectStore.validate` (sizes,
-//! tempo, patterns, sequence, zones, clips), `AudioRouting.parse` (routing identities, buses,
-//! outputs, sends, sidechains, feedback), `AudioRoutingAutomation` (plug-in descriptors and
-//! owner automation lanes), `AudioPluginStepFX` (plug-in parameter locks) and
-//! `AudioFreezeTrack.Record.parse` (Track Freeze records). Each constant names its source.
+//! What the host checks before it accepts a project: the format version, counts, ranges, finite
+//! numbers and references that must resolve. Reading ([`Project::from_json`]) is lenient; this is
+//! the gate.
 
 use crate::error::{Error, Result};
 use crate::json::Json;
@@ -14,34 +9,38 @@ use crate::model::*;
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Tracks in a project. A sanity bound against corrupt files (`ProjectLayout.trackSanityLimit`).
+/// The message for a project whose `version` is not [`FORMAT_VERSION`]. It is the only thing the
+/// host knows about other formats: it reads this one and converts none.
+pub const OTHER_VERSION: &str = "This project was made by a different version of SuperTracker and cannot be opened by this one.";
+
+/// Tracks in a project. A sanity bound against corrupt files.
 pub const MAX_TRACKS: usize = 1024;
-/// Instruments in a project (`ProjectLayout.instrumentSanityLimit`).
+/// Instruments in a project.
 pub const MAX_INSTRUMENTS: usize = 1024;
-/// Patterns in a project; pattern numbers are 0..=255 (`ProjectStore.validate`).
+/// Patterns in a project; pattern numbers are 0..=255.
 pub const MAX_PATTERNS: usize = 256;
-/// Rows in a pattern (`ProjectStore.validate`).
+/// Rows in a pattern.
 pub const MAX_PATTERN_ROWS: i64 = 256;
-/// Entries in the song sequence (`ProjectStore.validate`, `MAX_ENTRIES` in `song-model.js`).
+/// Entries in the song sequence (`MAX_ENTRIES` in `song-model.js`).
 pub const MAX_SEQUENCE: usize = 1024;
-/// Sample zones of an instrument (`ProjectStore.validate`).
+/// Sample zones of an instrument.
 pub const MAX_ZONES: usize = 128;
-/// Audio clips in a song (`ProjectStore.validate`).
+/// Audio clips in a song.
 pub const MAX_AUDIO_CLIPS: usize = 256;
-/// Buses in the routing (`AudioRouting.parse`).
+/// Buses in the routing.
 pub const MAX_BUSES: usize = 1024;
-/// Sends and sidechains together (`AudioRouting.parse`).
+/// Sends and sidechains together.
 pub const MAX_ROUTES: usize = 128;
-/// Points in an automation lane (`AudioRoutingAutomation`).
+/// Points in an automation lane.
 pub const MAX_AUTOMATION_POINTS: usize = 4096;
-/// Tempo range in BPM (`ProjectStore.validate`).
+/// Tempo range in BPM.
 pub const BPM_RANGE: (f64, f64) = (20.0, 400.0);
-/// Frames in a Track Freeze print (`AudioFreezeTrack.Record.parse`).
+/// Frames in a Track Freeze print.
 pub const MAX_FREEZE_FRAMES: i64 = 100_000_000;
 /// Input channels of an audio device that a track's live input can name (0..=255).
 pub const MAX_INPUT_CHANNELS: i64 = 256;
 
-/// The value range of a track or instrument automation target (`ProjectLayout.nativeAutomationRanges`).
+/// The value range of a track or instrument automation target.
 pub fn native_automation_range(target: &str) -> Option<(f64, f64)> {
     Some(match target {
         "volume" | "instrumentVolume" => (0.0, 2.0),
@@ -68,7 +67,7 @@ fn fail<T>(message: impl Into<String>) -> Result<T> {
     Err(Error::invalid(message))
 }
 
-/// Letters, digits, hyphens, underscores and periods, 1..=128 bytes (`AudioRouting.identifier`).
+/// Letters, digits, hyphens, underscores and periods, 1..=128 bytes.
 pub fn is_identifier(text: &str) -> bool {
     !text.is_empty() && text.len() <= 128 && text.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
 }
@@ -82,8 +81,7 @@ fn identifier(value: Option<&str>, extra: &Map<String, Value>, key: &str, label:
     }
 }
 
-/// Display text: at most 512 bytes, no control characters, not blank unless `allow_empty`
-/// (`AudioRouting.text`).
+/// Display text: at most 512 bytes, no control characters, not blank unless `allow_empty`.
 fn text(value: &str, label: &str, allow_empty: bool) -> Result<()> {
     if value.len() > 512 || value.chars().any(char::is_control) || (!allow_empty && value.trim().is_empty()) {
         return fail(format!("{label} must be valid non-control text."));
@@ -115,9 +113,8 @@ fn flag(extra: &Map<String, Value>, key: &str, label: &str) -> Result<()> {
 /// Checks a project against everything the host enforces. `Ok` means the host accepts it;
 /// `Err` carries one message for the user.
 pub fn validate(project: &Project) -> Result<()> {
-    reject_old_layouts(project)?;
-    if project.version() != 1 || project.extra.contains_key("version") {
-        return fail("This project uses an unsupported format version.");
+    if project.version != Some(FORMAT_VERSION) {
+        return fail(OTHER_VERSION);
     }
     let sizes = || format!("The project must contain 1–{MAX_TRACKS} tracks, up to {MAX_INSTRUMENTS} instruments, and 1–{MAX_PATTERNS} patterns.");
     let (Some(tracks), Some(instruments), Some(patterns)) = (&project.tracks, &project.instruments, &project.patterns) else {
@@ -155,7 +152,10 @@ pub fn validate(project: &Project) -> Result<()> {
             return fail(sequence_message());
         }
     }
-    for instrument in instruments {
+    for (index, instrument) in instruments.iter().enumerate() {
+        if instrument.extra.contains_key("type") {
+            return fail(format!("Instrument {} has an unknown type.", index + 1));
+        }
         if instrument.zones.as_ref().is_some_and(|zones| zones.len() > MAX_ZONES) {
             return fail(format!("An instrument can contain up to {MAX_ZONES} sample zones."));
         }
@@ -214,41 +214,6 @@ fn validate_audio_input(input: &AudioInput) -> Result<()> {
     }
     if input.enabled() && (input.channels.is_none() || input.device_uid.as_deref().unwrap_or("").is_empty()) {
         return fail("An enabled live input needs its audio device and input channels.");
-    }
-    Ok(())
-}
-
-/// Layouts older versions wrote and the Swift host converted on open (`ProjectMigration`).
-/// The Rust host reads the current layout only.
-fn reject_old_layouts(project: &Project) -> Result<()> {
-    let old = |what: &str| -> Result<()> {
-        fail(format!(
-            "This project was saved in an older layout ({what}) that this version no longer reads. Open and save it with a version of SuperTracker that converts it, then open it again."
-        ))
-    };
-    if project.extra.contains_key("timing") {
-        return old("a tempo map");
-    }
-    if project.extra.contains_key("kits") {
-        return old("kit lanes");
-    }
-    for track in project.track_list() {
-        if track.extra.get("kind").and_then(Value::as_str) == Some("kit") {
-            return old("kit lanes");
-        }
-    }
-    for instrument in project.instrument_list() {
-        let retired_type = matches!(instrument.extra.get("type").and_then(Value::as_str), Some("synth") | Some("drum"));
-        // Untyped instruments were synths unless they name a sample source.
-        let untyped_synth = instrument.kind.is_none()
-            && !instrument.extra.contains_key("type")
-            && instrument.extra.contains_key("waveform")
-            && instrument.sample_path.as_deref().unwrap_or("").is_empty()
-            && instrument.zones.as_ref().is_none_or(Vec::is_empty)
-            && instrument.plugin.is_none();
-        if retired_type || untyped_synth {
-            return old("the built-in synth instrument");
-        }
     }
     Ok(())
 }
@@ -501,8 +466,7 @@ fn validate_points(lane: &AutomationLane, length: i64, range: (f64, f64)) -> Res
     Ok(())
 }
 
-/// Owner automation lanes (`AudioRoutingAutomation.init`) and plug-in parameter locks
-/// (`AudioPluginStepFX.init`).
+/// Owner automation lanes and plug-in parameter locks.
 fn validate_patterns(patterns: &[Pattern], owners: &Owners) -> Result<()> {
     for pattern in patterns {
         for row in pattern.steps.iter().flatten().flatten().flatten() {
@@ -588,11 +552,8 @@ fn validate_patterns(patterns: &[Pattern], owners: &Owners) -> Result<()> {
     Ok(())
 }
 
-/// A Track Freeze record (`AudioFreezeTrack.Record.parse`).
+/// A Track Freeze record.
 fn validate_freeze(record: &FreezeRecord) -> Result<()> {
-    if record.version != Some(1) {
-        return fail("Unsupported freeze record version.");
-    }
     for (value, key) in [(&record.id, "id"), (&record.path, "path")] {
         if value.as_deref().unwrap_or("").is_empty() {
             return fail(format!("Freeze record is missing {key}."));

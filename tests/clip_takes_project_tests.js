@@ -44,7 +44,7 @@ test('rename and removal never delete the active take or source data',()=>{
  const removed=M.remove(renamed,originalID);assert.equal(removed.takeSet.takes.length,1);assert.equal(removed.path,'/new.wav');assert.equal(clip.takeSet.takes.length,2);
 });
 test('malformed schema, offsets, duplicate IDs and full take capacity fail before changes',()=>{
- for (const set of [{version:2,takes:[]},{version:1,activeID:'x',takes:[]},{version:1,activeID:'x',takes:[{id:'x',path:'/x.wav',sourceOffset:-1}]},{version:1,activeID:'missing',takes:[{id:'x',path:'/x.wav',sourceOffset:0}]},{version:1,activeID:'x',takes:[{id:'x',path:'/x.wav',sourceOffset:0},{id:'x',path:'/x.wav',sourceOffset:0}]}]) assert.throws(()=>M.read({...base(),takeSet:set}),/invalid|missing|unsupported/);
+ for (const set of [{takes:[]},{activeID:'x',takes:[]},{activeID:'x',takes:[{id:'x',path:'/x.wav',sourceOffset:-1}]},{activeID:'missing',takes:[{id:'x',path:'/x.wav',sourceOffset:0}]},{activeID:'x',takes:[{id:'x',path:'/x.wav',sourceOffset:0},{id:'x',path:'/x.wav',sourceOffset:0}]}]) assert.throws(()=>M.read({...base(),takeSet:set}),/invalid|missing|unsupported/);
  let clip=base();for(let i=1;i<32;i++)clip=add(clip);const before=clone(clip);assert.throws(()=>add(clip),/32/);assert.deepEqual(clone(clip),before);
  assert.throws(()=>M.add(base(),{path:'/x',sourceDuration:Infinity},.5,uid),/readable/);assert.throws(()=>M.split(base(),0,.5,uid),/inside/);
 });

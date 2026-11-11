@@ -668,7 +668,7 @@ pub fn freeze_track(context: &RenderContext<'_>, request: &FreezeRequest, direct
         let dormant: Vec<&str> = canonical["audioPlugins"].as_array().unwrap_or(&empty).iter().filter(|plugin| plugin["owner"].as_str() == Some(owner.as_str())).filter_map(|plugin| plugin["instanceID"].as_str()).collect();
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |elapsed| elapsed.as_secs());
         let record = json!({
-            "version": 1, "id": id, "path": song.path, "sha256": song.sha256, "sampleRate": prints.rate,
+            "id": id, "path": song.path, "sha256": song.sha256, "sampleRate": prints.rate,
             "frames": song.frames, "musicalFrames": song.musical.min(song.frames), "tailFrames": song.frames.saturating_sub(song.musical),
             "musicalEndBeat": musical_end_beat, "tailSeconds": request.tail.unwrap_or(request.maximum_tail),
             "dormantPluginIDs": dormant, "fingerprint": fingerprint(&canonical, index, hash)?, "createdAt": iso8601(now),

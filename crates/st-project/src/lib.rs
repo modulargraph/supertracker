@@ -32,11 +32,11 @@
 //! and is tested on Linux. File operations are synchronous; the host calls them off the
 //! interface thread and passes a [`Cancel`] token to the long ones.
 //!
-//! # No older layouts
+//! # One format
 //!
-//! Only the current project layout is read. A project that still uses a retired layout (a tempo
-//! map in `timing`, kit lanes in `kits`, the built-in synth instrument) is rejected by
-//! [`validate::validate`] with a message that says so; nothing is converted.
+//! A project names its format with `version`. [`validate::validate`] accepts
+//! [`model::FORMAT_VERSION`] and refuses every other number with one message; nothing is
+//! converted.
 
 #![warn(missing_docs)]
 

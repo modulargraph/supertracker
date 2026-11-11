@@ -16,7 +16,7 @@ function groupProject({ name = 'Fixture Kit', pads = [0, 1, 2], plugins = [], bu
   ];
   const outputs = { [`bus:${busID}`]: 'master', ...Object.fromEntries(tracks.map(t => [`track:${t.routingID}`, `bus:${busID}`])) };
   return {
-    version: 1, name, tracks, instruments, audioPlugins,
+    version: 2, name, tracks, instruments, audioPlugins,
     patterns: [{ id: 0, length: 1, steps: tracks.map(() => [null]), automation: [] }],
     groups: [{ id: kitID, name, color: '#e2a44f', collapsed: false, mixerCollapsed: false, busID, ...(notes.length ? { importNotes: notes } : {}) }],
     routing: { buses: [{ id: busID, name, type: 'group', groupID: kitID, volume: .9, pan: 0, mute: false, solo: false }], outputs, sends: [], sidechains: [] }

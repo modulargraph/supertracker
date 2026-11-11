@@ -20,17 +20,15 @@
     let set;
     if (clip.takeSet == null) {
       set = {
-        version: 1,
         activeID: `original-${clip.id}`,
         takes: [{ id: `original-${clip.id}`, name: clip.name || 'Original', path: pathOf(clip), sourceOffset: Number(clip.sourceOffset || 0) }]
       };
       if (finite(clip.sourceDuration) && clip.sourceDuration > 0) set.takes[0].sourceDuration = clip.sourceDuration;
     } else {
       set = clone(clip.takeSet);
-      if (set.version !== 1
-          || !Array.isArray(set.takes)
+      if (!Array.isArray(set.takes)
           || !set.takes.length
-          || set.takes.length > maxTakes) fail('This clip has an unsupported or invalid take list.');
+          || set.takes.length > maxTakes) fail('This clip has an invalid take list.');
       const ids = new Set();
       for (const take of set.takes) {
         if (!take

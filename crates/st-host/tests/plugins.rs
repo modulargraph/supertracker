@@ -51,7 +51,7 @@ fn project() -> Value {
     let mut rows = vec![Value::Null; 16];
     rows[0] = json!({ "note": 57, "instrument": 0, "velocity": 100, "gate": 0 });
     json!({
-        "version": 1, "bpm": 120, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
+        "version": 2, "bpm": 120, "linesPerBeat": 4, "swing": 0, "masterVolume": 1, "metronome": false,
         "tracks": [{ "id": 0, "name": "a", "routingID": "a", "volume": 1, "pan": 0, "instrument": 0 }, { "id": 1, "name": "b", "routingID": "b", "volume": 1, "pan": 0, "instrument": 1 }],
         "instruments": [
             { "id": 0, "type": "sample", "samplePath": "builtin:wavetables/Basic/Sine.wav", "mode": "wavetable", "volume": 1, "attack": 0, "decay": 0.01, "sustain": 1, "release": 0.01 },

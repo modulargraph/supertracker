@@ -1,7 +1,5 @@
 //! Kit packages: save, read, overwrite, cancellation, malformed packages, previews, group
 //! headers and taking a group out of a session.
-//! Ported from `tests/KitLibraryTests.swift`, `KitProjectTests.swift` (the parts that are not the
-//! retired kit-lane model) and the naming rule of `KitMediaPackageRecoveryTests.swift`.
 
 mod common;
 
@@ -34,7 +32,7 @@ fn tree_bytes(directory: &Path) -> BTreeMap<String, Vec<u8>> {
 /// the group feeds, and routes into and out of the group.
 fn session(sample: &str, zone: &str) -> Value {
     json!({
-        "version": 1, "name": "Session", "bpm": 123.5, "linesPerBeat": 4,
+        "version": 2, "name": "Session", "bpm": 123.5, "linesPerBeat": 4,
         "tracks": [
             { "id": 0, "name": "Lead", "routingID": "lead", "instrument": 0, "volume": 0.8 },
             { "id": 1, "name": "Layered kick", "routingID": "kick", "groupID": "g1", "pad": 0, "padNote": 60, "instrument": 2, "volume": 0.63, "pan": -0.23, "chokeGroup": 2,
@@ -138,9 +136,6 @@ fn a_group_is_taken_out_of_a_session() {
     assert!(sounds[0].missing, "a sample that is not on disk is reported");
 
     assert_eq!(group::extract_group(&project, "nope").unwrap_err().to_string(), "Select a group to save as a kit.");
-    let mut lanes = kit.clone();
-    lanes["kits"] = json!([]);
-    assert!(group::validate(&lanes).unwrap_err().to_string().contains("retired kit-lane layout"));
     let mut crowded = kit.clone();
     crowded["instruments"][0]["zones"] = json!(vec![json!({}); 129]);
     assert!(group::validate(&crowded).is_err(), "zone capacity");
@@ -175,7 +170,7 @@ fn collected_round_trip() {
     assert_eq!(saved.metadata["path"], package.as_str());
 
     let manifest: Value = serde_json::from_slice(&fs::read(temp.join("Destination/Portable.stkit/kit.json")).unwrap()).unwrap();
-    assert_eq!((manifest["format"].as_str(), manifest["version"].as_u64(), manifest["projectFile"].as_str()), (Some("supertracker-kit"), Some(2), Some("project.json")));
+    assert_eq!((manifest["format"].as_str(), manifest["version"].as_u64(), manifest["projectFile"].as_str()), (Some("supertracker-kit"), Some(kit::FORMAT_VERSION), Some("project.json")));
     assert_eq!((manifest["soundCount"].as_u64(), manifest["collectedSamples"].as_bool(), manifest["author"].as_str()), (Some(2), Some(true), Some("Fixture Author")));
     assert!(manifest["id"].as_str().is_some_and(|id| !id.is_empty()) && manifest["createdAt"].as_str().is_some());
     let stored: Value = serde_json::from_slice(&fs::read(temp.join("Destination/Portable.stkit/project.json")).unwrap()).unwrap();
@@ -297,7 +292,7 @@ fn malformed_packages() {
     let package = temp.mkdir("Invalid.stkit");
     let empty_project = json!({ "tracks": [] });
     temp.write("Invalid.stkit/project.json", empty_project.to_string().as_bytes());
-    let base = json!({ "format": "supertracker-kit", "version": 2, "projectFile": "project.json", "name": "Fixture" });
+    let base = json!({ "format": "supertracker-kit", "version": kit::FORMAT_VERSION, "projectFile": "project.json", "name": "Fixture" });
     let reject_manifest = |value: Value, label: &str| {
         temp.write("Invalid.stkit/kit.json", value.to_string().as_bytes());
         assert!(kit::read(&package).is_err(), "{label}");
@@ -311,11 +306,10 @@ fn malformed_packages() {
         bad
     };
     reject_manifest(with("format", json!("some-other-format")), "foreign manifest format");
-    for version in [json!(0), json!(3), json!(-1), json!(1.5), json!(true), json!("2")] {
-        reject_manifest(with("version", version.clone()), &format!("unsupported manifest version {version}"));
+    for version in [json!(0), json!(1), json!(2), json!(4), json!(-1), json!(1.5), json!(true), json!("3"), Value::Null] {
+        temp.write("Invalid.stkit/kit.json", with("version", version.clone()).to_string().as_bytes());
+        assert_eq!(kit::read(&package).unwrap_err().to_string(), "This kit was made by a different version of SuperTracker and cannot be opened by this one.", "version {version}");
     }
-    temp.write("Invalid.stkit/kit.json", with("version", json!(1)).to_string().as_bytes());
-    assert!(kit::read(&package).unwrap_err().to_string().contains("retired kit-lane layout"), "version 1 kits are named as such");
     let outside = temp.write("outside.json", empty_project.to_string().as_bytes());
     for path in ["../outside.json", outside.as_str(), "nested/../../outside.json", "link.json"] {
         reject_manifest(with("projectFile", json!(path)), "a manifest must not read a project outside its package");

@@ -1,7 +1,6 @@
 //! Instruments: the sampler (all its modes), plug-in instruments and external MIDI instruments.
 //!
-//! Defaults are those of `instrumentDefaults` in `ui/app-project-model.js`, which the
-//! Swift host repeats when it reads an instrument (`AudioProject.apply`).
+//! Defaults are those of `instrumentDefaults` in `ui/app-project-model.js`.
 
 use crate::json::{model, string_enum};
 use crate::model::plugin::PluginDescriptor;
