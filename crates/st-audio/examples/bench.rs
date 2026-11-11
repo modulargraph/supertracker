@@ -54,7 +54,7 @@ fn sixty_four_tracks() -> Value {
     let mut sends = Vec::new();
     for copy in 0..8 {
         buses.push(json!({ "id": format!("g{copy}"), "name": format!("Group {copy}"), "type": "group", "volume": 0.5 }));
-        plugins.push(json!({ "owner": format!("bus:g{copy}"), "kind": "effect", "slot": 0, "instanceID": format!("geq{copy}"), "component": "stfx:eq" }));
+        plugins.push(json!({ "owner": format!("bus:g{copy}"), "kind": "effect", "slot": 0, "instanceID": format!("geq{copy}"), "component": "stfx:eq", "format": "Builtin" }));
         for (index, track) in base_tracks.iter().enumerate() {
             let number = copy * 8 + index;
             let mut track = track.clone();
@@ -63,7 +63,7 @@ fn sixty_four_tracks() -> Value {
             track["volume"] = json!(0.4);
             tracks.push(track);
             outputs.insert(format!("track:t{number}"), json!(format!("bus:g{copy}")));
-            plugins.push(json!({ "owner": format!("track:t{number}"), "kind": "effect", "slot": 0, "instanceID": format!("comp{number}"), "component": "stfx:compressor" }));
+            plugins.push(json!({ "owner": format!("track:t{number}"), "kind": "effect", "slot": 0, "instanceID": format!("comp{number}"), "component": "stfx:compressor", "format": "Builtin" }));
             if number % 4 == 0 {
                 sends.push(json!({ "id": format!("s{number}"), "source": format!("track:t{number}"), "tap": "postFader", "destination": format!("bus:r{}", number % 8 / 4), "gain": 0.3 }));
             }
@@ -71,9 +71,9 @@ fn sixty_four_tracks() -> Value {
     }
     for index in 0..2 {
         buses.push(json!({ "id": format!("r{index}"), "name": format!("Return {index}"), "type": "return", "volume": 0.8 }));
-        plugins.push(json!({ "owner": format!("bus:r{index}"), "kind": "effect", "slot": 0, "instanceID": format!("rfx{index}"), "component": if index == 0 { "stfx:chorus" } else { "stfx:phaser" } }));
+        plugins.push(json!({ "owner": format!("bus:r{index}"), "kind": "effect", "slot": 0, "instanceID": format!("rfx{index}"), "component": if index == 0 { "stfx:chorus" } else { "stfx:phaser" }, "format": "Builtin" }));
     }
-    plugins.push(json!({ "owner": "master", "kind": "effect", "slot": 0, "instanceID": "limit", "component": "stfx:limiter" }));
+    plugins.push(json!({ "owner": "master", "kind": "effect", "slot": 0, "instanceID": "limit", "component": "stfx:limiter", "format": "Builtin" }));
     project["tracks"] = json!(tracks);
     for pattern in project["patterns"].as_array_mut().unwrap() {
         let steps = pattern["steps"].as_array().unwrap().clone();
