@@ -29,6 +29,11 @@
 //! is checked against every later playing block: a seek, a loop or a restart moves it, and the
 //! take fails rather than print audio in the wrong place.
 //!
+//! The strip is on the output's clock, and so is the print. A live input from another device
+//! than the output has been resampled onto that clock before it reaches the strip
+//! ([`crate::inputs`], "Two clocks"), and the delay of that is part of the strip's delay: a
+//! return recorded through a second interface stays in place over the whole song.
+//!
 //! # A take
 //!
 //! [`recorded_prints`] publishes a project of its own to the live engine for the length of the
@@ -44,7 +49,8 @@
 //!
 //! A take fails, and nothing is kept, when playback does not start, stops before the musical
 //! end (Stop cancels the freeze), jumps, when the strip delivers no blocks (the device
-//! stopped), when the tap lost audio because this thread could not keep up, or when somebody
+//! stopped), when the tap lost audio because this thread could not keep up, when the track's
+//! live input had a gap or a skip (its device delivered late or lost audio), or when somebody
 //! else publishes a project meanwhile. Whatever happens, the transport is stopped, the tap
 //! removed and the project that was published before the takes published again (unless a
 //! newer one has taken its place).
@@ -151,6 +157,8 @@ struct Session<'a> {
     published: Option<u64>,
     /// Takes begun so far.
     takes: usize,
+    /// The track whose strip is recorded.
+    track: usize,
     rate: f64,
     threshold: f32,
 }
@@ -229,6 +237,7 @@ impl Session<'_> {
         self.takes += 1;
         self.tap.clear();
         let dropped_before = self.tap.dropped();
+        let glitches_before = live.line_input_glitches(self.track);
         live.seek(Some(take.pattern), 0, 0);
         live.play(&PlayOptions { song: true, from_start: false, pattern_loop: None, count_in: 0 });
 
@@ -260,6 +269,9 @@ impl Session<'_> {
             }
             if self.tap.dropped() != dropped_before {
                 return Err("The recording lost audio because the computer could not keep up. Nothing was changed; try again.".to_string());
+            }
+            if live.line_input_glitches(self.track) != glitches_before {
+                return Err("The track's live input had a gap while the freeze was recording (its device delivered late or lost audio). Nothing was changed; try again.".to_string());
             }
             let placed = file.placed;
             // An automatic tail is cut shortly after the last sound.
@@ -370,7 +382,7 @@ pub(crate) fn recorded_prints(context: &RenderContext<'_>, plan: &PrintPlan<'_>,
     }
     let tap = Arc::new(StripTap::new((rate * 4.0) as usize));
     live.set_strip_tap(Some((plan.index, tap.clone())))?;
-    let mut session = Session { live, context, tap, original, published: None, takes: 0, rate, threshold: 10f64.powf(SILENCE_DB / 20.0) as f32 };
+    let mut session = Session { live, context, tap, original, published: None, takes: 0, track: plan.index, rate, threshold: 10f64.powf(SILENCE_DB / 20.0) as f32 };
 
     let maximum_tail = (plan.maximum_tail * rate) as u64;
     let fixed_tail = plan.tail.map(|tail| (tail * rate) as u64);

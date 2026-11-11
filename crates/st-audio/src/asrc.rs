@@ -23,9 +23,9 @@
 //!   through the feed is from its target, and answers with the ratio for the block: a
 //!   proportional and an integral term behind two smoothing poles. The integral term is the
 //!   measured difference of the two clocks; the proportional term brings the delay back to
-//!   its target. The loop starts with a bandwidth of 0.3 Hz and narrows to 0.05 Hz within a
-//!   few seconds, which is slow enough that the jitter of the callbacks' timestamps moves the
-//!   pitch by a few parts per million at most (a cent is 578).
+//!   its target. The loop starts with a bandwidth of 0.3 Hz and narrows to 0.02 Hz within a
+//!   few seconds, which is slow enough that callbacks whose timestamps jitter by half a
+//!   millisecond move the pitch by some ten parts per million at most (a cent is 578).
 //!
 //! Nothing here allocates after construction, locks or performs I/O.
 
@@ -248,9 +248,21 @@ impl RateLoop {
         RateLoop { nominal: input_rate / output_rate, input_rate, drift: 0.0, smoothed: [0.0; 2], age: 0.0 }
     }
 
+    /// The same loop, starting from a difference of the clocks that is known already
+    /// (`ppm`, as [`RateLoop::drift_ppm`] of another loop between the same two devices).
+    pub fn starting_at(mut self, ppm: f64) -> RateLoop {
+        self.drift = (ppm * 1e-6).clamp(-MAX_DRIFT, MAX_DRIFT);
+        self
+    }
+
     /// Input frames per output frame by the nominal rates.
     pub fn nominal(&self) -> f64 {
         self.nominal
+    }
+
+    /// Seconds the loop has run.
+    pub fn age(&self) -> f64 {
+        self.age
     }
 
     /// The ratio for the next `seconds` of output, given that the delay through the feed is

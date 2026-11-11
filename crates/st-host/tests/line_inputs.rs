@@ -1,6 +1,7 @@
 //! Live line inputs and Freeze by recording as the interface uses them, on the null device with
 //! the null input's test tone (440 Hz on channel 0, 880 Hz on channel 1, a quarter of full
-//! scale). The null output is the clock of the null input, so the comparisons are exact.
+//! scale). The null output is the clock of the null input, so the comparisons are exact. One
+//! test runs the tone from a second clock at another rate, through the converter.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -166,6 +167,53 @@ fn the_project_routes_a_line_input_into_its_track_and_the_host_reports_it() {
     assert_eq!((event["inputUid"].clone(), event["lineInputs"][0]["state"].clone()), (json!("null:tone"), json!("live")));
     status_where(&again.host, "the input is heard again", |status| (status["trackPeaks"][0].as_f64().unwrap_or(0.0) - 0.25).abs() < 0.01);
     let _ = &again.folder;
+}
+
+#[test]
+fn an_input_with_another_rate_and_clock_is_resampled_into_its_track_and_into_a_take() {
+    // A second device in real time: the free-running null input delivers the test tone at
+    // 44.1 kHz from a timer thread of its own, under the null output at 48 kHz. What is exact
+    // about two clocks is measured in simulated time (st-audio, tests/two_clocks.rs); here the
+    // threads are real and the machine may be busy, so this test only asks for what holds
+    // then too: the route runs through the converter and says so, and the tone keeps its
+    // level and its pitch on the track and in a take.
+    let fixture = start(TempDir::new("two-clocks"));
+    let host = &fixture.host;
+    let uid = "null:free:44100";
+    let chosen = host.request("audio.configure", json!({ "input": uid, "inputChannels": [0] })).unwrap();
+    assert_eq!((chosen["inputUid"].clone(), chosen["inputRunning"].clone()), (json!(uid), json!(false)));
+    let mut project = project();
+    project["patterns"][0]["steps"][0] = json!(vec![Value::Null; 8]);
+    project["tracks"][0]["volume"] = json!(1);
+    project["tracks"][0]["audioInput"] = json!({ "enabled": true, "deviceUID": uid, "channels": [0], "gain": 0.8 });
+    let event = publish(host, &project).expect("the publication reports its line input");
+    let row = &event["lineInputs"][0];
+    // 512 output frames are 470.4 of the input's, its block is 470, the filter reads 46
+    // ahead and the margin is 5 ms: 1 207 input frames, 1 314 of the engine's.
+    assert_eq!((row["state"].clone(), row["clock"].clone(), row["latencyFrames"].clone()), (json!("live"), json!("converted"), json!(1_314)));
+    assert!(row["driftPpm"].is_number() && row["underruns"].is_u64() && row["overruns"].is_u64(), "{row}");
+    assert_eq!((event["inputRunning"].clone(), event["inputSampleRate"].clone(), event["sampleRate"].clone()), (json!(true), json!(44_100.0), json!(48_000.0)));
+    // The tone on the track's meter at its level, 0.25 x 0.8, and the delay in the mixer.
+    let status = status_where(host, "the input shows on its track", |status| (status["trackPeaks"][0].as_f64().unwrap_or(0.0) - 0.2).abs() < 0.01);
+    assert_eq!(status["latencyCompensation"]["frames"], 1_314);
+
+    // A take of the input is at the engine's rate, and the 440 Hz tone is at 440 Hz in it:
+    // 44.1 kHz frames taken for 48 kHz ones would sound at 479 Hz.
+    let path = fixture.folder.path().join("take.wav").to_string_lossy().into_owned();
+    host.request("audio.record", json!({ "source": "input", "path": path })).unwrap();
+    std::thread::sleep(Duration::from_millis(1_500));
+    let stopped = host.request("audio.stopRecord", json!({})).unwrap();
+    assert_eq!((stopped["sampleRate"].clone(), stopped["channels"].clone(), stopped["latencyCompensation"]["frames"].clone()), (json!(48_000), json!(1), json!(1_314)));
+    let file = read(&stopped["path"]);
+    assert!(file.sample_rate == 48_000.0 && file.frames() > 48_000, "{} frames at {} Hz", file.frames(), file.sample_rate);
+    // Half a second from the middle of the take: 220 cycles, 440 zero crossings (a busy
+    // machine may cost a few; unconverted there would be 479).
+    let middle = &file.left[file.frames() / 2 - 12_000..file.frames() / 2 + 12_000];
+    let crossings = middle.windows(2).filter(|pair| (pair[0] < 0.0) != (pair[1] < 0.0)).count();
+    assert!((425..=455).contains(&crossings) && (peak(middle) - 0.25).abs() < 0.01, "{crossings} zero crossings, peak {}", peak(middle));
+    // The line input's own counters are in every report.
+    let row = host.request("audio.devices", json!({})).unwrap()["lineInputs"][0].clone();
+    assert!(row["state"] == "live" && row["driftPpm"].as_f64().unwrap().abs() < 2_000.0, "{row}");
 }
 
 #[test]

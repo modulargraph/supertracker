@@ -208,6 +208,15 @@ impl AudioEngine {
         (rows, problem)
     }
 
+    /// How often the live input of track `track` has had a gap or a skip so far (its feed's
+    /// underruns and overruns together); `None` when the track has no live input.
+    pub fn line_input_glitches(&self, track: usize) -> Option<u64> {
+        self.lock().lines.iter().find(|line| line.track == track).and_then(|line| match &line.state {
+            LineState::Live { feed, .. } => Some(feed.underruns() + feed.overruns()),
+            LineState::Paused(_) => None,
+        })
+    }
+
     /// Puts a tap on the strip of track `track`, after its inserts and before its fader, or
     /// takes the tap away (`None`). The mixer is recompiled with it; every plan compiled while
     /// the tap is set carries it. See [`crate::graph::tap`].

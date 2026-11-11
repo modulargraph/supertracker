@@ -95,7 +95,11 @@ fn the_input_is_chosen_metered_and_recorded() {
     std::thread::sleep(Duration::from_millis(400));
     let stopped = host.request("audio.stopRecord", json!({})).unwrap();
     assert_eq!((stopped["source"].clone(), stopped["instrument"].clone(), stopped["owner"].clone(), stopped["partial"].clone(), stopped["channels"].clone()), (json!("input"), json!(3), json!("page-7"), json!(false), json!(1)));
-    assert_eq!(stopped["latencyCompensation"]["frames"], 0, "the null devices have no latency");
+    // The null devices have no latency of their own. What is left out of the take's start is
+    // the block the input waits on its way to the render thread, which records it.
+    assert_eq!((stopped["latencyCompensation"]["frames"].clone(), stopped["sampleRate"].clone()), (json!(512), json!(48_000)));
+    let (start, end): (i64, i64) = (stopped["sourceStartFrame"].as_str().unwrap().parse().unwrap(), stopped["sourceEndFrame"].as_str().unwrap().parse().unwrap());
+    assert_eq!(end - start, stopped["frames"].as_i64().unwrap(), "an input take is on the output's clock too: one frame per frame rendered");
     let file = st_audio::samples::read_wav(&std::fs::read(&path).unwrap()).unwrap();
     assert!(file.frames() > 9_600 && file.frames() < 48_000, "{} frames", file.frames());
     let peak = file.left.iter().fold(0.0f32, |peak, sample| peak.max(sample.abs()));

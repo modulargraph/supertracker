@@ -137,8 +137,11 @@ const CONVERT_FRAMES: usize = 1024;
 /// this long.
 const STALLED_SECONDS: f64 = 0.5;
 /// How long the delay of a feed that resamples may be out of range before its read position
-/// jumps.
+/// jumps, and how long such a feed measures where its input is before it starts.
 const ASTRAY_SECONDS: f64 = 0.1;
+/// How long a feed's loop has run when later feeds of the same stream start from the clock
+/// difference it has measured.
+const KNOWN_SECONDS: f64 = 20.0;
 
 /// How the clock of a feed's input relates to the output's. See the module documentation.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -171,6 +174,9 @@ struct Converted {
     reader: UnsafeCell<Reader>,
     /// The measured difference of the clocks in parts per million (`f32` bits).
     drift: AtomicU32,
+    /// The same for every feed of the stream, once a feed has measured it for a while (NaN
+    /// until then): a feed made later starts from it.
+    known_drift: Arc<AtomicU32>,
     /// Input frames the delay was away from its target at the last read (`f32` bits).
     error: AtomicU32,
 }
@@ -187,10 +193,14 @@ struct Reader {
     /// The input thread's last block as this reader saw it last: frames and time.
     seen: Option<(u64, u64)>,
     running: bool,
+    /// Seconds left of the silent start, in which the reader only measures where the input is.
+    aligning: f64,
     /// The last read lacked frames (one incident is counted once).
     starving: bool,
     /// Seconds the delay has been out of range.
     astray: f64,
+    /// The sum and the number of the delay errors measured while starting or out of range.
+    errors: (f64, u32),
 }
 
 impl Reader {
@@ -268,14 +278,29 @@ impl Reader {
         if !self.running {
             self.converter.seek(head - shared.target);
             self.rate.settle();
-            (self.running, self.starving, self.astray) = (true, false, 0.0);
+            (self.running, self.aligning, self.starving, self.astray, self.errors) = (true, ASTRAY_SECONDS, false, 0.0, (0.0, 0));
         }
-        let error = head - self.converter.position() - shared.target;
+        let mut error = head - self.converter.position() - shared.target;
         let seconds = frames as f64 / shared.output_rate;
+        if self.aligning > 0.0 {
+            // One callback's time is only as exact as the callback was punctual: the start
+            // measures for a tenth of a second, in silence, and begins at the mean.
+            self.errors = (self.errors.0 + error, self.errors.1 + 1);
+            self.aligning -= seconds;
+            if self.aligning > 0.0 {
+                self.converter.seek(self.converter.position() + self.rate.held() * frames as f64);
+                return false;
+            }
+            let mean = self.errors.0 / self.errors.1 as f64;
+            self.converter.seek(self.converter.position() + mean);
+            self.errors = (0.0, 0);
+            error -= mean;
+        }
         let ratio = if error.abs() > shared.limit {
             // Callbacks that come late explain this for a block or two; if it stays so, frames
             // were lost on one side or the other.
             self.astray += seconds;
+            self.errors = (self.errors.0 + error, self.errors.1 + 1);
             if self.astray >= ASTRAY_SECONDS {
                 if error > 0.0 {
                     feed.overruns.fetch_add(1, Ordering::Relaxed);
@@ -283,13 +308,14 @@ impl Reader {
                     feed.underruns.fetch_add(1, Ordering::Relaxed);
                     self.starving = true;
                 }
-                self.converter.seek(head - shared.target);
+                // By the mean of what was measured meanwhile, as at the start.
+                self.converter.seek(self.converter.position() + self.errors.0 / self.errors.1 as f64);
                 self.rate.settle();
-                self.astray = 0.0;
+                (self.astray, self.errors) = (0.0, (0.0, 0));
             }
             self.rate.held()
         } else {
-            self.astray = 0.0;
+            (self.astray, self.errors) = (0.0, (0.0, 0));
             self.rate.update(error, seconds)
         };
         let step = crate::asrc::step(ratio);
@@ -306,6 +332,9 @@ impl Reader {
         }
         self.starving = starved;
         shared.drift.store((self.rate.drift_ppm() as f32).to_bits(), Ordering::Relaxed);
+        if self.rate.age() > KNOWN_SECONDS {
+            shared.known_drift.store((self.rate.drift_ppm() as f32).to_bits(), Ordering::Relaxed);
+        }
         shared.error.store((error as f32).to_bits(), Ordering::Relaxed);
         true
     }
@@ -333,16 +362,19 @@ pub struct LineFeed {
 
 impl LineFeed {
     /// A feed of `channels` for an input on `clock`; one that resamples is given the filter
-    /// of its two rates. Control thread.
-    fn new(channels: [u32; 2], clock: FeedClock, kernel: Option<&Arc<Kernel>>) -> LineFeed {
+    /// of its two rates and what the stream's feeds know of the clocks' difference. Control
+    /// thread.
+    fn new(channels: [u32; 2], clock: FeedClock, converter: Option<(&Arc<Kernel>, &Arc<AtomicU32>)>) -> LineFeed {
         let (underruns, overruns) = (AtomicU64::new(0), AtomicU64::new(0));
-        match (clock, kernel) {
-            (FeedClock::Separate { input_rate, output_rate, input_block, output_block }, Some(kernel)) => {
-                let rate = RateLoop::new(input_rate, output_rate);
+        match (clock, converter) {
+            (FeedClock::Separate { input_rate, output_rate, input_block, output_block }, Some((kernel, known_drift))) => {
+                let known = f32::from_bits(known_drift.load(Ordering::Relaxed)) as f64;
+                let rate = RateLoop::new(input_rate, output_rate).starting_at(if known.is_finite() { known } else { 0.0 });
                 // Callbacks that come late: half the duration of the longer block, 1 to 5 ms.
                 let margin = (0.5 * (input_block as f64 / input_rate).max(output_block as f64 / output_rate)).clamp(0.001, 0.005) * input_rate;
                 let target = (output_block as f64 * rate.nominal() + input_block as f64 + kernel.half() as f64 + 2.0 + margin).ceil();
                 let limit = 0.5 * (input_block as f64).min(output_block as f64 * rate.nominal()) + margin;
+                let rate_drift = rate.drift_ppm();
                 let converter = Converter::new(kernel.clone(), rate.max_ratio(), CONVERT_FRAMES);
                 // Room for the delay and as much again before a jump, the largest block the
                 // input moves at once, and a margin.
@@ -365,8 +397,9 @@ impl LineFeed {
                         stamp: AtomicU64::new(0),
                         overflowed: AtomicBool::new(false),
                         reading: AtomicBool::new(false),
-                        reader: UnsafeCell::new(Reader { converter, rate, taken: 0, seen: None, running: false, starving: false, astray: 0.0 }),
-                        drift: AtomicU32::new(0f32.to_bits()),
+                        reader: UnsafeCell::new(Reader { converter, rate, taken: 0, seen: None, running: false, aligning: 0.0, starving: false, astray: 0.0, errors: (0.0, 0) }),
+                        drift: AtomicU32::new((rate_drift as f32).to_bits()),
+                        known_drift: known_drift.clone(),
                         error: AtomicU32::new(0f32.to_bits()),
                     }),
                     underruns,
@@ -986,6 +1019,9 @@ struct State {
     lines_outdated: bool,
     /// The filter of feeds that resample, for the two rates it was made for.
     kernel: Option<(f64, f64, Arc<Kernel>)>,
+    /// What the feeds of the open stream have measured of the clocks' difference (`f32` bits
+    /// of parts per million; NaN while they have not).
+    known_drift: Arc<AtomicU32>,
     /// When opening the input for line inputs alone failed last.
     line_failed: Option<Instant>,
     /// The system's default input and when it was asked for.
@@ -1024,6 +1060,7 @@ impl Default for Inputs {
                 format: None,
                 lines_outdated: false,
                 kernel: None,
+                known_drift: Arc::new(AtomicU32::new(f32::NAN.to_bits())),
                 line_failed: None,
                 default_input: None,
             }),
@@ -1181,6 +1218,8 @@ impl Inputs {
                 state.stream = Some(stream);
                 state.error = None;
                 state.line_failed = None;
+                // Another stream may be another device: its clock is measured anew.
+                state.known_drift = Arc::new(AtomicU32::new(f32::NAN.to_bits()));
             }
             Err(error) => {
                 state.error = Some(error);
@@ -1244,7 +1283,7 @@ impl Inputs {
                 state.kernel.as_ref().map(|(_, _, kernel)| kernel.clone())
             }
         };
-        Arc::new(LineFeed::new(channels, clock, kernel.as_ref()))
+        Arc::new(LineFeed::new(channels, clock, kernel.as_ref().map(|kernel| (kernel, &state.known_drift))))
     }
 
     /// Gives the chosen channels a feed while monitoring or a take listens to them and the
@@ -1654,7 +1693,7 @@ mod tests {
                 let base = (delivered - 1) * 480;
                 hub.deliver_at((delivered as f64 * 480.0 / input_rate * 1e9) as u64, 480, 8, |frame, channel| ((base + frame as u64) % 4_800) as f32 / 4_800.0 + channel as f32);
             }
-            assert!(feed.read((now * 1e9) as u64, &mut left, &mut right));
+            assert_eq!(feed.read((now * 1e9) as u64, &mut left, &mut right), block >= 9, "silent while it measures, for a tenth of a second");
             // After 45 seconds: the input position of the block's first frame, from the ramp
             // (which is interpolated exactly except where it wraps), against where the input
             // is at this callback.

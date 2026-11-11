@@ -145,6 +145,126 @@ fn line_inputs_and_a_strip_tap_do_not_allocate_on_the_input_or_the_render_thread
     engine.tick();
 }
 
+/// Two devices in simulated time: an input at `input_rate` frames per second in blocks of 441
+/// and an output at 48 kHz in blocks of 512, each delivering or rendering when its clock says.
+/// Both sides run on this thread with the allocation counter armed.
+struct TwoClocks {
+    input_rate: f64,
+    delivered: u64,
+    rendered: u64,
+    /// Seconds of input the device captured and never delivered.
+    lost: f64,
+    /// Input blocks that arrive before this time are delivered at it.
+    held_until: f64,
+}
+
+impl TwoClocks {
+    fn now(&self) -> f64 {
+        1.0 + (self.rendered * 512) as f64 / 48_000.0
+    }
+
+    /// `blocks` output callbacks; with `render` false the output stands still meanwhile.
+    fn run(&mut self, engine: &st_audio::AudioEngine, blocks: usize, render: bool, left: &mut [f32], right: &mut [f32]) -> f32 {
+        let renderer = engine.renderer();
+        let mut renderer = renderer.lock().unwrap();
+        let hub = engine.live().inputs().hub().clone();
+        let mut loudest = 0.0f32;
+        for _ in 0..blocks {
+            let time = self.now();
+            ARMED.with(|armed| armed.set(true));
+            loop {
+                let arrival = (((self.delivered + 1) * 441) as f64 / self.input_rate + self.lost).max(self.held_until);
+                if arrival > time {
+                    break;
+                }
+                let base = self.delivered * 441;
+                hub.deliver_at((arrival * 1e9) as u64, 441, 8, |frame, channel| ((base as usize + frame + channel * 7) % 64) as f32 / 256.0);
+                self.delivered += 1;
+            }
+            if render {
+                renderer.render_at((time * 1e9) as u64, &mut left[..512], &mut right[..512]);
+            }
+            ARMED.with(|armed| armed.set(false));
+            self.rendered += 1;
+            loudest = loudest.max(peak(&left[..512]));
+        }
+        loudest
+    }
+}
+
+#[test]
+fn an_input_on_a_clock_of_its_own_does_not_allocate_on_the_input_or_the_render_thread() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (mut left, mut right) = (vec![0.0f32; 512], vec![0.0f32; 512]);
+    let engine = engine();
+    // A 44.1 kHz device, 300 ppm fast: two line inputs, the monitored channels and a take
+    // all go through the converter.
+    let uid = "null:manual:44100:441";
+    engine.live().inputs().configure(&st_audio::inputs::InputRequest { uid: Some(uid.to_string()), monitor: Some(true), ..Default::default() }).unwrap();
+    let mut project: serde_json::Value = serde_json::from_str(include_str!("../../st-project/tests/fixtures/demo.json")).unwrap();
+    for (index, track) in project["tracks"].as_array_mut().unwrap().iter_mut().enumerate() {
+        track["routingID"] = json!(format!("t{index}"));
+    }
+    let line = |channels: &[u32]| json!({ "enabled": true, "deviceUID": uid, "channels": channels, "gain": 0.8 });
+    project["tracks"][0]["audioInput"] = line(&[0, 1]);
+    project["tracks"][2]["audioInput"] = line(&[5]);
+    project["audioPlugins"] = json!([effect("track:t0", 0, "comp", "stfx:compressor")]);
+    engine.publish(&parse(&project)).unwrap();
+    let rows = engine.line_inputs().0;
+    assert!(rows.len() == 2 && rows.iter().all(|row| row["state"] == "live" && row["clock"] == "converted"), "{rows:?}");
+    let path = std::env::temp_dir().join(format!("st-audio-realtime-take-{}.wav", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    engine.live().record(&st_audio::live::RecordRequest { source: st_audio::live::RecordSource::Input, path: path.clone(), monitor: true, monitor_volume: 0.5, output_latency_frames: 0 }).unwrap();
+    engine.play(&PlayOptions { song: true, from_start: true, ..Default::default() });
+    let mut clocks = TwoClocks { input_rate: 44_100.0 * 1.0003, delivered: 43_000 / 441, rendered: 0, lost: 0.0, held_until: 0.0 };
+    clocks.run(&engine, 4, true, &mut left, &mut right);
+    COUNTED.store(0, Ordering::Relaxed);
+
+    // In step for ten seconds; then everything that makes a feed start over, jump or drop.
+    let mut loudest = clocks.run(&engine, 940, true, &mut left, &mut right);
+    // The input stalls and delivers what it held back in one burst.
+    clocks.held_until = clocks.now() + 0.2;
+    clocks.run(&engine, 100, true, &mut left, &mut right);
+    // The input loses 150 ms.
+    clocks.lost += 0.15;
+    clocks.run(&engine, 100, true, &mut left, &mut right);
+    // The output stands still for 150 ms, and then for three seconds (the rings run full).
+    clocks.run(&engine, 14, false, &mut left, &mut right);
+    clocks.run(&engine, 100, true, &mut left, &mut right);
+    clocks.run(&engine, 282, false, &mut left, &mut right);
+    clocks.run(&engine, 100, true, &mut left, &mut right);
+    // The input is gone for two seconds and comes back.
+    clocks.lost += 2.0;
+    loudest = loudest.max(clocks.run(&engine, 400, true, &mut left, &mut right));
+    let rows = engine.line_inputs().0;
+    assert!(rows.iter().all(|row| row["underruns"].as_u64().unwrap() >= 3 && row["overruns"].as_u64().unwrap() >= 2), "{rows:?}");
+    assert!((rows[0]["driftPpm"].as_f64().unwrap() - 300.0).abs() < 60.0, "{rows:?}");
+    // A route goes and one comes while the others play on; monitoring is switched off.
+    project["tracks"][0].as_object_mut().unwrap().remove("audioInput");
+    project["tracks"][3]["audioInput"] = line(&[2, 3]);
+    engine.publish(&parse(&project)).unwrap();
+    clocks.run(&engine, 100, true, &mut left, &mut right);
+    engine.live().inputs().configure(&st_audio::inputs::InputRequest { monitor: Some(false), ..Default::default() }).unwrap();
+    clocks.run(&engine, 50, true, &mut left, &mut right);
+
+    assert!(loudest > 0.02, "the song and the inputs were really rendered (peak {loudest})");
+    assert_eq!(COUNTED.load(Ordering::Relaxed), 0, "allocations or frees on the input or the render path");
+    // The take is ended by another thread while this one goes on rendering.
+    let stopper = std::thread::spawn({
+        let engine = engine.clone();
+        move || engine.live().stop_record().expect("a take was running")
+    });
+    while !stopper.is_finished() {
+        clocks.run(&engine, 1, true, &mut left, &mut right);
+        std::thread::sleep(std::time::Duration::from_micros(500));
+    }
+    let take = stopper.join().unwrap();
+    assert!(take.file.problem.is_none() && take.file.frames > 1_800 * 512, "{:?}", take.file);
+    assert_eq!(COUNTED.load(Ordering::Relaxed), 0, "allocations or frees on the input or the render path");
+    engine.tick();
+    let _ = std::fs::remove_file(path);
+}
+
 #[test]
 fn rendering_never_allocates_or_frees_even_across_project_and_plan_changes() {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
