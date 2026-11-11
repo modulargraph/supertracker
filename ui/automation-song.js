@@ -415,7 +415,7 @@
     const p = payload || state().status || {}, g = geometry(list);
     if (!p.playing) return { visible: false, label: 'Stopped', left: L / 9 };
     let row = null;
-    const position = Number.isFinite(p.position) ? p.position : Number(p.row || 0) + clamp(p.fraction ?? p.rowFraction, 0, 1);
+    const position = Number.isFinite(p.position) ? p.position : Number(p.row || 0);
     if (p.songMode && Number.isInteger(p.sequence) && list[p.sequence]) row = list[p.sequence].start + clamp(position, 0, list[p.sequence].length);
     else if (Number.isFinite(p.pattern)
         && list[view.flat]?.pattern === p.pattern) row = list[view.flat].start + clamp(position, 0, list[view.flat].length);

@@ -64,7 +64,7 @@
 
   /* ---------- moving ---------- */
 
-  const signature = p => p.tracks.map(t => `${t.routingID ?? t.id}:${t.groupID || ''}`).join('|');
+  const signature = p => p.tracks.map(t => `${t.routingID}:${t.groupID || ''}`).join('|');
 
   /* Moves tracks (or a whole group) to `before` with membership `group`; one Undo step. False when the drop
      changes nothing. The cursor and selection follow the moved tracks. */

@@ -320,7 +320,7 @@
   function playhead() {
     const st = state(), status = st?.status || {};
     const pattern = patternById(status.pattern); if (!pattern) return null;
-    const base = Number.isFinite(status.position) ? status.position : Number(status.row || 0) + clamp(status.fraction ?? status.rowFraction, 0, 1);
+    const base = Number.isFinite(status.position) ? status.position : Number(status.row || 0);
     const elapsed = Number.isFinite(st.lastStatusAt) ? clamp((Date.now() - st.lastStatusAt) / 1000, 0, .15) : 0;
     return { pattern: Number(pattern.id), row: clamp(base + elapsed * rowsPerSecond(), 0, Math.max(0, pattern.length - Q)), length: pattern.length };
   }

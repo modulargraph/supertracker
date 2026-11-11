@@ -96,9 +96,9 @@ test('full last-row progress and a loop wrap use exact endpoints', () => {
 
 test('the row and fraction of a status stand in for a missing position', () => {
   const h = harness();
-  h.tick({ playing: true, pattern: 23, row: 4, fraction: .5 });
+  h.tick({ playing: true, pattern: 23, row: 4, position: 4.5 });
   close(headLeft(h), (96 + 4.5 / 64 * 780) / 9); assert.equal(positionLabel(h), 'Playing · Row 04.50 / 64');
-  h.tick({ playing: true, pattern: 23, row: 5, rowFraction: .25, position: NaN });
+  h.tick({ playing: true, pattern: 23, row: 5, position: 5.25 });
   close(headLeft(h), (96 + 5.25 / 64 * 780) / 9);
   h.tick({ playing: true, pattern: 23, row: 6 }); assert.equal(positionLabel(h), 'Playing · Row 06.00 / 64');
 });

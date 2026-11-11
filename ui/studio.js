@@ -1098,8 +1098,7 @@
     const current = pattern(), playing = payload.playing === true;
     const hasPattern = Number.isFinite(payload.pattern), matches = hasPattern && payload.pattern === Number(current.id);
     const row = Number.isFinite(payload.row) ? payload.row : 0;
-    const fraction = Number.isFinite(payload.fraction) ? payload.fraction : number(payload.rowFraction);
-    const position = Math.max(0, Number.isFinite(payload.position) ? payload.position : row + clamp(fraction, 0, 1));
+    const position = Math.max(0, Number.isFinite(payload.position) ? payload.position : row);
     const rowLabel = value => value.toFixed(2).padStart(5, '0');
     if (!playing) return { visible: false, mode: 'stopped', label: `Stopped · Edit row ${String(state().row || 0).padStart(2, '0')}`, detail: 'Playback line appears when this pattern plays', left: 96 / 9 };
     if (!hasPattern) return { visible: false, mode: 'waiting', label: 'Playing · Waiting for pattern position', detail: '', left: 96 / 9 };

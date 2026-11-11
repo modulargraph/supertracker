@@ -106,8 +106,8 @@
     const plugin = p.tracks[state.track].instrument === state.instrument
         ? p.audioPlugins.find(x => x.owner === `track:${p.tracks[state.track].routingID}` && x.kind === 'instrument')
         : null;
-    const midiInputs = state.midi.inputs || state.midi.sources || [],
-      midiOutputs = state.midi.outputs || state.midi.destinations || [];
+    const midiInputs = state.midi.inputs || [],
+      midiOutputs = state.midi.outputs || [];
     return `<div class="workspace">${sidebar('instruments')}<section class="workspace-main">`
         + `<div class="view-title"><div><div class="eyebrow">Instrument ${String(state.instrument).padStart(2, '0')}</div>`
         + `<h1 style="margin-top:7px">${esc(inst.name)}</h1></div><div class="row"><button class="quiet"`

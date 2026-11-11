@@ -43,8 +43,8 @@
         m = state.midi,
         inputs = a.inputs || [],
         outputs = a.outputs || [],
-        mi = m.inputs || m.sources || [],
-        mo = m.outputs || m.destinations || [];
+        mi = m.inputs || [],
+        mo = m.outputs || [];
       const inputDevice = a.inputDevice ?? a.defaultInput,
         outputDevice = a.outputDevice ?? a.defaultOutput;
       const option = (value, label, selected = false, disabled = false) => `<option value="${esc(String(value))}" ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''}>${esc(label)}</option>`;
