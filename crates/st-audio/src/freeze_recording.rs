@@ -211,7 +211,7 @@ impl Session<'_> {
         let duration = live.duration(true);
         let musical = (duration * self.rate) as u64;
         let tail_limit = take.fixed_tail.unwrap_or(take.maximum_tail);
-        if !(duration > 0.0) || musical == 0 {
+        if duration.is_nan() || musical == 0 {
             return Err("The song is empty: there is nothing to record.".to_string());
         }
         if musical + tail_limit > st_project::validate::MAX_FREEZE_FRAMES as u64 {

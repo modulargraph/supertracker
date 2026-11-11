@@ -100,7 +100,10 @@
   // ---- Commands --------------------------------------------------------------------------
 
   /* Hardware tracks (live line input = the synth's return, or an external MIDI
-     instrument) cannot render offline: they freeze by recording one real-time pass. */
+     instrument) cannot render offline: they freeze by recording (`method: 'record'`).
+     The host plays the song once in real time and records the track's strip, then,
+     with `patterns`, each pattern for its head and loop print; `monitor: false` keeps
+     the mix silent meanwhile. Stop cancels. */
   function hardwareTrack(index) {
     const p = project(), track = p?.tracks?.[index];
     return track?.audioInput?.enabled === true || p?.instruments?.[track?.instrument || 0]?.type === 'midi';

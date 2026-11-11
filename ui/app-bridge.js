@@ -13,15 +13,15 @@
   const interactiveCommands = new Set(['ready', 'ui.contextMenu', 'freeze.track', 'freeze.unfreeze', 'audio.export',
       'audio.bounceTrack', 'routing.apply', 'project.open', 'project.save', 'project.saveAs', 'project.importMIDI',
       'project.exportMIDI', 'dialog.openSample', 'dialog.export', 'project.media.chooseRoot', 'library.chooseRoot',
-      'audio.record', 'audio.inputs', 'audio.inputs.configure', 'audio.configure', 'plugin.load', 'plugin.loadNKS',
+      'audio.record', 'audio.configure', 'plugin.load', 'plugin.loadNKS',
       'plugins.recovery.retry', 'kit.read', 'kit.save']);
 
   const instrumentMutationCommands = new Set(['sample.load', 'sample.edit', 'plugin.load', 'plugin.loadNKS',
       'plugin.parameter', 'plugin.preset', 'plugin.remove', 'plugin.move', 'routing.apply',
       'freeze.track', 'freeze.unfreeze', 'audio.export', 'audio.bounceTrack', 'audio.configure']);
 
-  // Commands that change the audio inputs wait for a line-input change like instrument mutations do.
-  const lineInputCommands = ['engine.project', 'audio.record', 'audio.inputs', 'audio.inputs.configure'];
+  // Publications and takes wait while the Line inputs dialog reads the devices, like instrument mutations do.
+  const lineInputCommands = ['engine.project', 'audio.record'];
 
   /** The busy operation a native command has to wait for (the caller reports the rejection). */
   function requestBlocker(command, options) {

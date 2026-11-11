@@ -68,6 +68,12 @@ back) while the song plays on; and that Save As stores the state captured at sav
 of the plug-in is noticed before New (the Discard question), and opening the file again restores
 the plug-in with the saved state.
 
+Line inputs (after the plug-in checks): with the null input's test tone chosen as the input
+(`audio.configure`), ticking **Live input** on the selected track in the mixer puts the route into
+the project, the host reports it live, the tone is on that track's meter at a quarter of full scale
+times the fader without Play, and one Undo takes the route out of the project and the mixer and
+closes the input.
+
 ## `window_smoke.sh`: the window in a virtual display (Linux)
 
 ```sh

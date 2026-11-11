@@ -282,4 +282,6 @@ fn the_fingerprint_follows_content_not_paths() {
     hardware["instruments"][0]["type"] = json!("midi");
     fixture.publish(&hardware);
     assert!(refuse(offline(1, None, 10.0)).contains("external MIDI instrument"));
+    // Recording needs the instrument's sound to come back into the track.
+    assert!(refuse(FreezeRequest { method: FreezeMethod::Record, ..offline(1, None, 10.0) }).contains("Make the instrument's return this track's live input"));
 }

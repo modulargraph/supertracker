@@ -123,10 +123,18 @@ impl AudioEngine {
         if lines == state.lines {
             return Ok(false);
         }
-        state.lines = lines;
-        let report = Self::publish_locked(&mut state, &project)?;
-        state.last_report = report;
-        Ok(true)
+        let previous = std::mem::replace(&mut state.lines, lines);
+        match Self::publish_locked(&mut state, &project) {
+            Ok(report) => {
+                state.last_report = report;
+                Ok(true)
+            }
+            Err(error) => {
+                // The mixer is the one compiled before: so is the list it was compiled from.
+                state.lines = previous;
+                Err(error)
+            }
+        }
     }
 
     /// The tick's part: resolves the line inputs again when the devices changed or a paused

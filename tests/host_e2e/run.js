@@ -242,7 +242,7 @@ async function main() {
 
     // ---- An unimplemented command fails with its name, and the page carries on ---------------
     // (Whichever of these the host does not implement yet.)
-    const unimplemented = ['plugin.captureBasePatch', 'audio.inputs'].find(command => !boot.commands.includes(command));
+    const unimplemented = ['plugin.captureBasePatch', 'audio.kitPreview'].find(command => !boot.commands.includes(command));
     if (unimplemented) {
       const refused = await request(page, unimplemented, { track: 0, kind: 'instrument' });
       assert.match(refused.error, new RegExp('^`' + unimplemented.replace('.', '\\.') + '` is not implemented yet \\(it belongs to st-[a-z*-]+\\)\\.$'));
@@ -501,6 +501,38 @@ async function main() {
     assert.deepEqual(problems.filter(text => !/not implemented yet|Failed to load resource/.test(text)), [], 'the page reported errors with plug-ins');
     pass('the project saves the plug-in with its state, and opening it again restores the plug-in with that state');
     assert.equal(await page.evaluate(() => ST.projectAction('demo')), true, 'loading the demo again failed: ' + await toasts(page));
+    await page.click('#view-pattern');
+
+    // ---- Line inputs: the null input's test tone into a track, from the mixer's Live input panel ----
+    // The interface is chosen as Settings does it (the test tone is an input only tests ask for).
+    const toneInput = await request(page, 'audio.configure', { input: 'null:tone' });
+    assert.equal(toneInput.ok?.inputUid, 'null:tone', JSON.stringify(toneInput));
+    await page.evaluate(audio => { ST.state.audio = { ...ST.state.audio, ...audio }; }, toneInput.ok);
+    const lineTrack = 5, liveInput = `[data-line-input-mixer="${lineTrack}"]`;
+    await page.evaluate(index => { ST.state.track = index; ST.state.mixerOwner = null; }, lineTrack);
+    await page.click('#view-mixer');
+    await page.waitForSelector(`${liveInput} [data-line-input-field="enabled"]:not([disabled])`, { timeout: 10000 })
+      .catch(async error => { throw new Error('The mixer does not offer Live input for the selected track: ' + await toasts(page) + '\n' + error.message); });
+    assert.match(await page.textContent(liveInput), /Live input from Test tone input/);
+    assert.equal(await page.evaluate(index => ST.state.status.trackPeaks[index], lineTrack), 0, 'the track is silent while the song is stopped');
+    await page.check(`${liveInput} [data-line-input-field="enabled"]`);
+    await page.waitForFunction(index => ST.state.project.tracks[index].audioInput?.enabled === true && (ST.state.audio.lineInputs || []).some(item => item.track === index && item.state === 'live'), lineTrack, { timeout: 15000 })
+      .catch(async error => { throw new Error('The line input did not go live: ' + JSON.stringify(await page.evaluate(() => [ST.state.audio.lineInputs, ST.state.audio.lineInputError])) + ' ' + await toasts(page) + '\n' + error.message); });
+    assert.deepEqual(await page.evaluate(index => ST.state.project.tracks[index].audioInput, lineTrack), { gain: 1, enabled: true, deviceUID: 'null:tone', channels: [0] });
+    // Heard without Play, on the track's meter: a quarter of full scale through the track's fader.
+    const fader = await page.evaluate(index => ST.state.project.tracks[index].volume, lineTrack);
+    await page.waitForFunction(index => ST.state.status.playing !== true && ST.state.status.trackPeaks[index] > 0.05, lineTrack, { timeout: 15000 })
+      .catch(async error => { throw new Error('The line input is not on its track meter: ' + JSON.stringify(await page.evaluate(() => ST.state.status.trackPeaks)) + '\n' + error.message); });
+    const tonePeak = await loudest(page, index => ST.state.status.trackPeaks[index], lineTrack, 500);
+    assert.ok(Math.abs(tonePeak - 0.25 * fader) < 0.02, `the tone at ${0.25 * fader} on the track meter: ${tonePeak}`);
+    await page.waitForSelector(`.line-input-mixer-state.is-live`, { timeout: 5000 });
+    assert.equal((await request(page, 'audio.devices')).ok.lineInputs.find(item => item.track === lineTrack).latencyFrames, 512);
+    // One Undo step takes the route out of the project, and with it out of the mixer.
+    await page.evaluate(() => ST.perform('undo'));
+    await page.waitForFunction(index => !ST.state.project.tracks[index].audioInput && ST.state.status.trackPeaks[index] === 0 && !(ST.state.audio.lineInputs || []).some(item => item.track === index), lineTrack, { timeout: 15000 })
+      .catch(async error => { throw new Error('Undo did not take the line input away: ' + JSON.stringify(await page.evaluate(() => ST.state.audio.lineInputs)) + '\n' + error.message); });
+    assert.equal((await request(page, 'audio.devices')).ok.inputRunning, false, 'no route, no open input');
+    pass("Live input in the mixer routes the null input's tone into the selected track: it is in the project, heard on the track's meter, and gone with Undo");
     await page.click('#view-pattern');
 
     // ---- AI control: clients reach the page through the host's control socket ----------------

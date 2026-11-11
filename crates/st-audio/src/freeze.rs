@@ -427,18 +427,23 @@ fn refusal(project: &Value, index: usize, method: FreezeMethod) -> Option<String
     if !track["frozen"].is_null() {
         return Some(format!("{name} is already frozen."));
     }
-    if method == FreezeMethod::Offline {
-        if track["audioInput"]["enabled"] == true {
-            return Some(format!("{name} plays a live line input, which cannot be rendered offline. Choose Freeze by recording."));
-        }
-        let instruments = project["instruments"].as_array();
-        let mut used = vec![whole(&track["instrument"], 0)];
-        for pattern in project["patterns"].as_array().into_iter().flatten() {
-            used.extend(pattern["steps"][index].as_array().into_iter().flatten().map(|step| whole(&step["instrument"], -1)).filter(|instrument| *instrument >= 0));
-        }
-        if used.iter().any(|instrument| instruments.and_then(|items| items.get(*instrument as usize)).is_some_and(|item| item["type"] == "midi")) {
+    let line_input = track["audioInput"]["enabled"] == true;
+    let instruments = project["instruments"].as_array();
+    let mut used = vec![whole(&track["instrument"], 0)];
+    for pattern in project["patterns"].as_array().into_iter().flatten() {
+        used.extend(pattern["steps"][index].as_array().into_iter().flatten().map(|step| whole(&step["instrument"], -1)).filter(|instrument| *instrument >= 0));
+    }
+    let external = used.iter().any(|instrument| instruments.and_then(|items| items.get(*instrument as usize)).is_some_and(|item| item["type"] == "midi"));
+    match method {
+        FreezeMethod::Offline if line_input => return Some(format!("{name} plays a live line input, which cannot be rendered offline. Choose Freeze by recording.")),
+        FreezeMethod::Offline if external => {
             return Some(format!("{name} plays an external MIDI instrument, which cannot be rendered offline. Choose Freeze by recording, with the instrument's return as this track's live input."));
         }
+        // The instrument's sound has to come back somewhere for a recording to hold it.
+        FreezeMethod::Record if external && !line_input => {
+            return Some(format!("{name} plays an external MIDI instrument whose sound does not come back into it. Make the instrument's return this track's live input, then freeze by recording."));
+        }
+        _ => {}
     }
     let owner = owner_of(track)?;
     let routing = &project["routing"];
