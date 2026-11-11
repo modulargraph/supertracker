@@ -7,7 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const M = require('../ui/automation-song.js');
 const web = require('./helpers/web');
-const { routed } = require('./helpers/project');
+const { complete } = require('./helpers/project');
 const copy = value => JSON.parse(JSON.stringify(value));
 const close = (actual, expected, eps = 1e-6) => assert(Math.abs(actual - expected) < eps, `${actual} != ${expected}`);
 
@@ -16,7 +16,7 @@ const test = (name, run) => tests.push({ name, run });
 
 function project() {
   const steps = (length, plays) => [Array.from({ length }, (_, row) => plays && row % 16 === 0 ? { note: 40 } : null), Array(length).fill(null)];
-  return routed({
+  return complete({
     linesPerBeat: 4, activePattern: 0,
     tracks: [{ name: 'Bass', instrument: 0 }, { name: 'Lead', instrument: 1, routingID: 7 }],
     instruments: [{ type: 'synth' }, { type: 'synth' }],

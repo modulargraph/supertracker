@@ -38,7 +38,7 @@
   const addressOf = parameter => String(parameter?.address ?? parameter?.parameterID ?? '');
   const valueOf = parameter => finite(parameter.normalized) ? clamp01(parameter.normalized) : finite(parameter.value) && Number(parameter.max) > Number(parameter.min) ? clamp01((Number(parameter.value) - Number(parameter.min)) / (Number(parameter.max) - Number(parameter.min))) : null;
   /** Slots this console controls: the instrument (when it has no NKS console) and the track's inserts. */
-  const trackOwner = (project, index) => `track:${project?.tracks?.[index]?.routingID}`;
+  const trackOwner = (project, index) => `track:${project?.tracks[index]?.routingID}`;
   function slotsForOwner(owner) { return (S().state.project?.audioPlugins||[]).filter(plugin=>plugin.instanceID && plugin.owner===owner).sort((a,b)=>(a.kind==='instrument'?-1:a.slot??0)-(b.kind==='instrument'?-1:b.slot??0)); }
   function slotsFor(inst, instrumentPlugin) {
     const state = S().state, track = Number(state.track || 0);
@@ -58,7 +58,7 @@
     }
     return entry;
   }
-  const descriptor = entry => S().state.project === entry.project ? entry.project.audioPlugins?.find(plugin => plugin.instanceID === entry.id) || null : null;
+  const descriptor = entry => S().state.project === entry.project ? entry.project.audioPlugins.find(plugin => plugin.instanceID === entry.id) || null : null;
   function remember(entry, list, full = false) {
     if (!Array.isArray(list)) return;
     if (full && list.length) entry.params = list.filter(parameter => /^\d+$/.test(addressOf(parameter))).map(parameter => ({ address: addressOf(parameter), id: parameter.id == null ? '' : String(parameter.id), name: String(parameter.name || `Parameter ${addressOf(parameter)}`), unit: parameter.unitName || '', writable: parameter.writable !== false, automatable: parameter.automatable !== false }));
@@ -73,7 +73,7 @@
     relink(entry);
   }
   function savedPages(plugin) {
-    const saved = S().state.project?.pluginPages?.[plugin.instanceID]?.pages;
+    const saved = S().state.project?.pluginPages[plugin.instanceID]?.pages;
     return Array.isArray(saved) ? saved.filter(page => page && Array.isArray(page.addresses)) : [];
   }
   /** Curated pages of a built-in effect. Without native metadata yet, addresses come from the read parameter ids. */
@@ -268,7 +268,7 @@
       if (entry.revision !== revision) return; // A later gesture captures the complete state.
       let committed = false;
       S().mutate(`Adjust ${name}`, project => {
-        const index = project.audioPlugins?.findIndex(item => item.instanceID === entry.id) ?? -1;
+        const index = project.audioPlugins.findIndex(item => item.instanceID === entry.id) ?? -1;
         if (index < 0) return;
         const old = project.audioPlugins[index], replacement = { ...old, ...snapshot, nks: old.nks, owner:old.owner, kind: old.kind, slot: old.slot };
         project.audioPlugins[index] = replacement;
@@ -295,7 +295,6 @@
   // ---- Page editing (persisted in the project) ----------------------------------------------
   function editPages(plugin, label, change) {
     S().mutate(label, project => {
-      project.pluginPages ||= {};
       const record = project.pluginPages[plugin.instanceID] ||= { pages: [] };
       record.pages = (record.pages || []).map(page => ({ name: page.name, addresses: Array.from({ length: 8 }, (_, slot) => page.addresses?.[slot] ?? null) }));
       record.name = pluginName(plugin);
@@ -400,9 +399,9 @@
     (next && !next.disabled ? next : root?.querySelector('[data-pp-knob]:not([disabled])') || root?.querySelector('[data-pp-tab][tabindex="0"]'))?.focus({ preventScroll: true });
   }
   function currentView() {
-    const state = S().state, track = state.project?.tracks?.[state.track];
-    const instrumentPlugin = track?.instrument === state.instrument ? state.project.audioPlugins?.find(plugin => plugin.owner === trackOwner(state.project, state.track) && plugin.kind === 'instrument') : null;
-    return selection(state.project?.instruments?.[state.instrument], instrumentPlugin);
+    const state = S().state, track = state.project?.tracks[state.track];
+    const instrumentPlugin = track?.instrument === state.instrument ? state.project.audioPlugins.find(plugin => plugin.owner === trackOwner(state.project, state.track) && plugin.kind === 'instrument') : null;
+    return selection(state.project?.instruments[state.instrument], instrumentPlugin);
   }
   function automateKnob(input) {
     if (!input?.dataset?.automate) { S().toast('This parameter cannot be automated.', 'info'); return; }

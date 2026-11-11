@@ -99,11 +99,7 @@
     if (app.gateColumnShown() === shown) return false;
     for (const p of [state.project, ...state.undo.map(x => x.project), ...state.redo.map(x => x.project)]) {
       if (!p) continue;
-      if (shown) p.viewState = { ...(p.viewState || {}), gateColumn: true };
-      else if (p.viewState) {
-        delete p.viewState.gateColumn;
-        if (!Object.keys(p.viewState).length) delete p.viewState;
-      }
+      if (shown) p.viewState.gateColumn = true; else delete p.viewState.gateColumn;
     }
     state.dirty = true;
     updateTransport();

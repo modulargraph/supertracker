@@ -23,17 +23,17 @@
   })).sort((a, b) => a.row - b.row);
 
   // ---- Pure model ---------------------------------------------------------------------
-  const trackOwner = (index, p) => `track:${p?.tracks?.[index]?.routingID ?? index}`;
+  const trackOwner = (index, p) => `track:${p.tracks[index]?.routingID ?? index}`;
   const normalizeOwner = (owner, p) => typeof owner === 'number' || /^\d+$/.test(String(owner)) ? trackOwner(Number(owner), p) : String(owner);
   const laneOwner = (lane, p) => normalizeOwner(lane.owner ?? lane.track, p);
-  const patternById = (p, id) => (p?.patterns || []).find(item => Number(item.id) === Number(id)) || null;
+  const patternById = (p, id) => p.patterns.find(item => Number(item.id) === Number(id)) || null;
   function findLane(p, pattern, owner, target) {
     const wanted = normalizeOwner(owner, p);
     return (pattern?.automation || []).find(lane => lane.target === target && laneOwner(lane, p) === wanted) || null;
   }
   function trackIndexOf(p, owner) {
     const wanted = normalizeOwner(owner, p);
-    return wanted.startsWith('track:') ? (p.tracks || []).findIndex((_, index) => trackOwner(index, p) === wanted) : -1;
+    return wanted.startsWith('track:') ? p.tracks.findIndex((_, index) => trackOwner(index, p) === wanted) : -1;
   }
   function toUnit(value, info) {
     if (info.fineCurve && typeof window !== 'undefined' && window.STFine) return window.STFine.toPosition(value,{...info,...info.fineCurve});
@@ -69,7 +69,7 @@
   }
   /** Lane fields for a new lane of this parameter, shaped like an existing one when possible. */
   function laneTemplate(p, owner, target, name) {
-    for (const pattern of p.patterns || []) {
+    for (const pattern of p.patterns) {
       const lane = findLane(p, pattern, owner, target);
       if (lane) { const copy = clone(lane); delete copy.id; delete copy.points; return copy; }
     }
@@ -81,7 +81,6 @@
     let lane = findLane(p, pattern, owner, target);
     if (lane) return lane;
     lane = { id: uid ? uid() : `lane-${Math.random().toString(36).slice(2)}`, ...laneTemplate(p, owner, target, name), points: [] };
-    pattern.automation = pattern.automation || [];
     pattern.automation.push(lane);
     return lane;
   }
@@ -96,21 +95,21 @@
   /** Flat sequence slots per pattern id. */
   function occurrences(p) {
     const map = new Map();
-    (p.sequence || []).forEach((id, flat) => { const key = Number(id); map.set(key, [...(map.get(key) || []), flat]); });
+    p.sequence.forEach((id, flat) => { const key = Number(id); map.set(key, [...(map.get(key) || []), flat]); });
     return map;
   }
   /** Does this track have any step in the pattern? null for bus/master owners. */
   function trackPlays(p, pattern, owner) {
     const track = trackIndexOf(p, owner);
     if (track < 0) return null;
-    return (pattern?.steps?.[track] || []).some(Boolean);
+    return pattern.steps[track].some(Boolean);
   }
   /** Per pattern: whether it has a lane for this parameter, its point count, use and song count. */
   function summary(p, owner, target) {
     const occ = occurrences(p);
-    return (p.patterns || []).map((pattern, index) => {
+    return p.patterns.map((pattern, index) => {
       const lane = findLane(p, pattern, owner, target);
-      return { id: pattern.id, number: index + 1, name: pattern.name || `Pattern ${index + 1}`, length: pattern.length, lane: !!lane, points: lane?.points?.length || 0, plays: trackPlays(p, pattern, owner), inSong: occ.get(Number(pattern.id))?.length
+      return { id: pattern.id, number: index + 1, name: pattern.name || `Pattern ${index + 1}`, length: pattern.length, lane: !!lane, points: lane?.points.length || 0, plays: trackPlays(p, pattern, owner), inSong: occ.get(Number(pattern.id))?.length
           || 0 };
     });
   }
@@ -118,7 +117,7 @@
       master, which have no steps) every pattern in the song. */
   function patternsUsing(p, owner) {
     const occ = occurrences(p);
-    return (p.patterns || []).filter(pattern => { const plays = trackPlays(p, pattern, owner); return plays === null
+    return p.patterns.filter(pattern => { const plays = trackPlays(p, pattern, owner); return plays === null
         ? occ.has(Number(pattern.id))
         : plays; }).map(pattern => pattern.id);
   }
@@ -146,7 +145,7 @@
   function timeline(p) {
     const occ = occurrences(p), seen = new Map();
     let start = 0;
-    return (p.sequence || []).map((id, flat) => {
+    return p.sequence.map((id, flat) => {
       const pattern = patternById(p, id), length = Math.max(0, Number(pattern?.length) || 0), key = Number(id);
       const occurrence = (seen.get(key) || 0) + 1; seen.set(key, occurrence);
       const item = { flat, pattern: key, start, length, occurrence, occurrences: occ.get(key)?.length || 1, missing: !pattern };
@@ -197,13 +196,13 @@
   function makeUnique(p, flats, { uid } = {}) {
     const wanted = [...new Set(flats.map(Number))].filter(flat => Number.isInteger(flat)
         && flat >= 0
-        && flat < (p.sequence || []).length).sort((a, b) => a - b);
+        && flat < p.sequence.length).sort((a, b) => a - b);
     const occ = occurrences(p), changes = [];
     const needed = wanted.filter(flat => {
       const all = occ.get(Number(p.sequence[flat])) || [];
       return all.length > 1 && !(all.every(slot => wanted.includes(slot)) && flat === all[0]);
     }).length;
-    const used = new Set((p.patterns || []).map(pattern => pattern.id));
+    const used = new Set(p.patterns.map(pattern => pattern.id));
     const available = Array.from({length:256}, (_, id) => id).filter(id => !used.has(id)).length;
     if (needed > available) throw new Error('This session supports up to 256 patterns. Remove unused patterns before making these slots unique.');
     const SM = typeof window !== 'undefined' && window.STSongModel
@@ -293,7 +292,7 @@
   const view = { flat: -1, point: -1, span: 0, contextRegistered: false, sweep: null };
   const L = 96, R = 876, TOP = 28, BOTTOM = 236;
   const number2 = n => String(n).padStart(2, '0');
-  const patternNumber = id => (project().patterns || []).findIndex(item => Number(item.id) === Number(id)) + 1;
+  const patternNumber = id => project().patterns.findIndex(item => Number(item.id) === Number(id)) + 1;
   const patternLabel = id => `P${number2(patternNumber(id) || 0)}`;
   const color = id => window.STSongModel?.patternColor?.(project(), id) || '#d6a35c';
   const lpb = () => Number(project().linesPerBeat) || 4;

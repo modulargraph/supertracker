@@ -47,7 +47,7 @@
 
   function endpoints(p = project()) {
     if (!p) return [];
-    const result = (p.tracks || []).map((entity, track) => ({
+    const result = p.tracks.map((entity, track) => ({
       owner: `track:${entity.routingID}`,
       id: entity.routingID,
       name: entity.name || `Track ${track + 1}`,
@@ -55,7 +55,7 @@
       track,
       entity
     }));
-    for (const entity of p.routing.buses || []) result.push({
+    for (const entity of p.routing.buses) result.push({
       owner: `bus:${entity.id}`,
       id: entity.id,
       name: entity.name || (entity.type === 'return' ? 'Return' : 'Group'),
@@ -70,7 +70,7 @@
   // The selected track's live interface input (line-inputs.js), shown below its output.
   function lineInputSection(owner, p) {
     if (!String(owner).startsWith('track:')) return '';
-    const index = (p.tracks || []).findIndex(track => 'track:' + track.routingID === owner);
+    const index = p.tracks.findIndex(track => 'track:' + track.routingID === owner);
     return index < 0 ? '' : window.STLineInputs?.mixerSection?.(index) || '';
   }
   const channelName = (owner, p = project()) => owner === null
@@ -89,15 +89,15 @@
   const routeTaps = (route, plugin, p = project()) => route.source === pluginOwner(plugin)
       ? keyTaps().filter(tap => sameOwnerKey(route.source, tap, plugin, p))
       : keyTaps();
-  const activeOutput = (owner, p = project()) => Object.hasOwn(routing(p).outputs || {}, owner) ? routing(p).outputs[owner] : 'master';
+  const activeOutput = (owner, p = project()) => Object.hasOwn(routing(p).outputs, owner) ? routing(p).outputs[owner] : 'master';
 
   function graphEdges(p, omitID, omitOutput) {
     const r = routing(p), edges = [];
     for (const item of endpoints(p)) if (item.owner !== 'master' && item.owner !== omitOutput) {
       const destination = activeOutput(item.owner, p); if (destination) edges.push([item.owner, destination]);
     }
-    for (const send of r.sends || []) if (send.id !== omitID && send.enabled !== false) edges.push([send.source, send.destination]);
-    for (const route of r.sidechains || []) if (route.id !== omitID && route.enabled !== false) {
+    for (const send of r.sends) if (send.id !== omitID && send.enabled !== false) edges.push([send.source, send.destination]);
+    for (const route of r.sidechains) if (route.id !== omitID && route.enabled !== false) {
       const plugin = p.audioPlugins.find(item => item.instanceID === route.destination);
       const destination = plugin && pluginOwner(plugin); if (destination) edges.push([route.source, destination]);
     }
@@ -274,7 +274,7 @@
     const p = project(), endpoint = endpoints(p).find(item => item.owner === owner); if (!endpoint) return '';
     const token = key(owner), caps = ui.capabilities, pending = !!ui.application;
     const status = caps ? '' : ui.capabilityError || 'Asking the audio host about routing…';
-    const sends = (routing(p).sends || []).filter(send => send.source === owner);
+    const sends = routing(p).sends.filter(send => send.source === owner);
     const canSend = owner !== 'master' && !!caps && taps().length;
     return `<section class="routing-panel" data-routing-owner="${esc(owner)}" aria-busy="${pending}"><div class="routing-heading">`
         + `<h3>Routing</h3><span>${pending ? 'Applying…' : endpoint.type === 'master' ? 'Stereo output' : 'Standard mix'}</span>`
@@ -302,7 +302,7 @@
           : ''}</fieldset></section>`;
   }
 
-  const routeCount = p => (routing(p).sends || []).length + (routing(p).sidechains || []).length;
+  const routeCount = p => routing(p).sends.length + routing(p).sidechains.length;
   const routeLimit = () => Math.min(128, number(ui.capabilities?.sends?.max,128));
 
   function choose(title, options, onChoose, focusID) {
@@ -392,7 +392,7 @@
     if((routing(p).buses||[]).length>=Math.min(window.TRACK_SANITY_LIMIT??Infinity,
         number(ui.capabilities.buses.max,window.TRACK_SANITY_LIMIT??Infinity)))return S().toast('This project has reached its bus limit.');
     const selected=endpoints(p).find(item=>item.owner===owner), canAssign=kind==='group'&&selected?.type==='track';
-    S().openModal(`Create ${kind === 'group' ? 'group' : 'return'} bus`, `<div class="routing-dialog"><label>Name<input id="routing-bus-name" value="${kind === 'group' ? 'Group' : 'Return'} ${(routing(p).buses || []).filter(bus => bus.type === kind).length + 1}"`
+    S().openModal(`Create ${kind === 'group' ? 'group' : 'return'} bus`, `<div class="routing-dialog"><label>Name<input id="routing-bus-name" value="${kind === 'group' ? 'Group' : 'Return'} ${routing(p).buses.filter(bus => bus.type === kind).length + 1}"`
         + ` maxlength="80"></label>${canAssign
             ? `<label class="routing-check"><input id="routing-bus-assign" type="checkbox">Route ${esc(selected.name)} into this bus</label>`
             : ''}<p `
@@ -452,7 +452,7 @@
     document.getElementById('routing-delete-apply')?.addEventListener('click',()=>{S().closeModal();if(project()!==p)return;perform(transaction('Remove bus',draft=>{
       const r = draft.routing,
         replacement = activeOutput(owner, draft),
-        removed = new Set((draft.audioPlugins || []).filter(plugin => pluginOwner(plugin) === owner).map(plugin => plugin.instanceID));
+        removed = new Set(draft.audioPlugins.filter(plugin => pluginOwner(plugin) === owner).map(plugin => plugin.instanceID));
       r.buses = r.buses.filter(item => `bus:${item.id}` !== owner);
       delete r.outputs[owner];
       for (const source of Object.keys(r.outputs)) if (r.outputs[source] === owner) r.outputs[source] = replacement;
@@ -490,7 +490,7 @@
         }, 'Change send destination', button.id), button.id);
       }));
       row.querySelectorAll('[data-routing-send-field]').forEach(input => input.addEventListener('change', () => {
-        if (input.dataset.routingSendField === 'gain' && !typedGain(input.value)) { input.value = String(gain(routing().sends?.find(send => send.id === id)?.gain)); return; }
+        if (input.dataset.routingSendField === 'gain' && !typedGain(input.value)) { input.value = String(gain(routing().sends.find(send => send.id === id)?.gain)); return; }
         perform(editSend(owner, id, send => {
           send[input.dataset.routingSendField] = input.dataset.routingSendField === 'gain' ? gain(input.value) : input.value;
         }, 'Adjust send', input.id));
@@ -585,7 +585,7 @@
           }
         }));
         row.querySelectorAll('[data-routing-key-field]').forEach(input=>input.addEventListener('change',()=>{
-          if(input.dataset.routingKeyField==='gain'&&!typedGain(input.value)){input.value=String(gain(routing().sidechains?.find(route=>route.id===id)?.gain));return;}
+          if(input.dataset.routingKeyField==='gain'&&!typedGain(input.value)){input.value=String(gain(routing().sidechains.find(route=>route.id===id)?.gain));return;}
           perform(edit('Adjust sidechain',(route,p)=>{
             const field=input.dataset.routingKeyField;
             if (field === 'tap'

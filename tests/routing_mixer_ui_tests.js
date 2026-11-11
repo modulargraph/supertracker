@@ -2,6 +2,7 @@
 // Exercise the real mixer/automation module with the native boundary and routing editor stubbed.
 const assert = require('node:assert/strict');
 const web = require('./helpers/web');
+const { complete, routingTable } = require('./helpers/project');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -13,7 +14,7 @@ const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp
 const decode = value => value.replace(/&(amp|lt|gt|quot|#39);/g, (_, entity) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" }[entity]));
 
 function fixture() {
-  return {
+  return complete({
     activePattern: 0, masterVolume: .73,
     tracks: [
       { routingID: 'keys', name: 'Keys', instrument: 0, volume: .8, pan: -.1, delaySend: .1, reverbSend: .2 },
@@ -32,7 +33,7 @@ function fixture() {
       { owner: 'bus:drums', target: 'volume', name: 'Group level', points: [{ row: 0, value: 1.1 }] },
       { owner: 'master', target: 'volume', name: 'Main level', points: [{ row: 0, value: .73 }] }
     ] }, { id: 1, name: 'Pattern B', length: 32, automation: [] }]
-  };
+  });
 }
 
 function effect(owner, slot, suffix = String(slot)) {

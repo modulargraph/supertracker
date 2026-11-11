@@ -68,7 +68,7 @@ test('showing the Gate column is a saved view preference, not an Undo step, and 
   h.ST.perform('undo');
   assert.equal(h.ST.gateColumnShown(), true, 'Undo keeps the view');
   h.ST.perform('toggleGateColumn');
-  assert.equal(h.ST.gateColumnShown(), false); assert.equal(h.state.project.viewState, undefined);
+  assert.equal(h.ST.gateColumnShown(), false); assert.equal(JSON.stringify(h.state.project.viewState), '{}');
 });
 
 test('OFF and CUT: palette commands with their shortcuts, keeping step effects and advancing the cursor', () => {

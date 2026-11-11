@@ -3,6 +3,7 @@
 // the plug-in pages console (plugin-pages.js): curated pages, units, value curves, defaults and the console view.
 const assert = require('node:assert/strict'), vm = require('node:vm');
 const web = require('./helpers/web');
+const { complete } = require('./helpers/project');
 const { metadata, parameterList } = require('./helpers/builtin-effects');
 
 const tests = [], test = (name, fn) => tests.push({ name, fn });
@@ -110,9 +111,9 @@ test('metadata loads once from the bridge and late metadata relabels pages', asy
 // ---- The plug-in pages console uses the curated pages --------------------------------------------------------------
 function console_() {
   const calls = [], undo = [];
-  const project = { tracks: [{ name: 'Drums', instrument: 0, routingID: 'drums' }], instruments: [{ type: 'synth' }], patterns: [{ id: 0, length: 16, steps: [[]], automation: [] }],
+  const project = complete({ tracks: [{ name: 'Drums', instrument: 0, routingID: 'drums' }], instruments: [{ type: 'synth' }], patterns: [{ id: 0, length: 16, steps: [[]], automation: [] }],
     audioPlugins: [{ owner: 'track:drums', kind: 'effect', slot: 0, component: 'stfx:filter', name: 'Multimode Filter', format: 'Builtin', instanceID: 'fx-filter' },
-      { owner: 'track:drums', kind: 'effect', slot: 1, component: 'aufx:dly', name: 'Some Delay', instanceID: 'fx-other' }] };
+      { owner: 'track:drums', kind: 'effect', slot: 1, component: 'aufx:dly', name: 'Some Delay', instanceID: 'fx-other' }] });
   const values = new Map();
   const ST = { state: { project, track: 0, instrument: 0, view: 'pattern' }, escapeHTML: value => String(value), toast() {}, refresh() {}, markDirty() {},
     request(command, payload) {

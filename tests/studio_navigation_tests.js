@@ -2,7 +2,7 @@
 // Behavior tests drive the real studio module; native range defaults remain unhandled intentionally.
 const assert = require('node:assert/strict');
 const web = require('./helpers/web');
-const { routed } = require('./helpers/project');
+const { complete, routingTable } = require('./helpers/project');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
@@ -16,7 +16,7 @@ function harness(count = 4) {
     const item = { id, dataset, type, tagName: tag, handlers: {}, value: '.8', scrolls: 0, disabled: false, style: {}, classList: { toggle() {} }, setAttribute() {}, addEventListener(event, callback) { (this.handlers[event] ||= []).push(callback); }, focus() { document.activeElement = this; }, scrollIntoView(options) { this.scrolls++; this.scrollOptions = options; }, closest(selector) { if (selector === '[data-mixer-channel]' || selector === '[data-mixer-owner]') return this.channel || null; if (selector === '.studio-plugin > summary') return this.isSummary ? this : null; return null; }, fire(event, extra = {}) { const e = { key: '', target: this, preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }, ...extra }; for (const fn of this.handlers[event] || []) fn(e); return e; } };
     nodes.set(id, item); return item;
   }
-  const state = { view: 'mixer', track: 0, instrument: 0, keyboardPlay: true, selectedLane: 0, row: 0, project: routed({ activePattern: 1, masterVolume: .7, tracks: Array.from({ length: count }, (_, i) => ({ name: `Track ${i + 1}`, instrument: i, volume: .8, pan: 0, delaySend: .1, reverbSend: .2 })), instruments: Array.from({ length: count }, () => ({ type: 'synth' })), audioPlugins: [], patterns: [{ id: 1, name: 'Pattern', length: 64, automation: [{ track: 0, target: 'volume', name: 'Volume', points: [{ row: 0, value: .8 }] }, { track: 1, target: 'pan', name: 'Pan', points: [{ row: 0, value: 0 }] }] }] }) };
+  const state = { view: 'mixer', track: 0, instrument: 0, keyboardPlay: true, selectedLane: 0, row: 0, project: complete({ activePattern: 1, masterVolume: .7, tracks: Array.from({ length: count }, (_, i) => ({ name: `Track ${i + 1}`, instrument: i, volume: .8, pan: 0, delaySend: .1, reverbSend: .2 })), instruments: Array.from({ length: count }, () => ({ type: 'synth' })), audioPlugins: [], patterns: [{ id: 1, name: 'Pattern', length: 64, automation: [{ track: 0, target: 'volume', name: 'Volume', points: [{ row: 0, value: .8 }] }, { track: 1, target: 'pan', name: 'Pan', points: [{ row: 0, value: 0 }] }] }] }) };
   const properties = [], toggles = [], selectButtons = [];
   for (let i = 0; i < count; i++) {
     const channel = node(`channel-${i}`, { mixerChannel: String(i), mixerOwner: `track:${i}` });
@@ -126,7 +126,7 @@ test('persistent mixer identity follows Pan/send arrows and Master without alter
 
 test('focus-only mixer identity distinguishes routed groups, returns and Master', () => {
   const h = harness(), workspace = h.nodes.get('mixer-workspace'), label = h.nodes.get('mixer-current-channel');
-  h.state.project.routing = {buses:[{id:'drums',name:'Drums',type:'group'},{id:'space',name:'Space',type:'return'}]};
+  h.state.project.routing = routingTable({buses:[{id:'drums',name:'Drums',type:'group'},{id:'space',name:'Space',type:'return'}]});
   const before = copy(h.state.project), track = h.state.track;
   for (const [owner, text] of [['bus:drums','Group · Drums'],['bus:space','Return · Space'],['master','Master']]) {
     const control = h.node('control-' + owner), strip = h.node('strip-' + owner, {mixerChannel:owner,mixerOwner:owner}); control.channel = strip;
@@ -258,7 +258,7 @@ test('deleting a lane selects surviving bus or Master owners without assigning t
 });
 
 test('deleting the last bus lane retains its owner and note destination while returning to search', () => {
-  const h = harness(); h.state.project.routing = { buses: [{ id: 'group', type: 'group', name: 'Drums', volume: 1, pan: 0 }], sends: [] };
+  const h = harness(); h.state.project.routing = routingTable({ buses: [{ id: 'group', type: 'group', name: 'Drums', volume: 1, pan: 0 }] });
   h.state.project.patterns[0].automation = [{ owner: 'bus:group', target: 'volume', points: [{ row: 0, value: .5 }] }]; h.state.track = 2; h.state.instrument = 2; h.studio.selectOwner('bus:group'); mountAutomation(h);
   h.nodes.get('automation-delete-lane').fire('click');
   assert.equal(h.document.activeElement.id, 'automation-search'); assert.equal(h.studio.selectedOwner(), 'bus:group'); assert.equal(h.state.track, 2); assert.equal(h.state.instrument, 2); assert.equal(h.changes.length, 1);

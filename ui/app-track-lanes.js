@@ -28,12 +28,12 @@
     let changed = false;
     for (const p of [state.project, ...state.undo.map(x => x.project), ...state.redo.map(x => x.project)]) {
       if (!p) continue;
-      const before = JSON.stringify(p.viewState || {}), next = { ...(p.viewState || {}) };
+      const before = JSON.stringify(p.viewState), next = { ...p.viewState };
       edit(next, p);
       for (const key of Object.keys(next)) if (next[key] === undefined || next[key] === false
           || Array.isArray(next[key]) && !next[key].length) delete next[key];
       if (JSON.stringify(next) === before) continue;
-      if (Object.keys(next).length) p.viewState = next; else delete p.viewState;
+      p.viewState = next;
       if (p === state.project) changed = true;
     }
     if (changed) {
@@ -44,9 +44,9 @@
     return changed;
   }
 
-  const hideEmptyOn = (p = state.project) => !!p?.viewState?.hideEmpty;
-  const hideScope = (p = state.project) => p?.viewState?.hideEmptyScope === 'song' ? 'song' : 'pattern';
-  const collapsedIDs = (p = state.project) => Array.isArray(p?.viewState?.collapsedTracks) ? p.viewState.collapsedTracks : [];
+  const hideEmptyOn = (p = state.project) => !!p?.viewState.hideEmpty;
+  const hideScope = (p = state.project) => p?.viewState.hideEmptyScope === 'song' ? 'song' : 'pattern';
+  const collapsedIDs = (p = state.project) => p?.viewState.collapsedTracks || [];
   const trackKey = track => typeof track?.routingID === 'string' && track.routingID ? track.routingID : null;
   const isCollapsed = (index, p = state.project) => {
     const key = trackKey(p?.tracks?.[index]);

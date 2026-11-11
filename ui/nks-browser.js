@@ -196,7 +196,7 @@
   }
   function effectSlots() {
     const state = S().state, effects = [];
-    (state.project?.audioPlugins || []).filter(plugin => plugin.owner === `track:${state.project.tracks?.[state.track]?.routingID}` && plugin.kind === 'effect').forEach(plugin => { effects[plugin.slot ?? 0] = plugin; });
+    (state.project?.audioPlugins || []).filter(plugin => plugin.owner === `track:${state.project.tracks[state.track]?.routingID}` && plugin.kind === 'effect').forEach(plugin => { effects[plugin.slot ?? 0] = plugin; });
     return effects;
   }
   function slotChoice() {
@@ -214,8 +214,8 @@
   function renderDetail() {
     const item = current(), state = S().state;
     if (!item) return '<div class="browser-empty browser-detail-empty"><h3>No preset selected</h3><p>← → move between products, filters and presets<br>↑ ↓ browse · Space previews<br>Return loads</p></div>';
-    const track = state.project?.tracks?.[state.track], trackName = track?.name || `Track ${Number(state.track || 0) + 1}`;
-    const instrument = state.project?.instruments?.[state.instrument], playing = local.previewPath && local.previewPath === item.previewPath;
+    const track = state.project?.tracks[state.track], trackName = track?.name || `Track ${Number(state.track || 0) + 1}`;
+    const instrument = state.project?.instruments[state.instrument], playing = local.previewPath && local.previewPath === item.previewPath;
     const tags = [...(item.types || []).map(value => ['types', value, value]), ...(item.subtypes || []).map(value => ['subtypes', value, subtypeLabel(value)]), ...(item.characters || []).map(value => ['characters', value, value])]
       .filter(([group, , label], index, all) => all.findIndex(other => other[0] === group && other[2] === label) === index);
     const slot = slotChoice();

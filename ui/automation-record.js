@@ -265,8 +265,8 @@
 
   const state = () => S()?.state;
   const project = () => state()?.project;
-  const patternById = (id, p = project()) => p?.patterns?.find(item => Number(item.id) === Number(id));
-  const trackOwner = (index, p = project()) => `track:${p?.tracks?.[index]?.routingID ?? index}`;
+  const patternById = (id, p = project()) => p?.patterns.find(item => Number(item.id) === Number(id));
+  const trackOwner = (index, p = project()) => `track:${p?.tracks[index]?.routingID ?? index}`;
   const normalizeOwner = (owner, p = project()) => typeof owner === 'number' || /^\d+$/.test(String(owner))
       ? trackOwner(Number(owner), p)
       : String(owner);
@@ -338,7 +338,7 @@
     let lane = pass.lanes.get(key);
     if (lane) return lane;
     const pattern = patternById(patternId), info = descriptor(ref) || { min: 0, max: 1, step: .001, value: 0 };
-    const existing = pattern?.automation?.find(item => item.target === ref.target && laneOwner(item) === ref.owner);
+    const existing = pattern?.automation.find(item => item.target === ref.target && laneOwner(item) === ref.owner);
     const original = copyPoints(existing?.points);
     lane = { key, patternObject: pattern, patternId: Number(patternId), ref: { owner: ref.owner, track: ref.track, target: ref.target, name: ref.name }, info, existed: !!existing,
       interpolation: existing?.interpolation === 'step' ? 'step' : 'linear', base: finite(info.value) ? Number(info.value) : original[0]?.value ?? 0,
@@ -429,7 +429,6 @@
       let committed = 0;
       for (const { lane, points } of final) {
         const destination = laneDestination(lane, p), pattern = destination?.pattern; if (!pattern) continue;
-        pattern.automation = pattern.automation || [];
         let target = pattern.automation.find(item => item.target === lane.ref.target
             && normalizeOwner(item.owner ?? item.track, p) === lane.ref.owner);
         if (!target) {
@@ -485,7 +484,6 @@
     for (const lane of pass.lanes.values()) {
       if (!lane.written) continue;
       const destination = laneDestination(lane, draft), pattern = destination?.pattern; if (!pattern) continue;
-      pattern.automation = pattern.automation || [];
       let target = pattern.automation.find(item => item.target === lane.ref.target
           && normalizeOwner(item.owner ?? item.track, draft) === lane.ref.owner);
       if (!target) {

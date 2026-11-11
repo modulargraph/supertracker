@@ -29,8 +29,8 @@
   const panel = { ref: null, zoom: 1, width: 0, lastScope: 'pattern' };
   const pad2 = n => String(n).padStart(2, '0');
 
-  const scope = (p = state.project) => p?.viewState?.automationPanel === 'song' ? 'song'
-      : p?.viewState?.automationPanel ? 'pattern' : null;
+  const scope = (p = state.project) => p?.viewState.automationPanel === 'song' ? 'song'
+      : p?.viewState.automationPanel ? 'pattern' : null;
   const shown = () => !!scope();
 
   // ---- Lanes and values ------------------------------------------------------------------
@@ -39,7 +39,7 @@
 
   /** Every automated parameter of the song: the current pattern's lanes first, then the rest in song order. */
   function refs(p = state.project) {
-    const seen = new Map(), order = [pattern(), ...(p.sequence || []).map(id => p.patterns.find(x => x.id === id)), ...p.patterns];
+    const seen = new Map(), order = [pattern(), ...p.sequence.map(id => p.patterns.find(x => x.id === id)), ...p.patterns];
     for (const item of order) for (const lane of item?.automation || []) {
       const ref = { owner: ownerOf(lane), target: lane.target, name: lane.name || lane.target };
       if (!seen.has(refKey(ref))) seen.set(refKey(ref), ref);
@@ -51,7 +51,7 @@
     const list = refs();
     const kept = panel.ref && list.find(ref => refKey(ref) === refKey(panel.ref));
     if (kept) return kept;
-    const lane = pattern().automation?.[state.selectedLane] || pattern().automation?.[0];
+    const lane = pattern().automation[state.selectedLane] || pattern().automation[0];
     panel.ref = lane ? list.find(ref => ref.target === lane.target && ref.owner === ownerOf(lane)) : list[0] || null;
     return panel.ref;
   }
@@ -96,7 +96,7 @@
       `stretch` fills the container's width (compact, dot-less boxes in the Automation view). */
   function laneMarkup(list, info, px, { height = HEIGHT, top = TOP, bottom = BOTTOM, cursor = null, dots = true, stretch = false } = {}) {
     const p = state.project, rows = totalRows(list), width = Math.max(1, rows * px);
-    const beat = Math.max(1, (p.linesPerBeat || 4) * 4 / (p.timeSignature?.denominator || 4)), bar = Math.max(1, (p.linesPerBeat || 4) * app.beatsPerBar(p));
+    const beat = Math.max(1, (p.linesPerBeat || 4) * 4 / p.timeSignature.denominator), bar = Math.max(1, (p.linesPerBeat || 4) * app.beatsPerBar(p));
     const y = value => bottom - toUnit(value, info) * (bottom - top);
     let grid = '', curve = '', marks = '';
     for (const slot of list) {
@@ -220,7 +220,7 @@
         const target = p.patterns.find(x => x.id === slot.pattern); if (!target) continue;
         const inside = row => row >= slot.start && row < slot.start + slot.length;
         const lane = AS().ensureLane(p, target, ref.owner, ref.target, { uid: app.uid, name: ref.name });
-        const kept = (lane.points || []).filter(point => {
+        const kept = lane.points.filter(point => {
           const global = slot.start + Number(point.row);
           return !remove.has(global) && !(clear && global >= clear[0] - 1e-9 && global <= clear[1] + 1e-9);
         });
@@ -229,7 +229,7 @@
         if (!touched.includes(slot.pattern)) touched.push(slot.pattern);
       }
     });
-    const repeated = touched.map(id => [id, (state.project.sequence || []).filter(x => x === id).length]).filter(([, n]) => n > 1);
+    const repeated = touched.map(id => [id, state.project.sequence.filter(x => x === id).length]).filter(([, n]) => n > 1);
     if (repeated.length) app.toast(repeated.map(([id, n]) => `Edited all ${n} repeats of P${pad2(SM()?.patternNumber?.(state.project, id) || 0)}`).join(' · ')
         + ' — U in the Automation view’s song timeline makes a slot unique');
     return touched;

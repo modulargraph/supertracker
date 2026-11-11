@@ -37,7 +37,7 @@
   }
   function resolvePlugin(project, track, id) {
     if (!instanceID(id)) return null;
-    const matches = (project.audioPlugins || []).filter(plugin => plugin.instanceID === id);
+    const matches = project.audioPlugins.filter(plugin => plugin.instanceID === id);
     return matches.length === 1 && onTrack(matches[0], project, track) && ['instrument', 'effect'].includes(matches[0].kind) ? matches[0] : null;
   }
   function context() {
@@ -136,7 +136,7 @@
     if (fx.type === 'plugin') {
       const plugin = resolvePlugin(entry.project, entry.trackIndex, fx.instanceID);
       if (plugin
-          && entry.pattern.automation?.some(lane => lane.owner === plugin.owner
+          && entry.pattern.automation.some(lane => lane.owner === plugin.owner
               && lane.target === `plugin:${plugin.kind}:${plugin.slot}:${fx.address}`)) rank = Math.max(rank, 1);
     }
     return rank;
@@ -247,7 +247,7 @@
       await S().waitForGraphEdit?.();
       if (!live(entry)) return;
       if (blocked()) throw new Error('Wait for the current project or plug-in change, then reopen the picker.');
-      const plugins = (entry.project.audioPlugins || []).filter(plugin => onTrack(plugin, entry.project, entry.trackIndex));
+      const plugins = entry.project.audioPlugins.filter(plugin => onTrack(plugin, entry.project, entry.trackIndex));
       const errors = [];
       for (const original of plugins) {
         await S().waitForGraphEdit?.();

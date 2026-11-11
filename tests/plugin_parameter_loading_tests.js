@@ -5,7 +5,7 @@
 // "Reading parameters…".
 const assert = require('node:assert/strict');
 const web = require('./helpers/web');
-const { routed } = require('./helpers/project');
+const { complete } = require('./helpers/project');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -21,8 +21,8 @@ function pagesHarness() {
     { owner: group, kind: 'effect', slot: 0, instanceID: 'group-eq', component: 'stfx:eq', name: 'Four-band EQ', format: 'Builtin' },
     { owner: group, kind: 'effect', slot: 2, instanceID: 'group-grain', component: 'stfx:graindelay', name: 'Grain Delay', format: 'Builtin' },
     { owner: 'master', kind: 'effect', slot: 0, instanceID: 'master-limit', component: 'stfx:limiter', name: 'Peak Limiter', format: 'Builtin' }];
-  const project = { tracks: [{ instrument: 0, routingID: 'lane' }], instruments: [{ type: 'synth' }], audioPlugins: plugins,
-    groups: [{ id: 'kit-a', name: 'Kit', busID: 'kit-a-group' }], routing: { buses: [{ id: 'drums' }, { id: 'kit-a-group' }] } };
+  const project = complete({ tracks: [{ instrument: 0, routingID: 'lane' }], instruments: [{ type: 'synth' }], audioPlugins: plugins,
+    groups: [{ id: 'kit-a', name: 'Kit', busID: 'kit-a-group' }], routing: { buses: [{ id: 'drums' }, { id: 'kit-a-group' }] } });
   const state = { project, track: 0, instrument: 0, view: 'instrument' }, calls = [], timers = new Map(); let serial = 0, refreshes = 0, now = 1_000_000;
   // Per-instance native behaviour: an array answer, a rejection, or a promise that never settles.
   const behaviour = new Map();
@@ -49,7 +49,7 @@ function pagesHarness() {
 function studioHarness(fail) {
   const groups = new Map(), nodes = new Map(), calls = []; let refreshes = 0;
   const document = { body: {}, activeElement: null, getElementById: id => nodes.get(id) || null, querySelectorAll: selector => groups.get(selector) || [], querySelector: selector => groups.get(selector)?.[0] || null };
-  const project = routed({ activePattern: 0, tracks: [{ name: 'Keys', instrument: 0 }], instruments: [{ type: 'synth' }], patterns: [{ id: 0, length: 16, automation: [] }],
+  const project = complete({ activePattern: 0, tracks: [{ name: 'Keys', instrument: 0 }], instruments: [{ type: 'synth' }], patterns: [{ id: 0, length: 16, automation: [] }],
     audioPlugins: [{ track: 0, kind: 'effect', slot: 0, component: 'stfx:graindelay', name: 'Grain Delay', format: 'Builtin', instanceID: 'grain' }, { track: 0, kind: 'effect', slot: 1, component: 'stfx:eq', name: 'Four-band EQ', format: 'Builtin', instanceID: 'eq' }] });
   const state = { project, track: 0, instrument: 0, view: 'mixer', selectedLane: 0, plugins: [] };
   const ST = { state, escapeHTML: value => String(value), toast() {}, mutate(label, fn) { fn(state.project); }, refresh() { refreshes++; },

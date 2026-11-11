@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const trackOf = payload => Number(String(payload.owner).split(':')[1]);
 const { hostStub } = require('./helpers/host');
 const web = require('./helpers/web');
-const { routed } = require('./helpers/project');
+const { complete } = require('./helpers/project');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
@@ -14,7 +14,7 @@ const clone = value => JSON.parse(JSON.stringify(value));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 function fixture(slots = [0, 3, 7]) {
-  return routed({ activePattern: 0, tracks: [{ name: 'Keys', instrument: 0 }, { name: 'Bass', instrument: 1 }], instruments: [{ type: 'synth' }, { type: 'synth' }],
+  return complete({ activePattern: 0, tracks: [{ name: 'Keys', instrument: 0 }, { name: 'Bass', instrument: 1 }], instruments: [{ type: 'synth' }, { type: 'synth' }],
     audioPlugins: [...slots.map((slot, i) => ({ track: 0, kind: 'effect', slot, component: `fx:${i}`, name: ['Equalizer', 'Compressor', 'Echo'][i], state: `saved-${i}`, bypass: i === 1, parameters: [{ address: 42, name: 'Amount', normalized: .2 + i / 10 }] })), { track: 0, kind: 'instrument', slot: 0, component: 'instrument', state: 'preset' }, { track: 1, kind: 'effect', slot: 0, component: 'bassfx', state: 'bass' }],
     patterns: [{ id: 0, length: 64, automation: [{ owner: 'track:0', target: `plugin:effect:${slots[0]}:42`, points: [{ row: 0, value: .25 }] }, { owner: 'track:0', target: `plugin:effect:${slots[1]}:42`, points: [{ row: 4, value: .75 }] }, { owner: 'track:0', target: 'plugin:instrument:0:42', points: [{ row: 0, value: .5 }] }, { owner: 'track:1', target: 'plugin:effect:0:42', points: [] }] }, { id: 1, length: 32, automation: [{ owner: 'track:0', target: `plugin:effect:${slots[2]}:99:part`, points: [{ row: 20, value: .6 }] }, { track: 0, target: 'volume', points: [] }] }] });
 }

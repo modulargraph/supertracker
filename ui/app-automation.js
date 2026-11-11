@@ -27,9 +27,9 @@
             : -1
         : Number(track);
     const validOwner = owner === 'master'
-        || owner?.startsWith('bus:') && p.routing.buses?.some(bus => `bus:${bus.id}` === owner)
+        || owner?.startsWith('bus:') && p.routing.buses.some(bus => `bus:${bus.id}` === owner)
         // An instrument's insert chain (instrument-effects.js): its lanes reach every track that plays it.
-        || /^instrument:\d+$/.test(owner || '') && !!p.instruments?.[Number(owner.slice(11))] && target.startsWith('plugin:effect:')
+        || /^instrument:\d+$/.test(owner || '') && !!p.instruments[Number(owner.slice(11))] && target.startsWith('plugin:effect:')
         || index >= 0 && !!p.tracks[index];
     if (!validOwner) {
       toast('The channel for this parameter is no longer available.', 'error');
@@ -51,7 +51,7 @@
     const routeLane = index < 0 || target.startsWith('send:'), ownerLane = routeLane || target.startsWith('plugin:'),
       descriptor = window.STStudio?.target?.(ownerArgument ? owner : index, target);
     const send = target.startsWith('send:')
-        && p.routing.sends?.find(item => item.id === target.slice(5) && item.source === owner);
+        && p.routing.sends.find(item => item.id === target.slice(5) && item.source === owner);
     if (!target.startsWith('plugin:') && !supported.includes(target) && !send
         || descriptor?.available === false
         || routeLane && !descriptor) {

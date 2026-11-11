@@ -355,7 +355,7 @@
   };
   // The pattern editor's Gate column is a per-project view preference (project.viewState, saved with the
   // session but never an Undo step). Hidden by default; live recording measures held notes only while shown.
-  const gateColumnShown = (p = app.state?.project) => !!p?.viewState?.gateColumn;
+  const gateColumnShown = (p = app.state?.project) => !!p?.viewState.gateColumn;
 
   Object.assign(app, {
     PROJECT_VERSION, instrumentDefaults, wavetablePath, wavetableInstrument, emptyPattern, blankProject, demoProject, normalize,

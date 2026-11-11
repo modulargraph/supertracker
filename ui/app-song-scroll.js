@@ -19,7 +19,7 @@
   const MAX_ROWS = 1500;
   const pad2 = n => String(n).padStart(2, '0');
 
-  const songScrollOn = (p = state.project) => !!p?.viewState?.songScroll;
+  const songScrollOn = (p = state.project) => !!p?.viewState.songScroll;
 
   /** The song as slots on one row axis: [{flat, pattern, start, length, occurrence, occurrences}]. */
   function slots(p = state.project) {

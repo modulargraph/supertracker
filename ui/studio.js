@@ -42,7 +42,7 @@
     state().mixerOwner = trackOwner(state().track);
   };
   const pattern = () => project().patterns.find(item => item.id === project().activePattern) || project().patterns[0];
-  const lanes = () => pattern().automation || [];
+  const lanes = () => pattern().automation;
   const selectedLane = () => lanes()[clamp(state().selectedLane, 0, Math.max(0, lanes().length - 1))];
   const trackOwner = (index, p = project()) => `track:${p.tracks[index]?.routingID}`;
   const normalizeOwner = (owner, p = project()) => typeof owner === 'number' || /^\d+$/.test(String(owner))
@@ -57,7 +57,7 @@
     p.tracks.forEach((track, index) => {
       const group = groups.length ? window.STGroups.ofTrack(p, index) : null;
       if (group && window.STGroups.members(p, group)[0] === index) {
-        const bus = p.routing.buses?.find(item => item.id === group.busID);
+        const bus = p.routing.buses.find(item => item.id === group.busID);
         if (bus) result.push({ owner: `bus:${bus.id}`, type: 'group', name: bus.name, entity: bus, token: `bus-${bus.id}`, group, groupHead: true });
       }
       result.push({
@@ -71,7 +71,7 @@
         hiddenByGroup: !!group?.mixerCollapsed
       });
     });
-    for (const type of ['group', 'return']) for (const bus of p.routing.buses || []) if (bus.type === type && !groupBuses.has(bus.id)) result.push({
+    for (const type of ['group', 'return']) for (const bus of p.routing.buses) if (bus.type === type && !groupBuses.has(bus.id)) result.push({
       owner: `bus:${bus.id}`,
       type,
       name: bus.name,
@@ -82,7 +82,7 @@
   }
   // An instrument's insert chain ('instrument:<n>', see instrument-effects.js) is an insert owner but not a mixer strip.
   const instrumentChannel = (owner, p) => {
-    const match = /^instrument:(\d+)$/.exec(String(owner ?? '')), index = match ? Number(match[1]) : -1, inst = p.instruments?.[index];
+    const match = /^instrument:(\d+)$/.exec(String(owner ?? '')), index = match ? Number(match[1]) : -1, inst = p.instruments[index];
     return inst ? { owner: `instrument:${index}`, type: 'instrument', name: inst.name || `Instrument ${String(index).padStart(2, '0')}`, entity: inst, instrument: index } : null;
   };
   const channelFor = (owner, p = project()) => String(owner ?? '').startsWith('instrument:')
@@ -126,7 +126,7 @@
   const ownerForLane = lane => normalizeOwner(lane.owner ?? lane.track);
   const ownerPayload = owner => ({ owner: normalizeOwner(owner) });
   const pluginKey = (owner, slot, kind = 'effect') => `${normalizeOwner(owner)}:${kind}:${slot}`;
-  const pluginsFor = owner => (project().audioPlugins || []).filter(plugin => ownerForPlugin(plugin) === normalizeOwner(owner));
+  const pluginsFor = owner => project().audioPlugins.filter(plugin => ownerForPlugin(plugin) === normalizeOwner(owner));
   const effectsFor = owner => pluginsFor(owner).filter(plugin => plugin.kind === 'effect').sort((a, b) => a.slot - b.slot);
   const effectTarget = (slot, address) => `plugin:effect:${slot}:${address}`;
   const focusId = id => { if (!state().modal) document.getElementById(id)?.focus(); };
@@ -269,7 +269,7 @@
 
   function allTargets(track) {
     const results = builtInTargets(track);
-    for (const send of project().routing.sends || []) if (normalizeOwner(send.source) === normalizeOwner(track)) results.push({
+    for (const send of project().routing.sends) if (normalizeOwner(send.source) === normalizeOwner(track)) results.push({
       target: `send:${send.id}`,
       name: `Send to ${channelTitle(send.destination)}`,
       group: send.tap === 'preFader' ? 'Pre-fader sends' : 'Post-fader sends',
@@ -378,8 +378,8 @@
       entity = channel.entity;
     const level = master ? number(project().masterVolume, .7) : number(entity.volume, track ? .8 : 1);
     const peak = master ? ui.peak : track ? number(ui.peaks[channel.track]) : Math.max(...(ui.busPeaks[channel.owner] || [0]));
-    const sendCount = (project().routing.sends || []).filter(send => send.source === channel.owner).length;
-    const output = project().routing.outputs?.[channel.owner], outputName = output === null ? 'No output' : channelTitle(output || 'master');
+    const sendCount = project().routing.sends.filter(send => send.source === channel.owner).length;
+    const output = project().routing.outputs[channel.owner], outputName = output === null ? 'No output' : channelTitle(output || 'master');
     const tab = selected ? 0 : -1,
       prefix = track
           ? String(channel.track + 1).padStart(2, '0')
@@ -578,10 +578,10 @@
     });
   }
 
-  const savedEffects = (p, owner) => (p.audioPlugins || []).filter(item => ownerForPlugin(item) === normalizeOwner(owner, p)
+  const savedEffects = (p, owner) => p.audioPlugins.filter(item => ownerForPlugin(item) === normalizeOwner(owner, p)
       && item.kind === 'effect').sort((a, b) => a.slot - b.slot);
   const replaceEffects = (p, owner, effects) => {
-    p.audioPlugins = [...(p.audioPlugins || []).filter(item => !(ownerForPlugin(item) === normalizeOwner(owner, p) && item.kind === 'effect')),
+    p.audioPlugins = [...p.audioPlugins.filter(item => !(ownerForPlugin(item) === normalizeOwner(owner, p) && item.kind === 'effect')),
         ...effects];
   };
   async function moveEffect(slot, direction) {
@@ -681,7 +681,7 @@
       }
       mutate(label, p => {
         replaceEffects(p, track, after);
-        for (const pattern of p.patterns || []) for (const lane of pattern.automation || []) {
+        for (const pattern of p.patterns) for (const lane of pattern.automation) {
           if (lane.owner !== track) continue;
           const match = /^plugin:effect:(\d+):(.+)$/.exec(lane.target || '');
           if (match && map.has(Number(match[1]))) lane.target = effectTarget(map.get(Number(match[1])), match[2]);
@@ -790,11 +790,11 @@
               : current.component !== removed.component)) throw new Error('The insert changed while removal was pending.');
       ui.parameters.delete(pluginKey(track, slot));
       mutate(label, p => {
-        p.audioPlugins = (p.audioPlugins || []).filter(item => !(ownerForPlugin(item) === track && item.kind === 'effect' && item.slot === slot));
+        p.audioPlugins = p.audioPlugins.filter(item => !(ownerForPlugin(item) === track && item.kind === 'effect' && item.slot === slot));
         if (removed.instanceID
             && p.routing.sidechains) p.routing.sidechains = p.routing.sidechains.filter(route => route.destination !== removed.instanceID);
-        if (removed.instanceID && p.pluginPages?.[removed.instanceID]) delete p.pluginPages[removed.instanceID];
-        for (const pattern of p.patterns || []) pattern.automation = (pattern.automation || []).filter(lane => !(lane.owner === track && lane.target?.startsWith(`plugin:effect:${slot}:`)));
+        if (removed.instanceID) delete p.pluginPages[removed.instanceID];
+        for (const pattern of p.patterns) pattern.automation = pattern.automation.filter(lane => !(lane.owner === track && lane.target?.startsWith(`plugin:effect:${slot}:`)));
       });
       window.STRouting?.refreshCapabilities();
       return true;
@@ -1166,8 +1166,8 @@
     return r && laneIndexFor(r) < 0 ? r : null;
   }
   const lanePoints = (patternItem, r) => {
-    const lane = r && (patternItem.automation || []).find(item => ownerForLane(item) === r.owner && item.target === r.target);
-    return lane ? lane.points?.length || 0 : -1;
+    const lane = r && patternItem.automation.find(item => ownerForLane(item) === r.owner && item.target === r.target);
+    return lane ? lane.points.length : -1;
   };
   function switchPattern(id, focus) {
     const p = project(), next = p.patterns.find(item => Number(item.id) === Number(id)); if (!next) return false;
@@ -1190,8 +1190,8 @@
   }
   /* Patterns in song order (first appearance in the sequence), then the ones the song does not use. */
   function songOrderedPatterns(p = project()) {
-    const list = p.patterns || [], seen = new Set(), ordered = [];
-    for (const id of p.sequence || []) {
+    const list = p.patterns, seen = new Set(), ordered = [];
+    for (const id of p.sequence) {
       const item = list.find(entry => Number(entry.id) === Number(id));
       if (item && !seen.has(item.id)) { seen.add(item.id); ordered.push(item); }
     }
@@ -1203,7 +1203,7 @@
     const next = list[(index + delta + list.length) % list.length];
     const switched = switchPattern(next.id);
     if (ui.scope === 'song'
-        && !(project().sequence || []).some(id => Number(id) === Number(next.id))) S().toast(`${next.name || 'This pattern'} is not in the song.`);
+        && !project().sequence.some(id => Number(id) === Number(next.id))) S().toast(`${next.name || 'This pattern'} is not in the song.`);
     return switched;
   }
   function setScope(scope) {
@@ -1225,8 +1225,8 @@
           'automation-song-envelope'), showPattern: id => { ui.scope = 'pattern'; switchPattern(id, 'automation-envelope'); } };
   }
   function patternBar(r, lane) {
-    const p = project(), list = p.patterns || [], song = !!window.STAutomationSong, current = pattern();
-    const inSong = id => (p.sequence || []).filter(item => Number(item) === Number(id)).length;
+    const p = project(), list = p.patterns, song = !!window.STAutomationSong, current = pattern();
+    const inSong = id => p.sequence.filter(item => Number(item) === Number(id)).length;
     // Song order, so stepping through the selector follows the arrangement; numbers stay the pattern list's.
     const order = songOrderedPatterns(p), number = item => list.indexOf(item);
     const option = item => {
@@ -1288,7 +1288,7 @@
     const r = laneRef(lane), p = project(), current = pattern(), rows = M.summary(p, r.owner, r.target).filter(item => item.id !== current.id);
     if (!rows.length) { S().toast('This session has one pattern.'); return false; }
     const using = new Set(M.patternsUsing(p, r.owner).map(Number)), channel = channelTitle(r.owner);
-    const body = `<p class="muted">Copy <strong>${esc(r.name)}</strong> (${lane.points?.length || 0} points) from ${esc(current.name || 'this pattern')}. `
+    const body = `<p class="muted">Copy <strong>${esc(r.name)}</strong> (${lane.points.length} points) from ${esc(current.name || 'this pattern')}. `
         + `Lanes in the chosen patterns are replaced; rows stay where they are, so a shorter pattern ends on the lane's value at its last row.</p>
       <div class="studio-copy-quick"><button class="btn studio-small" id="automation-copy-using">Patterns using ${esc(channel)}</button>`
           + `<button class="btn studio-small" id="automation-copy-song">Patterns in the song</button><button class="btn studio-small"`
@@ -1305,7 +1305,7 @@
     const pick = test => boxes().forEach(box => { box.checked = test(Number(box.dataset.copyPattern)); });
     const on = (id, fn) => { const node = document.getElementById(id); if (node) node.onclick = fn; };
     on('automation-copy-using', () => pick(id => using.has(id)));
-    on('automation-copy-song', () => pick(id => (project().sequence || []).some(item => Number(item) === id)));
+    on('automation-copy-song', () => pick(id => project().sequence.some(item => Number(item) === id)));
     on('automation-copy-none', () => pick(() => false));
     on('automation-copy-cancel', () => S().closeModal());
     on('automation-copy-apply', () => {
@@ -1402,7 +1402,7 @@
         + ` ${item.available === false || item.inactive ? `title="${esc(item.unavailableReason || item.inactiveReason)}"` : ''}>`
         + `<span class="studio-target-icon">${item.available === false ? '!' : item.lane >= 0 ? '∿' : '+'}</span>`
         + `<span><strong>${esc(item.name)}</strong><small>${item.available === false ? 'Unavailable · ' : item.inactive ? 'Inactive · ' : ''}${esc(item.group || 'Saved parameter')}</small>`
-        + `</span>${item.lane >= 0 ? `<span class="studio-target-count">${existing[item.lane].points?.length || 0}</span>` : ''}</button>`;
+        + `</span>${item.lane >= 0 ? `<span class="studio-target-count">${existing[item.lane].points.length}</span>` : ''}</button>`;
     return `<div class="studio-automation" data-scroll="automation-workspace"><div class="panel-head"><div><h2>Automation</h2>`
         + `<p class="muted">${esc(pattern().name || 'Current pattern')} · ${pattern().length} rows · ${songScope ? 'Song timeline' : 'Pattern automation'}</p>`
         + `</div><span class="chip">${existing.length} lane${existing.length === 1 ? '' : 's'}</span></div>
@@ -1446,7 +1446,7 @@
           + ` tabindex="${selected ? 0 : -1}" data-select-lane="${i}"><div class="studio-lane-box-head"><span>${channel?.type === 'track'
               ? String(channel.track + 1).padStart(2, '0')
               : esc(channel?.type || '?')}</span><strong>${esc(item.name || item.target)}</strong><small>${esc(channelTitle(owner))}</small>`
-          + `<em>${item.points?.length || 0} pt${item.points?.length === 1 ? '' : 's'}</em></div><div class="studio-lane-box-plot">${plot}</div></div>`;
+          + `<em>${item.points.length} pt${item.points.length === 1 ? '' : 's'}</em></div><div class="studio-lane-box-plot">${plot}</div></div>`;
     };
     return `<div class="studio-lane-stack" id="automation-lane-stack" data-scroll="automation-lanes" role="listbox" aria-label="Automation lanes`
         + ` in this pattern. Up and down choose a lane; Enter enters its envelope.">${existing.map(box).join('')}</div>`;
@@ -1936,7 +1936,7 @@
     const owner = normalizeOwner(index), existing = lanes().filter(lane => ownerForLane(lane) === owner);
     const targets = allTargets(owner);
     for (const lane of existing) if (!targets.some(target => target.target === lane.target)) targets.push(targetInfo(lane));
-    return targets.map(target => { const lane = existing.find(item => item.target === target.target); return { target: target.target, name: target.name, group: target.group || '', search: target.search || '', value: target.value, available: target.available !== false, unavailableReason: target.unavailableReason, automated: !!lane, points: lane?.points?.length || 0 }; })
+    return targets.map(target => { const lane = existing.find(item => item.target === target.target); return { target: target.target, name: target.name, group: target.group || '', search: target.search || '', value: target.value, available: target.available !== false, unavailableReason: target.unavailableReason, automated: !!lane, points: lane?.points.length || 0 }; })
       .sort((a, b) => Number(b.automated) - Number(a.automated));
   }
   window.STStudio = {

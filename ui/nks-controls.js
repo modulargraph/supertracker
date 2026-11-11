@@ -22,7 +22,7 @@
       plugin?.nks?.identity]);
   const target = plugin => ({ owner: plugin.owner, kind: 'instrument', slot: 0, ...(plugin.instanceID ? { instanceID: plugin.instanceID } : {}) });
   // A track's instrument plug-in: the instrument descriptor owned by the track's channel.
-  const instrumentPlugin = (project, index) => project?.audioPlugins?.find(item => item.owner === `track:${project.tracks?.[index]?.routingID}`
+  const instrumentPlugin = (project, index) => project?.audioPlugins.find(item => item.owner === `track:${project.tracks[index]?.routingID}`
       && item.kind === 'instrument' && (item.slot ?? 0) === 0);
   const addressOf = parameter => String(parameter.address ?? parameter.parameterID ?? (/^\d+$/.test(String(parameter.id)) ? parameter.id : ''));
   const valueOf = parameter => finite(parameter.normalized)
@@ -80,13 +80,13 @@
         && stable(pagesOf(entry.plugin)) === entry.mapping
         && entry.project.tracks[entry.track] === entry.trackObject
         && entry.project.instruments[entry.trackObject.instrument] === entry.inst
-        && entry.project.audioPlugins?.includes(entry.plugin)
+        && entry.project.audioPlugins.includes(entry.plugin)
         && identity(entry.plugin) === entry.identity;
   }
   function mounted(binding) { return binding.root.isConnected && valid(binding.entry); }
   function adoptSavedView(previous, next) {
     if (S().state.project !== previous || previous === next || !Array.isArray(next?.audioPlugins)) return;
-    const oldPlugins = previous.audioPlugins || [], candidates = new Set(oldPlugins.map(plugin => entries.get(plugin)).filter(Boolean));
+    const oldPlugins = previous.audioPlugins, candidates = new Set(oldPlugins.map(plugin => entries.get(plugin)).filter(Boolean));
     // A previous Save may have retained a page while this instrument was not
     // mounted. Carry that view forward through another acknowledged Save; do
     // not manufacture or revive its old parameter cache, drafts or async work.
@@ -119,7 +119,7 @@
       const oldMatches = oldPlugins.filter(plugin => plugin.instanceID === id),
         newMatches = next.audioPlugins.filter(plugin => plugin.instanceID === id);
       if (oldMatches.length !== 1 || newMatches.length !== 1) continue;
-      const old = oldMatches[0], replacement = newMatches[0], track = next.tracks?.[entry.track], inst = next.instruments?.[track?.instrument];
+      const old = oldMatches[0], replacement = newMatches[0], track = next.tracks[entry.track], inst = next.instruments[track?.instrument];
       const sameSlot = plugin => plugin.kind === 'instrument'
           && (plugin.slot ?? 0) === 0
           && plugin.owner === entry.plugin.owner;
@@ -259,7 +259,7 @@
     return renderNKS(inst, plugin) + pages;
   }
   function renderNKS(inst, plugin) {
-    if (!inst || !plugin?.nks || !S().state.project?.audioPlugins?.includes(plugin)) return '';
+    if (!inst || !plugin?.nks || !S().state.project?.audioPlugins.includes(plugin)) return '';
     const entry = entryFor(inst, plugin), pages = pagesOf(plugin);
     if (!valid(entry)) return '';
     entry.page = Math.max(0, Math.min(entry.page, pages.length - 1));
@@ -691,9 +691,9 @@
   // Hardware controllers (mk3.js): the selected track's NKS instrument pages, edited through the same
   // preview / one-Undo-per-gesture path as the on-screen knobs.
   function controllerEntry() {
-    const state = S().state, track = state.project?.tracks?.[state.track];
+    const state = S().state, track = state.project?.tracks[state.track];
     const plugin = instrumentPlugin(state.project, state.track);
-    const inst = state.project?.instruments?.[track?.instrument];
+    const inst = state.project?.instruments[track?.instrument];
     if (!plugin?.nks || !pagesOf(plugin).length || !inst) return null;
     const entry = entryFor(inst, plugin);
     return valid(entry) ? entry : null;

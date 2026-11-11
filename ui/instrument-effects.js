@@ -20,10 +20,10 @@
   const clone = value => JSON.parse(JSON.stringify(value));
 
   /** The instrument's effects in chain order (project descriptors). */
-  const chain = (p, index) => (p?.audioPlugins || []).filter(item => item.owner === owner(index) && (item.kind || 'effect') === 'effect')
+  const chain = (p, index) => p.audioPlugins.filter(item => item.owner === owner(index) && (item.kind || 'effect') === 'effect')
       .sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0));
   /** Indices of the tracks whose assigned instrument is `index` (each runs an instance of the chain). */
-  const tracksPlaying = (p, index) => (p?.tracks || []).flatMap((track, i) => Number(track.instrument || 0) === Number(index) ? [i] : []);
+  const tracksPlaying = (p, index) => p.tracks.flatMap((track, i) => Number(track.instrument || 0) === Number(index) ? [i] : []);
 
   /** Copies instrument `from`'s chain (of `source`, default `p`) to instrument `to` in `p`: fresh instance IDs,
       the same states, bypass and curated page settings. Returns the copies. */
@@ -31,11 +31,11 @@
     const copies = chain(source, from).map(item => {
       const next = { ...clone(item), owner: owner(to), instanceID: uid() };
       delete next.track; delete next.parameters;
-      if (item.instanceID && source.pluginPages?.[item.instanceID]) { p.pluginPages ||= {}; p.pluginPages[next.instanceID] = clone(source.pluginPages[item.instanceID]); }
+      if (item.instanceID && source.pluginPages[item.instanceID]) p.pluginPages[next.instanceID] = clone(source.pluginPages[item.instanceID]);
       return next;
     });
     if (!copies.length) return copies;
-    p.audioPlugins = [...(p.audioPlugins || []).filter(item => item.owner !== owner(to)), ...copies];
+    p.audioPlugins = [...p.audioPlugins.filter(item => item.owner !== owner(to)), ...copies];
     return copies;
   }
 
@@ -44,11 +44,11 @@
   function reindexAfterRemoval(p, removed) {
     const shift = value => { const i = indexOf(value); return i > removed ? owner(i - 1) : value; };
     const gone = owner(removed);
-    const ids = new Set((p.audioPlugins || []).filter(item => item.owner === gone).map(item => item.instanceID).filter(Boolean));
-    p.audioPlugins = (p.audioPlugins || []).filter(item => item.owner !== gone).map(item => isOwner(item.owner) ? { ...item, owner: shift(item.owner) } : item);
-    for (const id of ids) if (p.pluginPages?.[id]) delete p.pluginPages[id];
-    for (const pattern of p.patterns || []) {
-      pattern.automation = (pattern.automation || []).filter(lane => lane.owner !== gone);
+    const ids = new Set(p.audioPlugins.filter(item => item.owner === gone).map(item => item.instanceID).filter(Boolean));
+    p.audioPlugins = p.audioPlugins.filter(item => item.owner !== gone).map(item => isOwner(item.owner) ? { ...item, owner: shift(item.owner) } : item);
+    for (const id of ids) delete p.pluginPages[id];
+    for (const pattern of p.patterns) {
+      pattern.automation = pattern.automation.filter(lane => lane.owner !== gone);
       for (const lane of pattern.automation) if (isOwner(lane.owner)) lane.owner = shift(lane.owner);
     }
   }
@@ -87,7 +87,7 @@
   function bind(index) {
     const root = document.getElementById('instrument-effects');
     if (!root || !window.STInsertChain) return;
-    window.STInsertChain.bind(root, owner(index), { prefix: PREFIX, title: S().state.project?.instruments?.[index]?.name || 'Instrument',
+    window.STInsertChain.bind(root, owner(index), { prefix: PREFIX, title: S().state.project?.instruments[index]?.name || 'Instrument',
       source: [{ id: `${PREFIX}-source` }], hint: 'Saved with the instrument' });
     // Ask the host for the parameter lists once, so the knob pages and automation targets are ready.
     if (chain(S().state.project, index).length && tracksPlaying(S().state.project, index).length) window.STStudio?.loadAutomationParameters?.(owner(index))?.catch?.(() => {});

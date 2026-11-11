@@ -237,10 +237,10 @@ test('a collapsed track is a slim column (name + note hits); a saved view state 
   h.ST.perform('undo'); h.ST.perform('redo');
   same(p().viewState.collapsedTracks, ['r2'], 'Undo / Redo keep the view');
   keyEvent(h, 'J', 'KeyJ', { altKey: true, shiftKey: true });
-  assert.equal(p().viewState, undefined, '⌥⇧J expands it again');
+  same(p().viewState, {}, '⌥⇧J expands it again');
   app.setTrackCollapsed(1, true); app.setTrackCollapsed(5, true);
   h.ST.perform('expandAllTracks');
-  assert.equal(p().viewState, undefined);
+  same(p().viewState, {});
 });
 
 /* ---------- delete ---------- */

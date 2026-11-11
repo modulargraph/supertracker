@@ -93,9 +93,9 @@
       if (!current()) return false;
       previousInstrument = JSON.stringify(instrument);
       if (await app.syncEngineProject(() => current() ? copy(owner) : null) === false || !current()) return false;
-      const previousSlot = JSON.stringify(owner.audioPlugins?.find(ownInstrument));
+      const previousSlot = JSON.stringify(owner.audioPlugins.find(ownInstrument));
       const targetUnchanged = () => current()
-          && JSON.stringify(owner.audioPlugins?.find(ownInstrument)) === previousSlot;
+          && JSON.stringify(owner.audioPlugins.find(ownInstrument)) === previousSlot;
       app.stopHeld();
       app.toast('Loading NKS preset…');
       attempted = true;
@@ -119,7 +119,7 @@
         selected.type = 'plugin'; selected.name = result.nks.name || result.name; delete selected.plugin;
         track.instrument = destination;
         if (stillSelected) state.instrument = destination;
-        project.audioPlugins = (project.audioPlugins || []).filter(plugin => !ownInstrument(plugin));
+        project.audioPlugins = project.audioPlugins.filter(plugin => !ownInstrument(plugin));
         project.audioPlugins.push(copy(result));
       });
       if (applied === false) throw new Error('The session could not take the preset right now. Nothing was changed.');
@@ -143,7 +143,7 @@
     if (!track || typeof path !== 'string' || !path || !Number.isInteger(slot) || slot < 0 || slot >= INSERT_SLOTS) return false;
     const channel = `track:${track?.routingID}`;
     const sameSlot = plugin => plugin.owner === channel && plugin.kind === 'effect' && (plugin.slot ?? 0) === slot;
-    const slotState = () => JSON.stringify(owner.audioPlugins?.find(sameSlot) ?? null);
+    const slotState = () => JSON.stringify(owner.audioPlugins.find(sameSlot) ?? null);
     let previousSlot = null;
     const current = () => state.project === owner && owner.tracks[trackIndex] === track && (previousSlot === null || slotState() === previousSlot);
     const restoreCurrent = async () => {
@@ -166,7 +166,7 @@
       const name = result.nks.name || result.name;
       const applied = app.mutate('load NKS effect', project => {
         const descriptor = { ...copy(result), owner: channel, kind: 'effect', slot };
-        project.audioPlugins = (project.audioPlugins || []).filter(plugin => !sameSlot(plugin));
+        project.audioPlugins = project.audioPlugins.filter(plugin => !sameSlot(plugin));
         project.audioPlugins.push(descriptor);
       });
       if (applied === false) throw new Error('The session could not take the effect right now. Nothing was changed.');

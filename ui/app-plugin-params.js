@@ -22,7 +22,7 @@
   function pluginParameterCurrent(edit) {
     if (state.project !== edit.project
         || edit.trackObject && trackOf(edit.project, edit.target.owner) !== edit.trackObject) return null;
-    return edit.project.audioPlugins?.find(plugin => plugin.instanceID === edit.target.instanceID
+    return edit.project.audioPlugins.find(plugin => plugin.instanceID === edit.target.instanceID
         && plugin.component === edit.component
         && plugin.kind === edit.target.kind
         && (plugin.slot ?? 0) === (edit.target.slot ?? 0)
@@ -92,7 +92,7 @@
   function rebindSavedPluginParameterDialog(previous, next) {
     const edit = pluginParameterDialog;
     if (!edit || edit.project !== previous || !edit.mounted() || edit.revision !== edit.committed) return;
-    const replacement = next.audioPlugins?.find(plugin => plugin.instanceID === edit.target.instanceID
+    const replacement = next.audioPlugins.find(plugin => plugin.instanceID === edit.target.instanceID
         && plugin.component === edit.component
         && plugin.kind === edit.target.kind
         && (plugin.slot ?? 0) === (edit.target.slot ?? 0)
@@ -264,7 +264,7 @@
     const matches = plugin => plugin.kind === target.kind
         && (plugin.slot ?? 0) === (target.slot ?? 0)
         && plugin.owner === target.owner;
-    const initial = owner.audioPlugins?.find(matches),
+    const initial = owner.audioPlugins.find(matches),
       instanceID = initial?.instanceID;
     try {
       if (!instanceID) throw new Error('The plug-in instance is not ready. Wait for it to finish loading, then reopen its parameters.');

@@ -2,7 +2,7 @@
 // Actual studio module, minimal DOM boundary. Run: node tests/automation_playhead_tests.js
 const assert = require('node:assert/strict');
 const web = require('./helpers/web');
-const { routed } = require('./helpers/project');
+const { complete } = require('./helpers/project');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -40,7 +40,7 @@ function harness(length = 64) {
   const points = [{ row: 0, value: .25 }, { row: Math.min(16, length - 1), value: .75 }];
   if (length === 1) points.splice(1, 1);
   const lane = { id: 'lane', track: 0, target: 'volume', name: 'Level', interpolation: 'linear', points };
-  const state = { view: 'automation', track: 0, instrument: 0, selectedLane: 0, row: 7, playing: false, status: {}, project: routed({
+  const state = { view: 'automation', track: 0, instrument: 0, selectedLane: 0, row: 7, playing: false, status: {}, project: complete({
     activePattern: 23, linesPerBeat: 4, tracks: [{ name: 'Bass', instrument: 0, volume: .8 }], instruments: [{ type: 'synth' }], audioPlugins: [],
     patterns: [{ id: 23, name: 'Verse', length, automation: [lane] }, { id: 41, name: 'Chorus <other>', length: 32, automation: [] }]
   }) };
