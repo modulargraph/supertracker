@@ -141,7 +141,8 @@ impl Engine {
     }
 
     pub fn set_host_mixing(&mut self, enabled: bool, computational_mask: u32) {
-        self.control().0.set_host_mixing(enabled, computational_mask);
+        // Bit t of the mask is track t for t < 32; tracks from 32 on are enabled.
+        self.control().0.set_host_mixing_tracks(enabled, &[computational_mask as u64 | !0xffff_ffffu64], true);
     }
 
     pub fn set_host_mixing_tracks(&mut self, enabled: bool, words: &[u64], enabled_beyond: bool) {
@@ -483,10 +484,6 @@ impl Engine {
 
     pub fn status(&self) -> STStatus {
         self.e.status().status()
-    }
-
-    pub fn track_peak(&self, track: i32) -> f32 {
-        self.e.status().track_peak(track)
     }
 
     pub fn watch_voice_positions(&self, instrument: i32) {

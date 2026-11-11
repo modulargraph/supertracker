@@ -14,7 +14,7 @@
 //!   projects go onto a lock-free retired list.
 //! * `collect()` on the control thread destroys retired projects and the samples nothing refers
 //!   to any more.
-//! * Status, peaks and the voice playhead snapshot are atomics / seqlocks readable anywhere
+//! * Status and the voice playhead snapshot are atomics / seqlocks readable anywhere
 //!   ([`host::StatusHandle`]).
 //!
 //! # Modules
@@ -30,7 +30,7 @@
 //! | [`voice`] | note start and end, and all voice DSP |
 //! | [`mixer`] | the block renderer: channel mix, sends (delay/reverb), metronome, timeline clips |
 //! | [`project`] | samples, zones, instruments, steps, lanes, patterns, the project |
-//! | [`tables`] | per-channel render tables with the per-bus block buffers, peak store |
+//! | [`tables`] | per-channel render tables with the per-bus block buffers |
 //! | [`state`] | the data of the two halves and of what they share; `Voice`, `Scheduled`, `Command` |
 //! | [`util`] | `clamp`/`cmin`/`cmax`, `Ring`, `FloatBlock`, the random generator |
 //!
@@ -46,8 +46,8 @@
 // * The same goes for negated comparisons (`!(a < b)`), which are the NaN-aware form.
 // * The setters take one argument per value of the thing they set; the mixer crate calls them
 //   with these signatures.
-// * `Vec<Box<Sample>>` and `Vec<Box<PeakStore>>`: the boxes give every sample and peak store a
-//   stable address, which the render side holds on to while the vectors grow.
+// * `Vec<Box<Sample>>`: the boxes give every sample a stable address, which the render side
+//   holds on to while the vector grows.
 #![allow(
     clippy::manual_range_contains,
     clippy::neg_cmp_op_on_partial_ord,

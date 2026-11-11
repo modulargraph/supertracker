@@ -1,5 +1,5 @@
 //! Per-channel render tables: `TrackState`, `RatchetState`, `LaneEventState`, `PluginRowLock`,
-//! `PeakStore` and `ChannelTables` with the per-bus block buffers.
+//! and `ChannelTables` with the per-bus block buffers.
 //!
 //! Everything here is allocated on the control thread (at commit or engine creation) and then
 //! used by the render thread, which never allocates or frees it.
@@ -8,7 +8,6 @@ use super::abi::*;
 use super::project::PluginStepFX;
 use super::util::FloatBlock;
 use std::cell::UnsafeCell;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 pub const MAX_BLOCK: usize = 4096;
 /// `ST_TARGET_LAST_INSTRUMENT - ST_TARGET_ATTACK + 1`
@@ -104,31 +103,6 @@ pub struct PluginRowLock {
     pub delivery: LaneEventState,
 }
 
-/// Peak meters are read from any thread. Storage only grows and old stores live until the engine
-/// is destroyed, so a reader holding an old pointer stays valid. Values are `f32` bit patterns.
-pub struct PeakStore {
-    pub values: Box<[AtomicU32]>,
-}
-
-impl PeakStore {
-    pub fn new(count: usize) -> PeakStore {
-        PeakStore { values: (0..count).map(|_| AtomicU32::new(0f32.to_bits())).collect() }
-    }
-    #[inline(always)]
-    pub fn load(&self, index: usize) -> f32 {
-        match self.values.get(index) {
-            Some(value) => f32::from_bits(value.load(Ordering::Relaxed)),
-            None => 0.0,
-        }
-    }
-    #[inline(always)]
-    pub fn store(&self, index: usize, value: f32) {
-        if let Some(slot) = self.values.get(index) {
-            slot.store(value.to_bits(), Ordering::Relaxed);
-        }
-    }
-}
-
 /// The render-owned contents of `ChannelTables`.
 pub struct TablesState {
     pub track_count: i32,
@@ -141,7 +115,6 @@ pub struct TablesState {
     pub mod_wheel: Vec<f32>,
     pub left: Vec<f32>,
     pub right: Vec<f32>,
-    pub peaks: Vec<f32>,
     pub touched: Vec<u64>,
     /// Raw host mixing: whether each channel's bus carries its signal this block (enabled and
     /// computational).
@@ -211,7 +184,6 @@ impl ChannelTables {
                 mod_wheel: vec![0.0; channel_count],
                 left: vec![0.0; channel_count],
                 right: vec![0.0; channel_count],
-                peaks: vec![0.0; channel_count],
                 touched: vec![0; channel_count.div_ceil(64)],
                 host_audible: vec![0; channel_count],
                 lane_ratchets: vec![RatchetState::default(); tracks as usize],

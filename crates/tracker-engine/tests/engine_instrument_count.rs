@@ -15,14 +15,6 @@ fn energy(e: &mut Engine, frames: usize) -> f64 {
     l.iter().map(|&x| x as f64 * x as f64).sum::<f64>() / frames as f64
 }
 
-#[test]
-fn native_instrument_table_holds_exactly_the_projects_instruments() {
-    assert!(
-        instrument_capacity(64) == 64
-            && instrument_capacity(ST_INSTRUMENT_SANITY_LIMIT) == ST_INSTRUMENT_SANITY_LIMIT
-    );
-}
-
 /// 300 ordinary instruments: instrument 250 plays, a step can name it, a track can use it.
 #[test]
 fn three_hundred_instruments_steps_tracks_and_live_notes_reach_instrument_250() {

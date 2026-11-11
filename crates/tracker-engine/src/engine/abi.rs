@@ -157,20 +157,6 @@ pub const fn output_bus_count(track_count: i32) -> i32 {
     return_bus(track_count) + 1
 }
 
-/// The output bus of a logical channel: a channel's bus has the channel's own number, whatever
-/// the track count.
-#[inline]
-pub const fn channel_output_bus(_track_count: i32, channel: i32) -> i32 {
-    channel
-}
-
-/// Instrument slots the engine keeps for a project of `instrument_count` instruments: exactly
-/// that many (the table has no fixed size; see [`ST_INSTRUMENT_SANITY_LIMIT`]).
-#[inline]
-pub const fn instrument_capacity(instrument_count: i32) -> i32 {
-    instrument_count
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct STTrack {
     pub volume: f32,
@@ -357,8 +343,6 @@ pub struct STStatus {
     pub row: i32,
     pub sequence: i32,
     pub track_count: i32,
-    pub peak_l: f32,
-    pub peak_r: f32,
     pub position: f64,
     pub seconds: f64,
     pub dropped_commands: u64,

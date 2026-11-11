@@ -10,7 +10,7 @@
 //!   clonable, every operation needs `&mut self`: whoever holds it is the control thread.
 //! * [`RenderHalf`]: rendering and events. One per engine, not clonable, `&mut self`: whoever
 //!   holds it is the audio thread.
-//! * [`StatusHandle`]: status, peaks, the voice playhead snapshot and the request mailboxes.
+//! * [`StatusHandle`]: status, the voice playhead snapshot and the automation refresh mailbox.
 //!   Clonable; any thread.
 //!
 //! The engine is destroyed when the last of the three handles is dropped, which by then is the
@@ -262,11 +262,6 @@ impl StatusHandle {
         self.engine.shared.status()
     }
 
-    /// The raw (pre-fader, with host mixing) peak of one track since the last block, decaying.
-    pub fn track_peak(&self, track: i32) -> f32 {
-        self.engine.shared.track_peak(track)
-    }
-
     /// Ask the render thread to re-emit mixer defaults and automation lanes at its next block.
     pub fn refresh_automation(&self) {
         self.engine.shared.refresh_automation();
@@ -362,7 +357,6 @@ mod tests {
         assert!(rendered.1 >= 12, "the mixer defaults of both tracks were sent as events");
         let state = status.status();
         assert!(state.playing != 0 && state.track_count == 2);
-        assert!(status.track_peak(0) > 0.3);
         assert!(control.pop_input_ack().is_none());
         assert_eq!((control.sample_rate(), status.sample_rate()), (48_000.0, 48_000.0));
     }

@@ -1,5 +1,5 @@
 //! The block renderer (ported from the C++ engine's `TrackerEngine.cpp`): `process` (per-sample sequencing,
-//! voices, channel mix, peaks), the legacy send returns (stereo cross-feedback delay, pre-delay,
+//! voices, channel mix), the engine's own send returns (stereo cross-feedback delay, pre-delay,
 //! eight-comb/four-allpass reverb), the metronome and count-in clicks, and timeline audio
 //! (`mixClips`, pattern-mode clips and their printed tails, song-loop tails).
 
@@ -7,7 +7,6 @@ use super::state::*;
 use super::tables::MAX_BLOCK;
 use super::util::{clamp, cmax, cmin, lowest_bit, PI};
 use super::voice::read_stereo;
-use std::sync::atomic::Ordering;
 
 impl Render {
     /// Render `frames` frames. `buses` renders into the per-bus block buffers (a host's block)
@@ -164,7 +163,7 @@ impl<'a> Rt<'a> {
     ///
     /// Raw host mixing of a block render: a channel's bus is exactly its summed input, so voices
     /// and clips add straight into the bus block (same order, same sums) instead of a per-sample
-    /// channel pass; peaks and the mix are taken from the buses per block.
+    /// channel pass.
     #[inline(always)]
     pub fn add_channel(&mut self, channel: i32, l: f32, r: f32) {
         let c = channel as u32 as usize;
@@ -337,7 +336,7 @@ impl<'a> Rt<'a> {
         self.click_sample(volume, wet_l, wet_r);
     }
 
-    /// The legacy send returns for one sample: delay input (`del`), reverb input (`rev`) ->
+    /// The engine's own send returns for one sample: delay input (`del`), reverb input (`rev`) ->
     /// wet left/right, master gain applied.
     #[inline(always)]
     fn send_returns(&mut self, del_l: f32, del_r: f32, mut rev_l: f32, mut rev_r: f32) -> (f32, f32) {
@@ -430,8 +429,6 @@ impl<'a> Rt<'a> {
                 *touched = 1;
             }
         }
-        let (mut block_peak_l, mut block_peak_r) = (0.0f32, 0.0f32);
-        self.tb.peaks.fill(0.0);
         let solo = p.any_solo;
         let direct_bus = buses && p.host_mixing;
         self.e.direct_bus = direct_bus;
@@ -548,9 +545,6 @@ impl<'a> Rt<'a> {
                         l *= p.master;
                         r *= p.master;
                     }
-                    if let Some(peak) = tb.peaks.get_mut(t) {
-                        *peak = cmax(*peak, cmax(l.abs(), r.abs()));
-                    }
                     mix_l += l;
                     mix_r += r;
                     if buses {
@@ -604,67 +598,17 @@ impl<'a> Rt<'a> {
             if let Some(slot) = out_r.as_deref_mut().and_then(|out| out.get_mut(frame)) {
                 *slot = mix_r;
             }
-            block_peak_l = cmax(block_peak_l, mix_l.abs());
-            block_peak_r = cmax(block_peak_r, mix_r.abs());
             self.e.total_frames += 1.0;
             if self.e.playing {
                 self.e.row_remaining -= 1.0;
                 self.e.transport_frames += 1.0;
             }
         }
-        if direct_bus {
-            // Per-channel peaks and the summed mix, as the per-sample channel pass computes
-            // them: channels in ascending order (a bus untouched at a sample adds exactly 0),
-            // then the return.
-            self.e.direct_bus = false;
-            let e = &mut *self.e;
-            let tb = &mut *self.tb;
-            let (Some(mix_l), Some(mix_r)) = (e.direct_mix_l.get_mut(..block), e.direct_mix_r.get_mut(..block)) else {
-                return;
-            };
-            mix_l.fill(0.0);
-            mix_r.fill(0.0);
-            for b in 0..return_bus {
-                if tb.bus_touched.get(b).is_none_or(|&touched| touched == 0) {
-                    continue;
-                }
-                let (Some(bl), Some(br)) = (tb.bus_left(b).get(..block), tb.bus_right(b).get(..block)) else { continue };
-                let mut peak = 0.0f32;
-                for f in 0..block {
-                    mix_l[f] += bl[f];
-                    mix_r[f] += br[f];
-                    peak = cmax(peak, cmax(bl[f].abs(), br[f].abs()));
-                }
-                if let Some(slot) = tb.peaks.get_mut(b) {
-                    *slot = peak;
-                }
-            }
-            if let (Some(wl), Some(wr)) = (tb.bus_left(return_bus).get(..block), tb.bus_right(return_bus).get(..block)) {
-                for f in 0..block {
-                    let l = clamp(mix_l[f] + wl[f], -1.0, 1.0);
-                    let r = clamp(mix_r[f] + wr[f], -1.0, 1.0);
-                    block_peak_l = cmax(block_peak_l, l.abs());
-                    block_peak_r = cmax(block_peak_r, r.abs());
-                }
-            }
-        }
+        self.e.direct_bus = false;
         if self.e.pending_input_count != 0 {
             self.finish_input_acks(false, false, 0);
         }
         self.publish_voice_positions();
         self.publish_transport();
-        let sh = self.sh;
-        sh.peak_l.store(cmax(block_peak_l, sh.peak_l.load(Ordering::Relaxed) * 0.85), Ordering::Relaxed);
-        sh.peak_r.store(cmax(block_peak_r, sh.peak_r.load(Ordering::Relaxed) * 0.85), Ordering::Relaxed);
-        let store = sh.peak_store.load(Ordering::Acquire);
-        if !store.is_null() {
-            // SAFETY: peak stores are allocated by the control thread and live until the engine
-            // is destroyed (they are only ever replaced by larger ones, never freed).
-            let store = unsafe { &*store };
-            let count = cmin(store.values.len(), self.tb.peaks.len());
-            for t in 0..count {
-                store.store(t, cmax(self.tb.peaks[t], store.load(t) * 0.85));
-            }
-        }
     }
 }

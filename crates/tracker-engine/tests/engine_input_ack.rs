@@ -407,7 +407,7 @@ fn strict_tokens_argument_bounds_and_reserved_ack_capacity_with_command_failure_
     assert!(!edge(&mut e, 0));
     assert!(!e.input_note(1, 3, 0, 0, 60, 100, 1));
     assert!(!e.input_note(1, 1, channel_count(ST_MIN_RETURN_BUS), 0, 60, 100, 1));
-    assert!(!e.input_note(1, 1, 0, instrument_capacity(64), 60, 100, 1));
+    assert!(!e.input_note(1, 1, 0, 64, 60, 100, 1));
     assert!(!e.input_note(1, 1, 0, 0, 128, 100, 1));
     assert!(!e.input_note(1, 1, 0, 0, 60, 0, 1));
     assert!(!e.input_note(1, 1, 0, 0, 60, 100, 2));

@@ -71,7 +71,7 @@ fn defaults_match_the_header() {
     assert_eq!(return_bus(8), 16);
     assert_eq!(return_bus(40), 40);
     assert_eq!(output_bus_count(8), 17);
-    assert_eq!((channel_count(8), channel_output_bus(8, 3), instrument_capacity(64)), (16, 3, 64));
+    assert_eq!(channel_count(8), 16);
 }
 
 #[test]

@@ -8,9 +8,8 @@
 
 use super::project::{Project, Sample};
 use super::state::{Command, Render, Rt, EngineCore, Shared};
-use super::tables::{ChannelTables, PeakStore};
+use super::tables::ChannelTables;
 use super::abi::default_track;
-use super::util::cmax;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -34,7 +33,6 @@ pub struct Control {
     pub(crate) control: Box<Project>,
     pub(crate) updating: bool,
     pub(crate) samples: Vec<Box<Sample>>,
-    pub(crate) peak_stores: Vec<Box<PeakStore>>,
     pub(crate) last_input_request_id: u64,
 }
 
@@ -113,7 +111,7 @@ impl Control {
     /// Control thread: give the project per-channel render tables. The latest published tables
     /// are reused while the track count is unchanged; otherwise new tables are allocated here,
     /// never on render.
-    fn build_tables(&mut self, sh: &Shared, p: &mut Project) -> Result<(), String> {
+    fn build_tables(&mut self, p: &mut Project) -> Result<(), String> {
         let reusable = p.tables.as_ref().is_some_and(|tables| tables.same_shape(p.track_count));
         if !reusable {
             match &self.control.tables {
@@ -122,16 +120,6 @@ impl Control {
                     p.tables = Some(Arc::new(ChannelTables::new(p.track_count).ok_or(BAD_ALLOC)?));
                 }
             }
-        }
-        let needed = p.tables.as_ref().map_or(0, |tables| tables.channels as usize);
-        let store = sh.peak_store.load(Ordering::Acquire);
-        // SAFETY: a non-null peak store is one of the boxes in `peak_stores`, which are never
-        // freed before the engine.
-        let current_count = if store.is_null() { None } else { Some(unsafe { &*store }.values.len()) };
-        if current_count.is_none_or(|count| count < needed) {
-            let grown = Box::new(PeakStore::new(cmax(needed, current_count.map_or(needed, |count| count * 2))));
-            sh.peak_store.store(&*grown as *const PeakStore as *mut PeakStore, Ordering::Release);
-            self.peak_stores.push(grown);
         }
         Ok(())
     }
@@ -143,7 +131,7 @@ impl Control {
             return Err(FOREIGN_ENGINE.into());
         }
         let Some(mut draft) = self.draft.take() else { return Ok(()) };
-        match self.prepare(sh, &mut draft) {
+        match self.prepare(&mut draft) {
             Ok(()) => {}
             Err(problem) => {
                 self.draft = Some(draft);
@@ -164,7 +152,7 @@ impl Control {
         Ok(())
     }
 
-    fn prepare(&mut self, sh: &Shared, draft: &mut Project) -> Result<(), String> {
+    fn prepare(&mut self, draft: &mut Project) -> Result<(), String> {
         Self::normalize(draft);
         // Only lane lists edited in this draft can be unsorted; shared ones were sorted when
         // first published (and cannot be mutated here).
@@ -181,7 +169,7 @@ impl Control {
             }
             pattern.lanes_dirty = false;
         }
-        self.build_tables(sh, draft)?;
+        self.build_tables(draft)?;
         if draft.pattern_epoch == 0 {
             draft.pattern_epoch = PATTERN_EPOCHS.fetch_add(1, Ordering::Relaxed) + 1;
         }
@@ -202,11 +190,10 @@ impl EngineCore {
             control: Box::new(Project::new()),
             updating: false,
             samples: Vec::new(),
-            peak_stores: Vec::new(),
             last_input_request_id: 0,
         };
         let mut first = Box::new(Project::new());
-        control.build_tables(&shared, &mut first).ok()?;
+        control.build_tables(&mut first).ok()?;
         control.control = first;
         let mut current = Box::new(Project::new());
         current.tables = control.control.tables.clone();

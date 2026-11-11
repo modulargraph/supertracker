@@ -192,7 +192,6 @@ fn return_bus_follows_track_count() {
         return_bus(3) == 16
             && channel_count(3) == 16
             && output_bus_count(3) == 17
-            && channel_output_bus(3, 2) == 2
     );
     e.begin_update();
     assert!(e.set_track_count(40));

@@ -40,22 +40,6 @@ impl AtomicF64 {
     }
 }
 
-/// An `f32` published through an atomic (C++ `std::atomic<float>`).
-pub struct AtomicF32(AtomicU32);
-impl AtomicF32 {
-    pub fn new(value: f32) -> Self {
-        AtomicF32(AtomicU32::new(value.to_bits()))
-    }
-    #[inline(always)]
-    pub fn load(&self, order: Ordering) -> f32 {
-        f32::from_bits(self.0.load(order))
-    }
-    #[inline(always)]
-    pub fn store(&self, value: f32, order: Ordering) {
-        self.0.store(value.to_bits(), order)
-    }
-}
-
 /// A queued control command (`Command`). `kind` values match the C++ `type` numbers.
 #[derive(Clone, Copy)]
 pub struct Command {
@@ -499,7 +483,6 @@ pub struct Shared {
     pub(crate) input_acks: Ring<STInputAck>,
     pub(crate) input_outstanding: AtomicU32,
     pub(crate) automation_refresh_requested: AtomicBool,
-    pub(crate) peak_store: AtomicPtr<PeakStore>,
     pub(crate) status_playing: AtomicI32,
     pub(crate) status_recording: AtomicI32,
     pub(crate) status_pattern: AtomicI32,
@@ -518,8 +501,6 @@ pub struct Shared {
     pub(crate) status_bar: AtomicI64,
     pub(crate) status_numerator: AtomicI32,
     pub(crate) status_denominator: AtomicI32,
-    pub(crate) peak_l: AtomicF32,
-    pub(crate) peak_r: AtomicF32,
     pub(crate) dropped_commands: AtomicU64,
     pub(crate) dropped_events: AtomicU64,
     /// Voice playhead snapshot (`voice_positions`): seqlock, odd while the render
@@ -554,7 +535,6 @@ impl Shared {
             input_acks: Ring::new(ST_INPUT_ACK_CAPACITY),
             input_outstanding: AtomicU32::new(0),
             automation_refresh_requested: AtomicBool::new(false),
-            peak_store: AtomicPtr::new(std::ptr::null_mut()),
             status_playing: AtomicI32::new(0),
             status_recording: AtomicI32::new(0),
             status_pattern: AtomicI32::new(0),
@@ -573,8 +553,6 @@ impl Shared {
             status_bar: AtomicI64::new(1),
             status_numerator: AtomicI32::new(4),
             status_denominator: AtomicI32::new(4),
-            peak_l: AtomicF32::new(0.0),
-            peak_r: AtomicF32::new(0.0),
             dropped_commands: AtomicU64::new(0),
             dropped_events: AtomicU64::new(0),
             voice_watch: AtomicI32::new(-2),
@@ -637,8 +615,6 @@ impl Shared {
             s.row = self.status_row.load(relaxed);
             s.sequence = self.status_sequence.load(relaxed);
             s.track_count = self.status_tracks.load(relaxed);
-            s.peak_l = self.peak_l.load(relaxed);
-            s.peak_r = self.peak_r.load(relaxed);
             s.position = self.status_position.load(relaxed);
             s.seconds = self.status_seconds.load(relaxed);
             s.dropped_commands = self.dropped_commands.load(relaxed);
@@ -664,20 +640,6 @@ impl Shared {
                 return s;
             }
         }
-    }
-
-    /// Any thread.
-    pub fn track_peak(&self, track: i32) -> f32 {
-        if track < 0 {
-            return 0.0;
-        }
-        let store = self.peak_store.load(Ordering::Acquire);
-        if store.is_null() {
-            return 0.0;
-        }
-        // SAFETY: peak stores only grow and old ones live until the engine is destroyed, so a
-        // pointer read from `peak_store` stays valid for any reader.
-        unsafe { &*store }.load(track as usize)
     }
 
     /// Copy the latest playhead snapshot into `out` (up to its
@@ -857,12 +819,10 @@ pub struct Render {
     pub(crate) seek_revision: u64,
     /// Raw host mixing of a block render: a channel's bus is exactly its summed input, so voices
     /// and clips add straight into the bus block (same order, same sums) instead of a per-sample
-    /// channel pass; peaks and the mix are taken from the buses per block.
+    /// channel pass.
     pub(crate) direct_bus: bool,
     pub(crate) direct_frame: u32,
     pub(crate) direct_frames: u32,
-    pub(crate) direct_mix_l: Vec<f32>,
-    pub(crate) direct_mix_r: Vec<f32>,
 }
 
 impl Render {
@@ -961,8 +921,6 @@ impl Render {
             direct_bus: false,
             direct_frame: 0,
             direct_frames: 0,
-            direct_mix_l: vec![0.0; MAX_BLOCK],
-            direct_mix_r: vec![0.0; MAX_BLOCK],
         }
     }
 }

@@ -313,7 +313,8 @@ half_methods! { ControlHalf, control_half;
     fn set_host_mixing(&mut self, enabled: i32, computational_mask: u32) {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
-        control.set_host_mixing(enabled != 0, computational_mask);
+        // Bit t of the mask is track t for t < 32; tracks from 32 on are enabled.
+        control.set_host_mixing_tracks(enabled != 0, &[computational_mask as u64 | !0xffff_ffffu64], true);
     }
     fn set_instrument(&mut self, index: i32, instrument: STInstrument) {
         #[allow(unused_variables)]
@@ -547,9 +548,6 @@ impl SharedHalf<'_> {
     pub fn status(&self) -> STStatus {
         self.status.status()
     }
-    pub fn track_peak(&self, track: i32) -> f32 {
-        self.status.track_peak(track)
-    }
     pub fn refresh_automation(&self) {
         self.status.refresh_automation();
     }
@@ -558,9 +556,6 @@ impl SharedHalf<'_> {
 impl Engine {
     pub fn status(&self) -> STStatus {
         self.shared_half().status()
-    }
-    pub fn track_peak(&self, track: i32) -> f32 {
-        self.shared_half().track_peak(track)
     }
     pub fn refresh_automation(&self) {
         self.shared_half().refresh_automation();

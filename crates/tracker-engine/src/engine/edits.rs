@@ -223,16 +223,6 @@ impl Control {
         true
     }
 
-    /// Bit t of `computational_mask` is track t for t<32; tracks
-    /// from 32 on are enabled.
-    pub fn set_host_mixing(&mut self, enabled: bool, computational_mask: u32) {
-        let p = self.edit();
-        p.host_mixing = enabled;
-        p.computational_words.clear();
-        p.computational_words.push(computational_mask as u64 | !0xffff_ffffu64);
-        p.computational_beyond = true;
-    }
-
     /// Host mixing with the computational mask as 64-bit words (bit t of word t/64 is track t); tracks beyond the words follow `enabled_beyond`.
     pub fn set_host_mixing_tracks(&mut self, enabled: bool, words: &[u64], enabled_beyond: bool) {
         let p = self.edit();

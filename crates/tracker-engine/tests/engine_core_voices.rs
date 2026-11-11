@@ -38,7 +38,6 @@ fn test_tone_and_release() {
     let mut tail = Audio::new(4096);
     render(&mut e, &mut tail);
     assert!(tail.energy_in(2048, 4096) == 0.0);
-    assert!(e.track_peak(0) > 0.0);
     assert_zero_render_allocations();
 }
 
