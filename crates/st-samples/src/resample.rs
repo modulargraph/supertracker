@@ -93,6 +93,59 @@ fn gcd(mut a: u64, mut b: u64) -> u64 {
     a
 }
 
+/// The low-pass every converter of this crate is built from: a Kaiser-windowed sinc, as the
+/// coefficients for one output instant between two input frames. A converter with a fixed ratio
+/// tabulates one row per output phase ([`Resampler`]); one whose ratio varies tabulates many
+/// and interpolates between neighbours.
+#[derive(Debug, Clone, Copy)]
+pub struct SincDesign {
+    cutoff: f64,
+    taps: usize,
+    beta: f64,
+    i0_beta: f64,
+}
+
+impl SincDesign {
+    /// A low-pass that rejects everything from `nyquist` up by `attenuation` dB and is flat up
+    /// to `passband` times `nyquist`. Frequencies are in cycles per input frame: `nyquist` is
+    /// 0.5 when the output rate is at least the input rate, and `0.5 * out / in` below it.
+    pub fn new(nyquist: f64, attenuation: f64, passband: f64) -> SincDesign {
+        let transition = (1.0 - passband) * nyquist;
+        let cutoff = nyquist - transition / 2.0;
+        let needed = ((attenuation - 7.95) / (14.36 * transition)).ceil() as usize + 1;
+        let taps = needed.div_ceil(8).max(2) * 8;
+        let beta = 0.1102 * (attenuation - 8.7);
+        SincDesign { cutoff, taps, beta, i0_beta: bessel_i0(beta) }
+    }
+
+    /// Coefficients per output instant (a multiple of 8). With `half = taps / 2`, an output
+    /// instant between input frames `p` and `p + 1` reads frames `p - half + 1 ..= p + half`.
+    pub fn taps(&self) -> usize {
+        self.taps
+    }
+
+    /// The coefficients for the output instant `fraction` of a frame (0 to 1) after input frame
+    /// `p`, in the order of the frames they multiply, scaled to unity gain at DC so that a
+    /// steady signal has no ripple. `row` holds [`SincDesign::taps`] values.
+    pub fn row(&self, fraction: f64, row: &mut [f64]) {
+        let half = self.taps / 2;
+        let mut sum = 0.0;
+        for (tap, value) in row.iter_mut().enumerate() {
+            // Distance of this input frame from the output instant.
+            let distance = tap as f64 - (half as f64 - 1.0) - fraction;
+            let reach = distance / half as f64;
+            let window = if reach.abs() >= 1.0 { 0.0 } else { bessel_i0(self.beta * (1.0 - reach * reach).sqrt()) / self.i0_beta };
+            let x = 2.0 * self.cutoff * distance * std::f64::consts::PI;
+            let sinc = if x.abs() < 1e-12 { 1.0 } else { x.sin() / x };
+            *value = 2.0 * self.cutoff * sinc * window;
+            sum += *value;
+        }
+        for value in row.iter_mut() {
+            *value /= sum;
+        }
+    }
+}
+
 impl Kernel {
     fn new(in_rate: u32, out_rate: u32, quality: ResampleQuality) -> Kernel {
         let divisor = gcd(in_rate as u64, out_rate as u64);
@@ -100,14 +153,9 @@ impl Kernel {
         let (attenuation, passband, dense_phases) = quality.design();
         // All frequencies in cycles per input sample. Everything above the lower of the two
         // Nyquist frequencies is rejected; the transition band ends exactly there.
-        let nyquist = 0.5 * (out_rate as f64 / in_rate as f64).min(1.0);
-        let transition = (1.0 - passband) * nyquist;
-        let cutoff = nyquist - transition / 2.0;
-        let needed = ((attenuation - 7.95) / (14.36 * transition)).ceil() as usize + 1;
-        let taps = needed.div_ceil(8).max(2) * 8;
+        let design = SincDesign::new(0.5 * (out_rate as f64 / in_rate as f64).min(1.0), attenuation, passband);
+        let taps = design.taps();
         let half = taps / 2;
-        let beta = 0.1102 * (attenuation - 8.7);
-        let i0_beta = bessel_i0(beta);
         let exact = up <= MAX_EXACT_PHASES;
         let phases = if exact { up as usize } else { dense_phases };
         let rows = if exact { phases } else { phases + 1 };
@@ -115,23 +163,11 @@ impl Kernel {
         let mut precise = (quality == ResampleQuality::Mastering).then(|| vec![0f64; rows * taps]);
         let mut row = vec![0f64; taps];
         for phase in 0..rows {
-            let fraction = phase as f64 / phases as f64;
-            let mut sum = 0.0;
-            for (tap, value) in row.iter_mut().enumerate() {
-                // Distance of this input frame from the output instant.
-                let distance = tap as f64 - (half as f64 - 1.0) - fraction;
-                let reach = distance / half as f64;
-                let window = if reach.abs() >= 1.0 { 0.0 } else { bessel_i0(beta * (1.0 - reach * reach).sqrt()) / i0_beta };
-                let x = 2.0 * cutoff * distance * std::f64::consts::PI;
-                let sinc = if x.abs() < 1e-12 { 1.0 } else { x.sin() / x };
-                *value = 2.0 * cutoff * sinc * window;
-                sum += *value;
-            }
-            // Unity gain at DC for every phase: no ripple on steady signals.
+            design.row(phase as f64 / phases as f64, &mut row);
             for (tap, value) in row.iter().enumerate() {
-                table[phase * taps + tap] = (value / sum) as f32;
+                table[phase * taps + tap] = *value as f32;
                 if let Some(precise) = precise.as_mut() {
-                    precise[phase * taps + tap] = value / sum;
+                    precise[phase * taps + tap] = *value;
                 }
             }
         }

@@ -62,6 +62,7 @@
 // The status object is one large `json!` literal.
 #![recursion_limit = "256"]
 
+pub mod asrc;
 pub mod device;
 pub mod engine;
 pub mod export;

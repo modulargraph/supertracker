@@ -20,16 +20,23 @@
 //! delay compensation:
 //!
 //! ```text
-//!   latency = output latency  +  input latency                    +  the feed's cushion
-//!             (one block; 0      (what the device reported when      (one block of the input)
+//!   latency = output latency  +  input latency                    +  the feed's delay
+//!             (one block; 0      (what the device reported when      (crate::inputs::LineFeed::latency)
 //!              on the null        it was opened; 0 for the
 //!              device)            null input)
 //! ```
 //!
-//! Everything else is delayed by it, so the return lines up with the tracks the engine sounds
-//! itself, and a tap on the strip knows which song frame each of its frames belongs to. The
-//! figure is an estimate from what the devices say, fixed while the input stays open; it has
-//! not been measured against hardware.
+//! The feed's delay is one block when the input is the output's own device: the frames pass
+//! through as they are. An input with a clock of its own (any other device) is resampled onto
+//! the output's clock, and its feed keeps an output block, an input block, half the
+//! converter's filter and a margin waiting: 1 310 frames between two 48 kHz devices with
+//! 512-frame blocks, where one device has 512 ([`crate::inputs`], "Two clocks"). Either way
+//! it is a constant of the feed, in the engine's frames.
+//!
+//! Everything else is delayed by the sum, so the return lines up with the tracks the engine
+//! sounds itself, and a tap on the strip knows which song frame each of its frames belongs
+//! to. The figure is an estimate from what the devices say, fixed while the input stays open;
+//! it has not been measured against hardware.
 
 use super::{AudioEngine, DeviceChoice, State};
 use crate::device::NULL_DEVICE;
@@ -79,19 +86,21 @@ impl AudioEngine {
     /// Opens or closes the input device: call it without the state's lock.
     pub(super) fn resolve_lines(&self, project: &Project) -> Vec<ResolvedLine> {
         let routes = routes(&crate::freeze::playback_project(project));
-        let (rate, block, null, follow_default) = {
+        let (rate, block, largest, output, follow_default) = {
             let state = self.lock();
-            let null = state.stream.as_ref().is_some_and(|stream| stream.uid() == NULL_DEVICE);
-            (state.core.compiler.sample_rate(), state.stream.as_ref().map_or(state.buffer_size, |stream| stream.buffer_size()), null, state.wanted != DeviceChoice::None)
+            let block = state.stream.as_ref().map_or(state.buffer_size, |stream| stream.buffer_size());
+            let largest = state.stream.as_ref().map_or(block, |stream| stream.largest_block());
+            (state.core.compiler.sample_rate(), block, largest, state.stream.as_ref().map_or(String::new(), |stream| stream.uid().to_string()), state.wanted != DeviceChoice::None)
         };
         let inputs = self.live.inputs();
         if routes.is_empty() {
             inputs.set_line_routes(&[], follow_default);
             return Vec::new();
         }
-        inputs.set_format(rate, block, null);
+        inputs.set_format(rate, block, &output);
+        inputs.set_output_block(largest);
         // What the output adds to a hardware return: the block the render runs ahead of it.
-        let output_latency = if null || !follow_default { 0 } else { block };
+        let output_latency = if output == NULL_DEVICE || !follow_default { 0 } else { largest };
         let wanted: Vec<LineRoute> = routes.iter().map(|(route, _)| route.clone()).collect();
         let states = inputs.set_line_routes(&wanted, follow_default);
         routes
@@ -99,7 +108,7 @@ impl AudioEngine {
             .zip(states)
             .map(|((route, gain), state)| {
                 let latency_frames = match &state {
-                    LineState::Live { feed, input_latency } => output_latency + input_latency + feed.target() as u32,
+                    LineState::Live { feed, input_latency } => output_latency + input_latency + feed.latency(),
                     LineState::Paused(_) => 0,
                 };
                 ResolvedLine { track: route.track, gain, state, latency_frames }
@@ -140,6 +149,11 @@ impl AudioEngine {
     /// The tick's part: resolves the line inputs again when the devices changed or a paused
     /// input may be tried again, unless a publication is running (then at a later tick).
     pub(super) fn refresh_lines_if_due(&self) -> bool {
+        // An output that asks for larger blocks than it was opened with needs other feeds.
+        let largest = self.lock().stream.as_ref().map(|stream| stream.largest_block());
+        if let Some(largest) = largest {
+            self.live.inputs().set_output_block(largest);
+        }
         if !self.lines_stale.load(Ordering::Acquire) && !self.live.inputs().line_retry_due() {
             return false;
         }
@@ -149,8 +163,12 @@ impl AudioEngine {
 
     /// The line inputs of the published project for `audio.devices`: one object per track that
     /// has an `audioInput` (`{track, state: "live" / "paused" / "off", active, status?,
-    /// monitoring, latencyFrames?, underruns?, overruns?}`), and the reason the first route
-    /// that should run does not, if one does not.
+    /// monitoring, latencyFrames?, clock?, driftPpm?, underruns?, overruns?}`), and the reason
+    /// the first route that should run does not, if one does not. A live route says whether
+    /// its input runs on the output's clock (`clock: "shared"`) or is resampled from a clock
+    /// of its own (`"converted"`, with the measured difference of the two in `driftPpm`), how
+    /// often the input did not deliver in time (`underruns`) and how often audio was dropped
+    /// because too much waited (`overruns`).
     pub fn line_inputs(&self) -> (Vec<Value>, Option<String>) {
         let state = self.lock();
         let Some(project) = &state.project else { return (Vec::new(), None) };
@@ -168,6 +186,10 @@ impl AudioEngine {
                     row["active"] = json!(true);
                     row["monitoring"] = json!(input.monitor());
                     row["latencyFrames"] = json!(line.latency_frames);
+                    row["clock"] = json!(if feed.drift_ppm().is_some() { "converted" } else { "shared" });
+                    if let Some(drift) = feed.drift_ppm() {
+                        row["driftPpm"] = json!((drift * 10.0).round() / 10.0);
+                    }
                     row["underruns"] = json!(feed.underruns());
                     row["overruns"] = json!(feed.overruns());
                 }

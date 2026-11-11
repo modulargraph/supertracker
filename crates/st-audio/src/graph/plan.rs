@@ -262,6 +262,9 @@ pub struct Plan {
     /// Graph time of the block being processed, and the song frame the engine rendered there
     /// ([`NOT_PLAYING`] while the transport does not play): what a tap stamps its blocks with.
     block_start: u64,
+    /// When the device callback began that the current block is part of, plus the duration of
+    /// the frames it rendered before the block: nanoseconds of the monotonic clock.
+    clock_ns: u64,
     song_frame: i64,
     buffers: Vec<Buffer>,
     scratch: Buffer,
@@ -794,6 +797,7 @@ impl Compiler {
             lines: lines.into_iter().map(|(_, feed)| PlanLine { feed, block: Buffer::new(self.max_frames) }).collect(),
             strip_taps,
             block_start: 0,
+            clock_ns: 0,
             song_frame: NOT_PLAYING,
             buffers: (0..buffer_count).map(|_| Buffer::new(self.max_frames)).collect(),
             scratch: Buffer::new(self.max_frames),
@@ -1025,6 +1029,14 @@ impl Plan {
         self.block_start = start;
     }
 
+    /// The device's time for the block about to be processed: when its callback began, plus
+    /// the duration of the frames the callback rendered before it, in nanoseconds of the
+    /// monotonic clock. Live inputs with a clock of their own are read against it
+    /// ([`LineFeed::read`]).
+    pub fn set_clock(&mut self, clock_ns: u64) {
+        self.clock_ns = clock_ns;
+    }
+
     /// Whether the plan stamps what it captures with the song position (it carries a tap), so
     /// that the renderer asks the engine for it.
     pub fn wants_song_frame(&self) -> bool {
@@ -1092,6 +1104,7 @@ impl Plan {
         let frames = frames.min(self.max_frames).min(out_l.len()).min(out_r.len());
         let context = ProcessContext { sample_rate: self.sample_rate, tempo: self.bpm, block: self.block };
         let tap_block = TapBlock { time: self.block_start, frames: frames as u32, arrival: 0, song_frame: self.song_frame, silent: false };
+        let clock_ns = self.clock_ns;
         let Plan { ops, edges, strips, inserts, lines, strip_taps, buffers, scratch, events, meters, delay, reverb, effects, bpm, master_buffer, .. } = self;
         for op in ops.iter() {
             match op {
@@ -1105,7 +1118,7 @@ impl Plan {
                             Source::Line(index) => {
                                 // Each live input has one edge, so its feed is read once per block.
                                 let line = &mut lines[index];
-                                let heard = line.feed.read(&mut line.block.left[..frames], &mut line.block.right[..frames]);
+                                let heard = line.feed.read(clock_ns, &mut line.block.left[..frames], &mut line.block.right[..frames]);
                                 heard.then_some((&line.block.left[..], &line.block.right[..]))
                             }
                             Source::Buffer(index) => {

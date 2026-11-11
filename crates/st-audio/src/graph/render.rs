@@ -20,7 +20,7 @@
 //! | a knob turned | control -> render | `messages` ring of [`Message`]s, addressed by plan serial and target |
 //! | silence everything (panic) | control -> render | `clear_tails` flag |
 //! | meters | render -> reader | atomics in the plan's [`MeterBank`](super::meters::MeterBank) |
-//! | a live input's audio | input thread -> render | the ring of its [`LineFeed`](crate::inputs::LineFeed), read by the plan |
+//! | a live input's audio | input thread -> render | the ring of its [`LineFeed`](crate::inputs::LineFeed), read by the plan (resampled there when the input has a clock of its own) |
 //! | a tapped strip | render -> recorder | the rings of a [`StripTap`](super::tap::StripTap), stamped with the song position the engine's clock gives for the block |
 //! | load, clock, counters | render -> anyone | atomics |
 //!
@@ -57,8 +57,9 @@ pub trait ExternalEvents: Send {
 /// input monitoring ([`crate::live`]). Called on the render thread once per [`Renderer::render`]
 /// call: no allocation, no locks, no frees.
 pub trait OutputStage: Send {
-    /// `time` is the graph time of the first frame of `left`/`right`.
-    fn process(&mut self, time: u64, left: &mut [f32], right: &mut [f32]);
+    /// `time` is the graph time of the first frame of `left`/`right`, `clock_ns` the device's
+    /// time for it ([`Renderer::render_at`]).
+    fn process(&mut self, time: u64, clock_ns: u64, left: &mut [f32], right: &mut [f32]);
 }
 
 /// What the control side and the render side of one engine share.
@@ -336,6 +337,15 @@ impl Renderer {
     /// Renders `left.len()` frames (both slices must have that length) and advances the clock.
     /// Real-time safe: no allocation, no lock, no system call other than reading the clock.
     pub fn render(&mut self, left: &mut [f32], right: &mut [f32]) {
+        self.render_at(super::insert::monotonic_ns(), left, right);
+    }
+
+    /// As [`Renderer::render`], for a device (or a test with a clock of its own) that says
+    /// when the callback began that these frames are rendered for: `clock_ns`, in nanoseconds
+    /// of the monotonic clock, plus the duration of the frames the same callback had rendered
+    /// before. An input device with another clock than the output's is followed by this time
+    /// ([`crate::inputs`]); nothing else depends on it.
+    pub fn render_at(&mut self, clock_ns: u64, left: &mut [f32], right: &mut [f32]) {
         let frames = left.len().min(right.len());
         if frames == 0 {
             return;
@@ -366,6 +376,7 @@ impl Renderer {
                 break;
             }
             self.plan.begin_block(self.time, count);
+            self.plan.set_clock(clock_ns + (at as f64 / self.sample_rate * 1e9) as u64);
             let info = self.block_info(count, cycle_end_ns);
             let transport = (info.playing, self.status.status().transport_seek_revision);
             if transport != self.seen_transport {
@@ -400,7 +411,7 @@ impl Renderer {
             at += count;
         }
         if let Some(stage) = self.output_stage.as_mut() {
-            stage.process(stage_time, &mut left[..frames], &mut right[..frames]);
+            stage.process(stage_time, clock_ns, &mut left[..frames], &mut right[..frames]);
         }
         self.shared.frames.store(self.time, Ordering::Relaxed);
         let spent = started.elapsed().as_secs_f64() * self.sample_rate / frames as f64;

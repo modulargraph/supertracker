@@ -3,7 +3,7 @@
 mod common;
 
 use common::*;
-use st_audio::inputs::{InputRequest, NULL_TONE_INPUT};
+use st_audio::inputs::{InputRequest, NULL_MANUAL_INPUT, NULL_TONE_INPUT};
 use st_audio::live::{RecordRequest, RecordSource};
 use st_audio::samples::read_wav;
 use st_audio::{AudioEngine, DeviceChoice, EngineOptions, PlayOptions};
@@ -17,7 +17,7 @@ fn file(label: &str) -> PathBuf {
 }
 
 fn master(path: &std::path::Path) -> RecordRequest {
-    RecordRequest { source: RecordSource::Master, path: path.to_path_buf(), monitor: false, monitor_volume: 0.0, compensation_frames: 0 }
+    RecordRequest { source: RecordSource::Master, path: path.to_path_buf(), monitor: false, monitor_volume: 0.0, output_latency_frames: 0 }
 }
 
 #[test]
@@ -101,12 +101,55 @@ fn a_master_take_on_the_null_device_reproduces_the_song() {
     let _ = std::fs::remove_file(path);
 }
 
+/// What the manual input captures: the null input's test tone, 440 Hz on channel 0 and 880 Hz
+/// on channel 1 at a quarter of full scale.
+fn tone(frame: usize, channel: usize) -> f32 {
+    (frame as f64 * 440.0 * (channel + 1) as f64 / 48_000.0 * std::f64::consts::TAU).sin() as f32 * 0.25
+}
+
+/// The input device and the audio thread of an engine without a device, as one interface with
+/// one clock: each step delivers a block of input and renders a block.
+struct Interface {
+    engine: std::sync::Arc<AudioEngine>,
+    frames: usize,
+    left: Vec<f32>,
+    right: Vec<f32>,
+}
+
+impl Interface {
+    const BLOCK: usize = 256;
+
+    fn run(&mut self, blocks: usize) {
+        for _ in 0..blocks {
+            let base = self.frames;
+            self.engine.live().inputs().hub().deliver(Self::BLOCK, 8, |frame, channel| tone(base + frame, channel));
+            let (left, right) = self.engine.render_offline(Self::BLOCK, Self::BLOCK);
+            self.left.extend(left);
+            self.right.extend(right);
+            self.frames += Self::BLOCK;
+        }
+    }
+
+    /// Ends the take; the source acknowledges Stop with the next block it renders.
+    fn stop(&mut self) -> st_audio::live::TakeFinished {
+        let stopper = std::thread::spawn({
+            let engine = self.engine.clone();
+            move || engine.live().stop_record().expect("a take was running")
+        });
+        while !stopper.is_finished() {
+            self.run(1);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        stopper.join().unwrap()
+    }
+}
+
 #[test]
 fn an_input_is_metered_monitored_and_recorded_with_its_latency_left_out() {
     let engine = engine();
     engine.publish(&parse(&project(1))).unwrap();
     let live = engine.live();
-    live.inputs().set_format(48_000.0, 256, true);
+    live.inputs().set_format(48_000.0, 256, "null");
     assert!(live.inputs().null_input().is_some_and(|input| input.uid == "null" && input.id == 0 && input.input_channels == 2), "the null input is offered with the null output");
     // The test input: 440 Hz on channel 0, 880 Hz on channel 1, both at a quarter of full scale.
     live.inputs().configure(&InputRequest { uid: Some(NULL_TONE_INPUT.to_string()), channels: Some(vec![0, 1]), meter: Some(true), ..InputRequest::default() }).unwrap();
@@ -117,46 +160,69 @@ fn an_input_is_metered_monitored_and_recorded_with_its_latency_left_out() {
     let mut devices = serde_json::json!({});
     live.decorate_devices(&mut devices);
     assert_eq!((devices["inputUid"].clone(), devices["inputChannels"].clone(), devices["inputMetering"].clone(), devices["inputRunning"].clone(), devices["monitoring"].clone()), (serde_json::json!(NULL_TONE_INPUT), serde_json::json!([0, 1]), serde_json::json!(true), serde_json::json!(true), serde_json::json!(false)));
+    assert_eq!(devices["inputSampleRate"], 48_000.0);
 
-    // A stereo take, with the first 480 frames left out (latency compensation), monitored at 0.5.
+    // A take is recorded on the render thread, on the output's clock. From here on the test is
+    // the interface: the manual input delivers the same tone, block for block with the render.
+    live.inputs().configure(&InputRequest { uid: Some(NULL_MANUAL_INPUT.to_string()), meter: Some(false), ..InputRequest::default() }).unwrap();
+    let mut interface = Interface { engine: engine.clone(), frames: 0, left: Vec::new(), right: Vec::new() };
+    interface.run(4);
+    assert!(peak(&interface.left) == 0.0, "nobody listens to the input yet");
+    // A stereo take, monitored at 0.5. The output adds 480 frames of latency (the request says
+    // so) and the input's way to the render thread one block: both are left out of the start.
     let path = file("input");
-    let request = RecordRequest { source: RecordSource::Input, path: path.clone(), monitor: true, monitor_volume: 0.5, compensation_frames: 480 };
+    let request = RecordRequest { source: RecordSource::Input, path: path.clone(), monitor: true, monitor_volume: 0.5, output_latency_frames: 480 };
     assert_eq!(live.record(&request).unwrap(), 2);
-    std::thread::sleep(Duration::from_millis(400));
-    // The monitored input is mixed into the output (nothing else plays). The test renders
-    // faster than the input delivers, so only what has arrived by now is there to hear.
-    let (left, right) = engine.render_offline(2_048, 512);
-    assert!((peak(&left) - 0.125).abs() < 0.01 && (peak(&right) - 0.125).abs() < 0.01, "monitoring at half volume: {} / {}", peak(&left), peak(&right));
-    let take = live.stop_record().unwrap();
-    assert_eq!((take.source, take.compensation_frames, take.file.problem.clone(), take.file.channels), (RecordSource::Input, 480, None, 2));
+    let began = interface.frames;
+    interface.run(40);
+    // The monitored input is mixed into the output (nothing else plays): after the block the
+    // feed waits for, input frame n is heard at frame n + 256.
+    let heard = began + Interface::BLOCK;
+    assert!(peak(&interface.left[began..heard]) == 0.0);
+    for index in (heard..interface.left.len()).step_by(7) {
+        assert!((interface.left[index] - 0.5 * tone(index - 256, 0)).abs() < 1e-6 && (interface.right[index] - 0.5 * tone(index - 256, 1)).abs() < 1e-6, "monitoring, frame {index}");
+    }
+    let take = interface.stop();
+    assert_eq!((take.source, take.compensation_frames, take.file.problem.clone(), take.file.dropped, take.file.channels, take.file.sample_rate), (RecordSource::Input, 480 + 256, None, 0, 2, 48_000));
+    // The take's clock is the output's: it began with the first block rendered after Record,
+    // and holds one frame per rendered frame from 736 frames later up to Stop.
+    let (start, end) = (take.file.start_frame.unwrap(), take.file.end_frame.unwrap());
+    assert_eq!((start, end - start), ((began + 480 + 256) as i64, take.file.frames as i64));
     let recorded = read_wav(&std::fs::read(&path).unwrap()).unwrap();
-    assert!(recorded.frames() > 9_600, "{} frames", recorded.frames());
-    // The file starts at input frame start + 480: the sine's phase says so.
-    let start = take.file.start_frame.unwrap() as f64;
-    for index in (0..4_800).step_by(7) {
-        let expected = |frequency: f64| ((start + index as f64) * frequency / 48_000.0 * std::f64::consts::TAU).sin() as f32 * 0.25;
-        assert!((recorded.left[index] - expected(440.0)).abs() < 1e-4 && (recorded.right[index] - expected(880.0)).abs() < 1e-4, "frame {index}");
+    assert!(recorded.frames() as u64 == take.file.frames && recorded.frames() >= 40 * 256 - 736, "{} frames", recorded.frames());
+    // Its first frame is what the input captured 480 frames after the take began: what was
+    // played to what the output made heard then. 24-bit PCM, to the quantisation step.
+    for index in 0..recorded.frames() {
+        let captured = start as usize - 256 + index;
+        assert!((recorded.left[index] - tone(captured, 0)).abs() < 2.5e-7 && (recorded.right[index] - tone(captured, 1)).abs() < 2.5e-7, "frame {index}");
     }
     // Monitoring ended with the take's request? No: it stays as configured until changed.
     live.inputs().configure(&InputRequest { monitor: Some(false), meter: Some(false), channels: Some(vec![1]), ..InputRequest::default() }).unwrap();
     let mut devices = serde_json::json!({});
     live.decorate_devices(&mut devices);
     assert_eq!((devices["inputRunning"].clone(), devices["inputChannels"].clone()), (serde_json::json!(false), serde_json::json!([1])), "an input nobody uses is closed");
-    // A mono take of channel 1 (the 880 Hz side).
+    // A mono take of channel 1 (the 880 Hz side), not monitored.
     let mono = file("mono");
-    let request = RecordRequest { source: RecordSource::Input, path: mono.clone(), monitor: false, monitor_volume: 0.0, compensation_frames: 0 };
+    let request = RecordRequest { source: RecordSource::Input, path: mono.clone(), monitor: false, monitor_volume: 0.0, output_latency_frames: 0 };
     assert_eq!(live.record(&request).unwrap(), 1);
-    std::thread::sleep(Duration::from_millis(150));
+    let from = interface.left.len();
+    interface.run(40);
+    assert!(peak(&interface.left[from..]) == 0.0, "a take alone is not heard");
     assert!(engine.status()["inputPeakLeft"].as_f64().unwrap() > 0.2, "the take's level is shown while the meter is off");
-    let take = live.stop_record().unwrap();
+    let take = interface.stop();
     let recorded = read_wav(&std::fs::read(&mono).unwrap()).unwrap();
     // 880 Hz for a tenth of a second: 176 zero crossings (the 440 Hz side would have 88).
     let crossings = recorded.left[..4_800].windows(2).filter(|pair| (pair[0] < 0.0) != (pair[1] < 0.0)).count();
     assert!((174..=178).contains(&crossings) && (peak(&recorded.left) - 0.25).abs() < 0.01, "{crossings} zero crossings");
-    assert_eq!(take.file.channels, 1);
+    assert_eq!((take.file.channels, take.compensation_frames), (1, 256));
     assert!(!live.inputs().watch(), "nothing was lost");
     assert!(live.inputs().configure(&InputRequest { channels: Some(vec![0, 1, 2]), ..InputRequest::default() }).is_err());
     assert!(live.inputs().configure(&InputRequest { id: Some(123_456), ..InputRequest::default() }).is_err());
+    // A take needs the input: one that cannot be opened is refused and leaves no file behind.
+    live.inputs().configure(&InputRequest { uid: Some("null:manual:12".to_string()), ..InputRequest::default() }).unwrap();
+    let refused = file("refused");
+    let request = RecordRequest { source: RecordSource::Input, path: refused.clone(), monitor: false, monitor_volume: 0.0, output_latency_frames: 0 };
+    assert!(live.record(&request).unwrap_err().contains("no rate that can be converted") && !refused.exists() && !live.is_recording());
     let _ = std::fs::remove_file(path);
     let _ = std::fs::remove_file(mono);
 }

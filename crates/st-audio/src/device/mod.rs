@@ -63,8 +63,36 @@ pub trait OutputStream: Send {
     fn sample_rate(&self) -> f64;
     /// Frames per block (the device may deliver other sizes; this is what was asked for).
     fn buffer_size(&self) -> u32;
+    /// The largest block the device has asked for in one callback so far, where that is
+    /// measured: a device may use another size than it was asked for.
+    fn largest_block(&self) -> u32 {
+        self.buffer_size()
+    }
     /// False once the device has failed or disappeared.
     fn is_alive(&self) -> bool;
+}
+
+/// Whether the input device `input` and the output device `output` (their `uid`s) are certain
+/// to run on one clock, so that audio can pass between them frame for frame. Only then: any
+/// other pair is treated as two clocks and resampled ([`crate::inputs`]), which costs latency
+/// but is right in both cases.
+///
+/// `cpal` knows a device by its name only. On macOS the same name on both sides is one Core
+/// Audio device (an aggregate device included, whose members Core Audio keeps together). On
+/// Linux the same name is one clock only when it names a sound card (`hw:CARD=...`,
+/// `front:CARD=...`, `sysdefault:CARD=...`): `default`, `pulse` or `pipewire` are a sound
+/// server's doors, behind which the input and the output may be different hardware.
+pub fn same_clock(output: &str, input: &str) -> bool {
+    if output.is_empty() || output != input {
+        return false;
+    }
+    if cfg!(target_os = "macos") {
+        true
+    } else if cfg!(target_os = "linux") {
+        output.contains("CARD=")
+    } else {
+        false
+    }
 }
 
 /// Buffer sizes the interface offers.
@@ -73,7 +101,9 @@ pub const BUFFER_SIZES: [u32; 6] = [64, 128, 256, 512, 1024, 2048];
 /// Renders `frames` frames into planar scratch buffers and hands them to `write`, block by
 /// block. A renderer that is busy elsewhere gives silence. `playback_delay` is what the device
 /// says lies between this callback and the moment its first frame is heard; scheduled MIDI is
-/// delayed by it so external instruments sound with the engine. Real-time safe.
+/// delayed by it so external instruments sound with the engine. Call it as the device's
+/// callback begins: it reads the monotonic clock for the renderer, which an input device with
+/// a clock of its own is followed by ([`Renderer::render_at`]). Real-time safe.
 #[inline]
 pub(crate) fn render_blocks(
     renderer: &SharedRenderer,
@@ -84,13 +114,15 @@ pub(crate) fn render_blocks(
     mut write: impl FnMut(usize, &[f32], &[f32]),
 ) {
     let capacity = left.len().min(right.len()).max(1);
+    let began = crate::graph::insert::monotonic_ns();
     let mut done = 0;
     while done < frames {
         let count = (frames - done).min(capacity);
         match renderer.try_lock() {
             Ok(mut renderer) => {
                 renderer.midi().set_playback_delay(playback_delay);
-                renderer.render(&mut left[..count], &mut right[..count]);
+                let clock_ns = began + (done as f64 / renderer.sample_rate() * 1e9) as u64;
+                renderer.render_at(clock_ns, &mut left[..count], &mut right[..count]);
             }
             Err(_) => {
                 left[..count].fill(0.0);

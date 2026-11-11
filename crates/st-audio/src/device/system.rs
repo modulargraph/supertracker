@@ -12,7 +12,7 @@
 
 use super::{device_id, DeviceInfo, OutputStream, SharedRenderer};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 
@@ -101,6 +101,8 @@ pub struct SystemOutput {
     uid: String,
     sample_rate: f64,
     buffer_size: u32,
+    /// The largest callback so far, in frames.
+    largest: Arc<AtomicU32>,
     lost: Arc<AtomicBool>,
     stop: Option<mpsc::Sender<()>>,
     thread: Option<std::thread::JoinHandle<()>>,
@@ -121,7 +123,7 @@ fn write_interleaved<T: cpal::SizedSample + cpal::FromSample<f32>>(data: &mut [T
     }
 }
 
-fn build<T: cpal::SizedSample + cpal::FromSample<f32>>(device: &cpal::Device, config: &cpal::StreamConfig, renderer: SharedRenderer, lost: Arc<AtomicBool>) -> Result<cpal::Stream, cpal::BuildStreamError> {
+fn build<T: cpal::SizedSample + cpal::FromSample<f32>>(device: &cpal::Device, config: &cpal::StreamConfig, renderer: SharedRenderer, lost: Arc<AtomicBool>, largest: Arc<AtomicU32>) -> Result<cpal::Stream, cpal::BuildStreamError> {
     let channels = config.channels.max(1) as usize;
     // Scratch for the largest block rendered in one go; larger callbacks are rendered in parts.
     let (mut left, mut right) = (vec![0.0f32; 8192], vec![0.0f32; 8192]);
@@ -129,6 +131,7 @@ fn build<T: cpal::SizedSample + cpal::FromSample<f32>>(device: &cpal::Device, co
         config,
         move |data: &mut [T], info: &cpal::OutputCallbackInfo| {
             let frames = data.len() / channels;
+            largest.fetch_max(frames.min(u32::MAX as usize) as u32, Ordering::Relaxed);
             // The time from this callback to the moment its first frame leaves the device.
             let timestamp = info.timestamp();
             let playback_delay = timestamp.playback.duration_since(&timestamp.callback).unwrap_or_default();
@@ -147,6 +150,8 @@ impl SystemOutput {
         let (stop, stopped) = mpsc::channel::<()>();
         let (ready, opened) = mpsc::channel::<Result<(), String>>();
         let (name, flag) = (uid.to_string(), lost.clone());
+        let largest = Arc::new(AtomicU32::new(0));
+        let measured = largest.clone();
         let thread = std::thread::Builder::new()
             .name("audio-device".to_string())
             .spawn(move || {
@@ -167,10 +172,10 @@ impl SystemOutput {
                     let format = range.sample_format();
                     let config = cpal::StreamConfig { channels: range.channels(), sample_rate: rate, buffer_size: fixed };
                     let stream = match format {
-                        cpal::SampleFormat::F32 => build::<f32>(&device, &config, renderer, flag),
-                        cpal::SampleFormat::I16 => build::<i16>(&device, &config, renderer, flag),
-                        cpal::SampleFormat::U16 => build::<u16>(&device, &config, renderer, flag),
-                        cpal::SampleFormat::I32 => build::<i32>(&device, &config, renderer, flag),
+                        cpal::SampleFormat::F32 => build::<f32>(&device, &config, renderer, flag, measured),
+                        cpal::SampleFormat::I16 => build::<i16>(&device, &config, renderer, flag, measured),
+                        cpal::SampleFormat::U16 => build::<u16>(&device, &config, renderer, flag, measured),
+                        cpal::SampleFormat::I32 => build::<i32>(&device, &config, renderer, flag, measured),
                         other => return Err(format!("{name} uses a sample format this version cannot write ({other}).")),
                     }
                     .map_err(|error| format!("{name} could not be opened: {error}"))?;
@@ -191,7 +196,7 @@ impl SystemOutput {
             })
             .map_err(|error| format!("The audio device thread could not start: {error}"))?;
         match opened.recv_timeout(std::time::Duration::from_secs(10)) {
-            Ok(Ok(())) => Ok(SystemOutput { uid: uid.to_string(), sample_rate, buffer_size, lost, stop: Some(stop), thread: Some(thread) }),
+            Ok(Ok(())) => Ok(SystemOutput { uid: uid.to_string(), sample_rate, buffer_size, largest, lost, stop: Some(stop), thread: Some(thread) }),
             Ok(Err(error)) => {
                 let _ = thread.join();
                 Err(error)
@@ -210,6 +215,9 @@ impl OutputStream for SystemOutput {
     }
     fn buffer_size(&self) -> u32 {
         self.buffer_size
+    }
+    fn largest_block(&self) -> u32 {
+        self.largest.load(Ordering::Relaxed).max(self.buffer_size)
     }
     fn is_alive(&self) -> bool {
         !self.lost.load(Ordering::Acquire) && self.thread.as_ref().is_some_and(|thread| !thread.is_finished())

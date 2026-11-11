@@ -1,5 +1,5 @@
 //! What runs on the live output after the mixer: the preview voices, the monitored input and
-//! the tap of a master recording.
+//! the taps of a recording.
 //!
 //! [`Live`] is the control side, one per [`crate::AudioEngine`]; it survives a restart of the
 //! engine at another sample rate. Each renderer gets a fresh [`OutputStage`] from
@@ -7,12 +7,30 @@
 //!
 //! ```text
 //!   plan (strips ... master fader, meters)  ->  + preview voices  ->  + monitored input  ->  master tap  ->  device
+//!                                                                     the chosen input channels,
+//!                                                                     on the output's clock  ->  input tap
 //! ```
 //!
 //! A master recording therefore holds what the device got, previews and monitoring included.
 //! [`Live`] also owns the input ([`crate::inputs::Inputs`]: one stream for the meter,
 //! monitoring, takes and the line inputs of the project's tracks) and the take in progress
 //! ([`Live::record`], [`Live::stop_record`]).
+//!
+//! # The clock of an input take
+//!
+//! A take of the input is recorded here, on the render thread, from the feed that brings the
+//! chosen channels over from the input's thread ([`crate::inputs::LineFeed`]): the file is at
+//! the engine's sample rate and on the output's clock, one frame per frame the output played,
+//! and its start and end are graph frames like a master take's. That is what keeps a take in
+//! place over its whole length when it is put into the song, whose time is the output's.
+//! When the input is the output's own device the frames are the device's, bit for bit. When
+//! it is another device they have been through the converter once (100 dB below the signal,
+//! see [`crate::asrc`]). The alternative, the device's own frames at its own rate with the
+//! measured ratio beside them, would leave the correction to everything that later plays the
+//! file: without it a take from a clock 200 ppm off is 60 ms out after five minutes, and a
+//! file at another nominal rate is resampled when it is loaded anyway. The price is that an
+//! input take needs a running renderer, which the application always has (the null device
+//! renders where no audio device is).
 //!
 //! Previews bypass the project's master strip: the master fader, the master inserts and the
 //! master meter do not see them, and neither do offline renders, which run on engines of their
@@ -47,8 +65,10 @@ pub struct RecordRequest {
     /// Input takes: whether the input is heard while it is recorded, and how loud.
     pub monitor: bool,
     pub monitor_volume: f32,
-    /// Latency to compensate in an input take, in frames: the take's first frames are left out.
-    pub compensation_frames: u64,
+    /// Input takes: what the output adds to the latency of what is played to it, in frames.
+    /// The take's first frames are left out for it, for the latency the input device reports
+    /// and for the delay of the feed that brings the input to the render thread.
+    pub output_latency_frames: u64,
 }
 
 struct Take {
@@ -62,7 +82,8 @@ struct Take {
 pub struct TakeFinished {
     pub source: RecordSource,
     pub file: Finished,
-    /// Frames left out at the start of an input take (its latency compensation).
+    /// Frames left out at the start of an input take: the latency of the output, of the input
+    /// device and of the input's feed.
     pub compensation_frames: u64,
 }
 
@@ -72,8 +93,10 @@ pub struct Live {
     /// Offline renders in flight (export, bounce, freeze), for the status' `exporting`.
     exporting: std::sync::atomic::AtomicUsize,
     inputs: Inputs,
-    /// The tap of a master take, for the stage. The render thread only `try_lock`s it.
+    /// The tap of a master take and the tap of an input take, for the stage. The render thread
+    /// only `try_lock`s them.
     master_tap: Arc<Mutex<Option<Tap>>>,
+    input_tap: Arc<Mutex<Option<Tap>>>,
     take: Mutex<Option<Take>>,
     stopping: AtomicBool,
     sample_rate: Mutex<f64>,
@@ -86,6 +109,7 @@ impl Default for Live {
             exporting: Default::default(),
             inputs: Inputs::default(),
             master_tap: Arc::default(),
+            input_tap: Arc::default(),
             take: Mutex::default(),
             stopping: AtomicBool::new(false),
             sample_rate: Mutex::new(48_000.0),
@@ -97,18 +121,39 @@ struct Stage {
     preview: PreviewVoices,
     hub: Arc<InputHub>,
     master_tap: Arc<Mutex<Option<Tap>>>,
+    input_tap: Arc<Mutex<Option<Tap>>>,
+    sample_rate: f64,
     scratch: (Vec<f32>, Vec<f32>),
 }
 
 impl OutputStage for Stage {
-    fn process(&mut self, time: u64, left: &mut [f32], right: &mut [f32]) {
+    fn process(&mut self, time: u64, clock_ns: u64, left: &mut [f32], right: &mut [f32]) {
         self.preview.mix(left, right);
         let frames = left.len().min(right.len());
         let step = self.scratch.0.len();
+        let input_tap = self.input_tap.try_lock();
+        let input_tap = input_tap.as_ref().ok().and_then(|tap| tap.as_ref());
         let mut at = 0;
         while at < frames {
             let end = (at + step).min(frames);
-            self.hub.monitor(&mut left[at..end], &mut right[at..end], (&mut self.scratch.0, &mut self.scratch.1));
+            // The chosen input channels, as the output's clock hears them.
+            let (heard_left, heard_right) = (&mut self.scratch.0[..end - at], &mut self.scratch.1[..end - at]);
+            let heard = self.hub.listen(clock_ns + (at as f64 / self.sample_rate * 1e9) as u64, heard_left, heard_right);
+            if let (true, Some(volume)) = (heard, self.hub.monitor_gain()) {
+                for index in 0..end - at {
+                    left[at + index] += heard_left[index] * volume;
+                    right[at + index] += heard_right[index] * volume;
+                }
+            }
+            // The take holds every frame the output rendered: silence where the input has
+            // nothing.
+            if let Some(tap) = input_tap {
+                if !heard {
+                    heard_left.fill(0.0);
+                    heard_right.fill(0.0);
+                }
+                tap.capture(time + at as u64, heard_left, heard_right);
+            }
             at = end;
         }
         if let Ok(tap) = self.master_tap.try_lock() {
@@ -123,7 +168,7 @@ impl Live {
     /// The stage for a renderer at `sample_rate`. What the previous stage played is gone with it.
     pub fn stage(&self, sample_rate: f64) -> Box<dyn OutputStage> {
         *self.sample_rate.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = sample_rate;
-        Box::new(Stage { preview: self.preview.voices(sample_rate), hub: self.inputs.hub().clone(), master_tap: self.master_tap.clone(), scratch: (vec![0.0; 8192], vec![0.0; 8192]) })
+        Box::new(Stage { preview: self.preview.voices(sample_rate), hub: self.inputs.hub().clone(), master_tap: self.master_tap.clone(), input_tap: self.input_tap.clone(), sample_rate, scratch: (vec![0.0; 8192], vec![0.0; 8192]) })
     }
 
     /// The audio input: device, channels, meter and monitoring.
@@ -138,21 +183,22 @@ impl Live {
             return Err("A recording is already running.".to_string());
         }
         let rate = *self.sample_rate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        // The input is opened first: its latency is part of what the take leaves out.
         let (channels, compensation) = match request.source {
             RecordSource::Master => (2, 0),
-            RecordSource::Input => (self.inputs.take_channels(), request.compensation_frames),
+            RecordSource::Input => (self.inputs.take_channels(), request.output_latency_frames + self.inputs.begin_take(Some((request.monitor, request.monitor_volume)))? as u64),
         };
-        let (recording, tap) = Recording::start(&request.path, rate.round() as u32, channels, compensation)?;
-        match request.source {
-            RecordSource::Master => *self.master_tap.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(tap),
-            RecordSource::Input => {
-                if let Err(error) = self.inputs.begin_take(tap, Some((request.monitor, request.monitor_volume))) {
-                    drop(recording);
-                    let _ = std::fs::remove_file(&request.path);
-                    return Err(error);
+        let (recording, tap) = match Recording::start(&request.path, rate.round() as u32, channels, compensation) {
+            Ok(started) => started,
+            Err(error) => {
+                if request.source == RecordSource::Input {
+                    self.inputs.end_take();
                 }
+                return Err(error);
             }
-        }
+        };
+        let slot = if request.source == RecordSource::Master { &self.master_tap } else { &self.input_tap };
+        *slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(tap);
         *take = Some(Take { recording, source: request.source, compensation });
         Ok(channels)
     }
@@ -164,7 +210,10 @@ impl Live {
         let file = take.recording.finish(Duration::from_secs(2));
         match take.source {
             RecordSource::Master => *self.master_tap.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = None,
-            RecordSource::Input => self.inputs.end_take(),
+            RecordSource::Input => {
+                *self.input_tap.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+                self.inputs.end_take();
+            }
         }
         self.stopping.store(false, Ordering::Release);
         Some(TakeFinished { source: take.source, file, compensation_frames: take.compensation })

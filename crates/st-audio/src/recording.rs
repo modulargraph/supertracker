@@ -94,11 +94,13 @@ impl AudioRing {
         count
     }
 
-    /// Consumer: drops the oldest `count` frames waiting (all of them when fewer wait).
-    pub fn skip(&self, count: usize) {
+    /// Consumer: drops the oldest `count` frames waiting (all of them when fewer wait) and
+    /// returns how many it dropped.
+    pub fn skip(&self, count: usize) -> usize {
         let read = self.read.load(Ordering::Relaxed);
         let count = count.min(self.written.load(Ordering::Acquire).wrapping_sub(read));
         self.read.store(read.wrapping_add(count), Ordering::Release);
+        count
     }
 
     /// Consumer: drops everything waiting.

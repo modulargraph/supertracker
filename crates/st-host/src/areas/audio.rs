@@ -697,7 +697,7 @@ impl Audio {
     fn devices_value(&self, status: st_audio::DevicesStatus) -> Value {
         // The input follows the engine's format; the null input is offered with the null output.
         let live = self.engine.live();
-        live.inputs().set_format(status.sample_rate, status.buffer_size, status.output_uid == st_audio::device::NULL_DEVICE);
+        live.inputs().set_format(status.sample_rate, status.buffer_size, &status.output_uid);
         let mut value = serde_json::to_value(status).unwrap_or(Value::Null);
         live.decorate_devices(&mut value);
         // The line inputs the published project routes into its tracks, and why the first one
@@ -750,8 +750,8 @@ impl Audio {
             DeviceChoice::Null => Some(st_audio::device::NULL_DEVICE.to_string()),
             DeviceChoice::SystemDefault | DeviceChoice::None => None,
         };
-        // The input after the output: it runs at the engine's (possibly new) sample rate.
-        live.inputs().set_format(status.sample_rate, status.buffer_size, status.output_uid == st_audio::device::NULL_DEVICE);
+        // The input after the output: it follows the engine's (possibly new) sample rate and device.
+        live.inputs().set_format(status.sample_rate, status.buffer_size, &status.output_uid);
         let configured = live.inputs().configure(&input).map_err(Error::new);
         self.settings.set(SETTINGS_SECTION, &DeviceSettings { output, buffer_size: Some(buffer_size), sample_rate: Some(status.sample_rate), input: live.inputs().chosen() })?;
         // The project's line inputs follow the devices: another input or another block size
