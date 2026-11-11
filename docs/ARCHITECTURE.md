@@ -90,17 +90,21 @@ silently ignored.
 ## Engine
 
 `tracker-engine` is pure Rust with no dependencies. It holds what the host uses and nothing else: a project has
-one tempo and one meter, and the engine renders one block after another, each bus once. Comments in the source say
-where an operand type or an order of evaluation matters for bit-identical PCM; many of its tests compare recorded
-PCM hashes.
+one tempo and one meter, and the engine renders one block after another, each bus once. It mixes nothing: a
+track's bus is the sum of the track's voices and clips, and faders, pan, mute, solo, sends, returns and the
+master are the mixer's (`st-audio`). Comments in the source say where an operand type or an order of evaluation
+matters for bit-identical PCM; its tests read the buses, and the benchmark suites compare recorded PCM hashes of
+them.
 
 - `tracker_engine::engine`: `Engine::new(sample_rate)` and its three handles (`ControlHalf` for the control thread,
   `RenderHalf` for the audio thread, the clonable `StatusHandle` for everyone). `engine/host.rs` states why they may
-  cross threads. The audio thread calls `render_block` and reads the track buses and the return bus from `block()`,
-  the events of the block from `pop_event` and, when it records, the song frame of the block from
-  `block_song_frame`. [AUDIO_ENGINE.md](AUDIO_ENGINE.md) describes the behaviour.
+  cross threads. The audio thread calls `render_block` and reads the track buses and the return bus (the
+  metronome) from `block()`, the events of the block from `pop_event` (notes of plug-in and MIDI instruments,
+  the mixer values of the tracks, the values of host lanes and step locks) and, when it records, the song frame
+  of the block from `block_song_frame`. [AUDIO_ENGINE.md](AUDIO_ENGINE.md) describes the behaviour.
 - `tracker_engine::effects`: the built-in effect catalogue, `Effect` (an instance with lock-free parameter
-  mailboxes; `EffectControls` for other threads) and the drum models.
+  mailboxes; `EffectControls` for other threads), the drum models, and DSP building blocks (among them the comb
+  and all-pass filters of the mixer's reverb return).
 
 Run its tests from the repository root:
 

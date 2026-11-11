@@ -12,10 +12,9 @@ the interface records note edges only when it has seen it. It is always there in
 A `note.on` or `note.off` request with `captureInput: true` and a bounded `inputOwner` is answered with
 `inputAcknowledgement`:
 
-- `status`: `applied`; `discontinuity` (the timeline changed between the edge and its block); `controlFlush` (the
-  engine took the edge without rendering audio); or `unavailable`, with a `reason` when the edge could not be
-  queued, the engine did not answer within a second, or the recording session or the arm intent changed
-  meanwhile. Only an applied edge may be inserted.
+- `status`: `applied`; `discontinuity` (the timeline changed between the edge and its block); or `unavailable`,
+  with a `reason` when the edge could not be queued, the engine did not answer within a second, or the recording
+  session or the arm intent changed meanwhile. Only an applied edge may be inserted.
 - `applied`, `playing`, `recording`: what the block that took the edge was doing.
 - `pattern`, `row`, `sequence`: where the edge landed, from that block, never from published status. A note-on in
   the second half of a row is placed on the next row.
