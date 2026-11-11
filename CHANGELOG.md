@@ -68,6 +68,10 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
   that says `au` is refused as an unknown instrument type.
 - The page's second way of recording notes (timed by the wall clock). Every recorded note is placed by the engine's
   acknowledgement.
+- A plug-in entry of a project without an `instanceID` or a `format` is refused.
+- A choke group saved on an instrument is not read: the choke group is the track's.
+- A hardware instrument's recording input saved by device name only (no `deviceUID`) is refused.
+- Kit browser settings saved as `{filters: {expansions, tags}, userOnly}` are not restored.
 
 ### Fixed along the way
 
