@@ -22,42 +22,11 @@ impl Render {
         self.input_loop_beats = 0.0;
     }
 
-    /// `clearEffects`: silence the send returns (delay, pre-delay, reverb).
-    pub fn clear_effects(&mut self) {
-        self.delay_tone_l = 0.0;
-        self.delay_tone_r = 0.0;
-        self.pre_l.fill(0.0);
-        self.pre_r.fill(0.0);
-        self.pre_pos = 0;
-        self.delay_l.fill(0.0);
-        self.delay_r.fill(0.0);
-        for comb in self.comb_l.iter_mut().chain(self.comb_r.iter_mut()) {
-            comb.clear();
-        }
-        for allpass in self.ap_l.iter_mut().chain(self.ap_r.iter_mut()) {
-            allpass.clear();
-        }
-    }
-
     /// Whether `sh` is the shared state of this render state's own engine (see
     /// `Control::owns`); the render entry points do nothing with another engine's.
     #[inline]
     pub(crate) fn owns(&self, sh: &Shared) -> bool {
         sh.engine_id == self.engine_id
-    }
-
-    /// Direct stereo render of the engine's own mix: `frames` frames into whichever of the two
-    /// buffers are given (a buffer shorter than `frames` receives what fits). Without buffers
-    /// the engine still advances, so `render(sh, None, None, 0)` applies queued commands and a
-    /// new project.
-    pub fn render(&mut self, sh: &Shared, mut left: Option<&mut [f32]>, mut right: Option<&mut [f32]>, frames: u32) {
-        if !self.owns(sh) {
-            for out in [left.as_deref_mut(), right.as_deref_mut()].into_iter().flatten() {
-                out.fill(0.0);
-            }
-            return;
-        }
-        self.process(sh, left, right, frames, false, 0);
     }
 
     /// `refresh`: adopt the latest published project, then apply queued commands and a pending
@@ -181,9 +150,6 @@ impl Render {
         }
         self.current = next_ptr;
         self.tb = next_tb;
-        if old.host_mixing != next.host_mixing {
-            self.clear_effects();
-        }
         self.song_end_frames = next_song_end_frames;
         self.pattern = clamp(self.pattern, 0, next.patterns.len() as i32 - 1);
         self.row = clamp(self.row, 0, next.pattern_length(self.pattern) - 1);
@@ -366,7 +332,6 @@ impl<'a> Rt<'a> {
                     self.reset_automation_events();
                     self.all_off(true, false);
                     self.clear_scheduled();
-                    self.e.clear_effects();
                     self.tb.pitch_bend.fill(0.0);
                     self.tb.mod_wheel.fill(0.0);
                     self.clear_queued();
@@ -482,16 +447,16 @@ impl<'a> Rt<'a> {
         self.p.sequence.get(index as u32 as usize).copied().unwrap_or(0)
     }
 
-    pub fn finish_input_acks(&mut self, audio_frame: bool, in_block: bool, graph_frame: u64) {
-        if audio_frame {
-            self.update_clock();
-        }
+    /// Completes the acknowledgements of the input edges applied at this frame. `graph_frame`
+    /// is the host's count of the frame.
+    pub fn finish_input_acks(&mut self, graph_frame: u64) {
+        self.update_clock();
         let e = &mut *self.e;
         let count = cmin(e.pending_input_count, e.pending_input_acks.len());
         for n in 0..count {
             let mut ack = e.pending_input_acks[n];
             ack.render_frame = e.total_frames as i64;
-            ack.graph_frame = if in_block && graph_frame <= (1u64 << 52) { graph_frame as i64 } else { i64::MIN };
+            ack.graph_frame = if graph_frame <= (1u64 << 52) { graph_frame as i64 } else { i64::MIN };
             // An early note keeps its placed row while that row is the one now playing or still
             // ahead.
             if ack.early == 0 || ack.pattern != e.pattern || ack.sequence != e.sequence || e.row > ack.row {
@@ -500,9 +465,7 @@ impl<'a> Rt<'a> {
                 ack.sequence = e.sequence;
                 ack.early = 0;
             }
-            ack.status = if !audio_frame {
-                ST_INPUT_ACK_CONTROL_FLUSH
-            } else if e.input_run_id == 0 || ack.run_id != e.input_run_id {
+            ack.status = if e.input_run_id == 0 || ack.run_id != e.input_run_id {
                 ST_INPUT_ACK_DISCONTINUITY
             } else {
                 ST_INPUT_ACK_APPLIED

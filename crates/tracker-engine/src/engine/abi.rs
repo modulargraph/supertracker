@@ -122,7 +122,6 @@ pub const ST_INPUT_NOTE_OFF: i32 = 2;
 pub const ST_INPUT_ACK_CAPACITY: usize = 4096;
 pub const ST_INPUT_ACK_APPLIED: i32 = 1;
 pub const ST_INPUT_ACK_DISCONTINUITY: i32 = 2;
-pub const ST_INPUT_ACK_CONTROL_FLUSH: i32 = 3;
 /// Bits of `STInputAck::flags`: the transport was playing / armed for recording at the edge.
 pub const ST_INPUT_CLOCK_PLAYING: i32 = 1;
 pub const ST_INPUT_CLOCK_RECORDING: i32 = 4;
@@ -133,7 +132,7 @@ pub const ST_VOICE_POSITION_PREVIEW: i32 = 2;
 pub const ST_VOICE_POSITION_ZONE: i32 = 4;
 pub const ST_VOICE_POSITION_SEQUENCED: i32 = 8;
 
-/// The bus of the stereo return (send effects, metronome): it follows the track buses and is
+/// The bus of the stereo return (the metronome and count-in clicks): it follows the track buses and is
 /// never below [`ST_MIN_RETURN_BUS`].
 #[inline]
 pub const fn return_bus(track_count: i32) -> i32 {
@@ -319,7 +318,7 @@ pub struct STInputAck {
     pub run_id: u64,
     pub render_frame: i64,
     /// The host's frame of the edge: the `time` given to `render_block` plus the offset in the
-    /// block. `i64::MIN` when the edge was applied by a direct render or without audio.
+    /// block. `i64::MIN` for a time beyond 2^52 frames.
     pub graph_frame: i64,
     /// Quarter beats played in this run up to the edge, counted through song loops.
     pub distance_beats: f64,

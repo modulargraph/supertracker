@@ -24,7 +24,7 @@ fn fixture_with(e: &mut Engine, rows: i32, song_loop: bool, swing: f32) {
     e.begin_update();
     e.clear_project();
     e.set_track_count(1);
-    e.set_timing(120.0, 4, swing, 1.0);
+    e.set_timing(120.0, 4, swing);
     e.set_pattern(0, rows);
     e.set_pattern(1, rows);
     e.set_sequence(&[0, 1], song_loop, 0);
@@ -240,7 +240,7 @@ fn ordinary_publication_retains_the_run_and_timeline_edits_break_it() {
     assert!(extended.run_id != first.run_id);
     // A tempo change rescales the timeline.
     e.begin_update();
-    e.set_timing(100.0, 4, 0.0, 1.0);
+    e.set_timing(100.0, 4, 0.0);
     e.commit_update();
     assert!(edge(&mut e, 4));
     render(&mut e, 1);
@@ -467,8 +467,10 @@ fn concurrent_single_producer_audio_consumer_20000_edge_delivery_without_lost_ac
     let mut render = std::thread::scope(|scope| {
         let done = &done;
         let audio = scope.spawn(move || {
+            let mut time = 0u64;
             while !done.load(Ordering::Acquire) {
-                realtime(|| render.advance(1));
+                realtime(|| render.render_block(time, 1));
+                time += 1;
             }
             render
         });
@@ -498,7 +500,7 @@ fn concurrent_single_producer_audio_consumer_20000_edge_delivery_without_lost_ac
         audio.join().expect("audio thread")
     });
     assert!(expected == 20001);
-    realtime(|| render.advance(1));
+    realtime(|| render.render_block(0, 1));
     assert!(control.pop_input_ack().is_none());
     zero_render_allocations();
 }

@@ -1,15 +1,13 @@
 //! The built-in send effects: the shared delay and reverb returns of `project.delay` and
 //! `project.reverb`.
 //!
-//! This is the DSP of the engine's own send returns (`send_returns` in
-//! `tracker_engine::engine::mixer`: a stereo cross-feedback delay with a tone filter, and a
-//! pre-delayed eight-comb/four-allpass reverb), moved out of the engine because the host mixes:
-//! each is a return of the graph, fed by every track's post-fader signal through that track's
-//! `delaySend` / `reverbSend`, wet only, with its `mix` as return level into the master. The
-//! arithmetic and its order are the engine's.
+//! A stereo cross-feedback delay with a tone filter, and a pre-delayed eight-comb/four-allpass
+//! reverb (its comb and all-pass filters are `tracker_engine::effects::common`'s). Each is a
+//! return of the graph, fed by every track's post-fader signal through that track's `delaySend`
+//! / `reverbSend`, wet only, with its `mix` as return level into the master.
 
 use super::spec::SendEffectsSpec;
-use tracker_engine::engine::state::{Allpass, Comb};
+use tracker_engine::effects::common::{Allpass, Comb};
 
 const COMB_SIZES: [i32; 8] = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617];
 const ALLPASS_SIZES: [i32; 4] = [556, 441, 341, 225];
@@ -51,7 +49,7 @@ impl DelayReturn {
         let size = self.left.len();
         let seconds = if spec.delay_beats > 0.0 { spec.delay_beats * 60.0 / bpm.max(1.0) } else { spec.delay_time as f64 };
         let delay_samples = (seconds * self.sample_rate).clamp(1.0, (size - 1) as f64);
-        // 1 = open; otherwise 200 Hz .. 20 kHz on a log scale (st_engine_set_send_effects).
+        // 1 = open; otherwise 200 Hz .. 20 kHz on a log scale.
         let tone_coefficient = if spec.delay_tone >= 1.0 {
             1.0
         } else {

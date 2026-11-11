@@ -149,14 +149,13 @@ impl Control {
 
     // ---- project settings ----
 
-    /// Tempo (20..999 BPM), lines per beat (1..32), swing (0..0.95) and master volume (0..2), each
-    /// clamped; non-finite values fall back to the defaults.
-    pub fn set_timing(&mut self, bpm: f64, lines_per_beat: i32, swing: f32, master_volume: f32) {
+    /// Tempo (20..999 BPM), lines per beat (1..32) and swing (0..0.95), each clamped; non-finite
+    /// values fall back to the defaults.
+    pub fn set_timing(&mut self, bpm: f64, lines_per_beat: i32, swing: f32) {
         let p = self.edit();
         p.bpm = clamp(finite64(bpm, 120.0), 20.0, 999.0);
         p.lpb = clamp(lines_per_beat, 1, 32);
         p.swing = clamp(finite(swing, 0.0), 0.0, 0.95);
-        p.master = clamp(finite(master_volume, 0.7), 0.0, 2.0);
     }
 
     /// The metronome: on/off, the meter that places its accents, and its volume.
@@ -182,7 +181,10 @@ impl Control {
         true
     }
 
-    /// Mixer settings of one track (clamped); an index outside 0..`ST_TRACK_SANITY_LIMIT` is ignored.
+    /// Mixer values of one track (clamped) and its instrument; an index outside
+    /// 0..`ST_TRACK_SANITY_LIMIT` is ignored. The engine does not apply volume, pan or sends: it
+    /// reports them, and what their lanes and step effects make of them, as events. Mute and solo
+    /// gate the notes of hardware MIDI instruments.
     pub fn set_track(&mut self, index: i32, mut track: STTrack) {
         if index < 0 || index >= ST_TRACK_SANITY_LIMIT {
             return;
@@ -221,16 +223,6 @@ impl Control {
         }
         p.track_voices[track] = TrackVoice { choke: choke_group, scope: choke_scope, mode: voice_mode };
         true
-    }
-
-    /// Host mixing with the computational mask as 64-bit words (bit t of word t/64 is track t); tracks beyond the words follow `enabled_beyond`.
-    pub fn set_host_mixing_tracks(&mut self, enabled: bool, words: &[u64], enabled_beyond: bool) {
-        let p = self.edit();
-        p.host_mixing = enabled;
-        let count = cmin(words.len(), ((ST_TRACK_SANITY_LIMIT + 63) / 64) as usize);
-        p.computational_words.clear();
-        p.computational_words.extend_from_slice(&words[..count]);
-        p.computational_beyond = enabled_beyond;
     }
 
     /// Number of instrument slots (1..=`ST_INSTRUMENT_SANITY_LIMIT`); false for a count out of range.
@@ -322,26 +314,6 @@ impl Control {
         p.active_pattern = clamp(active_pattern, 0, last);
     }
 
-    /// The engine's own send effects: delay time, feedback and level; reverb size, damping and
-    /// level (each clamped).
-    pub fn set_effects(
-        &mut self,
-        delay_seconds: f32,
-        delay_feedback: f32,
-        delay_mix: f32,
-        reverb_size: f32,
-        reverb_damping: f32,
-        reverb_mix: f32,
-    ) {
-        let p = self.edit();
-        p.delay_time = clamp(finite(delay_seconds, 0.375), 0.001, 3.99);
-        p.delay_feedback = clamp(finite(delay_feedback, 0.35), 0.0, 0.98);
-        p.delay_mix = clamp(finite(delay_mix, 0.3), 0.0, 1.0);
-        p.reverb_size = clamp(finite(reverb_size, 0.7), 0.0, 1.0);
-        p.reverb_damping = clamp(finite(reverb_damping, 0.4), 0.0, 0.99);
-        p.reverb_mix = clamp(finite(reverb_mix, 0.25), 0.0, 1.0);
-    }
-
     /// Loops a section of the song sequence (inclusive indices); a negative start, or an end before
     /// the start, removes the loop.
     pub fn set_song_loop(&mut self, mut start_index: i32, mut end_index: i32) {
@@ -352,21 +324,6 @@ impl Control {
         let p = self.edit();
         p.song_loop_start = cmin(start_index, 4095);
         p.song_loop_end = cmin(end_index, 4095);
-    }
-
-    /// Further send settings: delay time in beats (1/64..16; 0 keeps the time in seconds), delay
-    /// tone (0..1, 1 open) and reverb pre-delay in seconds (0..0.5).
-    pub fn set_send_effects(&mut self, sample_rate: f64, delay_beats: f64, delay_tone: f32, reverb_predelay: f32) {
-        let p = self.edit();
-        p.delay_beats = if delay_beats.is_finite() && delay_beats > 0.0 { clamp(delay_beats, 1.0 / 64.0, 16.0) } else { 0.0 };
-        let tone = clamp(finite(delay_tone, 1.0), 0.0, 1.0);
-        // 1 = open; otherwise 200 Hz .. 20 kHz on a log scale.
-        p.delay_tone_coef = if tone >= 1.0 {
-            1.0
-        } else {
-            (1.0 - (-2.0 * std::f64::consts::PI * 200.0 * 100.0f64.powf(tone as f64) / sample_rate).exp()) as f32
-        };
-        p.reverb_predelay = clamp(finite(reverb_predelay, 0.0), 0.0, 0.5);
     }
 
     /// The host's identifier for its current numbering of automation destinations; host parameter
@@ -870,7 +827,7 @@ impl Control {
     }
 
     /// The published song's length in seconds, or the active pattern's when `song_mode` is
-    /// false. Excludes release and send tails.
+    /// false. Excludes release tails.
     pub fn duration(&self, song_mode: bool) -> f64 {
         let p = &self.control;
         if song_mode {

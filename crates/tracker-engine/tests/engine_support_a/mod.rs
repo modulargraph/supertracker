@@ -250,13 +250,7 @@ impl Engine {
 
     /// An engine at `rate`: `None` where the engine refuses the rate.
     pub fn create(rate: f64) -> Option<Engine> {
-        let mut engine = host::Engine::new(rate)?;
-        // Host mixing from the first block on, as the mixer crate sets an engine up.
-        let (control, shared, _) = engine.control().parts();
-        control.begin_update(shared);
-        control.set_host_mixing_tracks(true, &[], true);
-        control.commit(shared).expect("an empty project is accepted");
-        Some(Engine { engine, render: RenderState::default() })
+        Some(Engine { engine: host::Engine::new(rate)?, render: RenderState::default() })
     }
 
     /// The three thread-owned parts, for tests that drive the engine from several threads.
@@ -310,7 +304,6 @@ half_methods! { ControlHalf, control_half;
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
         control.clear_project();
-        control.set_host_mixing_tracks(true, &[], true);
     }
     /// `commit_update`: a rejected draft stays unpublished, silently.
     fn commit_update(&mut self) {
@@ -338,10 +331,10 @@ half_methods! { ControlHalf, control_half;
 
     // ---- project settings ----
 
-    fn set_timing(&mut self, bpm: f64, lines_per_beat: i32, swing: f32, master_volume: f32) {
+    fn set_timing(&mut self, bpm: f64, lines_per_beat: i32, swing: f32) {
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
-        control.set_timing(bpm, lines_per_beat, swing, master_volume);
+        control.set_timing(bpm, lines_per_beat, swing);
     }
     fn set_metronome(&mut self, enabled: i32, numerator: i32, denominator: i32, volume: f32) {
         #[allow(unused_variables)]

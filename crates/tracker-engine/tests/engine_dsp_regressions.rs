@@ -107,7 +107,7 @@ fn region_automation_bounds() {
         pcm[1024..3072].fill(0.0);
         e.begin_update();
         e.set_track_count(1);
-        e.set_timing(240.0, 16, 0.0, 1.0);
+        e.set_timing(240.0, 16, 0.0);
         e.set_instrument(0, p);
         assert!(e.set_sample(0, &pcm, None, 48000.0));
         e.add_automation_point(0, 0, ST_TARGET_START, 0, 0, 0, 0.0, 0.25);
@@ -138,7 +138,7 @@ fn region_automation_keeps_looping_voices() {
             let pcm = vec![0.5f32; 4800];
             e.begin_update();
             e.set_track_count(1);
-            e.set_timing(120.0, 4, 0.0, 1.0);
+            e.set_timing(120.0, 4, 0.0);
             e.set_instrument(0, p);
             assert!(e.set_sample(0, &pcm, None, 48000.0));
             // Stepped: the whole sample on row 0, a quarter trimmed from row 1 (frame 6000) on.
@@ -172,7 +172,7 @@ fn region_automation_start_past_end() {
     pcm[4096 - 512..].fill(0.8);
     e.begin_update();
     e.set_track_count(1);
-    e.set_timing(120.0, 4, 0.0, 1.0);
+    e.set_timing(120.0, 4, 0.0);
     e.set_instrument(0, p);
     assert!(e.set_sample(0, &pcm, None, 48000.0));
     e.add_automation_point(0, 0, ST_TARGET_START, 0, 0, 1, 0.0, 0.25);

@@ -477,7 +477,7 @@ fn test_tempo_synced_lfo_live_edits() {
             e.begin_update();
             let remaining: usize;
             if change == 0 {
-                e.set_timing(60.0, 4, 0.0, 0.7);
+                e.set_timing(60.0, 4, 0.0);
                 remaining = 12000;
             } else if change == 1 {
                 if slot == 0 {

@@ -793,16 +793,14 @@ impl<'a> Rt<'a> {
         }
     }
 
-    #[inline]
-    pub fn computational_track_enabled(&self, track: i32) -> bool {
-        self.p.track_computational(track)
-    }
-
-    /// Whether a new AU/MIDI note may sound on `track`.
+    /// Whether a new note of an external instrument may sound on `track`. A plug-in instrument
+    /// sounds in the host's graph, where the host mutes and solos it. A hardware MIDI instrument
+    /// sounds outside that graph: its notes are gated here, by the track's mute and the solo of
+    /// other tracks.
     pub fn external_track_enabled(&self, track: i32, kind: i32) -> bool {
         let p = self.p;
-        if p.host_mixing && kind == ST_INSTRUMENT_AU {
-            return self.computational_track_enabled(track);
+        if kind == ST_INSTRUMENT_AU {
+            return true;
         }
         match p.tracks.get(track as u32 as usize) {
             Some(mix) => mix.mute == 0 && (!p.any_solo || mix.solo != 0),

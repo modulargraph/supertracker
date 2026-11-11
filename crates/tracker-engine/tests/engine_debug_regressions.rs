@@ -29,7 +29,7 @@ fn audio(e: &mut Engine, count: usize) -> Vec<f32> {
 fn setup(e: &mut Engine, rows: i32) {
     e.begin_update();
     e.set_track_count(1);
-    e.set_timing(120.0, 4, 0.0, 1.0);
+    e.set_timing(120.0, 4, 0.0);
     let mut track = default_track();
     track.volume = 1.0;
     e.set_track(0, track);
@@ -161,7 +161,7 @@ fn tempo_change() {
         audio(&mut e, 72100);
         require(e.status().row == 12, "Row 12 before the tempo change");
         e.begin_update();
-        e.set_timing(60.0, 4, 0.0, 1.0);
+        e.set_timing(60.0, 4, 0.0);
         e.commit_update();
         audio(&mut e, 1);
         let s = e.status();

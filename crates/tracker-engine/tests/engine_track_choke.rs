@@ -21,7 +21,7 @@ fn energy(e: &mut Engine, frames: usize) -> f64 {
 fn setup(e: &mut Engine, voice: Option<&[[i32; 3]; 3]>) {
     e.begin_update();
     assert!(e.set_track_count(3) && e.set_instrument_count(3));
-    e.set_timing(120.0, 4, 0.0, 1.0);
+    e.set_timing(120.0, 4, 0.0);
     for t in 0..3 {
         let mut track = default_track();
         track.instrument = t;

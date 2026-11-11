@@ -19,7 +19,7 @@ use tracker_engine::engine::*;
 fn fixture() -> Engine {
     let mut p = Engine::with_rate(8000.0);
     p.begin_update();
-    p.set_timing(300.0, 16, 0.0, 1.0); // Exactly 100 samples per row.
+    p.set_timing(300.0, 16, 0.0); // Exactly 100 samples per row.
     p.set_track_count(3);
     p.set_pattern(0, 8);
     p.set_pattern(1, 8);

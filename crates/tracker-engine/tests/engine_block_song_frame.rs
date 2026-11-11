@@ -16,7 +16,7 @@ fn fixture(loop_song: bool, swing: f32) -> Engine {
     let mut e = Engine::new();
     e.begin_update();
     e.set_track_count(1);
-    e.set_timing(120.0, 4, swing, 1.0);
+    e.set_timing(120.0, 4, swing);
     e.set_pattern(0, 4);
     e.set_sequence(&[0], loop_song, 0);
     e.commit_update();
@@ -66,7 +66,7 @@ fn pattern_mode_counts_from_play_through_seek_and_tempo_change() {
     assert_eq!(blocks(&mut e, &mut time, 4096, 2), some(&[12000, 16096]));
     // Halving the tempo doubles the frame of the same musical position (20192 frames in).
     e.begin_update();
-    e.set_timing(60.0, 4, 0.0, 1.0);
+    e.set_timing(60.0, 4, 0.0);
     e.commit_update();
     assert_eq!(blocks(&mut e, &mut time, 4096, 2), some(&[40384, 44480]));
     assert_eq!(render_allocations(), 0);

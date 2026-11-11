@@ -373,59 +373,6 @@ impl Default for Scheduled {
     }
 }
 
-/// Reverb comb filter with a one-pole damping filter in the feedback path.
-#[derive(Default)]
-pub struct Comb {
-    pub data: Vec<f32>,
-    pub position: usize,
-    pub filter: f32,
-}
-
-impl Comb {
-    #[inline(always)]
-    pub fn process(&mut self, x: f32, feedback: f32, damp: f32) -> f32 {
-        let Some(slot) = self.data.get_mut(self.position) else { return 0.0 };
-        let y = *slot;
-        self.filter = y * (1.0 - damp) + self.filter * damp;
-        *slot = x + self.filter * feedback;
-        self.position += 1;
-        if self.position == self.data.len() {
-            self.position = 0;
-        }
-        y
-    }
-    pub fn clear(&mut self) {
-        self.data.fill(0.0);
-        self.filter = 0.0;
-        self.position = 0;
-    }
-}
-
-#[derive(Default)]
-pub struct Allpass {
-    pub data: Vec<f32>,
-    pub position: usize,
-}
-
-impl Allpass {
-    #[inline(always)]
-    pub fn process(&mut self, x: f32) -> f32 {
-        let Some(slot) = self.data.get_mut(self.position) else { return 0.0 };
-        let b = *slot;
-        let y = b - x;
-        *slot = x + b * 0.5;
-        self.position += 1;
-        if self.position == self.data.len() {
-            self.position = 0;
-        }
-        y
-    }
-    pub fn clear(&mut self) {
-        self.data.fill(0.0);
-        self.position = 0;
-    }
-}
-
 /// Live notes placed early on the next row (see `STInputAck.early`): that row's own trigger of
 /// the note is skipped once.
 #[derive(Clone, Copy)]
@@ -753,18 +700,6 @@ pub struct Render {
     pub(crate) click_phase: f64,
     pub(crate) click_age: f64,
     pub(crate) click_accent: bool,
-    pub(crate) delay_l: Vec<f32>,
-    pub(crate) delay_r: Vec<f32>,
-    pub(crate) delay_pos: usize,
-    pub(crate) delay_tone_l: f32,
-    pub(crate) delay_tone_r: f32,
-    pub(crate) pre_l: Vec<f32>,
-    pub(crate) pre_r: Vec<f32>,
-    pub(crate) pre_pos: usize,
-    pub(crate) comb_l: [Comb; 8],
-    pub(crate) comb_r: [Comb; 8],
-    pub(crate) ap_l: [Allpass; 4],
-    pub(crate) ap_r: [Allpass; 4],
     pub(crate) playing: bool,
     pub(crate) recording: bool,
     pub(crate) song_mode: bool,
@@ -820,24 +755,16 @@ pub struct Render {
     pub(crate) voice_stage: [STVoicePosition; ST_VOICE_POSITION_CAPACITY],
     pub(crate) transport_applied: u32,
     pub(crate) seek_revision: u64,
-    /// Raw host mixing of a block render: a channel's bus is exactly its summed input, so voices
-    /// and clips add straight into the bus block (same order, same sums) instead of a per-sample
-    /// channel pass.
-    pub(crate) direct_bus: bool,
-    pub(crate) direct_frame: u32,
-    pub(crate) direct_frames: u32,
+    /// The frame being rendered, counted from the first frame of its block, and the frames of
+    /// the block: voices and clips add their frame straight into the bus blocks.
+    pub(crate) block_frame: u32,
+    pub(crate) block_frames: u32,
 }
 
 impl Render {
     /// Control thread, at engine creation. `current` is a fresh default project that shares the
     /// control project's tables.
     pub(crate) fn new(engine_id: u64, sample_rate: f64, current: *mut Project, tb: *mut TablesState) -> Render {
-        let delay_length = (sample_rate * 4.0) as usize + 1;
-        let pre_length = (sample_rate * 0.5) as usize + 1;
-        const COMB_SIZES: [i32; 8] = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617];
-        const ALLPASS_SIZES: [i32; 4] = [556, 441, 341, 225];
-        let comb = |size: i32| Comb { data: vec![0.0; (size as f64 * sample_rate / 44100.0) as usize + 1], position: 0, filter: 0.0 };
-        let allpass = |size: i32| Allpass { data: vec![0.0; (size as f64 * sample_rate / 44100.0) as usize + 1], position: 0 };
         Render {
             engine_id,
             sample_rate,
@@ -865,18 +792,6 @@ impl Render {
             click_phase: 0.0,
             click_age: 1e9,
             click_accent: false,
-            delay_l: vec![0.0; delay_length],
-            delay_r: vec![0.0; delay_length],
-            delay_pos: 0,
-            delay_tone_l: 0.0,
-            delay_tone_r: 0.0,
-            pre_l: vec![0.0; pre_length],
-            pre_r: vec![0.0; pre_length],
-            pre_pos: 0,
-            comb_l: COMB_SIZES.map(comb),
-            comb_r: COMB_SIZES.map(|size| comb(size + 23)),
-            ap_l: ALLPASS_SIZES.map(allpass),
-            ap_r: ALLPASS_SIZES.map(|size| allpass(size + 23)),
             playing: false,
             recording: false,
             song_mode: false,
@@ -922,9 +837,8 @@ impl Render {
             voice_stage: [STVoicePosition::default(); ST_VOICE_POSITION_CAPACITY],
             transport_applied: 0,
             seek_revision: 0,
-            direct_bus: false,
-            direct_frame: 0,
-            direct_frames: 0,
+            block_frame: 0,
+            block_frames: 0,
         }
     }
 }

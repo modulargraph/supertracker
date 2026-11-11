@@ -113,12 +113,6 @@ pub struct TablesState {
     pub track_state: Vec<TrackState>,
     pub pitch_bend: Vec<f32>,
     pub mod_wheel: Vec<f32>,
-    pub left: Vec<f32>,
-    pub right: Vec<f32>,
-    pub touched: Vec<u64>,
-    /// Raw host mixing: whether each channel's bus carries its signal this block (enabled and
-    /// computational).
-    pub host_audible: Vec<u8>,
     pub lane_ratchets: Vec<RatchetState>,
     pub plugin_row_locks: Vec<PluginRowLock>,
     pub bus_l: FloatBlock,
@@ -182,10 +176,6 @@ impl ChannelTables {
                 track_state: vec![TrackState::default(); channel_count],
                 pitch_bend: vec![0.0; channel_count],
                 mod_wheel: vec![0.0; channel_count],
-                left: vec![0.0; channel_count],
-                right: vec![0.0; channel_count],
-                touched: vec![0; channel_count.div_ceil(64)],
-                host_audible: vec![0; channel_count],
                 lane_ratchets: vec![RatchetState::default(); tracks as usize],
                 plugin_row_locks: vec![PluginRowLock::default(); tracks as usize * 2],
                 bus_l: FloatBlock::new(bus_count * BUS_STRIDE)?,

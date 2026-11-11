@@ -4,7 +4,7 @@
 //! | module | what it is | start at |
 //! |---|---|---|
 //! | [`engine`] | the sequencer and its voices, rendered per track bus | [`engine::Engine`] |
-//! | [`effects`] | the built-in effect catalogue, effect instances, drum models | [`effects::Effect`], [`effects::catalogue`] |
+//! | [`effects`] | the built-in effect catalogue, effect instances, drum models, DSP building blocks | [`effects::Effect`], [`effects::catalogue`] |
 //!
 //! Each module is behind a cargo feature of the same name (all on by default), so one part can
 //! be built and tested without the others.

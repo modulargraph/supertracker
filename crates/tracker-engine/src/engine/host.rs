@@ -36,7 +36,7 @@
 //!    consumer are fixed to one half each (commands: control to render; events and input
 //!    acknowledgements: render to control side consumers, see below); and seqlock-guarded
 //!    snapshots. `Shared`'s fields and ring operations are private to the crate. What it offers
-//!    publicly (status, peaks, voice positions, the mailboxes) is safe from any thread, which
+//!    publicly (status, voice positions, the mailboxes) is safe from any thread, which
 //!    is all a `StatusHandle` exposes.
 //! 3. **Ring ends are tied to a half.** Events are popped only by [`RenderHalf::pop_event`]
 //!    (the audio thread drains them after the block that produced them), input acknowledgements
@@ -180,21 +180,6 @@ impl RenderHalf {
         (render, &self.engine.shared)
     }
 
-    /// Direct stereo render of the engine's own mix, `left.len()` frames (the shorter length
-    /// when the buffers differ): for use without a host mixer.
-    pub fn render(&mut self, left: &mut [f32], right: &mut [f32]) {
-        let frames = cmin(left.len(), right.len());
-        let (render, shared) = self.parts();
-        render.render(shared, Some(&mut left[..frames]), Some(&mut right[..frames]), frames as u32);
-    }
-
-    /// Advances the engine by `frames` frames without output: queued commands and a newly
-    /// committed project are applied, events are produced. `advance(0)` only applies them.
-    pub fn advance(&mut self, frames: u32) {
-        let (render, shared) = self.parts();
-        render.render(shared, None, None, frames);
-    }
-
     /// Renders the next `frames` frames (at most [`MAX_BLOCK`]; more is cut) into the per-bus
     /// block buffers and returns the frames rendered. Read the buses with [`RenderHalf::block`]
     /// before the next call. Events of the block ([`RenderHalf::pop_event`]) carry frame offsets
@@ -204,8 +189,8 @@ impl RenderHalf {
     /// it: blocks follow one another whatever it is. An input edge acknowledged in the block
     /// reports it (plus the offset in the block) as `STInputAck::graph_frame`.
     ///
-    /// With host mixing on (`Control::set_host_mixing_tracks`) a track bus holds the track's raw
-    /// instrument and clip signal and the return bus holds the metronome.
+    /// A track's bus holds the track's instrument and clip signal as the voices made it (the
+    /// host applies fader, pan, mute, solo and sends); the return bus holds the metronome.
     pub fn render_block(&mut self, time: u64, frames: u32) -> u32 {
         let (render, shared) = self.parts();
         render.render_block(shared, time, frames)
@@ -270,7 +255,7 @@ impl BlockView<'_> {
         Some((self.tables.bus_left(track), self.tables.bus_right(track)))
     }
 
-    /// The return bus: with host mixing, the metronome and count-in clicks. Always written.
+    /// The return bus: the metronome and count-in clicks. Always written.
     pub fn return_bus(&self) -> (&[f32], &[f32]) {
         let bus = self.tables.base.max(0) as usize;
         (self.tables.bus_left(bus), self.tables.bus_right(bus))
@@ -310,7 +295,7 @@ impl Render {
         if count == 0 {
             return 0;
         }
-        self.process(sh, None, None, count, true, time);
+        self.process(sh, count, time);
         count
     }
 }
@@ -333,7 +318,6 @@ mod tests {
         {
             let (edit, shared, _) = control.parts();
             edit.begin_update(shared);
-            edit.set_host_mixing_tracks(true, &[], true);
             assert!(edit.set_track_count(2) && edit.set_instrument_count(1));
             // A fader the host must not hear in the raw bus.
             edit.set_track(0, crate::engine::abi::STTrack { volume: 0.25, ..default_track() });

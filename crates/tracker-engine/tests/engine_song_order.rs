@@ -47,7 +47,7 @@ fn note_ons(e: &mut Engine, frames: usize, block: usize) -> Vec<Timed> {
 fn configure_song(e: &mut Engine, sequence: &[i32], loop_song: bool) {
     e.begin_update();
     e.set_track_count(1);
-    e.set_timing(120.0, 4, 0.0, 0.7);
+    e.set_timing(120.0, 4, 0.0);
     let mut i = default_instrument();
     i.type_ = ST_INSTRUMENT_MIDI;
     e.set_instrument(0, i);

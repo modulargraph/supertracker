@@ -16,7 +16,7 @@ fn scene(test: i32, value: f32) -> Audio {
     let mut e = Engine::new();
     e.begin_update();
     e.set_track_count(1);
-    e.set_timing(240.0, 8, 0.0, 1.0);
+    e.set_timing(240.0, 8, 0.0);
     let mut p = default_instrument();
     p.type_ = ST_INSTRUMENT_SAMPLE;
     p.mode = if test == 1 || test == 2 || test == 3 { ST_MODE_SLICE } else { ST_MODE_FORWARD };

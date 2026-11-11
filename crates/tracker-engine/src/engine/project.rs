@@ -393,36 +393,22 @@ pub struct Project {
     pub track_count: i32,
     pub active_pattern: i32,
     pub swing: f32,
-    pub master: f32,
-    pub delay_time: f32,
-    pub delay_feedback: f32,
-    pub delay_mix: f32,
-    pub reverb_size: f32,
-    pub reverb_damping: f32,
-    pub reverb_mix: f32,
-    /// Send returns: tempo-synced delay (quarter beats, 0 = free time), feedback-path tone
-    /// low-pass (coefficient 1 = open) and reverb pre-delay.
-    pub delay_beats: f64,
-    pub delay_tone_coef: f32,
-    pub reverb_predelay: f32,
     /// Song section loop: inclusive sequence indices, active only while loopSong is on; -1 disables.
     pub song_loop_start: i32,
     pub song_loop_end: i32,
     pub loop_song: bool,
     pub metronome: bool,
-    pub host_mixing: bool,
     pub numerator: i32,
     pub denominator: i32,
     pub metronome_volume: f32,
-    /// Computational bitset: bit t of computational_words is track t; tracks beyond it use
-    /// computational_beyond.
-    pub computational_words: Vec<u64>,
-    pub computational_beyond: bool,
     /// Tracks beyond the vector use the defaults.
     pub track_voices: Vec<TrackVoice>,
-    /// Holds at least return_bus() entries after commit; channels below the return bus but at or
-    /// above track_count are disabled.
+    /// The mixer values of the tracks: the host mixes, the sequencer plays their lanes and step
+    /// effects and reports every value as an event. Holds at least return_bus() entries after
+    /// commit; channels below the return bus but at or above track_count are disabled.
     pub tracks: Vec<STTrack>,
+    /// Whether a track is soloed (cached at commit): with `STTrack::mute`, what gates the notes
+    /// of hardware MIDI instruments.
     pub any_solo: bool,
     pub instruments: Vec<Instrument>,
     /// 256 timeline audio assets.
@@ -459,26 +445,13 @@ impl Project {
             track_count: 8,
             active_pattern: 0,
             swing: 0.0,
-            master: 0.7,
-            delay_time: 0.375,
-            delay_feedback: 0.35,
-            delay_mix: 0.3,
-            reverb_size: 0.7,
-            reverb_damping: 0.4,
-            reverb_mix: 0.25,
-            delay_beats: 0.0,
-            delay_tone_coef: 1.0,
-            reverb_predelay: 0.0,
             song_loop_start: -1,
             song_loop_end: -1,
             loop_song: false,
             metronome: false,
-            host_mixing: false,
             numerator: 4,
             denominator: 4,
             metronome_volume: 0.3,
-            computational_words: Vec::new(),
-            computational_beyond: true,
             track_voices: Vec::new(),
             tracks: vec![default_track(); ST_MIN_RETURN_BUS as usize],
             any_solo: false,
@@ -508,14 +481,6 @@ impl Project {
     #[inline(always)]
     pub fn channels(&self) -> i32 {
         channel_count(self.track_count)
-    }
-    #[inline]
-    pub fn track_computational(&self, track: i32) -> bool {
-        let word = (track as u32 as usize) / 64;
-        match self.computational_words.get(word) {
-            Some(bits) => (bits >> (track as u32 % 64)) & 1 != 0,
-            None => self.computational_beyond,
-        }
     }
 
     /// Length of pattern `index`. The sequence and active pattern are clamped when they are set

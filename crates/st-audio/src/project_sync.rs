@@ -14,8 +14,7 @@
 //! * **Samples are installed once.** Each instrument slot, multisample zone set and clip asset
 //!   remembers which decoded PCM it holds; only changes reach the engine.
 //!
-//! Mixing is the host's: the engine is always put in host-mixing mode, where a track's bus is
-//! its raw signal and the engine's own faders, sends and master volume are out of the path (see
+//! Mixing is the host's: a track's bus of the engine is the track's raw signal (see
 //! [`crate::graph`]). Track volume, pan and the two built-in sends still travel through the
 //! engine as *values*: its sequencer owns their lanes and step effects and reports every change
 //! as a timed event that the graph applies. Automation of everything else the host owns goes in
@@ -365,8 +364,7 @@ impl ProjectSync {
         control.begin_update(shared);
         control.clear_project();
         control.set_host_automation_map(spec.host_map);
-        control.set_host_mixing_tracks(true, &[], true);
-        control.set_timing(project.bpm(), clamp_i32(project.lines_per_beat()), project.swing() as f32, project.master_volume() as f32);
+        control.set_timing(project.bpm(), clamp_i32(project.lines_per_beat()), project.swing() as f32);
         let (numerator, denominator) = project.meter();
         control.set_metronome(project.metronome(), clamp_i32(numerator), clamp_i32(denominator), project.metronome_volume() as f32);
         if tracks.len() > ST_TRACK_SANITY_LIMIT as usize || !control.set_track_count(tracks.len().max(1) as i32) {

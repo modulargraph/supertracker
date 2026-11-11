@@ -750,6 +750,62 @@ impl DelayLine {
     }
 }
 
+/// A feedback comb filter with a one-pole low-pass (the damping) in its feedback path. With
+/// [`Allpass`], what the mixer crate builds the reverb of its send return from; the line is
+/// allocated by whoever makes the filter, and `process` never allocates.
+#[derive(Default)]
+pub struct Comb {
+    pub data: Vec<f32>,
+    pub position: usize,
+    pub filter: f32,
+}
+
+impl Comb {
+    #[inline(always)]
+    pub fn process(&mut self, x: f32, feedback: f32, damp: f32) -> f32 {
+        let Some(slot) = self.data.get_mut(self.position) else { return 0.0 };
+        let y = *slot;
+        self.filter = y * (1.0 - damp) + self.filter * damp;
+        *slot = x + self.filter * feedback;
+        self.position += 1;
+        if self.position == self.data.len() {
+            self.position = 0;
+        }
+        y
+    }
+    pub fn clear(&mut self) {
+        self.data.fill(0.0);
+        self.filter = 0.0;
+        self.position = 0;
+    }
+}
+
+/// A Schroeder all-pass filter with a gain of one half (see [`Comb`]).
+#[derive(Default)]
+pub struct Allpass {
+    pub data: Vec<f32>,
+    pub position: usize,
+}
+
+impl Allpass {
+    #[inline(always)]
+    pub fn process(&mut self, x: f32) -> f32 {
+        let Some(slot) = self.data.get_mut(self.position) else { return 0.0 };
+        let b = *slot;
+        let y = b - x;
+        *slot = x + b * 0.5;
+        self.position += 1;
+        if self.position == self.data.len() {
+            self.position = 0;
+        }
+        y
+    }
+    pub fn clear(&mut self) {
+        self.data.fill(0.0);
+        self.position = 0;
+    }
+}
+
 /// `stfx::Smoother`: one-pole parameter smoothing.
 #[derive(Clone, Copy, Default)]
 pub struct Smoother {
@@ -781,7 +837,7 @@ impl Smoother {
 }
 
 #[cfg(test)]
-mod metadata_tests {
+mod tests {
     use super::*;
 
     static MODES: [Label; 3] = [Label::new(c"Off"), Label::new(c"Soft"), Label::new(c"Hard")];
@@ -805,5 +861,27 @@ mod metadata_tests {
         assert_eq!(CUTOFF.normalized(f64::INFINITY), CUTOFF.default_normalized());
         let info = EffectInfo::new(c"eq", c"EQ", c"Filter", 2, EFFECT_SIDECHAIN);
         assert_eq!((info.id(), info.name(), info.category(), info.parameter_count), (c"eq", c"EQ", c"Filter", 2));
+    }
+
+    /// The comb and all-pass filters the mixer crate builds its reverb return from, sample for sample.
+    #[test]
+    fn comb_and_allpass_filters() {
+        let impulse = |n: usize| if n == 0 { 1.0f32 } else { 0.0 };
+        // A comb of four samples: the input comes back four samples later. What it feeds back is its
+        // output through a one-pole low-pass (the damping), times the feedback: the low-pass keeps
+        // decaying between the echoes, so each echo is followed by its smear.
+        let mut comb = Comb { data: vec![0.0; 4], position: 0, filter: 0.0 };
+        let echoes: Vec<f32> = (0..13).map(|n| comb.process(impulse(n), 0.5, 0.25)).collect();
+        assert_eq!(echoes, [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.375, 0.09375, 0.0234375, 0.005859375, 0.14208984375]);
+        comb.clear();
+        assert!((0..8).all(|_| comb.process(0.0, 0.5, 0.25) == 0.0), "a cleared comb is silent");
+        // An all-pass of two samples: the inverted input at once, then the stored input, halving.
+        let mut allpass = Allpass { data: vec![0.0; 2], position: 0 };
+        let ringing: Vec<f32> = (0..8).map(|n| allpass.process(impulse(n))).collect();
+        assert_eq!(ringing, [-1.0, 0.0, 1.0, 0.0, 0.5, 0.0, 0.25, 0.0]);
+        allpass.clear();
+        assert!((0..4).all(|_| allpass.process(0.0) == 0.0), "a cleared all-pass is silent");
+        // Without a line there is nothing to process.
+        assert_eq!((Comb::default().process(1.0, 0.5, 0.25), Allpass::default().process(1.0)), (0.0, 0.0));
     }
 }

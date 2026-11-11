@@ -1,7 +1,9 @@
 //! SuperTracker's sequencer and voices.
 //!
 //! [`Engine::new`] creates an engine; [`host`] has its handles and the reasons they may cross
-//! threads; `docs/AUDIO_ENGINE.md` describes what the engine plays.
+//! threads; `docs/AUDIO_ENGINE.md` describes what the engine plays. The engine renders every
+//! track into a bus of its own and mixes nothing: faders, pan, mute, solo, sends and the master
+//! are the host's.
 //!
 //! # Threading model
 //!
@@ -25,17 +27,17 @@
 //! | [`abi`] | the plain data and constants of the API (`STStep`, `STEvent`, `STStatus`, `ST_*`), bus arithmetic |
 //! | [`edits`] | the control thread's operations: project setters and command producers (methods of `Control`) |
 //! | [`control`] | draft/commit/collect, the render tables of a project, engine construction and destruction |
-//! | [`transport`] | project adoption, Play/Stop/Seek, the musical clock, loops, queued jumps, input acks, checkpoints |
+//! | [`transport`] | project adoption, Play/Stop/Seek, the musical clock, loops, queued jumps, input acks |
 //! | [`sequencer`] | row and step triggering, step effects, ratchets, plug-in locks, automation lanes |
 //! | [`voice`] | note start and end, and all voice DSP |
-//! | [`mixer`] | the block renderer: channel mix, sends (delay/reverb), metronome, timeline clips |
+//! | [`mixer`] | the block renderer: voices and timeline clips into their track's bus, the metronome into the return bus |
 //! | [`project`] | samples, zones, instruments, steps, lanes, patterns, the project |
 //! | [`tables`] | per-channel render tables with the per-bus block buffers |
 //! | [`state`] | the data of the two halves and of what they share; `Voice`, `Scheduled`, `Command` |
 //! | [`util`] | `clamp`/`cmin`/`cmax`, `Ring`, `FloatBlock`, the random generator |
 //!
 //! The modules below `host` and `abi` are public because the mixer crate uses a few of their
-//! building blocks (`util::Ring`, `state::{Comb, Allpass}`, `tables::MAX_BLOCK`, `edits::Pcm`)
+//! building blocks (`util::Ring`, `tables::MAX_BLOCK`, `edits::Pcm`)
 //! and calls the methods of `Control`; the state they hold is private to the crate.
 
 // Style lints this module deliberately does not follow:

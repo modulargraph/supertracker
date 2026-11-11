@@ -70,7 +70,7 @@ pub fn bus_render_many(e: &mut Engine, buses: &[i32], time: u64, outs: &mut [&mu
 pub fn configure(e: &mut Engine, type_: i32) {
     e.begin_update();
     e.set_track_count(2);
-    e.set_timing(120.0, 4, 0.0, 0.7);
+    e.set_timing(120.0, 4, 0.0);
     let mut i = if type_ < 0 { test_tone_instrument(TEST_SINE) } else { default_instrument() };
     if type_ >= 0 {
         i.type_ = type_;
@@ -211,7 +211,7 @@ pub fn configure_synced_lfo(e: &mut Engine, p: STInstrument, bpm: f64) {
     configure(e, ST_INSTRUMENT_SAMPLE);
     let sample = vec![0.2f32; 2048];
     e.begin_update();
-    e.set_timing(bpm, 4, 0.0, 0.7);
+    e.set_timing(bpm, 4, 0.0);
     e.set_instrument(0, p);
     e.set_sample(0, &sample, 48000.0);
     e.commit_update();
@@ -237,7 +237,7 @@ pub fn assert_pan_switch(a: &Audio, expected: usize) {
 pub fn configure_loop_music(e: &mut Engine, swing: f32) {
     configure(e, ST_INSTRUMENT_AU);
     e.begin_update();
-    e.set_timing(120.0, 4, swing, 0.7);
+    e.set_timing(120.0, 4, swing);
     e.set_pattern(0, 16);
     for r in 0..16 {
         let mut step = default_step();

@@ -32,7 +32,7 @@ fn render(pcm: &[f32], instrument: STInstrument, frames: usize, note: i32, slice
     let mut e = Engine::new();
     e.begin_update();
     e.set_track_count(1);
-    e.set_timing(120.0, 4, 0.0, 1.0);
+    e.set_timing(120.0, 4, 0.0);
     let mut track = default_track();
     track.volume = 1.0;
     track.pan = 0.0;

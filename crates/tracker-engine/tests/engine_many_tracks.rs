@@ -82,7 +82,7 @@ fn volume_for(track: i32, count: i32) -> f32 {
 fn all_tracks(e: &mut Engine, count: i32, pattern: i32, rows: i32) {
     e.begin_update();
     assert!(e.set_track_count(count));
-    e.set_timing(120.0, 4, 0.0, 1.0);
+    e.set_timing(120.0, 4, 0.0);
     e.set_instrument(0, sine());
     load_test_tone(e, 0, TEST_SINE);
     e.set_pattern(pattern, rows);
@@ -171,7 +171,7 @@ fn return_bus_follows_track_count() {
     let mut e = Engine::new();
     e.begin_update();
     assert!(e.set_track_count(3));
-    e.set_timing(120.0, 4, 0.0, 1.0);
+    e.set_timing(120.0, 4, 0.0);
     commit(&mut e);
     assert!(
         return_bus(3) == 16

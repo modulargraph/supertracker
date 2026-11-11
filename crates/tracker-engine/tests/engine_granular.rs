@@ -54,7 +54,7 @@ fn noise() -> Vec<f32> {
 fn setup(e: &mut Engine, p: STInstrument, pcm: &[f32], rows: i32) {
     e.begin_update();
     e.set_track_count(1);
-    e.set_timing(120.0, 4, 0.0, 1.0);
+    e.set_timing(120.0, 4, 0.0);
     let mut track = default_track();
     track.volume = 1.0;
     track.delay_send = 0.0;

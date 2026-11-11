@@ -22,7 +22,7 @@ fn render(
     let mut e = Engine::new();
     e.begin_update();
     e.set_track_count(1);
-    e.set_timing(if rapid { 999.0 } else { 120.0 }, if rapid { 32 } else { 4 }, 0.0, 1.0);
+    e.set_timing(if rapid { 999.0 } else { 120.0 }, if rapid { 32 } else { 4 }, 0.0);
     e.set_pattern(0, 16);
     let mut instrument = default_instrument();
     instrument.type_ = ST_INSTRUMENT_SAMPLE;
@@ -137,7 +137,7 @@ fn lead_in_turnaround(reverse_mode: bool) {
     let mut e = Engine::new();
     e.begin_update();
     e.set_track_count(1);
-    e.set_timing(120.0, 4, 0.0, 1.0);
+    e.set_timing(120.0, 4, 0.0);
     e.set_pattern(0, 16);
     let mut instrument = default_instrument();
     instrument.type_ = ST_INSTRUMENT_SAMPLE;

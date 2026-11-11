@@ -64,7 +64,7 @@ fn scene(s: &Scene) -> Outcome {
     let mut e = Engine::new();
     e.begin_update();
     e.set_track_count(16);
-    e.set_timing(120.0, 4, 0.0, 0.7);
+    e.set_timing(120.0, 4, 0.0);
     let mut p = default_instrument();
     p.volume = 0.12f32 / (s.voices as f32).sqrt();
     p.attack = 0.0;

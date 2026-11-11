@@ -21,7 +21,7 @@ fn three_hundred_instruments_steps_tracks_and_live_notes_reach_instrument_250() 
     let mut e = Engine::new();
     e.begin_update();
     assert!(e.set_track_count(2) && e.set_instrument_count(300));
-    e.set_timing(120.0, 4, 0.0, 1.0);
+    e.set_timing(120.0, 4, 0.0);
     let mut track = default_track();
     track.instrument = 250;
     track.volume = 1.0;

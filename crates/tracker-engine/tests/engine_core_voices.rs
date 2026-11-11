@@ -80,7 +80,7 @@ fn test_song_swing_and_seek() {
     let mut e = Engine::new();
     configure(&mut e, ST_INSTRUMENT_AU);
     e.begin_update();
-    e.set_timing(120.0, 4, 0.25, 0.7);
+    e.set_timing(120.0, 4, 0.25);
     e.set_pattern(0, 3);
     e.set_pattern(1, 2);
     let mut s = default_step();

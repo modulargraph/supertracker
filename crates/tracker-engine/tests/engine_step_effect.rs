@@ -20,7 +20,7 @@ impl Fixture {
         let mut e = Engine::new();
         e.begin_update();
         e.set_track_count(1);
-        e.set_timing(120.0, 4, 0.0, 0.7);
+        e.set_timing(120.0, 4, 0.0);
         e.set_pattern(0, 16);
         let mut i = default_instrument();
         i.type_ = type_;
@@ -182,7 +182,7 @@ fn ratchet_stop_rules() {
         let mut e = Engine::new();
         e.begin_update();
         e.set_track_count(2);
-        e.set_timing(120.0, 4, 0.0, 0.7);
+        e.set_timing(120.0, 4, 0.0);
         e.set_pattern(0, 16);
         for t in 0..2 {
             let mut i = default_instrument();
@@ -475,7 +475,7 @@ fn tempo_change_rescales_pending_hits() {
         f.play();
         assert!(f.onsets(1000, 256) == vec![0]);
         f.e.begin_update();
-        f.e.set_timing(240.0, 4, 0.0, 0.7);
+        f.e.set_timing(240.0, 4, 0.0);
         f.e.commit_update();
         // 5000 frames of the row were left; they become 2500, and the repeats at 1500/3000/4500
         // follow.
@@ -488,7 +488,7 @@ fn tempo_change_rescales_pending_hits() {
         let (mut l, mut r) = (vec![0.0f32; 8000], vec![0.0f32; 8000]);
         f.e.render(&mut l[..1000], &mut r[..1000]);
         f.e.begin_update();
-        f.e.set_timing(240.0, 4, 0.0, 0.7);
+        f.e.set_timing(240.0, 4, 0.0);
         f.e.commit_update();
         f.e.render(&mut l, &mut r);
         // The one-row gate ends with its row, now 2500 frames after the change.

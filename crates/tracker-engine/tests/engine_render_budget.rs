@@ -56,7 +56,7 @@ fn template_kit(e: &mut Engine) {
     e.begin_update();
     assert!(e.set_track_count(27));
     e.set_instrument_count(32);
-    e.set_timing(120.0, 4, 0.0, 0.8);
+    e.set_timing(120.0, 4, 0.0);
     e.set_pattern(0, 64);
     for pad in 0..16 {
         let mut p = default_instrument();
@@ -136,7 +136,7 @@ fn many_tracks(e: &mut Engine) {
     e.begin_update();
     assert!(e.set_track_count(64));
     e.set_instrument_count(64);
-    e.set_timing(120.0, 4, 0.0, 0.8);
+    e.set_timing(120.0, 4, 0.0);
     e.set_pattern(0, 64);
     for t in 0..64 {
         let mut p = default_instrument();

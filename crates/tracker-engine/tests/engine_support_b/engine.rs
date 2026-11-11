@@ -105,13 +105,7 @@ impl Engine {
 
     /// An engine at `rate`.
     pub fn with_rate(rate: f64) -> Engine {
-        let mut e = host::Engine::new(rate).expect("an engine at a supported rate");
-        // Host mixing from the first block on, as the mixer crate sets an engine up.
-        let (control, shared, _) = e.control().parts();
-        control.begin_update(shared);
-        control.set_host_mixing_tracks(true, &[], true);
-        control.commit(shared).expect("an empty project is accepted");
-        Engine { e, block: None, clock: 0 }
+        Engine { e: host::Engine::new(rate).expect("an engine at a supported rate"), block: None, clock: 0 }
     }
 
     /// The control state, the shared state its methods take and the engine's sample rate.
@@ -132,7 +126,6 @@ impl Engine {
 
     pub fn clear_project(&mut self) {
         self.control().0.clear_project();
-        self.control().0.set_host_mixing_tracks(true, &[], true);
     }
 
     /// `commit_update`: a failed commit keeps the previous project (and the draft).
@@ -157,8 +150,8 @@ impl Engine {
 
     // ---- project settings ----
 
-    pub fn set_timing(&mut self, bpm: f64, lines_per_beat: i32, swing: f32, master_volume: f32) {
-        self.control().0.set_timing(bpm, lines_per_beat, swing, master_volume);
+    pub fn set_timing(&mut self, bpm: f64, lines_per_beat: i32, swing: f32) {
+        self.control().0.set_timing(bpm, lines_per_beat, swing);
     }
 
     pub fn set_metronome(&mut self, enabled: bool, numerator: i32, denominator: i32, volume: f32) {

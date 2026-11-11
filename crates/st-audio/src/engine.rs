@@ -118,14 +118,7 @@ struct Core {
 
 impl Core {
     fn new(sample_rate: f64, samples: Arc<dyn SampleSource>, inserts: Arc<dyn InsertFactory>) -> Result<(Core, Renderer), String> {
-        let (mut control, render, status) = host::split(sample_rate).ok_or_else(|| format!("The audio engine cannot run at {sample_rate} Hz."))?;
-        {
-            // The host mixes from the first block on.
-            let (edit, shared, _) = control.parts();
-            edit.begin_update(shared);
-            edit.set_host_mixing_tracks(true, &[], true);
-            edit.commit(shared)?;
-        }
+        let (control, render, status) = host::split(sample_rate).ok_or_else(|| format!("The audio engine cannot run at {sample_rate} Hz."))?;
         let mut compiler = Compiler::new(inserts, sample_rate, MAX_BLOCK);
         let spec = GraphSpec::empty();
         let plan = compiler.compile(&spec)?;
@@ -571,8 +564,6 @@ impl AudioEngine {
                     "applied"
                 } else if ack.status == ST_INPUT_ACK_DISCONTINUITY {
                     "discontinuity"
-                } else if ack.status == ST_INPUT_ACK_CONTROL_FLUSH {
-                    "controlFlush"
                 } else {
                     "unavailable"
                 });

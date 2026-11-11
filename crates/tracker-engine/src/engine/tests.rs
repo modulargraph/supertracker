@@ -15,9 +15,8 @@ fn begin_project(control: &mut ControlHalf, instrument: STInstrument) {
     let (edit, shared, _) = control.parts();
     edit.begin_update(shared);
     edit.clear_project();
-    edit.set_host_mixing_tracks(true, &[], true);
     assert!(edit.set_track_count(1));
-    edit.set_timing(120.0, 4, 0.0, 1.0);
+    edit.set_timing(120.0, 4, 0.0);
     edit.set_pattern(0, 16);
     edit.set_sequence(&[0], false, 0);
     edit.set_instrument(0, instrument);
@@ -200,7 +199,7 @@ fn a_commit_without_pattern_edits_keeps_the_pattern_epoch() {
     assert_eq!(edit.duration(true), 2.0); // 16 rows at 8 rows per second
     let epoch = edit.pattern_epoch();
     edit.begin_update(shared);
-    edit.set_timing(90.0, 4, 0.0, 1.0);
+    edit.set_timing(90.0, 4, 0.0);
     commit(control);
     assert_eq!(control.parts().0.pattern_epoch(), epoch, "a commit without pattern edits keeps the epoch");
     let (edit, shared, _) = control.parts();
@@ -262,7 +261,7 @@ fn concurrent_publication_and_rendering() {
     for round in 0..200 {
         let (edit, shared, _) = control.parts();
         edit.begin_update(shared);
-        edit.set_timing(100.0 + round as f64, 4, 0.0, 1.0);
+        edit.set_timing(100.0 + round as f64, 4, 0.0);
         set_note(&mut control, round % 16, 50 + round % 20);
         commit(&mut control);
         if round % 10 == 0 {
@@ -273,26 +272,4 @@ fn concurrent_publication_and_rendering() {
         edit.collect(shared);
     }
     assert!(renderer.join().unwrap() > 0.0);
-}
-
-/// The comb and all-pass filters the mixer crate builds its reverb return from, sample for sample.
-#[test]
-fn comb_and_allpass_filters() {
-    let impulse = |n: usize| if n == 0 { 1.0f32 } else { 0.0 };
-    // A comb of four samples: the input comes back four samples later. What it feeds back is its
-    // output through a one-pole low-pass (the damping), times the feedback: the low-pass keeps
-    // decaying between the echoes, so each echo is followed by its smear.
-    let mut comb = state::Comb { data: vec![0.0; 4], position: 0, filter: 0.0 };
-    let echoes: Vec<f32> = (0..13).map(|n| comb.process(impulse(n), 0.5, 0.25)).collect();
-    assert_eq!(echoes, [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.375, 0.09375, 0.0234375, 0.005859375, 0.14208984375]);
-    comb.clear();
-    assert!((0..8).all(|_| comb.process(0.0, 0.5, 0.25) == 0.0), "a cleared comb is silent");
-    // An all-pass of two samples: the inverted input at once, then the stored input, halving.
-    let mut allpass = state::Allpass { data: vec![0.0; 2], position: 0 };
-    let ringing: Vec<f32> = (0..8).map(|n| allpass.process(impulse(n))).collect();
-    assert_eq!(ringing, [-1.0, 0.0, 1.0, 0.0, 0.5, 0.0, 0.25, 0.0]);
-    allpass.clear();
-    assert!((0..4).all(|_| allpass.process(0.0) == 0.0), "a cleared all-pass is silent");
-    // Without a line there is nothing to process.
-    assert_eq!((state::Comb::default().process(1.0, 0.5, 0.25), state::Allpass::default().process(1.0)), (0.0, 0.0));
 }
