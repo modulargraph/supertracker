@@ -88,7 +88,7 @@ impl Fixture {
         project["tracks"][0]["mute"] = json!(true);
         project["audioPlugins"] = json!([
             effect("track:a", 0, "late", "test:latency:200"),
-            { "owner": "track:a", "kind": "effect", "slot": 1, "instanceID": "g", "component": "test:gain", "state": "0.75" },
+            { "owner": "track:a", "kind": "effect", "slot": 1, "instanceID": "g", "component": "test:gain", "format": "Test", "state": "0.75" },
         ]);
         project
     }

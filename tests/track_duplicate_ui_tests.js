@@ -77,12 +77,6 @@ test('failed rollback reports both errors while leaving the original project and
   assert.match(h.node('toast-region').innerHTML, /Copied instance unavailable.*Could not restore.*Original graph unavailable/);
   assert.equal(h.window.STTrackDuplicate.isApplying, false);
 });
-test('every new plug-in is verified even when a legacy source lacks an explicit instance identity', async () => {
-  const h = harness(); delete h.ST.state.project.audioPlugins[1].instanceID; h.publish(h.ST.state.project);
-  assert.equal(await h.run(), true);
-  const verified = h.calls.filter(call => call.command === 'plugin.parameters');
-  assert.equal(verified.length, 2); assert(verified.every(call => call.payload.instanceID));
-});
 test('an ordinary synth track duplicates without inventing native plug-in descriptors', async () => {
   const h = harness(); h.ST.state.project.audioPlugins = []; h.ST.state.project.instruments[0].type = 'synth'; h.publish(h.ST.state.project);
   assert.equal(await h.run(), true); assert.deepEqual(copy(h.ST.state.project.audioPlugins), []);

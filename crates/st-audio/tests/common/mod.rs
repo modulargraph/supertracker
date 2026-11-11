@@ -70,7 +70,7 @@ pub fn bus(id: &str, kind: &str, volume: f64) -> Value {
 }
 
 pub fn effect(owner: &str, slot: usize, instance: &str, component: &str) -> Value {
-    json!({ "owner": owner, "kind": "effect", "slot": slot, "instanceID": instance, "component": component, "name": component })
+    json!({ "owner": owner, "kind": "effect", "slot": slot, "instanceID": instance, "component": component, "format": if component.starts_with("stfx:") { "Builtin" } else { "Test" }, "name": component })
 }
 
 /// An offline engine with the test samples and the test insert factory.

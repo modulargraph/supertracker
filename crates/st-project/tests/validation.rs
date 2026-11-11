@@ -230,9 +230,16 @@ fn plug_in_descriptors() {
     assert_eq!(rejected(|p| p["audioPlugins"] = json!([{ "owner": "instrument:0", "kind": "instrument", "slot": 0 }])), "Instruments require a track's instrument slot.");
     // An instrument and an effect share slot 0 of a track; an instrument's insert chain has its own slots.
     accepted(|p| {
-        p["audioPlugins"] = json!([insert("track:t0", 0), insert("instrument:0", 0), insert("instrument:9", 0), { "owner": "track:t0", "kind": "instrument", "slot": 0, "instanceID": "synth", "component": "clap:x" }]);
+        p["audioPlugins"] = json!([insert("track:t0", 0), insert("instrument:0", 0), insert("instrument:9", 0), { "owner": "track:t0", "kind": "instrument", "slot": 0, "instanceID": "synth", "component": "clap:x", "format": "CLAP" }]);
     });
     assert_eq!(rejected(|p| p["audioPlugins"] = json!({})), "Project plug-ins must be an array of objects.");
+    // Every descriptor has the identity the host gave its instance and the format it was loaded as.
+    let one = |change: fn(&mut Value)| move |p: &mut Value| { p["audioPlugins"] = json!([insert("track:t0", 0)]); change(&mut p["audioPlugins"][0]); };
+    assert_eq!(rejected(one(|plugin| { plugin.as_object_mut().unwrap().remove("instanceID"); })), "A plug-in has no instance ID.");
+    assert_eq!(rejected(one(|plugin| plugin["instanceID"] = json!(7))), "Plug-in instance ID must be text.");
+    assert_eq!(rejected(one(|plugin| { plugin.as_object_mut().unwrap().remove("format"); })), "A plug-in has no format.");
+    assert_eq!(rejected(one(|plugin| plugin["format"] = json!(""))), "A plug-in has no format.");
+    assert_eq!(rejected(one(|plugin| plugin["format"] = json!(3))), "Plug-in format must be text.");
 }
 
 #[test]
@@ -407,7 +414,7 @@ fn the_plug_in_an_instrument_keeps() {
     let played = |p: &mut Value| {
         unplayed(p);
         p["tracks"][1]["instrument"] = json!(1);
-        p["audioPlugins"] = json!([{ "owner": "track:t1", "kind": "instrument", "slot": 0, "instanceID": "synth-1", "component": "com.vendor.synth" }]);
+        p["audioPlugins"] = json!([{ "owner": "track:t1", "kind": "instrument", "slot": 0, "instanceID": "synth-1", "component": "com.vendor.synth", "format": "VST3" }]);
     };
     assert_eq!(rejected(played), "Instrument 2 keeps a second copy of the plug-in a track plays it with.");
     accepted(|p| { played(p); p["instruments"][1].as_object_mut().unwrap().remove("plugin"); });

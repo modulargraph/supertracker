@@ -34,17 +34,17 @@
   const slotKey = plugin => `${plugin.kind}:${plugin.slot ?? 0}`;
   const kindLabel = plugin => plugin.kind === 'instrument' ? 'Instrument' : `FX ${(plugin.slot ?? 0) + 1}`;
   const pluginName = plugin => plugin?.nks?.name || plugin?.name || plugin?.component || 'Plug-in';
-  const targetOf = plugin => ({ owner: plugin.owner, kind: plugin.kind, slot: plugin.slot ?? 0, ...(plugin.instanceID ? { instanceID: plugin.instanceID } : {}) });
+  const targetOf = plugin => ({ owner: plugin.owner, kind: plugin.kind, slot: plugin.slot ?? 0, instanceID: plugin.instanceID });
   const addressOf = parameter => String(parameter?.address ?? parameter?.parameterID ?? '');
   const valueOf = parameter => finite(parameter.normalized) ? clamp01(parameter.normalized) : finite(parameter.value) && Number(parameter.max) > Number(parameter.min) ? clamp01((Number(parameter.value) - Number(parameter.min)) / (Number(parameter.max) - Number(parameter.min))) : null;
   /** Slots this console controls: the instrument (when it has no NKS console) and the track's inserts. */
   const trackOwner = (project, index) => `track:${project?.tracks[index]?.routingID}`;
-  function slotsForOwner(owner) { return (S().state.project?.audioPlugins||[]).filter(plugin=>plugin.instanceID && plugin.owner===owner).sort((a,b)=>(a.kind==='instrument'?-1:a.slot??0)-(b.kind==='instrument'?-1:b.slot??0)); }
+  function slotsForOwner(owner) { return (S().state.project?.audioPlugins||[]).filter(plugin=>plugin.owner===owner).sort((a,b)=>(a.kind==='instrument'?-1:a.slot??0)-(b.kind==='instrument'?-1:b.slot??0)); }
   function slotsFor(inst, instrumentPlugin) {
     const state = S().state, track = Number(state.track || 0);
-    const plugins = (state.project?.audioPlugins || []).filter(plugin => plugin.owner === trackOwner(state.project, track) && plugin.instanceID);
+    const plugins = (state.project?.audioPlugins || []).filter(plugin => plugin.owner === trackOwner(state.project, track));
     const effects = plugins.filter(plugin => plugin.kind === 'effect').sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0));
-    const instrument = instrumentPlugin && !instrumentPlugin.nks?.pages?.length && instrumentPlugin.instanceID ? [instrumentPlugin] : [];
+    const instrument = instrumentPlugin && !instrumentPlugin.nks?.pages?.length ? [instrumentPlugin] : [];
     return [...instrument, ...effects];
   }
   function entryFor(plugin) {
@@ -264,7 +264,7 @@
       const snapshot = await S().request('plugin.state', targetOf(plugin));
       if (snapshot?.stateError) throw new Error(String(snapshot.stateError));
       if (!snapshot || typeof snapshot.state !== 'string' || !snapshot.state) throw new Error('The plug-in did not return a state snapshot.');
-      if (snapshot.instanceID && snapshot.instanceID !== entry.id) throw new Error('The plug-in changed before its controls could be saved.');
+      if (snapshot.instanceID !== entry.id) throw new Error('The plug-in changed before its controls could be saved.');
       if (entry.revision !== revision) return; // A later gesture captures the complete state.
       let committed = false;
       S().mutate(`Adjust ${name}`, project => {

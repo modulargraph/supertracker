@@ -154,14 +154,6 @@ test('new identity allocation cannot revive unavailable owner, send or plug-in r
     assert.equal(result.project.patterns[0].automation.at(-1).target, 'send:missing-send');
   }
 });
-test('every copied plug-in is reported even when its original descriptor has no explicit identity', () => {
-  const project = fixture(); delete project.audioPlugins[1].instanceID; project.routing.sidechains = []; project.patterns[0].automation[0].instanceID = 'fx-two';
-  const result = build(project), copied = result.project.audioPlugins.slice(project.audioPlugins.length);
-  assert.equal(result.newPluginInstanceIDs.length, 3); assert.deepEqual(result.newPluginInstanceIDs, copied.map(plugin => plugin.instanceID));
-  assert.equal(Object.hasOwn(result.instanceMap, 'fx-six'), false);
-  assert.equal(result.project.patterns[0].steps[2][1].fx2.instanceID, 'fx-six');
-  assert.equal(result.project.patterns[0].automation[7].instanceID, result.instanceMap['fx-two']);
-});
 test('disconnected output is copied exactly and omitted output uses the existing default Master destination', () => {
   for (const destination of [null, undefined]) {
     const project = fixture(); if (destination === undefined) delete project.routing.outputs['track:source']; else project.routing.outputs['track:source'] = destination;

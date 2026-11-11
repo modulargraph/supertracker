@@ -231,6 +231,7 @@
    "component": "stfx:compressor",
    "instanceID": "src-plugin-0",
    "name": "stfx:compressor",
+   "format": "Builtin",
    "state": "AAAA"
   },
   {
@@ -240,6 +241,7 @@
    "component": "stfx:delay",
    "instanceID": "src-plugin-1",
    "name": "stfx:delay",
+   "format": "Builtin",
    "state": "AAAA"
   },
   {
@@ -249,6 +251,7 @@
    "component": "stfx:reverb",
    "instanceID": "src-bus-0",
    "name": "Reverb",
+   "format": "Builtin",
    "state": "AAAA"
   },
   {
@@ -258,6 +261,7 @@
    "component": "stfx:reverb",
    "instanceID": "src-bus-1",
    "name": "Reverb",
+   "format": "Builtin",
    "state": "AAAA"
   }
  ],

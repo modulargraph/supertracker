@@ -40,7 +40,7 @@ write('kit-group.json', app.normalize(groupProject({ pads: [0, 1, 5], plugins: [
     patterns: [{ id: 0, length: 4, steps: tracks.map((_, i) => [{ note: 60 + i, instrument: i }, null, null, null]),
       automation: tracks.map((_, i) => ({ id: `a${i}`, track: i, target: 'volume', points: [] })) }],
     audioClips: [{ id: 'c', track: 4, path: '/Audio/c.wav', startBeat: 0, durationBeats: 4 }],
-    audioPlugins: [{ instanceID: 'p', owner: 'track:r5', kind: 'effect', slot: 0, component: 'stfx:eq' }],
+    audioPlugins: [{ instanceID: 'p', owner: 'track:r5', kind: 'effect', slot: 0, component: 'stfx:eq', format: 'Builtin' }],
     routing: { buses: [], outputs: Object.fromEntries(tracks.map(t => [`track:${t.routingID}`, 'master'])), sends: [], sidechains: [] }
   };
   app.normalize(p);

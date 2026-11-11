@@ -29,7 +29,7 @@
     if (clips.length + sourceClips.length > 256) fail('Track duplication would exceed 256 audio clips.');
     const sourcePlugins = plugins.filter(plugin => plugin.owner === sourceOwner);
     const sourceSends = sends.filter(send => send.source === sourceOwner);
-    const copiedPluginIDs = new Set(sourcePlugins.map(plugin => plugin.instanceID).filter(Boolean));
+    const copiedPluginIDs = new Set(sourcePlugins.map(plugin => plugin.instanceID));
     const sourceSidechains = sidechains.filter(route => copiedPluginIDs.has(route.destination));
     if (sends.length + sidechains.length + sourceSends.length + sourceSidechains.length > 128) fail('Track duplication would exceed 128 sends and sidechains combined.');
 
@@ -67,7 +67,7 @@
     const pluginCopies = sourcePlugins.map(plugin => {
       const copied = clone(plugin); copied.owner = newOwner;
       copied.instanceID = fresh();
-      if (plugin.instanceID) instanceMap.set(plugin.instanceID, copied.instanceID);
+      instanceMap.set(plugin.instanceID, copied.instanceID);
       return copied;
     });
     for (const send of sourceSends) { const copied = clone(send); copied.id = fresh(); copied.source = newOwner; sendMap.set(send.id, copied.id); sends.push(copied); }
@@ -99,8 +99,8 @@
     const chainCopies = [...instrumentMap].flatMap(([old, next]) => plugins.filter(plugin => plugin.owner === `instrument:${old}`).map(plugin => {
       const copied = clone(plugin); copied.owner = `instrument:${next}`;
       copied.instanceID = fresh();
-      if (plugin.instanceID) instanceMap.set(plugin.instanceID, copied.instanceID);
-      if (plugin.instanceID && proposal.pluginPages[plugin.instanceID]) proposal.pluginPages[copied.instanceID] = clone(proposal.pluginPages[plugin.instanceID]);
+      instanceMap.set(plugin.instanceID, copied.instanceID);
+      if (proposal.pluginPages[plugin.instanceID]) proposal.pluginPages[copied.instanceID] = clone(proposal.pluginPages[plugin.instanceID]);
       return copied;
     }));
     if (chainCopies.length) for (const pattern of patterns) for (const step of pattern.steps[trackIndex]) if (step) {
@@ -150,7 +150,7 @@
     const plugins = proposal.audioPlugins, sourceBusPlugins = plugins.filter(plugin => plugin.owner === sourceOwner);
     const busPlugins = sourceBusPlugins.map(plugin => {
       const copied = clone(plugin); copied.owner = busOwner; copied.instanceID = fresh();
-      if (plugin.instanceID) instanceMap.set(plugin.instanceID, copied.instanceID);
+      instanceMap.set(plugin.instanceID, copied.instanceID);
       newPluginInstanceIDs.push(copied.instanceID);
       return copied;
     });

@@ -290,8 +290,8 @@ fn session(group: &str, names: &[&str], sample: &str) -> Value {
         "instruments": names.iter().enumerate().map(|(index, name)| json!({ "id": index, "type": "sample", "name": name, "samplePath": sample })).collect::<Vec<_>>(),
         "groups": [{ "id": "g", "name": group, "busID": "gb", "tags": ["Warm"] }],
         "routing": { "buses": [{ "id": "gb", "name": group, "type": "group", "groupID": "g" }], "outputs": {}, "sends": [], "sidechains": [] },
-        "audioPlugins": [{ "instanceID": "p1", "owner": "bus:gb", "kind": "effect", "slot": 0, "component": "vst3:MISSING", "name": "Rare Reverb" },
-                         { "instanceID": "p2", "owner": "bus:gb", "kind": "effect", "slot": 1, "component": "stfx:eq", "name": "EQ" }]
+        "audioPlugins": [{ "instanceID": "p1", "owner": "bus:gb", "kind": "effect", "slot": 0, "component": "vst3:MISSING", "format": "VST3", "name": "Rare Reverb" },
+                         { "instanceID": "p2", "owner": "bus:gb", "kind": "effect", "slot": 1, "component": "stfx:eq", "format": "Builtin", "name": "EQ" }]
     })
 }
 

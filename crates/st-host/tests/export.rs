@@ -154,7 +154,7 @@ fn a_track_is_frozen_reported_and_unfrozen() {
     let mut project = demo();
     project["sequence"] = json!([0]);
     let owner = format!("track:{}", project["tracks"][1]["routingID"].as_str().unwrap());
-    project["audioPlugins"] = json!([{ "owner": owner, "kind": "effect", "slot": 0, "instanceID": "comp", "component": "stfx:compressor", "name": "Compressor" }]);
+    project["audioPlugins"] = json!([{ "owner": owner, "kind": "effect", "slot": 0, "instanceID": "comp", "component": "stfx:compressor", "format": "Builtin", "name": "Compressor" }]);
     host.request("engine.project", json!({ "project": project.clone() })).unwrap();
     assert_eq!(host.request("freeze.status", json!({})).unwrap(), json!({ "tracks": [], "busy": false }));
     let result = long_request(host, "freeze.track", json!({ "track": 1, "maxTail": 2 })).unwrap();

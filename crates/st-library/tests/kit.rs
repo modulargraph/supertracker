@@ -53,8 +53,8 @@ fn session(sample: &str, zone: &str) -> Value {
               "state": "AAECAwQFAP/+", "opaqueVendorState": { "samplePath": "/vendor/opaque/do-not-copy.wav", "path": "/vendor/data" } },
             { "instanceID": "p-kick-fx", "owner": "instrument:2", "kind": "effect", "slot": 0, "component": "stfx:eq", "format": "Builtin", "state": "e30=" },
             { "instanceID": "p-bus", "owner": "bus:kitbus", "kind": "effect", "slot": 0, "component": "stfx:compressor", "format": "Builtin" },
-            { "instanceID": "p-lead", "owner": "track:lead", "kind": "effect", "slot": 0, "component": "stfx:chorus" },
-            { "instanceID": "p-return", "owner": "bus:space", "kind": "effect", "slot": 0, "component": "stfx:plate" }
+            { "instanceID": "p-lead", "owner": "track:lead", "kind": "effect", "slot": 0, "component": "stfx:chorus", "format": "Builtin" },
+            { "instanceID": "p-return", "owner": "bus:space", "kind": "effect", "slot": 0, "component": "stfx:plate", "format": "Builtin" }
         ],
         "routing": {
             "buses": [ { "id": "kitbus", "name": "Fixture kit", "type": "group", "groupID": "g1", "volume": 0.83, "pan": -0.1 }, { "id": "space", "name": "Space", "type": "return" }, { "id": "other", "name": "Other", "type": "return" } ],

@@ -63,13 +63,12 @@
         tracks.map(track => instrumentPluginOf(project, track)).filter(Boolean)]);
     // What the instrument is, without the settings a capture may refresh while the edit is prepared.
     const pluginOf = () => id === null ? null : window.STRoutingProject.instrumentPlugin(project, id);
-    const hadPluginInstance = !!pluginOf()?.instanceID;
     const preparationSignature = () => {
       const plugin = pluginOf();
       return stableJSON([{
         ...inst,
         plugin: plugin
-            ? [plugin.component, plugin.format, plugin.bundlePath, hadPluginInstance ? plugin.instanceID : null, plugin.nks?.path, plugin.nks?.identity]
+            ? [plugin.component, plugin.format, plugin.bundlePath, plugin.instanceID, plugin.nks?.path, plugin.nks?.identity]
             : null
       }, tracks.map(track => project.tracks[track])]);
     };
@@ -160,9 +159,7 @@
         if (!snapshot?.component
             || snapshot.stateError
             || snapshot.component !== plugin.component
-            || plugin.instanceID
-                && snapshot.instanceID
-                && snapshot.instanceID !== plugin.instanceID) throw new Error('Could not capture the current instrument plug-in before replacing it.');
+            || snapshot.instanceID !== plugin.instanceID) throw new Error('Could not capture the current instrument plug-in before replacing it.');
         const merged = { ...plugin, ...snapshot };
         project.audioPlugins = project.audioPlugins.map(x => x === plugin ? merged : x);
         state.dirty = true;

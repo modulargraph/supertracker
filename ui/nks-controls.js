@@ -20,7 +20,7 @@
           : item);
   const savedIdentity = plugin => stable([plugin?.instanceID, plugin?.component, plugin?.format, plugin?.bundlePath, plugin?.nks?.path,
       plugin?.nks?.identity]);
-  const target = plugin => ({ owner: plugin.owner, kind: 'instrument', slot: 0, ...(plugin.instanceID ? { instanceID: plugin.instanceID } : {}) });
+  const target = plugin => ({ owner: plugin.owner, kind: 'instrument', slot: 0, instanceID: plugin.instanceID });
   // A track's instrument plug-in: the instrument descriptor owned by the track's channel.
   const instrumentPlugin = (project, index) => project?.audioPlugins.find(item => item.owner === `track:${project.tracks[index]?.routingID}`
       && item.kind === 'instrument' && (item.slot ?? 0) === 0);
@@ -248,7 +248,7 @@
         + `</div></div><input id="${base}-range" type="range" min="0" max="1" step="${window.STFine?.parameterStep(value) || .001}"`
         + ` data-parameter-steps="${window.STFine?.parameterSteps(value) || 0}" value="${value?.value ?? 0}" ${attributes} ${enabled ? '' : 'disabled'}`
         + ` aria-label="${esc(name)}" aria-valuetext="${esc(display)}" aria-describedby="${base}-display nks-${entry.track}-keyboard-hint">${known ? `<button type="button" class="nks-step-action" id="${base}-step" data-nks-step="${id}" data-nks-name="${esc(name)}" aria-label="Use ${esc(name)}`
-        + ` on the selected tracker step" ${enabled && value?.automatable !== false && entry.plugin.instanceID && window.STStepFX?.show
+        + ` on the selected tracker step" ${enabled && value?.automatable !== false && window.STStepFX?.show
             ? ''
             : 'disabled'}>Use `
         + `on step…</button>` : ''}</div>`;
@@ -295,7 +295,7 @@
       }
       for (const button of root.querySelectorAll('[data-nks-step]')) {
         const value = entry.values.get(button.dataset.nksStep);
-        button.disabled = !(value?.writable && value.automatable !== false && entry.plugin.instanceID && window.STStepFX?.show);
+        button.disabled = !(value?.writable && value.automatable !== false && window.STStepFX?.show);
       }
       for (const output of root.querySelectorAll('[data-nks-display]')) {
         const value = entry.values.get(output.dataset.nksDisplay);
@@ -396,7 +396,7 @@
           || Array.isArray(snapshot)
           || typeof snapshot.state !== 'string'
           || !snapshot.state) throw new Error('The plug-in did not return a state snapshot.');
-      if (entry.plugin.instanceID && snapshot.instanceID !== entry.plugin.instanceID
+      if (snapshot.instanceID !== entry.plugin.instanceID
           || snapshot.component && snapshot.component !== entry.plugin.component
           || snapshot.owner !== undefined && snapshot.owner !== entry.plugin.owner
           || snapshot.kind && snapshot.kind !== 'instrument'
@@ -525,7 +525,7 @@
     const state = S().state, owner = state.project, patternID = owner.activePattern, row = state.row;
     const action = entry.actionGeneration = (entry.actionGeneration || 0) + 1;
     const address = button.dataset.nksStep, name = button.dataset.nksName;
-    if (button.disabled || !entry.plugin.instanceID || !window.STStepFX?.show || !valid(entry)) return;
+    if (button.disabled || !window.STStepFX?.show || !valid(entry)) return;
     if (!await flushEdits()) return;
     if (entry.actionGeneration !== action
         || !valid(entry)

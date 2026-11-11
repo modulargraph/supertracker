@@ -30,8 +30,8 @@
   function copy(p, from, to, source = p) {
     const copies = chain(source, from).map(item => {
       const next = { ...clone(item), owner: owner(to), instanceID: uid() };
-      delete next.track; delete next.parameters;
-      if (item.instanceID && source.pluginPages[item.instanceID]) p.pluginPages[next.instanceID] = clone(source.pluginPages[item.instanceID]);
+      delete next.parameters;
+      if (source.pluginPages[item.instanceID]) p.pluginPages[next.instanceID] = clone(source.pluginPages[item.instanceID]);
       return next;
     });
     if (!copies.length) return copies;

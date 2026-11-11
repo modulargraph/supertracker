@@ -55,7 +55,7 @@
       });
       if (result === false || !proposal) throw new Error(`${spec.noun === 'group' ? 'Group' : 'Track'} duplication was canceled before the audio project was prepared.`);
       if (!unchanged()) throw new Error('The project changed while duplicating. Your newer edits were preserved.');
-      const freshIDs = new Set(proposal.newPluginInstanceIDs || Object.values(proposal.instanceMap));
+      const freshIDs = new Set(proposal.newPluginInstanceIDs);
       for (const plugin of proposal.project.audioPlugins) if (freshIDs.has(plugin.instanceID)) {
         await app().request('plugin.parameters',
             { owner: plugin.owner, kind: plugin.kind, slot: plugin.slot, instanceID: plugin.instanceID, addresses: [] });

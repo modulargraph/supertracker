@@ -284,7 +284,7 @@ fn kit_session(sample: &Path, clap: &Path) -> Value {
         "groups": [ { "id": "g1", "name": "Bridge kit", "busID": "kitbus" } ],
         "audioPlugins": [
             { "instanceID": "p-synth", "owner": "track:synth", "kind": "instrument", "slot": 0, "component": format!("clap:{}", st_audio::plugins::testing::CLAP_SINE), "format": "CLAP", "bundlePath": clap, "name": "ST Test Sine" },
-            { "instanceID": "p-bus", "owner": "bus:kitbus", "kind": "effect", "slot": 0, "component": "stfx:eq", "name": "EQ" }
+            { "instanceID": "p-bus", "owner": "bus:kitbus", "kind": "effect", "slot": 0, "component": "stfx:eq", "format": "Builtin", "name": "EQ" }
         ],
         "routing": { "buses": [ { "id": "kitbus", "name": "Bridge kit", "type": "group", "groupID": "g1", "volume": 1, "pan": 0 } ],
             "outputs": { "track:kick": "bus:kitbus", "track:synth": "bus:kitbus", "bus:kitbus": "master" }, "sends": [], "sidechains": [] },

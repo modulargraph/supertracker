@@ -90,7 +90,7 @@ fn rendering_with_plug_ins_never_allocates_also_when_one_of_them_crashes() {
     engine.set_plugins(manager.clone());
 
     let plugin = |owner: &str, kind: &str, instance: &str, format: &str, id: &str| {
-        json!({ "owner": owner, "kind": kind, "slot": 0, "instanceID": instance, "component": format!("{format}:{id}"), "bundlePath": if format == "clap" { &installed.clap } else { &installed.vst3 }, "name": instance })
+        json!({ "owner": owner, "kind": kind, "slot": 0, "instanceID": instance, "component": format!("{format}:{id}"), "format": format.to_ascii_uppercase(), "bundlePath": if format == "clap" { &installed.clap } else { &installed.vst3 }, "name": instance })
     };
     let mut project = project(3);
     project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "plugin", "name": "Sine" }));

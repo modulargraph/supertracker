@@ -508,7 +508,8 @@
    "owner": "track:r5",
    "kind": "effect",
    "slot": 0,
-   "component": "stfx:eq"
+   "component": "stfx:eq",
+   "format": "Builtin"
   }
  ],
  "routing": {

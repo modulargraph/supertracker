@@ -73,8 +73,8 @@
       finally { loading = false; }
     }
     const pluginOf = () => window.STRoutingProject.instrumentPlugin(owner, instrumentIndex);
-    const previousAssignment = track.instrument, hadInstanceID = !!pluginOf()?.instanceID;
-    const pluginIdentity = plugin => [plugin?.component, plugin?.format, plugin?.bundlePath, hadInstanceID ? plugin?.instanceID : undefined,
+    const previousAssignment = track.instrument;
+    const pluginIdentity = plugin => [plugin?.component, plugin?.format, plugin?.bundlePath, plugin?.instanceID,
         plugin?.nks?.path, plugin?.nks?.identity];
     const destination = value => JSON.stringify({ ...value, plugin: pluginIdentity(pluginOf()) });
     const previousDestination = destination(instrument); let previousInstrument = null;

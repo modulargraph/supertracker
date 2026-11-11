@@ -345,7 +345,7 @@
       const slotIndex = current?.slotIndex ?? selected.slot ?? 0;
       const knobs = current ? pluginParamKnobs(current, ctl, { arOwner: selected.owner, kind: 'effect', slotIndex }) : Array(8).fill(null);
       const fx = insertButtons(selected.owner, slotIndex, current?.name || selected.name, current?.bypass);
-      const editor = () => S().request('plugin.editor', { owner: selected.owner, kind: 'effect', slot: slotIndex, ...(selected.instanceID ? { instanceID: selected.instanceID } : {}) })
+      const editor = () => S().request('plugin.editor', { owner: selected.owner, kind: 'effect', slot: slotIndex, instanceID: selected.instanceID })
           .catch(error => S().toast(error.message, 'error'));
       const pages = current?.pages || [], at = current?.page || 0;
       return finish({ id: 'plugin', title: 'Plug-in', pages, page: at, slot: selected.key,
@@ -394,7 +394,7 @@
     let probe = null; try { probe = forOwner(null)?.view?.() || null; } catch { probe = null; }
     const slots = probe?.slots || [];
     const chain = [...slots.map((slot, i) => ({
-      key: `${owner}:` + (slot.instanceID || slot.key),
+      key: `${owner}:${slot.instanceID}`,
       instanceID: slot.instanceID,
       label: `Insert ${i + 1}`,
       name: slot.name || 'Plug-in',

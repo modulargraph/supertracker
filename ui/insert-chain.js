@@ -17,11 +17,11 @@
   // ---- Model ----------------------------------------------------------------------------------------------------
   const chainOf = owner => API()?.chain(owner) || [];
   function selectedOf(owner, chain, options = {}) {
-    if (options.selected !== undefined) return chain.find(item => item.instanceID && item.instanceID === options.selected) || null;
+    if (options.selected !== undefined) return chain.find(item => item.instanceID === options.selected) || null;
     const wanted = local.selected.get(owner);
     return chain.find(item => item.instanceID === wanted) || chain[0] || null;
   }
-  const controllerFor = (owner, plugin) => plugin?.instanceID ? window.STPluginPages?.controller?.forOwner?.(owner, plugin.instanceID) : null;
+  const controllerFor = (owner, plugin) => plugin ? window.STPluginPages?.controller?.forOwner?.(owner, plugin.instanceID) : null;
   function moduleView(owner, plugin) {
     const ctl = controllerFor(owner, plugin);
     let view = null; try { view = ctl?.view?.() || null; } catch { view = null; }
@@ -62,7 +62,7 @@
   function tile(owner, plugin, index, selected, prefix) {
     const on = selected?.instanceID === plugin.instanceID;
     return `<div class="fx-tile${on ? ' is-selected' : ''}${plugin.bypass ? ' is-bypassed' : ''}" id="${prefix}-tile-${plugin.slot}" role="option" aria-selected="${on}"`
-      + ` tabindex="${on ? 0 : -1}" draggable="true" data-fx-tile="${plugin.slot}" data-fx-instance="${esc(plugin.instanceID || '')}" title="${esc(displayName(plugin))} · drag to reorder"`
+      + ` tabindex="${on ? 0 : -1}" draggable="true" data-fx-tile="${plugin.slot}" data-fx-instance="${esc(plugin.instanceID)}" title="${esc(displayName(plugin))} · drag to reorder"`
       + ` aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight B D Delete"><span class="fx-tile-top"><span class="fx-tile-index">${index + 1}</span><span class="fx-tile-category">${esc(category(plugin))}</span>`
       + `<button type="button" class="fx-power" tabindex="-1" data-fx-power="${plugin.slot}" aria-pressed="${!plugin.bypass}" aria-label="${plugin.bypass ? 'Turn on' : 'Bypass'} ${esc(displayName(plugin))}" title="${plugin.bypass ? 'Bypassed · click to turn on' : 'On · click to bypass'} (B)">`
       + `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v6M4.6 4.2a5 5 0 1 0 6.8 0"/></svg></button></span><strong class="fx-tile-name">${esc(displayName(plugin))}</strong>`
@@ -88,7 +88,7 @@
     const tabs = pages.length > 1 ? `<div class="fx-pages" role="tablist" aria-label="Parameter pages">${pages.map((name, i) => `<button type="button" role="tab" id="${prefix}-page-${i}" data-fx-page="${i}" aria-selected="${i === page}" tabindex="${i === page ? 0 : -1}" class="${i === page ? 'is-on' : ''}">${esc(name)}</button>`).join('')}</div>`
       : pages.length ? `<div class="fx-pages"><span class="fx-page-single">${esc(pages[0])}</span></div>` : '<div class="fx-pages"></div>';
     const builtin = FX()?.isBuiltin(plugin.component);
-    return `<div class="fx-module${plugin.bypass ? ' is-bypassed' : ''}" data-fx-module="${esc(plugin.instanceID || '')}"><div class="fx-module-head"><div class="fx-module-title"><small>Insert ${position + 1} · ${esc(category(plugin))}</small><h4>${esc(displayName(plugin))}</h4></div>${tabs}`
+    return `<div class="fx-module${plugin.bypass ? ' is-bypassed' : ''}" data-fx-module="${esc(plugin.instanceID)}"><div class="fx-module-head"><div class="fx-module-title"><small>Insert ${position + 1} · ${esc(category(plugin))}</small><h4>${esc(displayName(plugin))}</h4></div>${tabs}`
       + `<div class="fx-module-actions"><button type="button" id="${prefix}-bypass" data-fx-action="bypass" aria-pressed="${!!plugin.bypass}" class="${plugin.bypass ? 'is-active' : ''}" title="B">${plugin.bypass ? 'Bypassed' : 'Bypass'}</button>`
       + `<button type="button" id="${prefix}-duplicate" data-fx-action="duplicate" title="D" ${chain.length >= (API()?.SLOTS || 16) ? 'disabled' : ''}>Duplicate</button>${builtin ? '' : `<button type="button" id="${prefix}-editor" data-fx-action="editor">Editor ↗</button>`}`
       + `<button type="button" id="${prefix}-remove" data-fx-action="remove" class="danger" title="⌫">Remove</button></div></div>`

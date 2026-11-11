@@ -262,7 +262,9 @@
        patterns [1..]      each with id, name, length, steps[track][row] (a step or null) for every track and
                            row, and automation [], whose lanes each have points []
        sequence [1..]      pattern ids
-       groups [], audioClips [], audioPlugins []
+       groups [], audioClips []
+       audioPlugins []     each with owner, instanceID and format, as the host wrote them when it loaded the
+                           plug-in (the page never makes a descriptor itself; a copy gets a new instanceID)
        pluginPages {}      the user's parameter pages, by plug-in instanceID
        routing { buses [], outputs {}, sends [], sidechains [] }
 

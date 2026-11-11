@@ -400,7 +400,7 @@
   }
 
   const insertOut = plugin => ({ slot: plugin.slot ?? 0, name: plugin.nks?.name || plugin.name, format: plugin.format, bypass: !!plugin.bypass,
-    ...(plugin.instanceID ? { instanceID: plugin.instanceID } : {}) });
+    instanceID: plugin.instanceID });
   /* track or channel (not both); without either, the track under the cursor. */
   function pluginChannel(p, params, { required = false } = {}) {
     if (params.channel !== undefined && params.track !== undefined) fail('Give track or channel, not both.');
@@ -1345,7 +1345,7 @@
     const stillValid = () => st().project === owner && owner.tracks[track] === trackObject;
     // The slot holds this load's instance.
     const attached = list => (Array.isArray(list) ? list : []).find(item => item.owner === target.owner
-        && item.kind === kind && (item.slot ?? 0) === slot && (result?.instanceID ? item.instanceID === result.instanceID : item.component === plugin.id));
+        && item.kind === kind && (item.slot ?? 0) === slot && item.instanceID === result.instanceID);
     let result, snapshot;
     try {
       // Publish every committed edit first, as the mixer's insert loader does: a debounced engine update that

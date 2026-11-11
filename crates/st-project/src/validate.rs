@@ -434,7 +434,8 @@ fn find_cycle(edges: &[(String, String)]) -> Option<Vec<String>> {
     (!left.is_empty()).then(|| left.into_iter().map(str::to_string).collect())
 }
 
-/// Plug-in descriptors: each names an existing owner, and no two share a slot.
+/// Plug-in descriptors: each names an existing owner, has its instance identity and its format, and
+/// no two share a slot.
 fn validate_plugins(project: &Project, owners: &Owners) -> Result<()> {
     if project.extra.contains_key("audioPlugins") {
         return fail("Project plug-ins must be an array of objects.");
@@ -466,13 +467,15 @@ fn validate_plugins(project: &Project, owners: &Owners) -> Result<()> {
             _ if owners.channels.contains_key(owner) => owner.to_string(),
             _ => return fail(format!("Plug-in owner {owner} does not exist.")),
         };
-        if let Some(id) = &plugin.instance_id {
-            if !is_identifier(id) {
-                return fail("Plug-in instance ID must contain 1–128 letters, digits, hyphens, underscores, or periods.");
-            }
-            if !instance_ids.insert(id.clone()) {
-                return fail(format!("Invalid or duplicate plug-in layout: {id}."));
-            }
+        let Some(id) = &plugin.instance_id else { return fail("A plug-in has no instance ID.") };
+        if !is_identifier(id) {
+            return fail("Plug-in instance ID must contain 1–128 letters, digits, hyphens, underscores, or periods.");
+        }
+        if !instance_ids.insert(id.clone()) {
+            return fail(format!("Invalid or duplicate plug-in layout: {id}."));
+        }
+        if plugin.format.as_deref().unwrap_or("").is_empty() {
+            return fail(if plugin.extra.contains_key("format") { "Plug-in format must be text." } else { "A plug-in has no format." });
         }
         if kind == PluginKind::Instrument && (!matches!(owners.channels.get(&owner), Some(Channel::Track(_))) || plugin.slot() != 0) {
             return fail("Instruments require a track's instrument slot.");

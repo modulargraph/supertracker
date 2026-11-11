@@ -240,7 +240,7 @@ impl ProjectAudio for Graph {
 
 #[test]
 fn an_attached_audio_engine_prepares_publications_and_can_refuse_them() {
-    let snapshots = Arc::new(Mutex::new(json!({"audioPlugins": [{"owner": "master", "instanceID": "p1", "state": "AAAA"}]})));
+    let snapshots = Arc::new(Mutex::new(json!({"audioPlugins": [{"owner": "master", "instanceID": "p1", "format": "VST3", "state": "AAAA"}]})));
     let served = snapshots.clone();
     let quieted: Arc<Mutex<Vec<&'static str>>> = Arc::default();
     let (panic_log, arm_log) = (quieted.clone(), quieted.clone());
@@ -268,7 +268,7 @@ fn an_attached_audio_engine_prepares_publications_and_can_refuse_them() {
     // Saving stores the plug-in states the engine reports.
     let file = fixture.file("Song.supertracker");
     let saved = fixture.host.request("project.save", json!({"path": file})).unwrap();
-    assert_eq!(saved["project"]["audioPlugins"], json!([{"owner": "master", "instanceID": "p1", "state": "AAAA"}]));
+    assert_eq!(saved["project"]["audioPlugins"], json!([{"owner": "master", "instanceID": "p1", "format": "VST3", "state": "AAAA"}]));
     // A plug-in whose state cannot be captured stops the save, and the file keeps its content.
     *snapshots.lock().unwrap() = json!({"audioPlugins": [{"name": "Reverb", "stateError": "it does not answer"}]});
     assert_eq!(fixture.host.request("project.save", json!({})), Err("Reverb: it does not answer".to_string()));

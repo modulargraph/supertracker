@@ -35,7 +35,7 @@
     const removedSends = new Set(routing.sends.filter(send => send.source === owner || send.destination === owner).map(send => `send:${send.id}`));
     routing.sends = routing.sends.filter(send => send.source !== owner && send.destination !== owner);
     for (const pattern of project.patterns) pattern.automation = pattern.automation.filter(lane => lane.owner !== owner && !removedSends.has(lane.target));
-    const instances = new Set(removedPlugins.map(plugin => plugin.instanceID).filter(Boolean));
+    const instances = new Set(removedPlugins.map(plugin => plugin.instanceID));
     routing.sidechains = routing.sidechains.filter(route => route.source !== owner && !instances.has(route.destination));
   }
 

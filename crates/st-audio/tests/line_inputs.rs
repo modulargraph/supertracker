@@ -82,7 +82,7 @@ fn a_line_input_runs_through_its_tracks_inserts_fader_and_meter() {
     project["tracks"][0]["pan"] = json!(-0.5);
     project["tracks"][1]["audioInput"] = line(&[5], 1.0);
     project["tracks"][1]["mute"] = json!(true);
-    project["audioPlugins"] = json!([{ "owner": "track:a", "kind": "effect", "slot": 0, "instanceID": "g", "component": "test:gain", "state": "0.75" }]);
+    project["audioPlugins"] = json!([{ "owner": "track:a", "kind": "effect", "slot": 0, "instanceID": "g", "component": "test:gain", "format": "Test", "state": "0.75" }]);
     rig.engine.publish(&parse(&project)).unwrap();
     assert_eq!((row(&rig.engine, 0)["state"].clone(), row(&rig.engine, 0)["monitoring"].clone(), row(&rig.engine, 0)["latencyFrames"].clone()), (json!("live"), json!(true), json!(BLOCK)));
     assert_eq!(row(&rig.engine, 2), Value::Null, "a track without an input has no row");

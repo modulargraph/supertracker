@@ -192,8 +192,8 @@ fn the_snapshot_and_the_mixer_report_follow_the_project() {
     }
     project["routing"] = json!({ "buses": [], "outputs": {}, "sends": [], "sidechains": [] });
     project["audioPlugins"] = json!([
-        { "owner": "track:t0", "kind": "effect", "slot": 0, "instanceID": "comp", "component": "stfx:compressor", "name": "Compressor" },
-        { "owner": "master", "kind": "effect", "slot": 0, "instanceID": "vendor", "component": "com.vendor.eq", "name": "Vendor EQ", "state": "b3BhcXVl" },
+        { "owner": "track:t0", "kind": "effect", "slot": 0, "instanceID": "comp", "component": "stfx:compressor", "format": "Builtin", "name": "Compressor" },
+        { "owner": "master", "kind": "effect", "slot": 0, "instanceID": "vendor", "component": "com.vendor.eq", "format": "VST2", "name": "Vendor EQ", "state": "b3BhcXVl" },
     ]);
     let project_tracks = project["tracks"].as_array().unwrap().len();
     host.request("engine.project", json!({ "project": project })).unwrap();
@@ -251,7 +251,7 @@ fn routing_changes_are_validated_applied_and_reported() {
         track["routingID"] = json!(format!("t{index}"));
     }
     project["routing"] = json!({ "buses": [], "outputs": {}, "sends": [], "sidechains": [] });
-    project["audioPlugins"] = json!([{ "owner": "track:t0", "kind": "effect", "slot": 0, "instanceID": "comp", "component": "stfx:compressor", "name": "Compressor" }]);
+    project["audioPlugins"] = json!([{ "owner": "track:t0", "kind": "effect", "slot": 0, "instanceID": "comp", "component": "stfx:compressor", "format": "Builtin", "name": "Compressor" }]);
     host.request("engine.project", json!({ "project": project })).unwrap();
 
     // What the mixer offers: one mix model, every channel as a stem, the compressor's key input.

@@ -815,7 +815,7 @@ fn the_catalogue_lists_the_test_plug_ins_without_loading_them_into_this_process(
     let engine = engine();
     engine.set_plugins(manager.clone());
     let mut project = project(1);
-    project["audioPlugins"] = json!([{ "owner": "track:a", "kind": "effect", "slot": 0, "instanceID": "fx", "component": format!("clap:{CLAP_GAIN}") }]);
+    project["audioPlugins"] = json!([{ "owner": "track:a", "kind": "effect", "slot": 0, "instanceID": "fx", "component": format!("clap:{CLAP_GAIN}"), "format": "CLAP" }]);
     engine.publish(&parse(&project)).unwrap();
     assert_eq!(manager.hosted("fx").unwrap().identity.name, "ST Test Gain");
 }

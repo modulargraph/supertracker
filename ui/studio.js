@@ -599,7 +599,7 @@
     const toIndex = original.findIndex(item => Number(item.slot) === Number(toSlot));
     if (index < 0 || toIndex < 0 || index === toIndex) return false;
     fromSlot = Number(fromSlot); toSlot = Number(toSlot);
-    const topology = effects => effects.map(item => [Number(item.slot), item.component, item.bundlePath || '', item.instanceID || null]);
+    const topology = effects => effects.map(item => [Number(item.slot), item.component, item.bundlePath || '', item.instanceID]);
     const originalTopology = topology(original);
     const current = () => project() === owner && channelFor(track, owner)?.entity === trackObject;
     let sent = false, committed = false, signature = '', focusSlot = fromSlot;
@@ -652,7 +652,7 @@
           && item.instanceID.length > 0;
       const sameInstallation = (a, b) => a.component === b.component
           && (a.bundlePath || '') === (b.bundlePath || '')
-          && (!a.instanceID || a.instanceID === b.instanceID);
+          && a.instanceID === b.instanceID;
       const valid = result.moved === true && ownerForPlugin(result) === track && Number(result.fromSlot) === fromSlot && Number(result.toSlot) === toSlot &&
         before.length === baseline.length && after.length === before.length && result.slotMap.length === before.length && map.size === before.length &&
         new Set(before.map(item => Number(item.slot))).size === before.length && new Set(after.map(item => Number(item.slot))).size === after.length && new Set(before.map(item => item.instanceID)).size === before.length &&
@@ -783,16 +783,12 @@
       await S().request('plugin.remove', payload);
       if (!context.valid()) throw new Error('Plug-in removal was canceled because its channel changed.');
       const current = insertAt(track, slot);
-      if (!current
-          || (removed.instanceID
-              ? current.instanceID !== removed.instanceID
-              : current.component !== removed.component)) throw new Error('The insert changed while removal was pending.');
+      if (current?.instanceID !== removed.instanceID) throw new Error('The insert changed while removal was pending.');
       ui.parameters.delete(pluginKey(track, slot));
       mutate(label, p => {
         p.audioPlugins = p.audioPlugins.filter(item => !(ownerForPlugin(item) === track && item.kind === 'effect' && item.slot === slot));
-        if (removed.instanceID
-            && p.routing.sidechains) p.routing.sidechains = p.routing.sidechains.filter(route => route.destination !== removed.instanceID);
-        if (removed.instanceID) delete p.pluginPages[removed.instanceID];
+        p.routing.sidechains = p.routing.sidechains.filter(route => route.destination !== removed.instanceID);
+        delete p.pluginPages[removed.instanceID];
         for (const pattern of p.patterns) pattern.automation = pattern.automation.filter(lane => !(lane.owner === track && lane.target?.startsWith(`plugin:effect:${slot}:`)));
       });
       window.STRouting?.refreshCapabilities();
@@ -806,7 +802,7 @@
     const source = insertAt(track, slot); if (!source) throw new Error('This insert effect is no longer present.');
     if (freeSlot(track) < 0) { S().toast(`This channel already holds ${INSERT_SLOTS} insert effects.`); return null; }
     if (await S().captureNativeEdits?.() === false) return null;
-    const snapshot = await S().request('plugin.state', { ...ownerPayload(track), kind: 'effect', slot, ...(source.instanceID ? { instanceID: source.instanceID } : {}) });
+    const snapshot = await S().request('plugin.state', { ...ownerPayload(track), kind: 'effect', slot, instanceID: source.instanceID });
     if (snapshot?.stateError) throw new Error(String(snapshot.stateError));
     const history = state().undo, top = history?.at(-1);
     const copy = await addInsert(track, source.component, { bundlePath: source.bundlePath || '', state: snapshot?.state || source.state || '', name: source.name || '',
@@ -819,7 +815,7 @@
       const addEntry = history?.at(-1) !== top ? history.at(-1) : null;
       if (await moveInsert(track, copy.slot, next.slot, { label: 'Duplicate insert effect' }) && addEntry && history.at(-1) !== addEntry && history.at(-2) === addEntry) history.pop();
     }
-    return effectsFor(track).find(item => copy.instanceID && item.instanceID === copy.instanceID) || copy;
+    return effectsFor(track).find(item => item.instanceID === copy.instanceID) || copy;
   }
   /** The owner's insert effects in chain order (descriptors from project.audioPlugins). */
   const insertChain = track => effectsFor(normalizeOwner(track));

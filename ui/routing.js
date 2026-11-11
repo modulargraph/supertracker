@@ -499,7 +499,6 @@
   }
 
   function renderPluginSidechain(plugin) {
-    if(!plugin?.instanceID)return '';
     const reads = readsSidechain(plugin.instanceID),
       saved = routing().sidechains.filter(route => route.destination === plugin.instanceID),
       supported = available();
