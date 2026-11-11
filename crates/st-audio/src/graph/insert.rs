@@ -17,7 +17,7 @@
 
 use super::spec::InsertSpec;
 use std::ffi::CString;
-use tracker_engine::effects::{self, capi, common};
+use tracker_engine::effects::{self, common};
 
 /// What a processor may want to know about the block it renders.
 #[derive(Debug, Clone, Copy)]
@@ -143,7 +143,7 @@ impl InsertFactory for BuiltinFactory {
             .map(|(index, info)| {
                 let id = info.id().to_string_lossy();
                 let value = saved.iter().find(|(name, _)| *name == id).map(|(_, value)| *value);
-                (index as u64, value.unwrap_or_else(|| capi::normalized(info, info.default_value)))
+                (index as u64, value.unwrap_or_else(|| info.normalized(info.default_value)))
             })
             .collect())
     }
@@ -345,7 +345,7 @@ impl InsertProcessor for BuiltinInsert {
     fn parameter(&mut self, address: u64, normalized: f64) {
         let (Some(processor), Some(info)) = (self.processor.as_mut(), self.descriptor.params.get(address as usize)) else { return };
         if (address as usize) < common::MAX_PARAMETERS && normalized.is_finite() {
-            processor.core_mut().p[address as usize] = capi::physical(info, normalized);
+            processor.core_mut().p[address as usize] = info.physical(normalized);
             self.gate_frames = None;
         }
     }

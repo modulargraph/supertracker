@@ -94,7 +94,7 @@ pub fn physical(parameter: &Parameter, normalized: f64) -> f64 {
     value.clamp(parameter.minimum, parameter.maximum)
 }
 
-// Generated from the engine's catalogue (tracker-engine `effects::capi`); see the module documentation.
+// Generated from the engine's catalogue (tracker-engine `effects::catalogue`); see the module documentation.
 pub(crate) const EFFECTS: &[Effect] = &[
     Effect { id: "compressor", name: "Compressor", parameters: &[
         Parameter { id: "mode", name: "Mode", minimum: 0.0, maximum: 1.0, default: 0.0, flags: 2 },

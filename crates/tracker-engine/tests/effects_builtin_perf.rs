@@ -24,7 +24,6 @@ mod engine_support_b;
 use engine_support_b::fx::{Fx, Sidechain};
 use std::f64::consts::PI;
 use std::time::Instant;
-use tracker_engine::effects::normalized;
 use tracker_engine::effects::catalogue;
 
 const RATE: f64 = 48000.0;
@@ -139,7 +138,7 @@ impl Instance {
             let mut found = false;
             for (j, info) in fx.info.params.iter().enumerate() {
                 if info.id().to_bytes() == parameter.as_bytes() {
-                    fx.set_parameter(j as u32, normalized(info, *value));
+                    fx.set_parameter(j as u32, info.normalized(*value));
                     found = true;
                 }
             }

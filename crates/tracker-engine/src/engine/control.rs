@@ -17,7 +17,8 @@ use std::sync::Arc;
 /// Source of process-unique pattern content identities (`pattern_epoch`).
 static PATTERN_EPOCHS: AtomicU64 = AtomicU64::new(0);
 
-pub const BAD_ALLOC: &str = "std::bad_alloc";
+/// The error of a project whose per-track tables could not be allocated.
+pub const OUT_OF_MEMORY: &str = "Not enough memory for this many tracks.";
 
 /// The error of a control operation that was handed another engine's `Shared`.
 pub const FOREIGN_ENGINE: &str = "The shared state belongs to another engine.";
@@ -117,7 +118,7 @@ impl Control {
             match &self.control.tables {
                 Some(tables) if tables.same_shape(p.track_count) => p.tables = Some(tables.clone()),
                 _ => {
-                    p.tables = Some(Arc::new(ChannelTables::new(p.track_count).ok_or(BAD_ALLOC)?));
+                    p.tables = Some(Arc::new(ChannelTables::new(p.track_count).ok_or(OUT_OF_MEMORY)?));
                 }
             }
         }

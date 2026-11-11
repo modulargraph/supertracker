@@ -20,7 +20,6 @@ use std::collections::BTreeSet;
 use std::f64::consts::PI;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
-use tracker_engine::effects::{normalized, physical};
 use tracker_engine::effects::common::{PARAMETER_INTEGER, PARAMETER_LOG, PARAMETER_TOGGLE};
 use tracker_engine::effects::{catalogue, find, Descriptor};
 
@@ -76,7 +75,7 @@ impl FX {
         let d = find(&std::ffi::CString::new(self.id.as_str()).expect("id")).expect("descriptor");
         for (j, q) in d.params.iter().enumerate() {
             if q.id().to_bytes() == name.as_bytes() {
-                let set = self.fx().set_parameter(j as u32, normalized(q, value));
+                let set = self.fx().set_parameter(j as u32, q.normalized(value));
                 check(set, &format!("{} sets {}", self.id, name));
                 return;
             }
@@ -169,8 +168,8 @@ fn catalogue_tests() {
             }
             let mut prev = -1.0f64;
             for k in 0..=100 {
-                let raw = physical(p, k as f64 / 100.0);
-                let norm = normalized(p, raw);
+                let raw = p.physical(k as f64 / 100.0);
+                let norm = p.normalized(raw);
                 check(
                     raw >= p.minimum - 1e-10 && raw <= p.maximum + 1e-10 && norm >= prev - 1e-10,
                     "monotone bounded mapping",

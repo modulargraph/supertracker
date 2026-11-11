@@ -76,19 +76,3 @@ pub fn find(id: &CStr) -> Option<&'static Descriptor> {
 pub fn find_str(id: &str) -> Option<&'static Descriptor> {
     catalogue().find(|descriptor| descriptor.info.id().to_bytes() == id.as_bytes())
 }
-
-/// Normalized [0, 1] to the displayed physical value: [`ParameterInfo::physical`].
-pub fn physical(parameter: &ParameterInfo, normalized: f64) -> f64 {
-    parameter.physical(normalized)
-}
-
-/// Displayed physical value to normalized [0, 1]: [`ParameterInfo::normalized`].
-pub fn normalized(parameter: &ParameterInfo, physical: f64) -> f64 {
-    parameter.normalized(physical)
-}
-
-/// The parameter mapping under the path the mixer crate imports it from. Other code uses
-/// [`ParameterInfo::physical`] and [`ParameterInfo::normalized`].
-pub mod capi {
-    pub use super::{normalized, physical};
-}

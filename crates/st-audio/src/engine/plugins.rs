@@ -188,7 +188,7 @@ impl AudioEngine {
     /// The parameters of a built-in effect insert with their current values, as
     /// `plugin.parameters` lists them; `None` when `key` is not a built-in effect of the mixer.
     pub fn builtin_parameters(&self, key: &str) -> Option<Vec<Value>> {
-        use tracker_engine::effects::{self, capi, common};
+        use tracker_engine::effects::{self, common};
         let state = self.lock();
         let insert = state.core.spec.strips.iter().flat_map(|strip| &strip.inserts).find(|insert| insert.key == key)?;
         let descriptor = std::ffi::CString::new(insert.builtin_id()?).ok().and_then(|id| effects::find(&id))?;
@@ -200,13 +200,13 @@ impl AudioEngine {
                 .iter()
                 .enumerate()
                 .map(|(address, info)| {
-                    let normalized = values.iter().find(|(known, _)| *known == address as u64).map_or_else(|| capi::normalized(info, info.default_value), |(_, value)| *value);
+                    let normalized = values.iter().find(|(known, _)| *known == address as u64).map_or_else(|| info.normalized(info.default_value), |(_, value)| *value);
                     let labels: Vec<String> = (0..info.label_count()).filter_map(|index| info.label(index).map(text)).collect();
                     let steps = if info.flags & common::PARAMETER_TOGGLE != 0 { 1 } else if !labels.is_empty() { labels.len() as i64 - 1 } else if info.flags & common::PARAMETER_INTEGER != 0 { (info.maximum - info.minimum).round() as i64 } else { 0 };
                     let mut item = json!({
                         "address": address.to_string(), "id": text(info.id()), "name": text(info.name()), "min": info.minimum, "max": info.maximum,
-                        "value": capi::physical(info, normalized), "normalized": normalized, "unit": 0, "unitName": text(info.unit()), "display": "",
-                        "flags": info.flags, "writable": true, "automatable": true, "defaultValue": capi::normalized(info, info.default_value),
+                        "value": info.physical(normalized), "normalized": normalized, "unit": 0, "unitName": text(info.unit()), "display": "",
+                        "flags": info.flags, "writable": true, "automatable": true, "defaultValue": info.normalized(info.default_value),
                     });
                     if steps > 0 {
                         item["stepCount"] = json!(steps);
