@@ -294,11 +294,11 @@
 
   /* Note length. A step's gate is its length in pattern rows; gate 0 is no gate: tracker semantics, the note
      sounds until the next note on its track, an OFF/CUT or the end of a one-shot sample. New notes get no gate.
-     A step saved without a gate key predates gate-less notes and keeps the old default of 0.8 rows. */
-  const LEGACY_GATE = .8;
+     A step without a gate key is DEFAULT_GATE rows long. */
+  const DEFAULT_GATE = .8;
   function stepGate(step) {
     if (!step || step.note < 0) return null;
-    const gate = step.gate === undefined || step.gate === null ? LEGACY_GATE : Number(step.gate);
+    const gate = step.gate === undefined || step.gate === null ? DEFAULT_GATE : Number(step.gate);
     return gate > 0 ? Math.min(256, Math.max(.01, gate)) : null;
   }
   const gateText = step => {
@@ -311,6 +311,6 @@
 
   Object.assign(app, {
     instrumentDefaults, wavetablePath, wavetableInstrument, emptyPattern, blankProject, demoProject, normalize,
-    LEGACY_GATE, stepGate, gateText, gateColumnShown
+    DEFAULT_GATE, stepGate, gateText, gateColumnShown
   });
 })();

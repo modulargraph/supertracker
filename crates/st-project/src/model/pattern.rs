@@ -8,9 +8,9 @@ pub const NOTE_OFF: i64 = -1;
 pub const NOTE_CUT: i64 = -2;
 /// The value a step without a `note` reads as: no note (an effect-only step).
 pub const NOTE_NONE: i64 = -3;
-/// A step's gate when it has no `gate` key: such steps predate gate-less notes
-/// (`LEGACY_GATE` in `app-project-model.js`, `AudioProject.step`).
-pub const LEGACY_GATE: f64 = 0.8;
+/// A step's gate, in rows, when it has no `gate` key (`DEFAULT_GATE` in `app-project-model.js`).
+/// A note without a gate is written with `gate: 0`.
+pub const DEFAULT_GATE: f64 = 0.8;
 /// The longest gate, in rows.
 pub const MAX_GATE: f64 = 256.0;
 /// Note columns a track can have (`MAX_NOTE_COLUMNS` in `app-note-columns.js`, `ST_MAX_NOTE_COLUMNS`).
@@ -97,7 +97,7 @@ model! {
         "instrument" => instrument: i64 = -1,
         /// Velocity 0..127.
         "velocity" => velocity: i64 = 100,
-        /// Length in rows; 0 or absent: no gate (columns are newer than gate-less notes).
+        /// Length in rows; 0 or absent: no gate.
         "gate" => gate: f64 = 0.0,
     }
 }
@@ -112,8 +112,8 @@ model! {
         /// Velocity 0..127.
         "velocity" => velocity: i64 = 100,
         /// Length in rows. 0: no gate (the note sounds until the next note, an OFF/CUT or the end
-        /// of a one-shot). Absent: [`LEGACY_GATE`].
-        "gate" => gate: f64 = LEGACY_GATE,
+        /// of a one-shot). Absent: [`DEFAULT_GATE`].
+        "gate" => gate: f64 = DEFAULT_GATE,
         /// Semitone offsets of the chord's notes from `note` (up to eight).
         "chord" => chord: Vec<i64>,
         /// First effect.

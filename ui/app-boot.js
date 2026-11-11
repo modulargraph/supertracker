@@ -177,7 +177,7 @@
     patternLoopFor,
     browseNKS,
     automateValue,
-    LEGACY_GATE: app.LEGACY_GATE,
+    DEFAULT_GATE: app.DEFAULT_GATE,
     stepGate: step => app.stepGate(step),
     gateText: step => app.gateText(step),
     gateColumnShown: (...args) => app.gateColumnShown(...args),

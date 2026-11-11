@@ -238,7 +238,7 @@ fn absent_fields_stay_absent_and_read_as_documented_defaults() {
     let pattern = &project.pattern_list()[0];
     assert_eq!((pattern.length(), pattern.number(3)), (64, 3));
     let step = pattern.step(0, 0).unwrap();
-    assert_eq!((step.note(), step.instrument(), step.velocity(), step.gate()), (pattern::NOTE_NONE, -1, 100, pattern::LEGACY_GATE));
+    assert_eq!((step.note(), step.instrument(), step.velocity(), step.gate()), (pattern::NOTE_NONE, -1, 100, pattern::DEFAULT_GATE));
     assert_eq!((Delay::default().time(), Delay::default().feedback(), Delay::default().mix(), Delay::default().beats(), Delay::default().tone()), (0.375, 0.35, 0.3, 0.0, 1.0));
     assert_eq!((Reverb::default().size(), Reverb::default().damping(), Reverb::default().mix(), Reverb::default().predelay()), (0.7, 0.4, 0.25, 0.0));
     assert_eq!((ColumnCell::default().gate(), Bus::default().volume(), Send::default().gain(), Send::default().enabled()), (0.0, 1.0, 1.0, true));
