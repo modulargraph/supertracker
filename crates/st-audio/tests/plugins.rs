@@ -190,7 +190,7 @@ fn a_plug_in_instrument_plays_the_notes_of_its_track_at_their_frames() {
         let (engine, manager) = fixture.engine();
         let mut project = project(2);
         // Track a plays instrument 1, a plug-in; track b keeps the sampled tone.
-        project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "au", "name": "Sine", "volume": 0.5, "pan": 0 }));
+        project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "plugin", "name": "Sine", "volume": 0.5, "pan": 0 }));
         project["tracks"][0]["instrument"] = json!(1);
         project["tracks"][1]["mute"] = json!(true);
         project["audioPlugins"] = json!([if format == "clap" { fixture.clap("track:a", "instrument", 0, "synth", CLAP_SINE) } else { fixture.vst3("track:a", "instrument", 0, "synth", VST3_SINE) }]);
@@ -244,7 +244,7 @@ fn controllers_and_pressure_played_live_reach_a_plug_in_instrument_with_its_next
     for format in ["clap", "clap-notes", "vst3"] {
         let (engine, manager) = fixture.engine();
         let mut project = project(2);
-        project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "au", "name": "Sine", "volume": 1, "pan": 0 }));
+        project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "plugin", "name": "Sine", "volume": 1, "pan": 0 }));
         project["tracks"][0]["instrument"] = json!(1);
         project["patterns"][0]["steps"][0] = json!(vec![Value::Null; 16]);
         project["patterns"][0]["steps"][1] = json!(vec![Value::Null; 16]);
@@ -312,7 +312,7 @@ fn the_sustain_pedal_and_the_notes_reach_a_plug_in_instrument_in_the_order_they_
     for format in ["clap", "vst3"] {
         let (engine, manager) = fixture.engine();
         let mut project = project(2);
-        project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "au", "name": "Sine", "volume": 1, "pan": 0 }));
+        project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "plugin", "name": "Sine", "volume": 1, "pan": 0 }));
         project["tracks"][0]["instrument"] = json!(1);
         project["patterns"][0]["steps"][0] = json!(vec![Value::Null; 16]);
         project["patterns"][0]["steps"][1] = json!(vec![Value::Null; 16]);
@@ -407,7 +407,7 @@ fn a_block_a_plug_in_misses_costs_its_audio_and_none_of_its_events() {
     for format in ["clap", "vst3"] {
         let (engine, manager) = fixture.engine();
         let mut project = project(2);
-        project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "au", "name": "Sine", "volume": 1, "pan": 0 }));
+        project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "plugin", "name": "Sine", "volume": 1, "pan": 0 }));
         project["tracks"][0]["instrument"] = json!(1);
         project["patterns"][0]["steps"][0] = json!(vec![Value::Null; 16]);
         project["patterns"][0]["steps"][1] = json!(vec![Value::Null; 16]);
@@ -587,7 +587,7 @@ fn state_is_captured_into_the_snapshot_and_restored_when_the_project_is_opened_a
     let fixture = Fixture::new("state");
     let reference = reference();
     let mut project = project(1);
-    project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "au", "name": "Sine" }));
+    project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "plugin", "name": "Sine" }));
     project["audioPlugins"] = json!([
         fixture.clap("track:a", "effect", 0, "fx", CLAP_GAIN), fixture.vst3("master", "effect", 2, "m", VST3_GAIN), effect("track:a", 1, "eq", "stfx:eq"),
         fixture.clap("instrument:0", "effect", 0, "chain", CLAP_GAIN),
@@ -650,7 +650,7 @@ fn an_offline_copy_renders_what_the_live_engine_renders() {
     let fixture = Fixture::new("offline");
     let (engine, manager) = fixture.engine();
     let mut project = project(2);
-    project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "au", "name": "Sine", "volume": 0.8 }));
+    project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "plugin", "name": "Sine", "volume": 0.8 }));
     project["tracks"][1]["instrument"] = json!(1);
     project["patterns"][0]["steps"][1] = json!((0..16).map(|row| if row % 2 == 0 { json!({ "note": 60 + row, "instrument": 1, "velocity": 100, "gate": 1 }) } else { Value::Null }).collect::<Vec<_>>());
     project["audioPlugins"] = json!([

@@ -30,7 +30,7 @@ function harness(view='instrument'){
   window.STRoutingProject.ensureTrackIDs(state.project);state.project.patterns.forEach(p=>p.automation=[]);ST.refresh();h.calls.length=0;state.undo=[];
   return {...h,handlers,async boot(){handlers.set('ready',()=>({project:state.project}));await ST.boot();state.view=view;ST.refresh();h.calls.length=0;state.undo=[];},contextAction(control){const event={target:control,clientX:40,clientY:40,preventDefault(){}};for(const fn of listeners.get('contextmenu')||[])fn(event);h.get('context-automate').click();},async plugin(){
     const owner=`track:${state.project.tracks[0].routingID}`;
-    const plugin={owner,kind:'instrument',slot:0,instanceID:'original-instance',component:'original-fixture',state:'state:.25',name:'Original fixture',parameters:[{address:'71',name:'Brightness',normalized:.25,writable:true,automatable:true}]};state.project.instruments[0].type='au';state.project.audioPlugins=[plugin];state.view='instrument';ST.refresh();
+    const plugin={owner,kind:'instrument',slot:0,instanceID:'original-instance',component:'original-fixture',state:'state:.25',name:'Original fixture',parameters:[{address:'71',name:'Brightness',normalized:.25,writable:true,automatable:true}]};state.project.instruments[0].type='plugin';state.project.audioPlugins=[plugin];state.view='instrument';ST.refresh();
     handlers.set('plugin.parameters',()=>plugin.parameters);handlers.set('plugin.state',()=>({...plugin,state:'state:.61'}));handlers.set('engine.snapshot',()=>({audioPlugins:copy(state.project.audioPlugins)}));h.get('plugin-parameters').focus();await ST.showPluginParameters({owner,kind:'instrument',slot:0});return h.get('plugin-param-0');
   }};
 }

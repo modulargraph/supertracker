@@ -234,7 +234,7 @@
   {
    "id": 1,
    "name": "Glass keys",
-   "type": "au",
+   "type": "plugin",
    "samplePath": "builtin:wavetables/Basic/Sine.wav",
    "rootNote": 60,
    "volume": 0.6,

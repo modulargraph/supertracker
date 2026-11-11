@@ -1160,11 +1160,11 @@
           if (target.kind === 'instrument') {
             const destination = createInstrument ? state.project.instruments.length : instrumentIndex;
             if (createInstrument) state.project.instruments.push(app().normalize({
-              instruments: [{ id: destination, type: 'au', name: plugin.name }]
+              instruments: [{ id: destination, type: 'plugin', name: plugin.name }]
             }).instruments[0]);
             const instrument = state.project.instruments[destination];
             if (instrument) {
-              instrument.type = 'au';
+              instrument.type = 'plugin';
               delete instrument.plugin;
               instrument.name = plugin.name;
               track.instrument = destination;

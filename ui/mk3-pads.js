@@ -244,7 +244,7 @@
     }
     if (M.padMode === 'pad' && !M.padAlt) {
       const index = M.padBank.pad * 16 + i, inst = p.instruments[index]; if (!inst) return;
-      if (inst.type === 'au') { flash('Plug-in instruments duplicate with their track (DUPLICATE + group)'); return; }
+      if (inst.type === 'plugin') { flash('Plug-in instruments duplicate with their track (DUPLICATE + group)'); return; }
       S().mutate('duplicate instrument', q => {
         const next = copy(q.instruments[index]);
         next.id = q.instruments.length;

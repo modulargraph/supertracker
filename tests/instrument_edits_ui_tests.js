@@ -24,7 +24,7 @@ function harness(){
   // A track's mixer channel: what plug-in descriptors and plug-in commands name as the owner.
   const own=track=>`track:${S.state.project.tracks[track].routingID}`;
   function plugin(track=0,component='old'){
-    S.state.project.instruments[track].type='au';S.state.project.tracks[track].instrument=track;
+    S.state.project.instruments[track].type='plugin';S.state.project.tracks[track].instrument=track;
     const plugin={owner:own(track),kind:'instrument',slot:0,instanceID:component+track,component,state:'saved state'};
     S.state.project.audioPlugins.push(plugin);native=copy(S.state.project);return plugin;
   }
@@ -63,7 +63,7 @@ async function run(){
     const painted=[];h.window.STSampler={bind(){},parts(){painted.push(h.S.state.samples[0]?.path);return {};}};h.S.setView('instrument');
     h.handlers.set('sample.load',p=>{h.window.nativeEvent({type:'sample.loaded',payload:{instrument:0,sample:{path:p.path,frames:32}}});assert.equal(h.S.state.samples[0],oldMeta);return {path:p.path,name:'New sample'};});
     await h.S.loadSample('/new.wav');assert.equal(h.S.state.project.instruments[0].type,'sample');assert.equal(h.S.state.project.audioPlugins.length,0);assert.equal(h.S.state.undo.length,1);
-    assert.equal(h.S.state.undo[0].project.audioPlugins[0].state,'live editor state');assert.equal(h.S.state.undo[0].project.instruments[0].type,'au');assert.equal(h.S.state.samples[0].path,'/new.wav');assert.equal(h.native.audioPlugins.length,0);assert.equal(painted.at(-1),'/new.wav','accepted waveform metadata must be painted after its deferred installation');
+    assert.equal(h.S.state.undo[0].project.audioPlugins[0].state,'live editor state');assert.equal(h.S.state.undo[0].project.instruments[0].type,'plugin');assert.equal(h.S.state.samples[0].path,'/new.wav');assert.equal(h.native.audioPlugins.length,0);assert.equal(painted.at(-1),'/new.wav','accepted waveform metadata must be painted after its deferred installation');
     await h.S.perform('undo');assert.equal(h.S.state.project.audioPlugins[0].state,'live editor state');
     console.log('PASS sample replacement captures live opaque state before removal, delays metadata, and preserves one exact Undo');
   }
@@ -73,7 +73,7 @@ async function run(){
       if(operation==='assign')h.S.state.instrument=1;
       h.window.STFreeze={checkMutation:()=> 'locked',explain(){}};
       const action=operation==='load'?h.S.loadSample('/new.wav').catch(e=>e):operation==='edit'?h.S.editSample('reverse'):h.S.perform(operation==='type'?'instrumentType:midi':'assignInstrument');
-      await action;assert.equal(h.S.state.undo.length,0,operation);assert.equal(h.S.state.project.audioPlugins[0].component,'old',operation);assert.equal(h.native.audioPlugins[0].component,'old',operation);assert.equal(h.native.instruments[0].type,'au',operation);
+      await action;assert.equal(h.S.state.undo.length,0,operation);assert.equal(h.S.state.project.audioPlugins[0].component,'old',operation);assert.equal(h.native.audioPlugins[0].component,'old',operation);assert.equal(h.native.instruments[0].type,'plugin',operation);
       assert(h.calls.some(x=>x.command==='engine.project'&&x.payload.replace===true),operation);assert.doesNotMatch(h.toast,/Loaded|complete\./,operation);
       if(operation==='edit')assert.equal(h.S.state.samples[0].path,'/old.wav');
     }
@@ -123,7 +123,7 @@ async function run(){
     // Assigned again, it is loaded from what it kept, and stops keeping it.
     h.S.state.instrument=0;assert.equal(await h.S.perform('assignInstrument'),true);const back=h.S.state.project.audioPlugins.find(x=>x.owner===h.own(0));
     assert.equal(back.component,'target');assert.equal(h.S.state.project.tracks[0].instrument,0);assert.equal(Object.hasOwn(h.S.state.project.instruments[0],'plugin'),false);
-    console.log('PASS assigning an AU captures the retiring target and commits the replacement with correct Undo; the retired instrument keeps its plug-in until it is assigned again');
+    console.log('PASS assigning a plug-in captures the retiring target and commits the replacement with correct Undo; the retired instrument keeps its plug-in until it is assigned again');
   }
   {
     const h=harness(),gate=deferred();h.handlers.set('sample.load',()=>gate.promise);const task=h.S.loadSample('/new.wav');await until(()=>h.calls.some(x=>x.command==='sample.load'));
@@ -133,7 +133,7 @@ async function run(){
   }
   {
     const h=harness(),gate=deferred();h.plugin();let n=0;const sync=h.handlers.get('engine.project');h.handlers.set('engine.project',p=>++n===2?gate.promise:sync(p));
-    const task=h.S.loadSample('/new.wav').catch(e=>e);await until(()=>n===2);h.S.state.project.name='Newer unrelated title';gate.resolve({});const error=await task;assert.match(error.message,/project changed/);assert.equal(h.S.state.project.instruments[0].type,'au');assert.equal(h.native.name,'Newer unrelated title');assert.equal(h.S.state.undo.length,0);
+    const task=h.S.loadSample('/new.wav').catch(e=>e);await until(()=>n===2);h.S.state.project.name='Newer unrelated title';gate.resolve({});const error=await task;assert.match(error.message,/project changed/);assert.equal(h.S.state.project.instruments[0].type,'plugin');assert.equal(h.native.name,'Newer unrelated title');assert.equal(h.S.state.undo.length,0);
     console.log('PASS canonical edits during candidate publication invalidate the commit and restore their current values');
   }
   {
@@ -146,7 +146,7 @@ async function run(){
     assert.equal(await h.S.perform('assignInstrument'),false);assert.equal(h.S.state.undo.length,0);assert.equal(h.S.state.project.tracks[0].instrument,0);assert.equal(h.native.audioPlugins.find(x=>x.owner===h.own(0)).component,'target');
     const read=h.handlers.get('plugin.state');h.window.STFreeze=null;h.handlers.set('plugin.state',p=>{const result=read(p);if(p.owner===h.own(0)&&result.component==='source')throw Error('Replacement state unavailable');return result;});
     assert.equal(await h.S.perform('assignInstrument'),false);assert.equal(h.S.state.undo.length,0);assert.equal(h.native.audioPlugins.find(x=>x.owner===h.own(0)).component,'target');
-    console.log('PASS AU replacement refusal and failed post-load state capture restore the retired instance without committing');
+    console.log('PASS plug-in replacement refusal and failed post-load state capture restore the retired instance without committing');
   }
   {
     const h=harness();h.S.state.project.instruments[0].samplePath='/old.wav';let transforms=0;

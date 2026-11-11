@@ -54,7 +54,7 @@ test('there is no 64-instrument cap and replacing an existing instrument never a
 });
 test('new sample preserves existing track plug-in and adds an independent lane',async()=>{
  const h=await actualBrowser(),old=h.plugin(0,'original');h.handlers.set('plugin.state',()=>({...old,state:'live editor knobs'}));const count=h.S.state.project.instruments.length;
- await h.B.controller.load(true);assert.equal(h.S.state.project.instruments.length,count+1);assert.equal(h.S.state.project.instruments[0].type,'au');assert.equal(h.S.state.project.audioPlugins.length,1);assert.equal(h.S.state.undo.length,1);assert.equal(h.S.state.undo[0].project.audioPlugins[0].state,old.state);
+ await h.B.controller.load(true);assert.equal(h.S.state.project.instruments.length,count+1);assert.equal(h.S.state.project.instruments[0].type,'plugin');assert.equal(h.S.state.project.audioPlugins.length,1);assert.equal(h.S.state.undo.length,1);assert.equal(h.S.state.undo[0].project.audioPlugins[0].state,old.state);
  await h.S.perform('undo');assert.equal(h.S.state.project.instruments.length,count);assert.equal(h.S.state.project.audioPlugins[0].state,old.state);
 });
 test('changing destination during pending Add does not overwrite or reselect the newer instrument',async()=>{
@@ -92,7 +92,7 @@ test('ordinary sample primary, Return and double-click add; explicit secondary a
  assert.deepEqual(actions.map(action=>action[0]),['add','replace','add','replace','add']);assert.match(h.browser.render(),/Add sample on new track/);assert.match(h.browser.render(),/Replace selected instrument/);
 });
 test('plugin button, Return and double-click add consistently; replacement gestures pass an explicit replacement option',async()=>{
- const h=browserHarness(),actions=[];h.state.plugins=[{id:'au:fixture',name:'Fixture',type:'instrument'}];h.state.project.instruments[0].type='au';h.state.project.tracks[0].instrument=0;
+ const h=browserHarness(),actions=[];h.state.plugins=[{id:'au:fixture',name:'Fixture',type:'instrument'}];h.state.project.instruments[0].type='plugin';h.state.project.tracks[0].instrument=0;
  h.window.STInstrumentEdits={run(){}};h.window.STNKS={async loadInstrument(command,target,options){actions.push(options);return true;}};
  const primary=h.node('browser-plugin-load'),secondary=h.node('browser-plugin-replace'),row=h.node('browser-plugin-0',{browserPlugin:'0'},'[data-browser-plugin]',{tagName:'DIV'});h.browser.showPlugins('instrument');h.browser.bind();const settle=async()=>{for(let i=0;i<30;i++)await Promise.resolve();};
  primary.fire('click');await settle();key(h,row,'Enter');await settle();row.fire('dblclick');await settle();secondary.fire('click');await settle();key(h,row,'Enter',{altKey:true});await settle();

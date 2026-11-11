@@ -40,7 +40,7 @@ for (const group of [false, true]) {
   });
 }
 test('Tune rejects plug-in and MIDI sources for tracks and group members without history changes', async () => {
-  for (const kit of [false, true]) for (const type of ['au', 'midi']) {
+  for (const kit of [false, true]) for (const type of ['plugin', 'midi']) {
     const h = prepare(kit); h.inst().type = type; const project = JSON.stringify(h.state.project), undo = h.state.undo.length;
     h.shifted('tempo'); assert.equal(h.MK3.page().data.header.value, 'Unavailable'); assert(h.MK3.page().knobs.every(x => !x));
     h.turn(5); h.turn(.8, 0); await h.MK3.flushEdits(); assert.equal(JSON.stringify(h.state.project), project); assert.equal(h.state.undo.length, undo);

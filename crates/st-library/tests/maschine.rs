@@ -774,7 +774,7 @@ fn hosted_plugin_state() {
     fs::write(&path, &data).unwrap();
     let imported = import_group(&path, None).unwrap();
     let sound = &imported.sounds[0];
-    assert_eq!((sound.instrument["type"].as_str(), sound.instrument.get("plugin"), sound.plugins.len()), (Some("au"), None, 1), "the descriptor is the pad's, not copied onto its instrument");
+    assert_eq!((sound.instrument["type"].as_str(), sound.instrument.get("plugin"), sound.plugins.len()), (Some("plugin"), None, 1), "the descriptor is the pad's, not copied onto its instrument");
     let descriptor = &sound.plugins[0];
     assert_eq!((descriptor["component"].as_str(), descriptor["kind"].as_str(), descriptor["missing"].as_bool(), descriptor["name"].as_str()), (Some("vst2:4E694D61"), Some("instrument"), Some(true), Some("Fixture Synth")));
     assert_eq!(st_library::util::base64_decode(descriptor["state"].as_str().unwrap()).unwrap(), PAYLOAD, "the state bytes are kept exactly");

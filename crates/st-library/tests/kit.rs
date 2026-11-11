@@ -42,7 +42,7 @@ fn session(sample: &str, zone: &str) -> Value {
         ],
         "instruments": [
             { "id": 0, "type": "sample", "name": "Lead", "samplePath": "/elsewhere/lead.wav" },
-            { "id": 1, "type": "au", "name": "Synth" },
+            { "id": 1, "type": "plugin", "name": "Synth" },
             { "id": 2, "type": "sample", "name": "Layered kick", "samplePath": sample, "rootNote": 36, "start": 0.03, "end": 0.91, "cutoff": 1532.5,
               "zones": [ { "samplePath": zone, "rootNote": 42, "keyLow": 36, "keyHigh": 60, "volume": 0.71 }, { "path": sample, "rootNote": 48, "velocityLow": 80, "velocityHigh": 127 } ] },
             { "id": 3, "type": "sample", "name": "Empty", "samplePath": "" }
@@ -131,7 +131,7 @@ fn a_group_is_taken_out_of_a_session() {
 
     assert_eq!(group::loaded_sound_count(kit), 2, "the empty sampler pad is not a loaded sound");
     let sounds = group::sound_summaries(kit);
-    assert_eq!(sounds.iter().map(|s| (s.slot, s.name.as_str(), s.kind.as_str(), s.empty)).collect::<Vec<_>>(), [(0, "Layered kick", "sample", false), (1, "Empty", "sample", true), (5, "Synth", "au", false)]);
+    assert_eq!(sounds.iter().map(|s| (s.slot, s.name.as_str(), s.kind.as_str(), s.empty)).collect::<Vec<_>>(), [(0, "Layered kick", "sample", false), (1, "Empty", "sample", true), (5, "Synth", "plugin", false)]);
     assert_eq!(sounds[2].plugin, "Fixture Synth");
     assert!(sounds[0].missing, "a sample that is not on disk is reported");
 

@@ -173,7 +173,7 @@ async function run(){
   }
   {
     function assignment(){
-      const h=harness(),p=h.ST.state.project;p.instruments[1].type='au';p.tracks[0].instrument=0;p.tracks[1].instrument=1;
+      const h=harness(),p=h.ST.state.project;p.instruments[1].type='plugin';p.tracks[0].instrument=0;p.tracks[1].instrument=1;
       p.audioPlugins=[{owner:'track:t0',kind:'instrument',slot:0,component:'old',state:'old target'},{owner:'track:t1',kind:'instrument',slot:0,component:'fixture',state:'old source'}];
       p.instruments[1].plugin={...p.audioPlugins[1]};h.ST.state.instrument=1;h.ST.state.track=0;h.ST.setView('instrument');
       // Assignment captures the retiring target before loading its replacement.

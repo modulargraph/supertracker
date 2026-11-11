@@ -232,17 +232,17 @@
 
   async function changeInstrumentType(type) {
     const id = state.instrument;
-    if (!['sample', 'au', 'midi'].includes(type)) {
+    if (!['sample', 'plugin', 'midi'].includes(type)) {
       toast('Unknown instrument type.', 'error');
       return false;
     }
-    const tracks = type === 'au' ? [] : state.project.tracks.flatMap((t, i) => t.instrument === id ? [i] : []);
+    const tracks = type === 'plugin' ? [] : state.project.tracks.flatMap((t, i) => t.instrument === id ? [i] : []);
     try {
       return await runInstrumentEdit(id, tracks, async edit => {
         for (const track of tracks) await removeInstrumentPlugin(track, edit);
         await edit.commit('instrument type', p => {
           p.instruments[id].type = type;
-          if (type !== 'au') {
+          if (type !== 'plugin') {
             delete p.instruments[id].plugin;
             removeInstrumentDescriptors(p, tracks, { discard: true });
           }
@@ -260,18 +260,18 @@
       project = state.project,
       inst = project.instruments[index];
     if (project.tracks[track].instrument === index
-        && inst.type === 'au'
+        && inst.type === 'plugin'
         && instrumentPluginOf(project, track)) {
       toast('This plug-in is already assigned to the selected track.');
       return false;
     }
-    const initialSourceTrack = inst.type === 'au'
+    const initialSourceTrack = inst.type === 'plugin'
         ? project.tracks.findIndex((t, i) => t.instrument === index && instrumentPluginOf(project, i))
         : -1;
     const protectedTracks = [...new Set([track, ...(initialSourceTrack >= 0 ? [initialSourceTrack] : [])])];
     try {
       return await runInstrumentEdit(index, protectedTracks, async edit => {
-        if (inst.type !== 'au') {
+        if (inst.type !== 'plugin') {
           await removeInstrumentPlugin(track, edit);
           await edit.commit('assign instrument', p => {
             removeInstrumentDescriptors(p, [track]);

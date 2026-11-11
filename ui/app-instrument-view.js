@@ -115,7 +115,7 @@
         + `</button><button class="quiet" id="instrument-rename" title="Rename this instrument · right-click it in the list for more">Rename</button>`
         + `<button id="assign-instrument" title="Play this instrument on the selected track (${esc(p.tracks[state.track].name)})">Assign `
         + `to track “${esc(p.tracks[state.track].name)}”</button><button id="load-sample" title="Load an audio file into this sampler">Load sample…</button>`
-        + `</div></div><div class="toolbar"><div class="instrument-type">${[['sample', 'Sampler'], ['au', 'Plug-in'], ['midi', 'External MIDI']].map(([k, n]) => `<button id="instrument-type-${k}" data-inst-type="${k}" tabindex="${inst.type === k ? 0 : -1}"`
+        + `</div></div><div class="toolbar"><div class="instrument-type">${[['sample', 'Sampler'], ['plugin', 'Plug-in'], ['midi', 'External MIDI']].map(([k, n]) => `<button id="instrument-type-${k}" data-inst-type="${k}" tabindex="${inst.type === k ? 0 : -1}"`
         + ` aria-pressed="${inst.type === k}" class="${inst.type === k ? 'active' : ''}">${n}</button>`).join('')}</div>${window.STInstrumentPages?.renderBar(inst) || ''}<span `
         + `class="grow"></span><span class="muted inst-toolbar-hint"><kbd>⌥A</kbd> Automate focused parameter · Context `
         + `menu available</span></div><div class="view-padding" data-scroll="instrument">`
@@ -139,7 +139,7 @@
         + `<div class="row"><button id="instrument-monitor">${state.audio.monitoring ? 'Disable' : 'Enable'}`
         + ` Studio input monitoring</button><button id="instrument-record-input">Sample this synth… <kbd>⌘⇧R</kbd>`
         + `</button><button id="instrument-line-inputs">Line inputs…</button><button id="instrument-audio-settings">Audio `
-        + `settings</button></div></div></div>` : inst.type === 'au' ? plugin ? `<div class="panel wide instrument-plugin-overview" aria-label="Plug-in instrument">`
+        + `settings</button></div></div></div>` : inst.type === 'plugin' ? plugin ? `<div class="panel wide instrument-plugin-overview" aria-label="Plug-in instrument">`
         + `<div class="plugin-overview-main"><div class="plugin-overview-name"><span>Plug-in instrument${plugin.format ? ' · ' + esc(plugin.format) : ''}</span>`
         + `<h2>${esc(plugin.name || inst.name)}</h2></div><div class="plugin-overview-actions">`
         + `<button id="browse-plugins">Browse instruments</button><button id="plugin-editor">Open plug-in editor</button>`

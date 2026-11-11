@@ -536,10 +536,10 @@
         ...(t.frozen ? { frozen: true } : {})
       })),
       instruments: p.instruments.map((x, i) => ({
-        index: i, name: x.name, type: x.type === 'au' ? 'plugin' : x.type,
+        index: i, name: x.name, type: x.type,
         ...(x.type === 'sample' ? { sample: x.samplePath || null, mode: x.mode } : {}),
         ...(x.type === 'sample' && x.mode === 'wavetable' ? { wavetablePosition: formatValue('pct', x.wavetablePosition ?? 0) } : {}),
-        ...(x.type === 'au' && instrumentPlugin(p, i) ? (plugin => ({
+        ...(x.type === 'plugin' && instrumentPlugin(p, i) ? (plugin => ({
           plugin: {
             name: plugin.name,
             format: plugin.format,
@@ -660,7 +660,7 @@
       if (entry.instrument !== undefined) {
         plan.instrument = findInstrument(p, entry.instrument, `${at}.instrument`);
         const inst = p.instruments[plan.instrument];
-        if (inst?.type === 'au'
+        if (inst?.type === 'plugin'
             && (p.tracks[track].instrument ?? 0) !== plan.instrument) fail(`${at}: instrument ${plan.instrument} "${inst.name}" is a plug-in on another track. Plug-in instruments only play on their own track.`);
       }
       if (entry.velocity !== undefined) {
@@ -822,7 +822,7 @@
     if (op === 'instrument') {
       setValue = findInstrument(p, params.set, 'set');
       // As writeSteps and the grid's instrument column: a plug-in instrument only plays on its own track.
-      const foreign = p.instruments[setValue].type === 'au' ? tracks.find(t => (p.tracks[t].instrument ?? 0) !== setValue) : undefined;
+      const foreign = p.instruments[setValue].type === 'plugin' ? tracks.find(t => (p.tracks[t].instrument ?? 0) !== setValue) : undefined;
       if (foreign !== undefined) fail(`Instrument ${setValue} "${p.instruments[setValue].name}" is a plug-in that track ${foreign} "${p.tracks[foreign].name}" does not play. `
           + 'Plug-in instruments only play on their own track; limit tracks to it.');
     }
@@ -1011,7 +1011,7 @@
     const name = params.name === undefined ? null : checkName(params.name),
       instrument = params.instrument === undefined ? null : findInstrument(p, params.instrument);
     if (instrument !== null
-        && p.instruments[instrument].type === 'au') fail('Plug-in instruments are bound to their track. Load the plug-in on the new track with loadPlugin instead.');
+        && p.instruments[instrument].type === 'plugin') fail('Plug-in instruments are bound to their track. Load the plug-in on the new track with loadPlugin instead.');
     return commit(params.label || `add track${name ? ' ' + name : ''}`, target => {
       const i = target.tracks.length;
       const track = {
@@ -1043,9 +1043,9 @@
     for (const key of Object.keys(TRACK_VALUES)) if (params[key] !== undefined) changes[key] = parseValue(TRACK_VALUES[key], params[key], key);
     if (params.instrument !== undefined) {
       const i = findInstrument(p, params.instrument);
-      if (p.instruments[i].type === 'au'
+      if (p.instruments[i].type === 'plugin'
           && (p.tracks[t].instrument ?? 0) !== i) fail(`"${p.instruments[i].name}" is a plug-in instrument bound to another track. Use loadPlugin on track ${t} instead.`);
-      if (p.instruments[p.tracks[t].instrument ?? 0]?.type === 'au'
+      if (p.instruments[p.tracks[t].instrument ?? 0]?.type === 'plugin'
           && pluginOn(p, t, 'instrument')
           && (p.tracks[t].instrument ?? 0) !== i) fail(`Track ${t} plays a plug-in instrument. Switch it with runCommand "assignInstrument" (select the track and instrument with show) `
           + `so the plug-in is removed safely.`);
@@ -1101,7 +1101,7 @@
     const inst = p.instruments[i], params = {};
     for (const [key, spec] of Object.entries(PARAMS)) {
       if (spec.types && !spec.types.includes(inst.type)) continue;
-      if (inst.type === 'au' || (inst.type === 'midi' && !spec.types)) continue;
+      if (inst.type === 'plugin' || (inst.type === 'midi' && !spec.types)) continue;
       const value = inst[key];
       if (value === undefined) continue;
       params[key] = spec.options
@@ -1113,10 +1113,10 @@
     return {
       index: i,
       name: inst.name,
-      type: inst.type === 'au' ? 'plugin' : inst.type,
+      type: inst.type,
       usedBy: p.tracks.map((t, ti) => (t.instrument ?? 0) === i ? ti : -1).filter(ti => ti >= 0),
       ...(inst.type === 'sample' ? { sample: inst.samplePath || null } : {}),
-      ...(inst.type === 'au' && instrumentPlugin(p, i) ? {
+      ...(inst.type === 'plugin' && instrumentPlugin(p, i) ? {
         plugin: (plugin => ({
           name: plugin.name,
           format: plugin.format,
@@ -1133,7 +1133,7 @@
     if (!values
         || typeof values !== 'object'
         || Array.isArray(values)) fail(`${what} must be an object like {"cutoff": "800 Hz", "attack": "5 ms"}.`);
-    if (inst.type === 'au') fail(`"${inst.name}" is a plug-in instrument. Use setPluginParameters for its controls.`);
+    if (inst.type === 'plugin') fail(`"${inst.name}" is a plug-in instrument. Use setPluginParameters for its controls.`);
     const plan = {};
     for (const [name, raw] of Object.entries(values)) {
       const key = PARAM_ALIAS[name.toLowerCase()] || (name === 'tuneSemi' || name === 'tuneFine' ? name : null);
@@ -1197,7 +1197,7 @@
     // Validate the parameters before the type switch below: it retires the hosted plug-in and must not run for a call that is then refused.
     const plan = planParams({ ...inst, type: params.type || inst.type }, params.params);
     requireUnfrozen(p, p.tracks.map((t, ti) => (t.instrument ?? 0) === i ? ti : -1).filter(ti => ti >= 0));
-    if (params.type !== undefined && params.type !== inst.type && inst.type === 'au') {
+    if (params.type !== undefined && params.type !== inst.type && inst.type === 'plugin') {
       // Leaving a plug-in instrument removes the hosted plug-in natively; use the app's own command.
       st().instrument = i; await S().perform('instrumentType:' + params.type);
       if (project().instruments[i]?.type !== params.type) fail(`Could not change the instrument type${toastText() ? ': ' + toastText() : '.'}`);
@@ -1209,7 +1209,7 @@
             && params.type !== inst.type, instrument: describeInstrument(project(), i) };
     const result = commit(params.label
         || `edit instrument ${current.name}${Object.keys(plan).length ? ' (' + Object.keys(plan).join(', ') + ')' : ''}`, target => {
-      const x = target.instruments[i]; if (name) x.name = name; if (params.type && x.type !== 'au') x.type = params.type;
+      const x = target.instruments[i]; if (name) x.name = name; if (params.type && x.type !== 'plugin') x.type = params.type;
       applyParams(x, plan); return {};
     });
     return { ...result, instrument: describeInstrument(project(), i) };
@@ -1371,12 +1371,12 @@
       if (kind === 'instrument') {
         instrumentIndex = instrument === 'new' ? project.instruments.length : instrument;
         if (instrument === 'new') {
-          const inst = S().normalize({ instruments: [{ id: instrumentIndex, type: 'au', name: plugin.name }] }).instruments[0];
+          const inst = S().normalize({ instruments: [{ id: instrumentIndex, type: 'plugin', name: plugin.name }] }).instruments[0];
           inst.id = instrumentIndex;
           project.instruments.push(inst);
         }
         const inst = project.instruments[instrumentIndex];
-        inst.type = 'au';
+        inst.type = 'plugin';
         delete inst.plugin;
         inst.name = plugin.name;
         project.tracks[track].instrument = instrumentIndex;

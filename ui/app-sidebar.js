@@ -12,7 +12,7 @@
 
   const instrumentItems = p => p.instruments.map((x, i) => `<button class="sidebar-item ${i === state.instrument ? 'active' : ''}" id="sidebar-instrument-${i}"`
       + ` data-instrument="${i}" title="Right-click for more" tabindex="${i === state.instrument ? 0 : -1}"><span class="sidebar-number">${String(i).padStart(2, '0')}</span>`
-      + `<span class="grow">${esc(x.name)}<div class="sub">${x.type === 'au'
+      + `<span class="grow">${esc(x.name)}<div class="sub">${x.type === 'plugin'
           ? esc(window.STRoutingProject.instrumentPlugin(p, i)?.format || 'Plug-in')
           : x.type === 'midi'
           ? 'External MIDI'
@@ -93,7 +93,7 @@
 
   // Runs an instrument command on the right-clicked instrument: it becomes the current one first.
   const onInstrument = (index, command) => () => { selectInstrument(index); return app.perform(command); };
-  const INSTRUMENT_TYPES = [['sample', 'Sampler'], ['au', 'Plug-in'], ['midi', 'External MIDI']];
+  const INSTRUMENT_TYPES = [['sample', 'Sampler'], ['plugin', 'Plug-in'], ['midi', 'External MIDI']];
 
   /* Right-click (or ⇧F10) on an instrument in the sidebar: the actions of the Instrument menu for that instrument. */
   function instrumentMenu({ target }) {

@@ -197,7 +197,7 @@
     const instButtons = [button('‹ Inst', () => mk.stepInstrument(-1), {
       shift: button('Add inst', () => perform('addInstrument'))
     }), button('Inst ›', () => mk.stepInstrument(1), { shift: button('Assign', () => perform('assignInstrument')) })];
-    if (inst.type === 'au' || inst.type === 'midi') {
+    if (inst.type === 'plugin' || inst.type === 'midi') {
       // Plug-in / hardware instruments: track channel controls here, plug-in pages on PLUG-IN.
       return { id: 'channel', title: 'Channel', main: mk.listMainInstrument(),
         buttons: mk.withLevels([button('Editor', () => S().request('plugin.editor', {
@@ -206,7 +206,7 @@
           slot: 0
         }).catch(error => S().toast(error.message, 'error'))), button('Plug-in',
             () => mk.setScreen('plugin')), button('Audition', () => mk.audition()), ...instButtons], 2),
-        knobs: mk.trackKnobs(track), data: { kind: 'channel', inst: { name: inst.name, type: inst.type, index: st().instrument }, track: { name: t?.name, color: trackColor(track) }, group: inst.type === 'au'
+        knobs: mk.trackKnobs(track), data: { kind: 'channel', inst: { name: inst.name, type: inst.type, index: st().instrument }, track: { name: t?.name, color: trackColor(track) }, group: inst.type === 'plugin'
             ? 'Plug-in instrument · knobs set the track channel'
             : 'External MIDI · knobs set the track channel', pages: [], instruments: mk.instrumentList() } };
     }

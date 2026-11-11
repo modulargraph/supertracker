@@ -99,9 +99,9 @@ fn start(label: &str) -> Fixture {
         "instruments": [
             { "id": 0, "type": "midi", "name": "Hardware", "midiOutput": SYNTH, "midiChannel": 3 },
             { "id": 1, "type": "sample", "name": "Sine", "samplePath": "builtin:wavetables/Basic/Sine.wav", "mode": "wavetable", "volume": 1, "attack": 0, "decay": 0.01, "sustain": 1, "release": 0.05 },
-            { "id": 2, "type": "au", "name": "CLAP sine", "volume": 1 },
-            { "id": 3, "type": "au", "name": "VST3 sine", "volume": 1 },
-            { "id": 4, "type": "au", "name": "CLAP sine, notes only", "volume": 1 }
+            { "id": 2, "type": "plugin", "name": "CLAP sine", "volume": 1 },
+            { "id": 3, "type": "plugin", "name": "VST3 sine", "volume": 1 },
+            { "id": 4, "type": "plugin", "name": "CLAP sine, notes only", "volume": 1 }
         ],
         "patterns": [{ "id": 0, "length": 16, "steps": vec![vec![Value::Null; 16]; 5], "automation": [] }],
         "sequence": [0], "loopSong": true,

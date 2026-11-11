@@ -345,10 +345,10 @@ fn track_freeze_records() {
 /// instead of being played as a sampler.
 #[test]
 fn instrument_types() {
-    for kind in ["sample", "au", "midi"] {
+    for kind in ["sample", "plugin", "midi"] {
         accepted(|p| p["instruments"][0]["type"] = json!(kind));
     }
-    for kind in [json!("synth"), json!(3), Value::Null] {
+    for kind in [json!("synth"), json!("au"), json!(3), Value::Null] {
         assert_eq!(rejected(|p| p["instruments"][0]["type"] = kind), "Instrument 1 has an unknown type.");
     }
     // Keys the format does not name are kept and ignored.
@@ -374,7 +374,7 @@ fn built_in_effect_components() {
 fn the_plug_in_an_instrument_keeps() {
     let kept = json!({ "kind": "instrument", "slot": 0, "component": "com.vendor.synth", "format": "VST3", "name": "Synth", "state": "AA==" });
     let unplayed = |p: &mut Value| {
-        p["instruments"] = json!([{ "id": 0, "type": "sample" }, { "id": 1, "type": "au", "plugin": kept.clone() }]);
+        p["instruments"] = json!([{ "id": 0, "type": "sample" }, { "id": 1, "type": "plugin", "plugin": kept.clone() }]);
     };
     accepted(unplayed);
     // Played with its plug-in on the track: the instrument holds no second copy.

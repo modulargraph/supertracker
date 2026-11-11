@@ -8,7 +8,7 @@ const source = web.source('nks-loader.js');
 const copy = value => JSON.parse(JSON.stringify(value));
 const descriptor = { component: 'vst3:FX', owner: 'track:bass', kind: 'effect', slot: 1, instanceID: 'fx-a', state: 'fx-state', name: 'Delay', format: 'VST3', nks: { name: 'Tape Echo', pages: [] } };
 function environment() {
-  const project = { tracks: [{ instrument: 0, name: 'Bass', routingID: 'bass' }], instruments: [{ id: 0, name: 'Synth', type: 'au', plugin: { component: 'vst3:SYNTH' } }],
+  const project = { tracks: [{ instrument: 0, name: 'Bass', routingID: 'bass' }], instruments: [{ id: 0, name: 'Synth', type: 'plugin', plugin: { component: 'vst3:SYNTH' } }],
     audioPlugins: [{ owner: 'track:bass', kind: 'instrument', slot: 0, component: 'vst3:SYNTH' }, { owner: 'track:bass', kind: 'effect', slot: 0, component: 'au:comp' }] };
   const calls = [], undo = [], notices = [];
   const state = { native: true, project, track: 0, instrument: 0, view: 'browser' };

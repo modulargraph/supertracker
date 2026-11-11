@@ -346,7 +346,7 @@ test('Names, modes and colours from a project file cannot add markup to the Patt
   Object.assign(p.tracks[1], { routingID: 'r1', color: bad('slimColour') });
   p.viewState = { collapsedTracks: ['r1'] };
   Object.assign(p.instruments[0], { samplePath: '/a.wav', mode: bad('mode') });
-  Object.assign(p.instruments[1], { type: 'au', plugin: { format: bad('format') } });
+  Object.assign(p.instruments[1], { type: 'plugin', plugin: { format: bad('format') } });
   p.patterns[0].color = bad('patternColour');
   for (const scope of [null, 'song']) {
     h.ST.setAutomationPanel(scope);

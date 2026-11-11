@@ -55,7 +55,7 @@ fn project() -> Value {
         "tracks": [{ "id": 0, "name": "a", "routingID": "a", "volume": 1, "pan": 0, "instrument": 0 }, { "id": 1, "name": "b", "routingID": "b", "volume": 1, "pan": 0, "instrument": 1 }],
         "instruments": [
             { "id": 0, "type": "sample", "samplePath": "builtin:wavetables/Basic/Sine.wav", "mode": "wavetable", "volume": 1, "attack": 0, "decay": 0.01, "sustain": 1, "release": 0.01 },
-            { "id": 1, "type": "au", "name": "Synth", "volume": 1 },
+            { "id": 1, "type": "plugin", "name": "Synth", "volume": 1 },
         ],
         "patterns": [{ "id": 0, "length": 16, "steps": [rows, vec![Value::Null; 16]], "automation": [] }],
         "sequence": [0], "loopSong": true,

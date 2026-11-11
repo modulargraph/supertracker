@@ -175,7 +175,7 @@
     window.STSampler?.stopAudition?.();
     if (!step || !Number.isFinite(step.note) || step.note < 0) return;
     const instrument = step.instrument ?? state.project.tracks[track]?.instrument ?? state.instrument;
-    if (state.project.instruments[instrument]?.type === 'au'
+    if (state.project.instruments[instrument]?.type === 'plugin'
         && state.project.tracks[track]?.instrument !== instrument) {
       toast('Assign this plug-in to the selected track before auditioning it.');
       return;

@@ -52,7 +52,7 @@ pub struct ImportedSound {
     pub pad: usize,
     /// Display name; an unnamed Sound is shown by its pad number, as Maschine does.
     pub name: String,
-    /// The instrument: a sampler (`type: "sample"`), a hosted plug-in (`type: "au"`), or an
+    /// The instrument: a sampler (`type: "sample"`), a hosted plug-in (`type: "plugin"`), or an
     /// empty sampler. `unavailable: true` marks a source that could not be converted.
     pub instrument: Map<String, Value>,
     /// Mixer volume, 0..=2.
@@ -73,7 +73,7 @@ impl ImportedSound {
     /// Whether the pad plays or processes something: it has a sample, zones, a plug-in or inserts.
     pub fn has_source(&self) -> bool {
         let text = |key: &str| self.instrument.get(key).and_then(Value::as_str).unwrap_or("");
-        text("type") == "au" || !text("samplePath").is_empty() || self.instrument.get("zones").and_then(Value::as_array).is_some_and(|zones| !zones.is_empty()) || !self.plugins.is_empty()
+        text("type") == "plugin" || !text("samplePath").is_empty() || self.instrument.get("zones").and_then(Value::as_array).is_some_and(|zones| !zones.is_empty()) || !self.plugins.is_empty()
     }
 }
 
@@ -359,7 +359,7 @@ impl Importer<'_> {
                     return Err(invalid("a Sound source contains an effect plug-in."));
                 }
                 let descriptor = self.hosted(&state, true, module.enabled, name)?;
-                instrument.insert("type".to_string(), json!("au"));
+                instrument.insert("type".to_string(), json!("plugin"));
                 plugins.push(descriptor);
                 report["status"] = json!("external-state-retained");
             }

@@ -98,7 +98,7 @@ pub struct SoundSummary {
     pub id: String,
     /// Track name.
     pub name: String,
-    /// Instrument type (`sample`, `au`, `midi`).
+    /// Instrument type (`sample`, `plugin`, `midi`).
     #[serde(rename = "type")]
     pub kind: String,
     /// Name of the instrument plug-in, or empty.

@@ -142,7 +142,7 @@
       press() {
         mk.setStripMode(M.strip.mode === 'mod' ? null : 'mod', M.shift);
         const source = P().instruments[st().instrument];
-        if (M.strip.mode) flash(M.shift && source && ['midi', 'au'].includes(source.type)
+        if (M.strip.mode) flash(M.shift && source && ['midi', 'plugin'].includes(source.type)
             ? 'No native cutoff · use MOD for modulation'
             : M.shift
             ? 'Strip: track cutoff'

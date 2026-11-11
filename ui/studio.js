@@ -255,13 +255,13 @@
       'grainDensity', 'grainSpray', 'grainPitchSpread', 'grainScan', 'grainReverse', 'grainStereo']);
     for (const target of targets) {
       target.available = !!channel
-          && (type === 'sample' || (type === 'au'
+          && (type === 'sample' || (type === 'plugin'
               ? auTargets.has(target.target)
               : type === 'midi'
               ? mixTargets.has(target.target)
               : !samplerTargets.has(target.target)));
       if (type === 'midi' && mixTargets.has(target.target)) target.group = 'Track audio · not MIDI hardware';
-      if (!target.available) target.unavailableReason = !channel ? 'The original channel is no longer present.' : type === 'au' ? 'The assigned plug-in does not use the native sampler controls. Automate its exposed plug-in parameters instead.' : type === 'midi' ? 'This parameter does not control external MIDI hardware. It becomes available when a native sampler is assigned to '
+      if (!target.available) target.unavailableReason = !channel ? 'The original channel is no longer present.' : type === 'plugin' ? 'The assigned plug-in does not use the native sampler controls. Automate its exposed plug-in parameters instead.' : type === 'midi' ? 'This parameter does not control external MIDI hardware. It becomes available when a native sampler is assigned to '
           + 'this track.' : 'This parameter requires a sampler instrument assigned to this track.';
     }
     return includeUnavailable ? targets : targets.filter(target => target.available);

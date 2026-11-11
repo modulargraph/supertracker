@@ -24,7 +24,7 @@ function harness(){
  const nav=group('[data-view]',['pattern','instrument','browser','mixer','automation','song'].map(view=>node('view-'+view,{view})));
  const patterns=group('[data-pattern]',state.project.patterns.map(p=>node('sidebar-pattern-'+p.id,{pattern:String(p.id)})));
  const instruments=group('[data-instrument]',state.project.instruments.map((_,i)=>node('sidebar-instrument-'+i,{instrument:String(i)})));
- const types=group('[data-inst-type]',['sample','au','midi'].map(instType=>node('instrument-type-'+instType,{instType})));
+ const types=group('[data-inst-type]',['sample','plugin','midi'].map(instType=>node('instrument-type-'+instType,{instType})));
  const piano=group('[data-piano]',[60,62,64,61,63].map(n=>node('piano-'+n,{piano:String(n)})));
  const tracker=node('tracker',{},'DIV');const sequence=node('sequence-list',{},'DIV');sequence.sequence=true;
  function key(target,key,extra={}){const e={target:typeof target==='string'?node(target):target,key,code:key,preventDefault(){this.defaultPrevented=true;},...extra};ST.keyboard(e);return e;}
@@ -35,7 +35,7 @@ function harness(){
  h.ST.setView('automation');assert.equal(h.document.activeElement.id,'automation-search');
  h.ST.setView('instrument');assert.equal(h.document.activeElement.id,'instrument-rename');
  const before=JSON.stringify(h.state.project);h.key(h.nav[1],'ArrowRight');assert.equal(h.document.activeElement.id,'view-browser');assert.equal(h.state.view,'instrument');
- h.key(h.types[0],'ArrowRight');assert.equal(h.document.activeElement.id,'instrument-type-au');assert.equal(h.state.project.instruments[0].type,'sample');assert.equal(JSON.stringify(h.state.project),before);
+ h.key(h.types[0],'ArrowRight');assert.equal(h.document.activeElement.id,'instrument-type-plugin');assert.equal(h.state.project.instruments[0].type,'sample');assert.equal(JSON.stringify(h.state.project),before);
  h.key(h.piano[0],'ArrowRight');assert.equal(h.document.activeElement.id,'piano-61');assert.equal(h.calls.filter(x=>x.command==='note.on').length,0);
  console.log('PASS workspace entry and segmented/piano arrows focus without changing sound');
 }

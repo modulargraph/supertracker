@@ -61,7 +61,7 @@
     return before - project.audioPlugins.length;
   }
 
-  /* The plug-in of a plug-in instrument (type 'au'). It is in one place: the `audioPlugins` entry of kind
+  /* The plug-in of a plug-in instrument (type 'plugin'). It is in one place: the `audioPlugins` entry of kind
      `instrument` on a track that plays the instrument. Only while no track plays it does the instrument keep
      the descriptor itself (`instruments[i].plugin`, without owner or instance), so that it can be assigned to
      a track again with its settings. */
@@ -79,7 +79,7 @@
     const leaving = new Set(tracks);
     for (const track of tracks) {
       const index = track.instrument, instrument = project.instruments[index], plugin = trackInstrumentPlugin(project, track);
-      if (!plugin || instrument?.type !== 'au' || instrument.plugin) continue;
+      if (!plugin || instrument?.type !== 'plugin' || instrument.plugin) continue;
       if (project.tracks.some(other => !leaving.has(other) && other.instrument === index && trackInstrumentPlugin(project, other))) continue;
       const { owner, instanceID, ...kept } = JSON.parse(JSON.stringify(plugin));
       instrument.plugin = kept;

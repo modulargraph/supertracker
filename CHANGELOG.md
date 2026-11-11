@@ -64,6 +64,8 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
   `routing.version`, `routing.mixModel` and the freeze record's `mixMode` are gone. Frozen tracks read as stale once.
   A sidechain's destination is the insert itself (one stereo key input per insert); built-in effects are named
   `stfx:<id>` only; a plug-in instrument's descriptor lives on the tracks that play it, not also on the instrument.
+- The instrument type `au`. A plug-in instrument's `type` is `plugin`, whatever the plug-in's format; a project
+  that says `au` is refused as an unknown instrument type.
 - The page's second way of recording notes (timed by the wall clock). Every recorded note is placed by the engine's
   acknowledgement.
 

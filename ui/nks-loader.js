@@ -9,7 +9,7 @@
     const app = window.ST, state = app.state, project = state.project;
     const sourceIndex = state.instrument, sourceTrack = state.track, source = project.instruments[sourceIndex];
     const create = !!options.newInstrument
-        || !options.replaceInstrument && source?.type !== 'au'
+        || !options.replaceInstrument && source?.type !== 'plugin'
         || project.tracks[sourceTrack]?.instrument !== sourceIndex;
     const destination = create ? project.instruments.length : sourceIndex;
     const targetTrack = create ? project.tracks.length : sourceTrack;
@@ -23,7 +23,7 @@
       if (!create) return;
       if (candidate.instruments.length !== destination
           || candidate.tracks.length !== targetTrack) throw new Error('The destination list changed while loading. Try again.');
-      candidate.instruments.push(app.instrumentDefaults(destination, options.name || 'Plug-in', 'au'));
+      candidate.instruments.push(app.instrumentDefaults(destination, options.name || 'Plug-in', 'plugin'));
       app.appendInstrumentTrack(candidate, destination, options.name || 'Plug-in', routingID);
     };
     await window.STInstrumentEdits.run(sourceIndex, create ? [] : [sourceTrack], async edit => {
@@ -39,7 +39,7 @@
       const name = result.nks?.name || result.name || options.name || 'Plug-in';
       await edit.commit(`Load ${name}`, candidate => {
         append(candidate);
-        Object.assign(candidate.instruments[destination], { type: 'au', name });
+        Object.assign(candidate.instruments[destination], { type: 'plugin', name });
         delete candidate.instruments[destination].plugin;
         candidate.tracks[targetTrack].instrument = destination;
         if (create) candidate.tracks[targetTrack].name = name;
@@ -65,7 +65,7 @@
     const instrumentIndex = state.instrument, instrument = owner.instruments[instrumentIndex];
     if (!track || !instrument || typeof path !== 'string' || !path) return false;
     // Browsing a plug-in must not overwrite the selected sample.
-    options = { ...options, newInstrument: !!options.newInstrument || instrument.type !== 'au' };
+    options = { ...options, newInstrument: !!options.newInstrument || instrument.type !== 'plugin' };
     if (options.newInstrument && window.STInstrumentEdits?.run && app.appendInstrumentTrack) {
       loading = true;
       try { return await loadInstrument('plugin.loadNKS', { path }, options); }
@@ -112,11 +112,11 @@
           // The track's previous plug-in instrument stays available.
           window.STRoutingProject.keepInstrumentPlugins(project, [track]);
           destination = project.instruments.length;
-          const defaults = app.normalize({ instruments: [{ id: destination, type: 'au', name: result.nks.name || result.name }] }).instruments[0];
+          const defaults = app.normalize({ instruments: [{ id: destination, type: 'plugin', name: result.nks.name || result.name }] }).instruments[0];
           project.instruments.push(defaults);
         }
         const selected = project.instruments[destination];
-        selected.type = 'au'; selected.name = result.nks.name || result.name; delete selected.plugin;
+        selected.type = 'plugin'; selected.name = result.nks.name || result.name; delete selected.plugin;
         track.instrument = destination;
         if (stillSelected) state.instrument = destination;
         project.audioPlugins = (project.audioPlugins || []).filter(plugin => !ownInstrument(plugin));

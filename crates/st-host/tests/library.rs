@@ -176,7 +176,7 @@ fn session(sample: &Path) -> Value {
         ],
         "instruments": [
             { "id": 0, "type": "sample", "name": "Kick", "samplePath": sample },
-            { "id": 1, "type": "au", "name": "Synth" }
+            { "id": 1, "type": "plugin", "name": "Synth" }
         ],
         "groups": [ { "id": "g1", "name": "Bridge kit", "busID": "kitbus" } ],
         "audioPlugins": [ { "instanceID": "p-synth", "owner": "track:synth", "kind": "instrument", "slot": 0, "component": "vst3:ABCD", "format": "VST3", "name": "Fixture Synth", "state": "AAEC" } ],
@@ -279,7 +279,7 @@ fn kit_session(sample: &Path, clap: &Path) -> Value {
         ],
         "instruments": [
             { "id": 0, "type": "sample", "name": "Kick", "samplePath": sample, "mode": "oneshot", "volume": 1, "attack": 0, "decay": 0.01, "sustain": 1, "release": 0.01 },
-            { "id": 1, "type": "au", "name": "Synth", "volume": 1, "pan": 0 }
+            { "id": 1, "type": "plugin", "name": "Synth", "volume": 1, "pan": 0 }
         ],
         "groups": [ { "id": "g1", "name": "Bridge kit", "busID": "kitbus" } ],
         "audioPlugins": [

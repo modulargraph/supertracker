@@ -93,7 +93,7 @@ fn rendering_with_plug_ins_never_allocates_also_when_one_of_them_crashes() {
         json!({ "owner": owner, "kind": kind, "slot": 0, "instanceID": instance, "component": format!("{format}:{id}"), "bundlePath": if format == "clap" { &installed.clap } else { &installed.vst3 }, "name": instance })
     };
     let mut project = project(3);
-    project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "au", "name": "Sine" }));
+    project["instruments"].as_array_mut().unwrap().push(json!({ "id": 1, "type": "plugin", "name": "Sine" }));
     project["tracks"][2]["instrument"] = json!(1);
     project["patterns"][0]["steps"][2] = json!((0..16).map(|row| if row % 2 == 0 { json!({ "note": 48 + row, "instrument": 1, "velocity": 100, "gate": 1 }) } else { Value::Null }).collect::<Vec<_>>());
     project["audioPlugins"] = json!([

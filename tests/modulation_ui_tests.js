@@ -65,7 +65,7 @@ class Root extends Element {
 function harness() {
   const synth = { id: 0, type: 'sample', name: 'Wavetable', lfoDepth: .25, lfo2Depth: .4, filterEnvAmount: -12 };
   const sampler = { id: 1, type: 'sample', name: 'Sampler', lfoDepth: .1 };
-  const state = { instrument: 0, track: 0, project: { tracks: [{ instrument: 0 }, { instrument: 1 }, { instrument: 2 }, { instrument: 3 }], instruments: [synth, sampler, { id: 2, type: 'au' }, { id: 3, type: 'midi' }] } };
+  const state = { instrument: 0, track: 0, project: { tracks: [{ instrument: 0 }, { instrument: 1 }, { instrument: 2 }, { instrument: 3 }], instruments: [synth, sampler, { id: 2, type: 'plugin' }, { id: 3, type: 'midi' }] } };
   const timers = new Map(), requests = [], mutations = [], notices = [];
   let timerID = 0, rerenderCount = 0, rejectRequests = false, pendingEdits = async () => {}, syncCalls = 0;
   const root = new Root(), document = { activeElement: null, querySelectorAll: selector => selector === '[data-mod-root]' ? [root] : [] };
@@ -156,7 +156,7 @@ test('unsupported instruments and missing tracks expose no modulation targets', 
   assert.equal(M.targets(1).length, 11);
   for (const track of [2, 3, -1, 99]) assert.equal(M.targets(track).length, 0);
   assert(M.supports('filterEnvAmount')); assert(M.supports('lfo2Depth', 'sample'));
-  assert(!M.supports('lfo2Depth', 'au')); assert(!M.supports('plugin:effect:0:1')); assert(!M.supports('lfo2Shape'));
+  assert(!M.supports('lfo2Depth', 'plugin')); assert(!M.supports('plugin:effect:0:1')); assert(!M.supports('lfo2Shape'));
   assert.equal(M.render(state.project.instruments[2]), ''); assert.equal(M.render(state.project.instruments[3]), '');
 });
 

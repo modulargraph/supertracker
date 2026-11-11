@@ -98,7 +98,7 @@
       M.modTrack = track; expression('cc', value, { track, controller: 1 }); return;
     }
     if (mode === 'perform') {
-      if (M.perfFx === 'filter') { mk.stripPreview = { kind: 'cutoff', value: value, instruments: p.instruments.map((inst, i) => inst.type === 'au' ? -1 : i).filter(i => i >= 0) }; stripSync(); return; }
+      if (M.perfFx === 'filter') { mk.stripPreview = { kind: 'cutoff', value: value, instruments: p.instruments.map((inst, i) => inst.type === 'plugin' ? -1 : i).filter(i => i >= 0) }; stripSync(); return; }
       if (M.perfFx === 'fade') { mk.stripPreview = { kind: 'fade', value: 1 - value }; stripSync(); return; }
       if (M.perfFx === 'echo') { mk.stripPreview = { kind: 'echo', value }; stripSync(); return; }
       if (M.perfFx === 'stutter') {

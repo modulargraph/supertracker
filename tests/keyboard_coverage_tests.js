@@ -14,7 +14,7 @@ const samplerSource = web.read('sampler.js'), samplerCommand = samplerSource.sli
 
 function handled(id) {
   if (id.startsWith('view:')) return /^view:(pattern|instrument|browser|mixer|automation|song|recording)$/.test(id);
-  if (id.startsWith('instrumentType:')) return ['synth', 'sample', 'au', 'midi'].includes(id.slice(15));
+  if (id.startsWith('instrumentType:')) return ['synth', 'sample', 'plugin', 'midi'].includes(id.slice(15));
   if (id.startsWith('sample:')) return id === 'sample:editor' || samplerCommand.includes(`case '${id.slice(7)}'`);
   return app.hasCommand(id);
 }

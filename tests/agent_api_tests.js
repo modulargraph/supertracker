@@ -286,7 +286,7 @@ test('transform reports changed like every edit, takes each track once and keeps
   await h.ok('insertRows', { row: 0, count: 1, tracks: [0, 0] }); assert.deepEqual(steps(), [null, 61, 63]);
   assert.equal((await h.ok('readPattern', { tracks: [0, 0] })).tracks.length, 1);
   // writeSteps refuses a plug-in instrument of another track; transform {instrument} must as well.
-  h.state.project.instruments[2].type = 'au';
+  h.state.project.instruments[2].type = 'plugin';
   await h.rejects('transform', { tracks: [0], operation: 'instrument', set: 2 }, /plug-in that track 0 "Velvet bass" does not play/);
   await h.rejects('transform', { operation: 'instrument', set: 2 }, /only play on their own track/);
   await h.ok('writeSteps', { steps: [{ track: 2, row: 0, note: 60 }] });
@@ -335,7 +335,7 @@ test('show validates the whole request before it moves the pattern, cursor or se
 test('editInstrument validates its parameters before it retires a plug-in instrument', async () => {
   const setup = () => {
     const h = harness(), ran = [], perform = h.ST.perform;
-    h.state.project.instruments[2].type = 'au'; h.state.project.instruments[2].plugin = { name: 'Synth', component: 'aumu:x' };
+    h.state.project.instruments[2].type = 'plugin'; h.state.project.instruments[2].plugin = { name: 'Synth', component: 'aumu:x' };
     // The app's own command removes the hosted plug-in (it needs the native host; here it simply succeeds).
     h.ST.perform = command => { if (!/^instrumentType:/.test(command)) return perform(command); ran.push(command);
       return h.ST.mutate('instrument type', p => { p.instruments[2].type = command.split(':')[1]; p.instruments[2].plugin = null; }); };
@@ -344,7 +344,7 @@ test('editInstrument validates its parameters before it retires a plug-in instru
   for (const [params, pattern] of [[{ cutof: 100 }, /Unknown instrument parameter "cutof"/], [{ cutoff: '100 kHz' }, /cutoff must be between/]]) {
     const { h, ran } = setup();
     await h.rejects('editInstrument', { instrument: 2, type: 'sample', params }, pattern);
-    assert.deepEqual(ran, [], 'a refused call does not run the type switch'); assert.equal(h.state.project.instruments[2].type, 'au');
+    assert.deepEqual(ran, [], 'a refused call does not run the type switch'); assert.equal(h.state.project.instruments[2].type, 'plugin');
   }
   const { h, ran } = setup(), done = await h.ok('editInstrument', { instrument: 2, type: 'sample', params: { cutoff: '1 kHz' } });
   assert.deepEqual(ran, ['instrumentType:sample']); assert.equal(done.instrument.type, 'sample'); assert.equal(h.state.project.instruments[2].cutoff, 1000);

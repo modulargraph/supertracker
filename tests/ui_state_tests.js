@@ -132,7 +132,7 @@ assert.equal(win.STStudio.target(0,'lfoBeats').inactive,false);
 assert.equal(win.STStudio.target(0,'lfoBeats').min,1 / 64);
 assert.equal(state.project.patterns[0].automation.find(lane => lane.target === 'lfoRate').points[0].value,7.25);
 assert.equal(periodLane.points[0].value,2 / 3);
-state.project.instruments[0].type = 'au';
+state.project.instruments[0].type = 'plugin';
 assert.equal(win.STStudio.target(0,'filterEnvAmount'), undefined);
 assert.equal(ST.beatsPerBar({timeSignature:{numerator:7,denominator:8}}),3.5);
 const clickBefore = !!state.project.metronome;

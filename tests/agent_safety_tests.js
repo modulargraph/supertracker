@@ -53,7 +53,7 @@ test('late captured state cannot overwrite a moved or replaced slot in the same 
  assert.equal((await job).ok,false);assert.equal(h.state.project.audioPlugins[0].state,'LATEST');assert.equal(h.state.undo.length,0);assert.equal(h.agent.hasPendingEdits,true,'one explicit cancellation acknowledgement blocks saving');assert.equal(await h.agent.flushEdits(),false);assert.equal(h.agent.hasPendingEdits,false);
 });
 test('instrument reassignment during capture never attaches old state to the new instrument',async()=>{
- const h=harness(),plugin=effect(h),gate=deferred();plugin.kind='instrument';h.state.project.tracks[1].instrument=1;h.state.project.instruments[1].type='au';h.state.project.instruments[2].type='au';h.state.project.instruments[2].plugin={state:'NEW-INSTRUMENT'};
+ const h=harness(),plugin=effect(h),gate=deferred();plugin.kind='instrument';h.state.project.tracks[1].instrument=1;h.state.project.instruments[1].type='plugin';h.state.project.instruments[2].type='plugin';h.state.project.instruments[2].plugin={state:'NEW-INSTRUMENT'};
  h.ST.request=async(command,payload)=>command==='plugin.parameters'?parameters:command==='plugin.parameter'?{normalized:payload.value}:gate.promise;
  const job=h.call('setPluginParameters',{track:1,values:{Cutoff:50}});await tick();h.state.project.tracks[1].instrument=2;gate.resolve({...plugin,state:'OLD-INSTRUMENT'});
  assert.equal((await job).ok,false);assert.equal(h.state.project.instruments[2].plugin.state,'NEW-INSTRUMENT');assert.equal(h.state.undo.length,0);

@@ -78,7 +78,7 @@ test('sampler has five pages, other types (and the retired synth) none; bar mark
   assert.match(bar, /Slices<span class="inst-page-count">4<\/span>/); assert.match(bar, /Zones<span class="inst-page-count">2<\/span>/);
   assert.equal(harness('synth').pages.list().length, 0);
   assert.equal(harness('midi').pages.list().length, 0);
-  assert.equal(harness('au').pages.renderBar({ type: 'au' }), '');
+  assert.equal(harness('plugin').pages.renderBar({ type: 'plugin' }), '');
 });
 test('in Wavetable mode ⌥1 focuses the Position value before the waveform', () => {
   const h = harness('sample', 'wavetable');

@@ -66,7 +66,7 @@
   // ---- Instrument page ------------------------------------------------------------------------------------------
   const PREFIX = 'instfx';
   function sourceTile(inst) {
-    const kind = inst.type === 'au' ? 'Plug-in' : inst.type === 'midi' ? 'External MIDI' : 'Sampler';
+    const kind = inst.type === 'plugin' ? 'Plug-in' : inst.type === 'midi' ? 'External MIDI' : 'Sampler';
     return { id: `${PREFIX}-source`, label: 'Source', name: inst.name || 'Instrument', detail: kind, selected: false,
       attributes: 'title="The instrument itself; its effects follow in signal order" aria-label="Source: the instrument"' };
   }

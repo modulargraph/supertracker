@@ -43,7 +43,7 @@
 
   function noteOn(note, key = 'pointer', record = true, instrument = state.instrument, track = state.track, performance = record, velocityOverride, repeatable = performance) {
     window.STSampler?.stopAudition?.();
-    if (state.project.instruments[instrument]?.type === 'au'
+    if (state.project.instruments[instrument]?.type === 'plugin'
         && state.project.tracks[track]?.instrument !== instrument) {
       toast('Assign this plug-in to the selected track before playing or recording it.');
       return;

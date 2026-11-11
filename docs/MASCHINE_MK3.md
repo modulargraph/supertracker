@@ -185,7 +185,7 @@ They remain explicit in the control map; do not assume the printed secondary leg
 
 Velocity and Position edit the note at the cursor (one step per track and row). Empty steps
 show unavailable feedback. Tune is available only for native
-sample/synth sources; AU and MIDI tuning stays with the instrument itself. Exit a value
+sample/synth sources; plug-in and MIDI tuning stays with the instrument itself. Exit a value
 page with the main encoder or its Back display button. Touch-strip mode changes end the
 previous pitch/modulation/performance gesture and reset its original destination.
 

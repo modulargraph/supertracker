@@ -32,7 +32,7 @@ function harness(){
  web.load(context, 'app.js');
  const ST=window.ST,state=ST.state;state.project=ST.demoProject();state.view='instrument';state.engineReady=true;
  const owner=`track:${state.project.tracks[0].routingID}`,target={owner,kind:'instrument',slot:0,instanceID:'instance-B'},plugin={...target,component:'fixture:B',name:'Original fixture',state:'B:.2',parameters:[{address:'17',name:'Cutoff',min:0,max:1,value:.2,normalized:.2,writable:true}],presets:[{number:1,name:'Preset one'}]};
- state.project.audioPlugins=[copy(plugin)];state.project.instruments[0].type='au';native=copy(plugin);
+ state.project.audioPlugins=[copy(plugin)];state.project.instruments[0].type='plugin';native=copy(plugin);
  handlers.set('plugin.parameters',()=>copy(native.parameters));
  handlers.set('plugin.parameter',payload=>{assert.equal(payload.instanceID,native.instanceID);native.state='B:'+payload.value;native.parameters[0].value=native.parameters[0].normalized=payload.value;return{display:String(payload.value)};});
  handlers.set('plugin.state',payload=>{assert.equal(payload.instanceID,native.instanceID);return copy(native);});

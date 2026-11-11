@@ -85,8 +85,8 @@ fn start(label: &str) -> Fixture {
         "instruments": [
             { "id": 0, "type": "midi", "name": "Hardware", "midiOutput": SYNTH, "midiChannel": 3 },
             sine(1),
-            { "id": 2, "type": "au", "name": "CLAP sine", "volume": 1 },
-            { "id": 3, "type": "au", "name": "VST3 sine", "volume": 1 },
+            { "id": 2, "type": "plugin", "name": "CLAP sine", "volume": 1 },
+            { "id": 3, "type": "plugin", "name": "VST3 sine", "volume": 1 },
             sine(OTHER_SAMPLE)
         ],
         "patterns": [{ "id": 0, "length": 16, "steps": vec![vec![Value::Null; 16]; 4], "automation": [] }],

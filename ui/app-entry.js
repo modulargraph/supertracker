@@ -133,7 +133,7 @@
       index = found[0][1];
     }
     const inst = instruments[index];
-    if (inst?.type === 'au' && index !== (project.tracks[track]?.instrument ?? 0)) {
+    if (inst?.type === 'plugin' && index !== (project.tracks[track]?.instrument ?? 0)) {
       return { error: `Instrument ${String(index).padStart(2, '0')} “${inst.name}” is a plug-in on another track; plug-ins play only on their own track.` };
     }
     return { index };

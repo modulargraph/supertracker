@@ -49,7 +49,7 @@ async function load(h){return h.window.STNKS.loadInstrument('plugin.load',{compo
  {
  const h=setup();await h.S.loadSample('/replace-me.wav',0);const before=copy(h.S.state.project),undo=h.S.state.undo.length;
  assert(await h.window.STNKS.loadInstrument('plugin.load',{component:'vst3:replacement'},{stay:true,replaceInstrument:true}));
- assert.equal(h.S.state.project.tracks.length,before.tracks.length);assert.equal(h.S.state.project.instruments.length,before.instruments.length);assert.equal(h.S.state.project.instruments[0].type,'au');assert.equal(h.S.state.project.audioPlugins[0].owner,'track:track-0');assert.equal(h.S.state.undo.length,undo+1);
+ assert.equal(h.S.state.project.tracks.length,before.tracks.length);assert.equal(h.S.state.project.instruments.length,before.instruments.length);assert.equal(h.S.state.project.instruments[0].type,'plugin');assert.equal(h.S.state.project.audioPlugins[0].owner,'track:track-0');assert.equal(h.S.state.undo.length,undo+1);
  await h.S.perform('undo');assert.deepEqual(copy(h.S.state.project),before);
  console.log('PASS explicit plug-in replacement uses selected sample lane and one Undo restores the sample');
  }
@@ -57,6 +57,6 @@ async function load(h){return h.window.STNKS.loadInstrument('plugin.load',{compo
  const h=setup();h.plugin();const before=copy(h.S.state.project);
  assert(await h.window.STNKS.loadInstrument('plugin.load',{component:'vst3:added'},{stay:true,newInstrument:true,replaceInstrument:false}));
  assert.equal(h.S.state.project.tracks.length,before.tracks.length+1);assert.equal(h.S.state.project.instruments.length,before.instruments.length+1);assert.equal(h.S.state.project.audioPlugins[0].component,before.audioPlugins[0].component);assert.equal(h.S.state.project.audioPlugins.length,2);
- console.log('PASS primary browser plug-in options add beside an existing AU without replacing its lane');
+ console.log('PASS primary browser plug-in options add beside an existing plug-in instrument without replacing its lane');
  }
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -13,7 +13,7 @@ string_enum! {
         Sample = "sample",
         /// A plug-in instrument; its descriptor is the `audioPlugins` entry of kind `instrument`
         /// on each track that plays it (`Instrument::plugin` while none does). Any plug-in format.
-        Plugin = "au",
+        Plugin = "plugin",
         /// An external MIDI instrument: notes go to a MIDI output, nothing is rendered.
         Midi = "midi",
     }
