@@ -842,11 +842,16 @@ impl Inputs {
                 LineState::Live { feed, input_latency }
             })
             .collect();
+        // The input thread gets a new list only when the feeds changed: most publications (a
+        // note edit) leave them as they are, and then its list is not touched at all.
+        let same = feeds.len() == state.feeds.len() && feeds.iter().zip(&state.feeds).all(|((_, feed), (_, known))| Arc::ptr_eq(feed, known));
         state.feeds = feeds;
-        let list = Arc::new(state.feeds.iter().map(|(_, feed)| feed.clone()).collect::<Vec<_>>());
-        let previous = std::mem::replace(&mut *self.hub.lines.lock().unwrap_or_else(|poisoned| poisoned.into_inner()), list);
-        // The list the input thread read until now is freed here, not on its thread.
-        drop(previous);
+        if !same {
+            let list = Arc::new(state.feeds.iter().map(|(_, feed)| feed.clone()).collect::<Vec<_>>());
+            let previous = std::mem::replace(&mut *self.hub.lines.lock().unwrap_or_else(|poisoned| poisoned.into_inner()), list);
+            // The list the input thread read until now is freed here, not on its thread.
+            drop(previous);
+        }
         states
     }
 
