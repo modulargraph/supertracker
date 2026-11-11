@@ -57,7 +57,7 @@ Each of these was tested on Linux with the silent test devices, in-memory MIDI p
 
 - VST2 hosting. NKS presets and Maschine groups that name a VST2 plug-in are still read: a preset loads into the
   vendor's VST2-compatible VST3 when that is installed; a group keeps the plug-in's state and says so.
-- Opening projects, kits, built-in effect states and plug-in states saved by 0.1. Nothing is migrated.
+- Opening projects, kits, built-in effect states and plug-in states saved by 0.1 or by earlier builds of 0.2 (project format 2, kit package format 3; any other number is refused with one message). Nothing is migrated.
 - The second mixer ("legacy" mix) and the dialog that switched a song to standard routing. Every project uses the routed mixer.
 - Tempo and meter maps: the engine's clock module and the interface's reading of `project.timing`. A project has one tempo and one meter.
 - Engine features the host never called: its own mixer (faders, mute/solo, delay and reverb sends; the host mixes), plug-in automation lanes and track/slot step locks, the frozen-song provider, the unit range cache, the timestamped bus history, transport checkpoints, its own meters, zone regions.

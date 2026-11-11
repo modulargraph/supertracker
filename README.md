@@ -20,7 +20,7 @@ Version 0.2 is in development on a new Rust host that replaced the Swift applica
 
 - **Tested on Linux** (x86-64) without audio hardware: the engine, the mixer, plug-in containers with CLAP and VST3 test plug-ins, files, the library, and the interface in a browser against the real host.
 - **Written for macOS but not yet run there.** The Mac window, Core Audio, CoreMIDI and Audio Unit hosting compile for Apple Silicon and have never been started on a Mac. [docs/PLUGIN_CONTAINER.md](docs/PLUGIN_CONTAINER.md) has the checklists for the first run.
-- **Projects and kits saved by 0.1 do not open.** There is one project layout and no migration.
+- **Projects and kits saved by 0.1 or by earlier builds of 0.2 do not open.** There is one project format and no migration.
 - Not tested with real audio interfaces, MIDI devices, a Maschine MK3 or third-party plug-ins.
 
 [docs/HOST.md](docs/HOST.md) lists every host command with its state and what has been exercised; the [release notes](CHANGELOG.md) list what changed.

@@ -40,7 +40,9 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
 
 ### Removed, without migration
 
-- **Projects and kits saved by 0.1 do not open.** There is one project layout; older ones are refused with a message.
+- **Projects and kits saved by 0.1, or by earlier builds of 0.2, do not open.** The project format is version 2 and
+  the kit package format version 3; a file with any other number (projects, templates, recovery copies, kits) is
+  refused with one message. Nothing is converted.
 - **Plug-in and built-in effect states saved by 0.1 are not read.** Plug-ins are identified as `clap:…`, `vst3:…`
   and `au:type:subtype:manufacturer`.
 - **VST2 hosting.** NKS presets made for a VST2 plug-in load into the vendor's VST2-compatible VST3 when installed.
@@ -55,6 +57,10 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
 - **Looser project shapes.** A project must have a routing table and a `routingID` on every track; plug-ins and
   their automation are addressed by mixer channel (`track:<id>`, `bus:<id>`, `master`), never by track number;
   `routing.version`, `routing.mixModel` and the freeze record's `mixMode` are gone. Frozen tracks read as stale once.
+  A sidechain's destination is the insert itself (one stereo key input per insert); built-in effects are named
+  `stfx:<id>` only; a plug-in instrument's descriptor lives on the tracks that play it, not also on the instrument.
+- The page's second way of recording notes (timed by the wall clock). Every recorded note is placed by the engine's
+  acknowledgement.
 
 ### Fixed along the way
 
