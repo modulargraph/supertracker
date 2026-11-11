@@ -39,7 +39,7 @@
     const number = (value, fallback) => ['number', 'boolean'].includes(typeof value) && Number.isFinite(Number(value))
         ? Number(value)
         : fallback;
-    // Constant tempo: the native context always reports timing: null (tempo maps were removed).
+    // Compared field by field with the context in the host's acknowledgement, which carries timing: null.
     return {
       version: 1,
       linesPerBeat: clamp(Math.trunc(number(project.linesPerBeat, 4)), 1, 32),
@@ -207,7 +207,6 @@
         && ack.status === 'applied'
         && ack.applied === true
         && ack.recording === true
-        && ack.mapped === Object.hasOwn(capture.project, 'timing')
         && typeof ack.playing === 'boolean';
   }
 

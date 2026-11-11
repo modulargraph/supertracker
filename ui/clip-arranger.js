@@ -23,51 +23,23 @@
   const uid = () => `clip-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const clips = () => project().audioClips || [];
   const routed = () => project().routing != null;
-  const timingSignature = value => JSON.stringify([value.bpm, value.timeSignature, value.timing]);
-  const maxBeat = () => window.STProjectTiming?.MAX_BEAT || 1000000;
+  const timingSignature = value => JSON.stringify([value.bpm, value.timeSignature]);
+  const maxBeat = () => window.STProjectTiming.MAX_BEAT;
   let receivedStatus = null;
   let timingCache = null;
+  // The project's tempo and meter (project-timing.js), computed again only when one of them changed.
   function timing(destination = project()) {
-    const helper = window.STProjectTiming, signature = timingSignature(destination);
-    if (timingCache?.owner === destination && timingCache.helper === helper && timingCache.signature === signature) return timingCache.value;
-    if (Object.prototype.hasOwnProperty.call(destination, 'timing')
-        && !helper?.create) throw new Error('Tempo-map support is unavailable. The audio region was not changed.');
-    const secondsPerBeat = 60 / (destination.bpm || 120);
-    const numerator = destination.timeSignature?.numerator || 4,
-      denominator = destination.timeSignature?.denominator || 4,
-      quartersPerBar = numerator * 4 / denominator;
-    const legacyBar = beat => {
-      const offset = Math.floor(beat / quartersPerBar),
-        start = offset * quartersPerBar;
-      return {
-        bar: offset + 1,
-        notatedBeat: 1 + (beat - start) * denominator / 4,
-        numerator,
-        denominator,
-        barStart: start,
-        barEnd: start + quartersPerBar,
-        shortBar: false
-      };
-    };
-    const value = helper?.create ? helper.create(destination) : {
-      mapped: false,
-      meters:[{ beat:0, firstBar:1, numerator, denominator, quartersPerBar }],
-      barAtBeat:legacyBar,
-      secondsAtBeat: beat => beat * secondsPerBeat,
-      duration: (start, end) => (end - start) * secondsPerBeat,
-      endingBeat: (start, seconds) => start + seconds / secondsPerBeat
-    };
-    timingCache = {owner:destination,helper,signature,value}; return value;
+    const signature = timingSignature(destination);
+    if (timingCache?.owner === destination && timingCache.signature === signature) return timingCache.value;
+    const value = window.STProjectTiming.create(destination);
+    timingCache = { owner: destination, signature, value }; return value;
   }
   function seconds(clip, length = Number(clip.durationBeats || 0), destination = project()) {
     const start = Number(clip.startBeat || 0); return timing(destination).duration(start, start + length);
   }
   function beatsFromSeconds(start, duration, destination = project()) { return timing(destination).endingBeat(start, duration) - start; }
-  function moveTo(clip, start) {
-    const map = timing(), duration = seconds(clip); clip.startBeat = Math.max(0, start);
-    // Constant-tempo legacy projects keep their exact stored beat length.
-    if (map.mapped !== false) clip.durationBeats = beatsFromSeconds(clip.startBeat, duration);
-  }
+  // A clip keeps its length in beats wherever it starts.
+  function moveTo(clip, start) { clip.startBeat = Math.max(0, start); }
   const clipPath = clip => clip.path || clip.samplePath || '';
   const selected = () => clips().find(clip => String(clip.id) === String(state().clipSelected));
   function sequenceBeat(index = state().sequence || 0) {
@@ -76,8 +48,8 @@
         0);
   }
   function playheadBeat(payload = state().status || {}) {
-    // Native beat is absolute song time (including pattern occurrence origin).
-    // Untagged/stale packets cannot supply that authority after a project/map edit.
+    // The host's beat is absolute song time (including pattern occurrence origin).
+    // A status received before the project or its tempo changed cannot supply it.
     if (receivedStatus?.owner === project() && receivedStatus.payload === payload && receivedStatus.signature === timingSignature(project()) &&
         typeof payload.beat === 'number' && Number.isFinite(payload.beat) && payload.beat >= 0 && payload.beat <= maxBeat()) return payload.beat;
     const occurrence = Number.isInteger(payload.sequence) && payload.sequence >= 0 && payload.sequence < project().sequence.length
@@ -92,7 +64,7 @@
   function totalBeats() {
     const end = Math.max(16, sequenceBeat(project().sequence.length),
         ...clips().map(clip => Number(clip.startBeat || 0) + Number(clip.durationBeats || 0)));
-    if (!Number.isFinite(end) || end > maxBeat()) throw new Error('Audio arrangement exceeds the supported tempo-map range.');
+    if (!Number.isFinite(end) || end > maxBeat()) throw new Error('The audio arrangement is longer than the supported song length.');
     const bar = barAt(end), firstEnd = Math.min(maxBeat(),end === bar.barStart ? end : bar.barEnd);
     return Math.min(maxBeat(), barAt(firstEnd).barEnd);
   }
@@ -109,14 +81,10 @@
   function neighbor(value, direction) {
     value = clamp(value, 0, maxBeat());
     if (local.snap !== 'bar') return clamp(value + direction * (snapValue() || .0625), 0, maxBeat());
-    const map = timing(), bar = barAt(value);
+    const bar = barAt(value);
     if (direction > 0) return Math.min(maxBeat(), bar.barEnd);
-    if (value > bar.barStart) return bar.barStart;
-    // Look up the prior bar through its own meter segment, including short bars.
-    const segment = map.meters.filter(item => item.beat < value).at(-1);
-    if (!segment) return 0;
-    const offset = Math.ceil((value - segment.beat) / segment.quartersPerBar) - 1;
-    return Math.max(0, segment.beat + Math.max(0, offset) * segment.quartersPerBar);
+    // On a bar line the previous bar starts one bar earlier.
+    return value > bar.barStart ? bar.barStart : Math.max(0, bar.barStart - timing().quartersPerBar);
   }
   function positionLabel(value) {
     const bar = barAt(value),
@@ -125,29 +93,21 @@
   }
   function positionDescription(value) {
     const bar = barAt(value);
-    return `Bar ${bar.bar} · beat ${Math.floor(bar.notatedBeat * 1000) / 1000} · ${bar.numerator}/${bar.denominator}${bar.shortBar ? ' · shortened bar' : ''}`;
+    return `Bar ${bar.bar} · beat ${Math.floor(bar.notatedBeat * 1000) / 1000} · ${bar.numerator}/${bar.denominator}`;
   }
-  function rulerModel(end) {
-    const segments = timing().meters.filter(item => item.beat < end).map((item, index, array) => ({
-      ...item,
-      end: Math.min(end, array[index + 1]?.beat ?? end)
-    }));
-    const estimated = segments.reduce((sum, item) => sum + Math.ceil((item.end - item.beat) / item.quartersPerBar), 0),
-      budgetStride = Math.max(1, Math.ceil(estimated / 2048));
+  // Bar numbers of the ruler: at most 2048 ticks, and no closer together than their labels need.
+  function rulerTicks(end) {
+    const quartersPerBar = timing().quartersPerBar,
+      stride = Math.max(1, Math.ceil(Math.ceil(end / quartersPerBar) / 2048), Math.ceil(44 / (local.pixels * quartersPerBar)));
     const ticks = [];
-    for (const item of segments) {
-      const stride = Math.max(budgetStride,Math.ceil(44 / (local.pixels * item.quartersPerBar)));
-      for (let offset = 0; item.beat + offset * item.quartersPerBar < item.end; offset += stride) {
-        const beat = item.beat + offset * item.quartersPerBar;
-        ticks.push({beat,bar:item.firstBar + offset,meter:`${item.numerator}/${item.denominator}`,changed:offset===0});
-      }
-    }
+    for (let offset = 0; offset * quartersPerBar < end; offset += stride) ticks.push({ beat: offset * quartersPerBar, bar: offset + 1 });
     for (let i = 0; i < ticks.length; i++) {
       const width = ((ticks[i + 1]?.beat ?? end) - ticks[i].beat) * local.pixels;
       ticks[i].labelVisible = width >= 34;
-      ticks[i].meterVisible = width >= 70;
+      // The first bar number carries the meter.
+      ticks[i].meterVisible = i === 0 && width >= 70;
     }
-    return {segments,ticks};
+    return ticks;
   }
   const clipName = clip => clip.name || local.metadata.get(clipPath(clip))?.name || clipPath(clip).split('/').pop() || 'Audio clip';
   async function info(path) {
@@ -219,12 +179,12 @@
   }
   function render() {
     try { return renderTimeline(); } catch(error) { return `<section class="panel clips-panel" aria-label="Audio clip arrangement"><div class="clips-timing-error" role="alert">`
-        + `<strong>Audio arrangement needs a valid tempo map</strong><p>${esc(error.message || String(error))}</p><p>The saved clips and their source `
+        + `<strong>The audio arrangement cannot be shown</strong><p>${esc(error.message || String(error))}</p><p>The saved clips and their source `
         + `files are unchanged.</p></div></section>`; }
   }
   function renderTimeline() {
     const all = clips(), active = selected(), beats = totalBeats(), width = beats * local.pixels;
-    const ruler = rulerModel(beats);
+    const map = timing(), ticks = rulerTicks(beats);
     return `<section class="panel clips-panel" aria-label="Audio clip arrangement"><div class="panel-head"><div><h2>Audio arrangement</h2>`
         + `<p class="clips-subtitle">Song timeline · recorded audio and loops</p></div><div class="row"><span class="chip">${all.length} / 256 CLIPS</span>`
         + `<button id="clips-import" class="primary" ${local.busy || all.length >= 256 ? 'disabled' : ''}>${local.busy ? 'Reading audio…' : '+ Import audio'}</button></div></div>
@@ -245,12 +205,12 @@
       <div class="clips-timeline" id="clips-timeline" data-scroll="audio-clips" tabindex="0" role="group" aria-label="Audio timeline. Up and `
           + `down select clips; Home and End select the first or last clip. Left and right nudge; shift trims length; option slips source. Tab leaves `
           + `the timeline."><div class="clips-timeline-content" style="width:${width + 132}px"><div class="clips-ruler-row">`
-          + `<div class="clips-track-heading">TRACK / BAR</div><div class="clips-ruler" style="width:${width}px">${ruler.ticks.map(tick => `<span data-bar="${tick.bar}" data-beat="${tick.beat}" class="${tick.changed ? 'clips-meter-change' : ''}" style="left:${tick.beat * local.pixels}px"`
+          + `<div class="clips-track-heading">TRACK / BAR</div><div class="clips-ruler" style="width:${width}px">${ticks.map((tick, index) => `<span data-bar="${tick.bar}" data-beat="${tick.beat}" class="${index ? '' : 'clips-ruler-first'}" style="left:${tick.beat * local.pixels}px"`
           + ` title="${esc(positionDescription(tick.beat))}" aria-label="${esc(positionDescription(tick.beat))}">${tick.labelVisible
-              ? `${tick.bar}${tick.changed && tick.meterVisible ? `<small>${tick.meter}</small>` : ''}`
+              ? `${tick.bar}${tick.meterVisible ? `<small>${map.numerator}/${map.denominator}</small>` : ''}`
               : ''}</span>`).join('')}</div>`
-          + `</div><div class="clips-meter-grid" aria-hidden="true">${ruler.segments.map(segment => `<div class="clips-meter-segment" style="left:${segment.beat * local.pixels}px;width:${(segment.end - segment.beat) * local.pixels}px;--clips-beat:${local.pixels * 4 / segment.denominator}px;--clips-bar:${local.pixels * segment.quartersPerBar}px">`
-          + `</div>`).join('')}</div>${project().tracks.map((track, trackIndex) => `<div class="clips-lane-row"><button class="clips-track-label ${state().track === trackIndex ? 'selected' : ''}" id="clips-track-label-${trackIndex}"`
+          + `</div><div class="clips-meter-grid" aria-hidden="true" style="width:${width}px;--clips-beat:${local.pixels * 4 / map.denominator}px;--clips-bar:${local.pixels * map.quartersPerBar}px">`
+          + `</div>${project().tracks.map((track, trackIndex) => `<div class="clips-lane-row"><button class="clips-track-label ${state().track === trackIndex ? 'selected' : ''}" id="clips-track-label-${trackIndex}"`
           + ` data-clips-track="${trackIndex}"><i style="background:${esc(track.color || '#7dafaa')}"></i><span>${esc(track.name || `Track ${trackIndex + 1}`)}</span>`
           + `</button><div class="clips-lane" data-clips-lane="${trackIndex}" style="width:${width}px">${all.filter(clip => Number(clip.track) === trackIndex).map(clip => `<button class="clips-clip ${String(clip.id) === String(state().clipSelected) ? 'selected' : ''} ${clip.muted ? 'muted' : ''} ${local.failed.has(clipPath(clip)) ? 'offline' : ''}"`
           + ` id="clip-${esc(clip.id)}" data-clip-id="${esc(clip.id)}" style="left:${Number(clip.startBeat || 0) * local.pixels}px;width:${Math.max(9, Number(clip.durationBeats || 0) * local.pixels)}px"`
@@ -476,8 +436,8 @@
   }
   function constrain(clip) {
     clip.startBeat = Math.max(0, Number(clip.startBeat || 0)); clip.durationBeats = Math.max(.001, Number(clip.durationBeats || .001));
-    // Validate the requested region before changing it. Invalid maps and positions
-    // cannot fall back to base BPM or leave a partially edited clip in history.
+    // Validate the requested region before changing it: a position outside the song's range
+    // must not leave a partially edited clip in history.
     seconds(clip);
     clip.sourceOffset = Math.max(0, Number(clip.sourceOffset || 0));
     const sourceLength = local.metadata.get(clipPath(clip))?.duration ?? clip.sourceDuration;

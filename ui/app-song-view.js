@@ -12,9 +12,7 @@
     const beats = p.sequence.reduce((n, id) => n + (p.patterns.find(x => x.id === id)?.length || 0) / p.linesPerBeat,
         0);
     try {
-      return window.STProjectTiming
-          ? window.STProjectTiming.create(p).duration(0, beats)
-          : beats * 60 / p.bpm;
+      return window.STProjectTiming.create(p).duration(0, beats);
     } catch {
       return null;
     }

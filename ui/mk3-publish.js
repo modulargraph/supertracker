@@ -15,7 +15,7 @@
         ? `${songMode ? 'S' + String((status.sequence ?? 0) + 1).padStart(2, '0') + ' · ' : ''}${String(status.row ?? 0).padStart(3, '0')}`
         : `${String(state.row).padStart(3, '0')}/${String(pat.length - 1).padStart(3, '0')}`;
     return { mode: page.title, track: { index: state.track, name: p.tracks[state.track]?.name || '', color: trackColor(state.track) }, pattern: { number: patternIndex() + 1, name: pat.name }, position: pos,
-      bpm: Number(p.timing?.tempos?.[0]?.bpm ?? p.bpm) || 120,
+      bpm: Number(p.bpm) || 120,
       playing: !!state.playing,
       recording: !!state.recording,
       songMode,

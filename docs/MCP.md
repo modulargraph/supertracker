@@ -143,7 +143,7 @@ reply (`applied` per parameter, and a `warning` naming any value the plug-in did
 apply a burst of writes late or drop some, and a state captured too early would bring the old values back.
 Dropped values are written again, one at a time, before the capture.
 
-Not reachable yet: sidechain connections (listed by `get_mixer`, edited in the mixer). Songs with a tempo map change their first tempo/meter through the timing editor.
+Not reachable yet: sidechain connections (listed by `get_mixer`, edited in the mixer).
 
 ## Screenshots
 

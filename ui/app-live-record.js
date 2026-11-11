@@ -28,7 +28,7 @@
 
   const inputHitValue = step => JSON.stringify(step);
 
-  const mappedRecordingWarnings = new WeakMap();
+  const inexactRecordingWarnings = new WeakMap();
 
   function transportSeconds() {
     const elapsed = state.status.seconds;
@@ -64,11 +64,12 @@
   }
 
   function liveGateSignature(project, pat, step) {
-    return stableJSON([project.timing, project.linesPerBeat, project.swing, pat.length,
+    return stableJSON([project.linesPerBeat, project.swing, pat.length,
         ...['fx1', 'fx2'].map(key => ['microtiming', 'ratchet'].includes(step[key]?.type) ? step[key] : null)]);
   }
 
-  function mappedGateTiming(project, pat, row, step, clock) {
+  // The spacing of a row's notes in beats and the engine clock at the note's start, for a gate measured in rows.
+  function exactGateTiming(project, pat, row, step, clock) {
     const number = (value, fallback) => ['number', 'boolean'].includes(typeof value) && Number.isFinite(Number(value))
         ? Number(value)
         : fallback;
@@ -109,9 +110,9 @@
     return clock;
   }
 
-  function warnMappedRecording(group) {
-    if (mappedRecordingWarnings.get(group.project) === group.armSession) return;
-    mappedRecordingWarnings.set(group.project, group.armSession);
+  function warnInexactRecording(group) {
+    if (inexactRecordingWarnings.get(group.project) === group.armSession) return;
+    inexactRecordingWarnings.set(group.project, group.armSession);
     toast('Exact recorded-note duration was unavailable. Recorded notes were kept without a gate.', 'info');
   }
 
@@ -157,7 +158,7 @@
       pat.steps[t][r] = step;
       if (group) {
         group.step = step;
-        if (group.mappedTiming) advanceRecordingClock(group.mappedTiming, recordingClock);
+        if (group.exactTiming) advanceRecordingClock(group.exactTiming, recordingClock);
       } else {
         group = {
           take,
@@ -173,9 +174,7 @@
           linesPerBeat: project.linesPerBeat,
           armSession: app.recordArmSession,
           exactInput: exact,
-          mappedTiming: exact || Object.hasOwn(project, 'timing')
-              ? mappedGateTiming(project, pat, r, step, recordingClock)
-              : null,
+          exactTiming: exact ? exactGateTiming(project, pat, r, step, recordingClock) : null,
           active: new Set()
         };
       }
@@ -209,7 +208,7 @@
         take, project, pat, track, row: r, column, step: cell, started: transportSeconds(), startedAt: Date.now(),
         clockWrapped: false, bpm: project.bpm, linesPerBeat: project.linesPerBeat, armSession: app.recordArmSession,
         exactInput: exact,
-        mappedTiming: exact || Object.hasOwn(project, 'timing') ? mappedGateTiming(project, pat, r, main, recordingClock) : null,
+        exactTiming: exact ? exactGateTiming(project, pat, r, main, recordingClock) : null,
         active: new Set()
       };
     }, { render: false, recordTake: take });
@@ -225,7 +224,7 @@
   function finishLiveRecord(record, recordingClock) {
     const group = record?.group;
     if (!group || !group.active.delete(record.token)) return;
-    const timing = group.mappedTiming,
+    const timing = group.exactTiming,
       endpoint = timing ? advanceRecordingClock(timing, recordingClock) : null;
     if (group.active.size) return;
     if (state.project !== group.project
@@ -240,15 +239,11 @@
     const rowStep = group.pat.steps[group.track]?.[group.row];
     if (timing) {
       if (!endpoint || liveGateSignature(group.project, group.pat, rowStep) !== timing.signature) {
-        if (gated) warnMappedRecording(group);
+        if (gated) warnInexactRecording(group);
         return;
       }
       rows = clamp((endpoint.distanceBeats - timing.start.distanceBeats) / timing.spacing, .01, 256);
     } else {
-      if (Object.hasOwn(group.project, 'timing')) {
-        if (gated) warnMappedRecording(group);
-        return;
-      }
       const nativeElapsed = transportSeconds() - group.started,
         elapsed = group.clockWrapped || nativeElapsed < 0
             ? Math.max(0, Date.now() - group.startedAt) / 1000

@@ -117,7 +117,7 @@ test('validation rollback preserves every pending encoder on unchanged clone', a
   h.win.STFreeze.checkMutation=()=>null;
   assert.equal(await h.MK3.flushEdits(),true); assert.equal(h.MK3._bursts.size,0); assert.equal(h.state.undo.length,2);
 });
-test('tempo encoder edits the song bpm directly (no tempo map) as one flushed edit', async () => {
+test('tempo encoder edits the song bpm as one flushed edit', async () => {
   const h=session(); const before=h.state.project.bpm;
   h.input({type:'button',name:'tempo',pressed:true}); h.input({type:'main',delta:5});
   assert.equal(await h.MK3.flushEdits(), true); assert.equal(h.MK3.hasPendingEdits, false); assert.equal(h.state.project.bpm, before+5);

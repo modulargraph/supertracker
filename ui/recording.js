@@ -264,11 +264,7 @@
       const metadata = await app().request('audio.clipInfo', { path: file.path }); requireDestination(session);
       const duration = Number(metadata?.duration || file.duration);
       if (!(duration > 0)) throw new Error('The recording contains no audio frames.');
-      if (Object.prototype.hasOwnProperty.call(session.project, 'timing')
-          && !window.STProjectTiming?.endingBeat) throw new Error('Tempo-map support is unavailable. Your recording is preserved.');
-      const durationBeats = window.STProjectTiming?.endingBeat
-          ? window.STProjectTiming.endingBeat(session.project, session.startBeat, duration) - session.startBeat
-          : duration * session.project.bpm / 60;
+      const durationBeats = window.STProjectTiming.endingBeat(session.project, session.startBeat, duration) - session.startBeat;
       const clip = {
         id: app().uid(),
         name: session.name,

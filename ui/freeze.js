@@ -58,7 +58,7 @@
         ...rest
       }) => rest)(p.instruments[i]) : null),
       clips: (p.audioClips || []).filter(clip => (clip.track || 0) === index).map(({ id, name, ...rest }) => rest),
-      timing: { bpm: p.bpm, lpb: p.linesPerBeat, swing: p.swing, timing: p.timing || null, sequence: p.sequence || [0] }
+      timing: { bpm: p.bpm, lpb: p.linesPerBeat, swing: p.swing, sequence: p.sequence || [0] }
     });
   }
 
@@ -76,8 +76,8 @@
             : `${name} is frozen. Unfreeze it before removing the track.` };
       }
       if (signature(before, index) !== signature(after, next)) {
-        const timing = JSON.stringify([before.bpm, before.linesPerBeat, before.swing, before.timing, before.sequence]) !==
-          JSON.stringify([after.bpm, after.linesPerBeat, after.swing, after.timing, after.sequence]);
+        const timing = JSON.stringify([before.bpm, before.linesPerBeat, before.swing, before.sequence]) !==
+          JSON.stringify([after.bpm, after.linesPerBeat, after.swing, after.sequence]);
         return { track: index, name, message: timing
           ? `Tempo and the song arrangement are printed into frozen track ${name}. Unfreeze it to change them.`
           : `${name} is frozen: its notes, instruments and inserts are printed to audio. Unfreeze to edit them; fader, pan, mute, solo and sends stay live.` };
@@ -253,7 +253,6 @@
       !((key === 'fx1' || key === 'fx2') && MIX.has(step[key]?.type)))) || (pattern.automation || []).some(lane =>
       (lane.owner ? lane.owner === owner : (lane.track || 0) === index)
           && !(MIX.has(lane.target || 'volume') || String(lane.target || '').startsWith('send:')))).length;
-    if (p?.timing) return 'patterns not printed (tempo map)';
     return `${used} pattern${used === 1 ? '' : 's'}`;
   }
 

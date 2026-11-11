@@ -1,6 +1,6 @@
 'use strict';
 // Actual app renderer, scalar handlers, history and native sync queue for the Song view and the
-// transport's tempo/meter fields (constant tempo: tempo maps and their editor were removed).
+// transport's tempo/meter fields.
 // Native replies are controlled fixtures, not audio tests. settings_lifecycle_tests.js reuses the harness.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const web = require('./helpers/web');
@@ -31,8 +31,8 @@ test('the tempo & meter editor is gone: no Song button, command, menu item or sc
  assert(!fs.readFileSync(path.join(__dirname,'../crates/st-app/src/menus.rs'),'utf8').includes('"timing"'));
 });
 test('scalar tempo and meter edits are immediate and never invent a map',()=>{
- const h=harness('song');h.depart('tempo','metronome',137);assert.equal(h.state.project.bpm,137);assert.equal(h.state.undo.length,1);assert.equal(h.state.project.timing,undefined);
- h.depart('signature-numerator','metronome',3);assert.equal(h.state.project.timeSignature.numerator,3);assert.equal(h.state.undo.length,2);assert.equal(h.state.project.timing,undefined);
+ const h=harness('song');h.depart('tempo','metronome',137);assert.equal(h.state.project.bpm,137);assert.equal(h.state.undo.length,1);
+ h.depart('signature-numerator','metronome',3);assert.equal(h.state.project.timeSignature.numerator,3);assert.equal(h.state.undo.length,2);
  assert(!h.calls.some(x=>x.command.startsWith('timing.')));
 });
 (async()=>{let passed=0;for(const {name,fn}of tests){let timer;try{await Promise.race([fn(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Timed out: possible operation-gate deadlock')),4000);})]);passed++;console.log('PASS '+name);}catch(error){console.error('FAIL '+name+'\n'+error.stack);}finally{clearTimeout(timer);}}console.log(`Mounted Song view: ${passed}/${tests.length} groups passed.`);if(passed!==tests.length)process.exitCode=1;})().catch(error=>{console.error(error);process.exitCode=1;});

@@ -6,9 +6,7 @@
   const esc = value => app().escapeHTML(String(value ?? ''));
   const get = id => document.getElementById(id);
   const selected = () => app().state.project.audioClips?.find(clip => String(clip.id) === String(app().state.clipSelected));
-  const timing = project => (start, length) => window.STProjectTiming?.durationFromBeats
-      ? window.STProjectTiming.durationFromBeats(project, start, length)
-      : length * 60 / (project.bpm || 120);
+  const timing = project => (start, length) => window.STProjectTiming.durationFromBeats(project, start, length);
   let pending = false, session = null, previewJob = null, previewGeneration = 0;
   const warn = error => app().toast(error.message || String(error), 'error');
   function available(clip, take, project = app().state.project) { return model().fits(clip, take, timing(project)); }

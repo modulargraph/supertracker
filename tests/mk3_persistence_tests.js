@@ -52,7 +52,7 @@ test('Quit refuses a checkpoint when controller validation still rejects',async(
  assert.match(h.window.STApp.quitBlocker(),/pending Maschine control edit/);assert(h.m.hasPendingEdits);
 });
 
-// Constant tempo (tempo maps were removed): the MK3 tempo overlay edits project.bpm as one pending gesture.
+// The MK3 tempo overlay edits project.bpm as one pending gesture.
 function timedController(){
  const h=controller();h.ST.state.project.bpm=120;
  h.m.state.overlay='tempo';h.m.page().main.turn(5);return h;

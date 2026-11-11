@@ -349,10 +349,7 @@
     if (M.taps.length >= 2) {
       const intervals = M.taps.slice(1).map((at, i) => at - M.taps[i]).slice(-4), average = intervals.reduce((a, b) => a + b, 0) / intervals.length;
       const bpm = clamp(Math.round(60000 / average * 10) / 10, 20, 400);
-      burstEdit('tempo', 'tap tempo', q => Number(q.timing?.tempos?.[0]?.bpm ?? q.bpm ?? 120), (q, v) => {
-        q.bpm = v;
-        if (q.timing?.tempos?.[0]) q.timing.tempos[0].bpm = v;
-      }, bpm, { commit: tempoCommit });
+      burstEdit('tempo', 'tap tempo', q => Number(q.bpm ?? 120), (q, v) => { q.bpm = v; }, bpm, { commit: tempoCommit });
       flash(`Tap ${bpm.toFixed(1)} BPM`, 900);
     } else flash('Tap tempo…', 900);
   }

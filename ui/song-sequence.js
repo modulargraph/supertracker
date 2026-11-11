@@ -28,13 +28,11 @@
   function patternOf(id) { return project().patterns.find(pattern => pattern.id === id); }
   function lengthLabel(pattern) {
     const p = project(), rows = pattern?.length || 0;
-    if (p.timing) return (rows / (p.linesPerBeat || 4)).toFixed(1).replace(/\.0$/, '') + ' beats';
     const bars = rows / ((p.linesPerBeat || 4) * (app().beatsPerBar?.(p) || 4));
     return (Number.isInteger(bars) ? bars : bars.toFixed(2)) + (bars === 1 ? ' bar' : ' bars');
   }
   function barLabel(flat) {
     const p = project(), beat = M().startBeat(p, flat);
-    if (p.timing) return 'beat ' + (Math.round(beat * 100) / 100 + 1);
     const perBar = app().beatsPerBar?.(p) || 4;
     return 'bar ' + (Math.floor(beat / perBar + 1e-9) + 1);
   }

@@ -1,12 +1,13 @@
 'use strict';
 // Actual app keyboard/MIDI/recording handlers with parsed replaceable DOM and a
-// simulated bridge. Native endpoint clocks are fixtures, not an audio claim.
+// simulated bridge. The engine clocks of note edges are fixtures, not an audio claim.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
 const fixture = fs.readFileSync(path.join(__dirname, 'scalar_field_focus_tests.js'), 'utf8');
 const makeHarness = new Function('require', '__dirname', fixture.slice(0, fixture.indexOf('const tests = [], test =')) + '\nreturn harness;')(require, __dirname);
 const copy = value => JSON.parse(JSON.stringify(value));
 const clock = (distanceBeats, extra = {}) => ({ distanceBeats, runID: '1', timingRevision: '9007199254740993', ...extra });
-function harness(mapped = true) {
+// exact: notes begin as acknowledged input does (app-input-capture.js), with the engine clock of each edge.
+function harness(exact = true) {
   const h = makeHarness(), warnings = []; let now = 100000, message = '';
   h.context.Date = class extends Date { static now() { return now; } };
   Object.defineProperty(h.toast, 'innerHTML', { get: () => message, set(value) { message = value; if (value.includes('Exact recorded-note duration')) warnings.push(value); } });
@@ -14,12 +15,11 @@ function harness(mapped = true) {
   // Held-note durations are recorded only while the optional Gate column is shown.
   project.viewState = { gateColumn: true };
   project.patterns[0].length = 32; project.patterns[0].steps.forEach(steps => { steps.length = 32; });
-  if (mapped) project.timing = { version: 1, tempos: [{ id: 'a', beat: 0, bpm: 120 }, { id: 'b', beat: 4, bpm: 60 }], meters: [{ id: 'm', beat: 0, numerator: 4, denominator: 4 }] };
   Object.assign(h.state, { recordPlacement:'live', playing: true, recording: true, keyboardPlay: true, row: 0, track: 0, instrument: 0, status: { playing: true, pattern: 0, row: 0, seconds: 0, beat: 0 }, lastStatusAt: now });
   h.ST.refresh(); h.calls.length = 0;
   function status(seconds, beat, row = Math.floor(beat * 4), extra = {}) { h.window.nativeEvent({ type: 'status', payload: { playing: true, songMode: true, pattern: 0, sequence: 0, row, position: row, seconds, beat, timingRevision: '9007199254740993', ...extra } }); }
   function midi(on, note = 60, recordingClock, row = 0) { h.window.nativeEvent({ type: 'midi.note', payload: { on, note, velocity: 93, source: 1, channel: 1, track: 0, instrument: 0, pattern: 0, row, ...(recordingClock === undefined ? {} : { recordingClock }) } }); }
-  return { ...h, project, warnings, status, midi, advance(seconds) { now += seconds * 1000; }, step: (row = 0) => h.ST.pattern().steps[0][row], begin(row = 0, stamp, note = 60) { return h.ST.recordLiveStep(note, 100, 0, 0, 0, row, [0], stamp); } };
+  return { ...h, project, warnings, status, midi, advance(seconds) { now += seconds * 1000; }, step: (row = 0) => h.ST.pattern().steps[0][row], begin(row = 0, stamp, note = 60) { return h.ST.recordLiveStep(note, 100, 0, 0, 0, row, [0], stamp, exact ? { exactInput: true } : {}); } };
 }
 const tests = [], test = (name, run) => tests.push({ name, run });
 
@@ -50,30 +50,29 @@ test('without the Gate column a released key records an OFF on its row, unless a
   assert.equal(h.step(21).note, -1, 'a short tap still gets its OFF on the next row');
 });
 
-test('mapped keyboard notes never treat polled status or elapsed saved-BPM time as exact input endpoints', () => {
-  const h = harness(); h.status(1.5, 3, 0, { recordingClock: clock(3) }); const tracker = h.get('tracker'); tracker.focus();
-  h.key(tracker, 'z', { code: 'KeyZ' }); assert.equal(h.step().gate, 0); assert.equal(h.warnings.length, 0);
-  h.advance(1.5); h.status(3, 5, 0, { recordingClock: clock(5) }); h.ST.noteOff('KeyZ');
-  assert.equal(h.step().gate, 0, 'Without input-edge clocks, do not fabricate the old 12-row gate'); assert.equal(h.state.undo.length, 1); assert.equal(h.warnings.length, 1);
+test('an exact note without the engine clock of its edges keeps no gate and warns once per recording session', () => {
+  const h = harness(); h.status(1.5, 3, 0, { recordingClock: clock(3) });
+  const first = h.begin(0); h.advance(1.5); h.status(3, 5, 0, { recordingClock: clock(5) }); h.ST.finishLiveRecord(first);
+  assert.equal(h.step().gate, 0, 'the status clock and the elapsed time are not the note\'s edges'); assert.equal(h.state.undo.length, 1); assert.equal(h.warnings.length, 1);
   const second = h.begin(1); h.advance(1.5); h.status(.5, 1); h.ST.finishLiveRecord(second);
   assert.equal(h.step(1).gate, 0); assert.equal(h.warnings.length, 1, 'Warn once per project/session rather than on every note');
   h.ST.finishLiveRecord(second); assert.equal(h.state.undo.length, 1, 'notes and gates of one recording pass are one Undo step'); assert.equal(h.warnings.length, 1);
 });
 
-test('exact MIDI input clocks measure tempo crossings, loop wraps and skipped whole cycles', () => {
+test('exact input clocks measure the held beats across loop wraps and skipped whole cycles', () => {
   for (const [name, start, end, startSeconds, endSeconds, duration, expected] of [
-    ['tempo crossing', 3, 5, 1.5, 3, 1.5, 8],
-    ['song wrap', 7, 9, 5, .5, 1.5, 8],
-    ['skipped whole cycle', 1, 10, .5, 1, 6.5, 36],
+    ['inside the pattern', 3, 5, 1.5, 2.5, 1, 8],
+    ['song wrap', 7, 9, 3.5, .5, 1, 8],
+    ['skipped whole cycle', 1, 10, .5, 1, 4.5, 36],
   ]) {
-    const h = harness(); h.status(startSeconds, start % 8); h.midi(true, 60, clock(start));
-    h.advance(duration); h.status(endSeconds, end % 8); h.midi(false, 60, clock(end));
+    const h = harness(); h.status(startSeconds, start % 8); const record = h.begin(0, clock(start));
+    h.advance(duration); h.status(endSeconds, end % 8); h.ST.finishLiveRecord(record, clock(end));
     assert.equal(h.step().gate, expected, name); assert.equal(h.state.undo.length, 1); assert.equal(h.warnings.length, 0); assert.equal(h.calls.length, 0);
-    h.midi(false, 60, clock(end)); assert.equal(h.state.undo.length, 1, 'Repeated note-off cannot finalize again');
+    h.ST.finishLiveRecord(record, clock(end)); assert.equal(h.state.undo.length, 1, 'Repeated note-off cannot finalize again');
   }
 });
 
-test('mapped gate uses native onset-row swing and per-voice microtiming/ratchet spacing while preserving both FX columns', () => {
+test('exact gate uses the onset row\'s swing and per-voice microtiming/ratchet spacing while preserving both FX columns', () => {
   const plugin = { type: 'plugin', instanceID: 'original-plugin', address: '18446744073709551615', value: .37 };
   for (const [name, row, swing, fx1, fx2, beats, expected] of [
     ['even swung row', 0, .5, null, null, .75, 2],
@@ -116,8 +115,9 @@ test('missing, invalid, reversed, reset or revised clocks keep no gate and add n
 });
 
 test('timing edits, project replacement and busy transactions cannot attach stale durations or create phantom MIDI records', () => {
-  for (const change of [h => { h.project.timing.tempos[1].bpm = 80; }, h => { h.project.linesPerBeat = 8; }, h => { h.project.swing = .2; }, h => { h.step().fx1 = { type: 'ratchet', value: 2 }; }, h => { delete h.project.timing; }]) {
-    const h = harness(), record = h.begin(0, clock(1)); change(h); h.ST.finishLiveRecord(record, clock(2)); assert.equal(h.step().gate, 0); assert.equal(h.state.undo.length, 1); assert.equal(h.warnings.length, 1);
+  // A change of the row spacing leaves no gate and says so; a step edited meanwhile is no longer the recording's to write.
+  for (const [change, warnings] of [[h => { h.project.linesPerBeat = 8; }, 1], [h => { h.project.swing = .2; }, 1], [h => { h.step().fx1 = { type: 'ratchet', value: 2 }; }, 0]]) {
+    const h = harness(), record = h.begin(0, clock(1)); change(h); h.ST.finishLiveRecord(record, clock(2)); assert.equal(h.step().gate, 0); assert.equal(h.state.undo.length, 1); assert.equal(h.warnings.length, warnings);
   }
   const old = harness(), record = old.begin(0, clock(1)); old.state.project = copy(old.project); old.ST.finishLiveRecord(record, clock(2)); assert.equal(old.step().gate, 0); assert.equal(old.state.undo.length, 1); assert.equal(old.warnings.length, 0);
   for (const [module, flag] of [['STExport', 'isBusy'], ['STRouting', 'isApplying']]) {
@@ -126,11 +126,11 @@ test('timing edits, project replacement and busy transactions cannot attach stal
   }
 });
 
-test('legacy fixed-tempo duration and loop fallback remain unchanged, while a new recording session can warn once again', async () => {
+test('notes without acknowledged input measure the elapsed transport time, also across a loop; a new recording session can warn once again', async () => {
   const h = harness(false); h.status(10, 20); const record = h.begin(); h.advance(2); h.status(12, 24); h.ST.finishLiveRecord(record); assert.equal(h.step().gate, 16); assert.equal(h.warnings.length, 0);
   const loop = harness(false); loop.status(32, 64); const wrapped = loop.begin(); loop.advance(2); loop.status(.2, .4); loop.ST.finishLiveRecord(wrapped); assert.equal(loop.step().gate, 16); assert.equal(loop.warnings.length, 0);
-  const mapped = harness(); mapped.ST.finishLiveRecord(mapped.begin()); mapped.ST.finishLiveRecord(mapped.begin(1)); assert.equal(mapped.warnings.length, 1);
-  await mapped.ST.setNoteRecording(true, { newSession: true }); mapped.ST.finishLiveRecord(mapped.begin(2)); assert.equal(mapped.warnings.length, 2);
+  const exact = harness(); exact.ST.finishLiveRecord(exact.begin()); exact.ST.finishLiveRecord(exact.begin(1)); assert.equal(exact.warnings.length, 1);
+  await exact.ST.setNoteRecording(true, { newSession: true }); exact.ST.finishLiveRecord(exact.begin(2)); assert.equal(exact.warnings.length, 2);
 });
 
 (async () => { let failures = 0; for (const { name, run } of tests) { try { await run(); console.log('PASS ' + name); } catch (error) { failures++; console.error('FAIL ' + name + '\n' + error.stack); } } console.log(`Live recording timing: ${tests.length - failures}/${tests.length} regression groups passed.`); if (failures) process.exitCode = 1; })();

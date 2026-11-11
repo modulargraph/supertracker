@@ -194,48 +194,42 @@ test('duplicate and source-slip keep take metadata independent and retain curren
 });
 
 
-function installTiming(h, tempos=[{id:'tempo-0',beat:0,bpm:120}]) {
- h.context.TextEncoder=TextEncoder;web.load(h.context, 'project-timing.js');
- h.state.project.timing={version:1,tempos,meters:[{id:'meter-0',beat:0,numerator:4,denominator:4}]};
-}
-test('tempo-map split with base60/map120 preserves four plus four beats and two-second source regions',()=>{
- const h=harness(),clip=h.state.project.audioClips[0];h.state.project.audioClips=[clip];h.state.project.bpm=60;installTiming(h);
+test('a split keeps the beats of both halves and continues the source where the first half ends',()=>{
+ const h=harness(),clip=h.state.project.audioClips[0];h.state.project.audioClips=[clip];h.state.project.bpm=120;
  Object.assign(clip,{startBeat:0,durationBeats:8,sourceOffset:0,sourceDuration:4,fadeIn:3,fadeOut:3});h.clips.event('audio.clipLoaded',{path:clip.path,duration:4,peaks:[0,.5,1,.5]});
  const M=h.context.window.STClipTakesProject;Object.assign(clip,M.add(clip,{path:'/alternate.wav',sourceDuration:4},.5,()=> 'alt'));h.clips.event('audio.clipLoaded',{path:clip.path,duration:4,peaks:[0,.5,1,.5]});
  h.nodes.get('clips-cursor').value=4;h.nodes.get('clips-cursor').fire('change');h.key('clip-a','s');
  const [left,right]=h.state.project.audioClips;assert.equal(left.durationBeats,4);assert.equal(right.durationBeats,4);assert.equal(right.startBeat,4);assert.equal(right.sourceOffset,2);
  assert.equal(left.fadeIn,2);assert.equal(right.fadeOut,2);assert.deepEqual(copy(right.takeSet.takes.map(t=>t.sourceOffset)),[2,2]);assert.equal(h.changes.length,1);
 });
-test('map-aware source bounds, fades and split offsets integrate tempo changes inside a region',()=>{
- const h=harness(),clip=h.state.project.audioClips[0];h.state.project.audioClips=[clip];h.state.project.bpm=180;installTiming(h,[{id:'t0',beat:0,bpm:120},{id:'t1',beat:4,bpm:60}]);
- Object.assign(clip,{startBeat:2,durationBeats:6,sourceOffset:1,sourceDuration:6,fadeIn:2.5,fadeOut:3.5});h.clips.event('audio.clipLoaded',{path:clip.path,duration:6,peaks:[0,.5,1]});
- h.nodes.get('clips-cursor').value=5;h.nodes.get('clips-cursor').fire('change');h.key('clip-a','s');const [left,right]=h.state.project.audioClips;
- assert.equal(left.durationBeats,3);assert.equal(right.durationBeats,3);assert.equal(right.sourceOffset,3);assert.equal(left.fadeIn,2);assert.equal(right.fadeOut,3);
- h.state.clipSelected='a';left.durationBeats=8;h.key('clip-a','ArrowRight',{shiftKey:true});assert.equal(left.durationBeats,6);assert.equal(left.sourceOffset,1);
+test('source bounds, fades and split offsets are measured in seconds at the project tempo',()=>{
+ const h=harness(),clip=h.state.project.audioClips[0];h.state.project.audioClips=[clip];h.state.project.bpm=60;
+ Object.assign(clip,{startBeat:2,durationBeats:4,sourceOffset:1,sourceDuration:6,fadeIn:2.5,fadeOut:3.5});h.clips.event('audio.clipLoaded',{path:clip.path,duration:6,peaks:[0,.5,1]});
+ h.nodes.get('clips-cursor').value=4;h.nodes.get('clips-cursor').fire('change');h.key('clip-a','s');const [left,right]=h.state.project.audioClips;
+ assert.equal(left.durationBeats,2);assert.equal(right.durationBeats,2);assert.equal(right.sourceOffset,3);assert.equal(left.fadeIn,2);assert.equal(right.fadeOut,2);
+ h.state.clipSelected='a';left.durationBeats=8;h.key('clip-a','ArrowRight',{shiftKey:true});assert.equal(left.durationBeats,5,'a trim ends where the source does');assert.equal(left.sourceOffset,1);
 });
-test('moving and duplicating original-speed regions preserve elapsed audio time across tempo boundaries',()=>{
- const h=harness(),clip=h.state.project.audioClips[0];h.state.project.audioClips=[clip];installTiming(h,[{id:'t0',beat:0,bpm:60},{id:'t1',beat:4,bpm:120}]);
- Object.assign(clip,{startBeat:3,durationBeats:3,sourceDuration:2,sourceOffset:0});h.clips.event('audio.clipLoaded',{path:clip.path,duration:2,peaks:[0,.5,1]});
- h.key('clip-a','ArrowRight');assert.equal(clip.startBeat,3.25);assert.equal(clip.durationBeats,3.25);
+test('moving and duplicating a region keep its length in beats',()=>{
+ const h=harness(),clip=h.state.project.audioClips[0];h.state.project.audioClips=[clip];h.state.project.bpm=90;
+ Object.assign(clip,{startBeat:3,durationBeats:3,sourceDuration:4,sourceOffset:0});h.clips.event('audio.clipLoaded',{path:clip.path,duration:4,peaks:[0,.5,1]});
+ h.key('clip-a','ArrowRight');assert.equal(clip.startBeat,3.25);assert.equal(clip.durationBeats,3);
  h.key('clip-a','ArrowLeft');assert.equal(clip.startBeat,3);assert.equal(clip.durationBeats,3);
- h.key('clip-a','d',{metaKey:true});const duplicate=h.state.project.audioClips[1];assert.equal(duplicate.startBeat,6);assert.equal(duplicate.durationBeats,4);assert.equal(duplicate.sourceOffset,0);
+ h.key('clip-a','d',{metaKey:true});const duplicate=h.state.project.audioClips[1];assert.equal(duplicate.startBeat,6);assert.equal(duplicate.durationBeats,3);assert.equal(duplicate.sourceOffset,0);
 });
-test('source-slip follows the elapsed grid step and opposite keys are reversible across a tempo boundary',()=>{
- const h=harness(),clip=h.state.project.audioClips[0];installTiming(h,[{id:'t0',beat:0,bpm:60},{id:'t1',beat:4,bpm:120}]);Object.assign(clip,{startBeat:3.9,durationBeats:1,sourceOffset:.2,sourceDuration:5});
- h.key('clip-a','ArrowRight',{altKey:true});assert(Math.abs(clip.sourceOffset-.375)<1e-9);h.key('clip-a','ArrowLeft',{altKey:true});assert(Math.abs(clip.sourceOffset-.2)<1e-9);
+test('source-slip moves by the grid step in seconds and opposite keys are reversible',()=>{
+ const h=harness(),clip=h.state.project.audioClips[0];h.state.project.bpm=60;Object.assign(clip,{startBeat:3.9,durationBeats:1,sourceOffset:.2,sourceDuration:5});
+ h.key('clip-a','ArrowRight',{altKey:true});assert(Math.abs(clip.sourceOffset-.45)<1e-9);h.key('clip-a','ArrowLeft',{altKey:true});assert(Math.abs(clip.sourceOffset-.2)<1e-9);
 });
-test('waveform samples and fade geometry follow elapsed seconds at each musical position',()=>{
- const h=harness(),clip=h.state.project.audioClips[0];h.state.project.audioClips=[clip];installTiming(h,[{id:'t0',beat:0,bpm:60},{id:'t1',beat:4,bpm:120}]);Object.assign(clip,{startBeat:0,durationBeats:8,sourceOffset:0,sourceDuration:6,fadeIn:2,fadeOut:1});
- h.clips.event('audio.clipLoaded',{path:clip.path,duration:6,peaks:[0,.25,.5,.75,1,0]});const html=h.clips.render();assert.match(html,/M90 11V25/);assert.match(html,/M0 34L90 2H270L360 34/);assert.match(html,/id="clips-fadeIn"[^>]*max="6"/);
+test('waveform samples and fade geometry follow the seconds of each musical position',()=>{
+ const h=harness(),clip=h.state.project.audioClips[0];h.state.project.audioClips=[clip];h.state.project.bpm=120;Object.assign(clip,{startBeat:0,durationBeats:8,sourceOffset:0,sourceDuration:6,fadeIn:2,fadeOut:1});
+ h.clips.event('audio.clipLoaded',{path:clip.path,duration:6,peaks:[0,.25,.5,.75,1,0]});const html=h.clips.render();assert.match(html,/M90 14\.5V21\.5/);assert.match(html,/M0 34L180 2H270L360 34/);assert.match(html,/id="clips-fadeIn"[^>]*max="4"/);
 });
-test('audio import inverts duration from its actual song position across tempo changes',async()=>{
- const h=harness();h.state.project.bpm=60;installTiming(h,[{id:'t0',beat:0,bpm:60},{id:'t1',beat:4,bpm:120}]);h.clips.event('audio.clipLoaded',{path:'/mapped.wav',duration:2,peaks:[0,.5,1]});
- const imported=await h.clips.addFile('/mapped.wav',{startBeat:3,track:0});assert.equal(imported.durationBeats,3);assert.equal(imported.startBeat,3);assert.equal(imported.sourceDuration,2);
+test('an imported file gets its length in beats from its duration at the project tempo',async()=>{
+ const h=harness();h.state.project.bpm=90;h.clips.event('audio.clipLoaded',{path:'/loop.wav',duration:2,peaks:[0,.5,1]});
+ const imported=await h.clips.addFile('/loop.wav',{startBeat:3,track:0});assert.equal(imported.durationBeats,3);assert.equal(imported.startBeat,3);assert.equal(imported.sourceDuration,2);
 });
-test('invalid maps and out-of-domain inverse conversions reject before history or source changes',async()=>{
- const h=harness(),clip=h.state.project.audioClips[0];h.state.project.audioClips=[clip];installTiming(h);h.state.project.timing.tempos[0].bpm=0;const before=copy(h.state.project);
- h.nodes.get('clips-cursor').value=6;h.nodes.get('clips-cursor').fire('change');h.key('clip-a','s');h.key('clip-a','ArrowRight');h.key('clip-a','d',{metaKey:true});assert.deepEqual(copy(h.state.project),before);assert.equal(h.changes.length,0);
- installTiming(h);h.clips.event('audio.clipLoaded',{path:'/end.wav',duration:2,peaks:[0,1]});const count=h.state.project.audioClips.length,result=await h.clips.addFile('/end.wav',{startBeat:999999,track:0});assert.equal(result,null);assert.equal(h.state.project.audioClips.length,count);assert.equal(h.changes.length,0);
+test('an import that would end past the supported song length is refused before history or source changes',async()=>{
+ const h=harness();h.clips.event('audio.clipLoaded',{path:'/end.wav',duration:2,peaks:[0,1]});const before=copy(h.state.project),result=await h.clips.addFile('/end.wav',{startBeat:999999,track:0});assert.equal(result,null);assert.deepEqual(copy(h.state.project),before);assert.equal(h.changes.length,0);
 });
 
 // The app re-renders on every selection change and edit, and then gives focus back to the control that had it

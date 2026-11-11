@@ -32,7 +32,7 @@ function harness() {
   } }) };
   const context = vm.createContext({ window, document, console, setTimeout: (fn, delay = 0) => { const id = nextTimer++; timers.set(id, { fn, at: clock + delay }); return id; },
     clearTimeout: id => timers.delete(id), Date, Map, Set, Math, JSON, Number, String, Object, Array, Promise, innerWidth: 1280, innerHeight: 800 });
-  for (const name of ['fine-control.js', 'routing-project.js', 'project-timing.js']) web.load(context, name);
+  for (const name of ['fine-control.js', 'routing-project.js']) web.load(context, name);
   web.load(context, 'app.js');
   for (const name of ['modulation.js', 'step-fx.js', 'sampler.js', 'wavetables.js', 'studio.js']) web.load(context, name);
   const ST = window.ST;

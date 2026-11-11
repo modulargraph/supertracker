@@ -599,13 +599,9 @@ test('failed project operation cannot clear a captured alternate before its edit
 });
 
 
-test('recorded timeline audio inverts actual duration at its captured beat using the project tempo map',async()=>{
- const h=harness();h.state.view='song';h.state.project.bpm=60;h.context.TextEncoder=TextEncoder;web.load(h.context, 'project-timing.js');
- h.state.project.timing={version:1,tempos:[{id:'t0',beat:0,bpm:60},{id:'t1',beat:17,bpm:120}],meters:[{id:'m0',beat:0,numerator:4,denominator:4}]};
+test('recorded timeline audio gets its length in beats from its duration at the project tempo',async()=>{
+ const h=harness();h.state.view='song';h.state.project.bpm=90;
  await h.open();h.change('record-destination','clip');await h.startStop();await h.startStop();const clip=h.state.project.audioClips[0];assert.equal(clip.startBeat,16);assert.equal(clip.durationBeats,3);assert.equal(clip.sourceDuration,2);
-});
-test('unavailable map conversion preserves a captured timeline file for retry instead of assigning base-tempo length',async()=>{
- const h=harness();h.state.view='song';h.state.project.timing={version:1,tempos:[],meters:[]};await h.open();h.change('record-destination','clip');await h.startStop();await h.startStop();assert.equal(h.state.project.audioClips.length,0);assert(h.ui.lastRecording.path);assert.match(h.get('record-status').textContent,/Tempo-map support is unavailable/);assert.equal(h.edits.length,0);
 });
 
 test('empty recording name returns keyboard focus to the enabled name field without preparing audio', async () => {

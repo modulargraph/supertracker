@@ -100,14 +100,11 @@
         }, v), { on: Math.abs((p.swing || 0) - v) < .005 })).concat([null, null]),
         knobs: [swingKnob(),
             enumKnob({ key: 'lpb', label: 'Lines/beat', read: q => q.linesPerBeat || 4, write: (q, v) => { q.linesPerBeat = v; }, options: [1, 2, 3, 4, 6, 8, 12, 16].map(v => [v, String(v)]) })] });
-      case 'tempo': return encoderMode(id, 'Tempo', { title: 'TEMPO', target: 'Project', value: `${fmt.bpm(burstValue('tempo', q => Number(q.timing?.tempos?.[0]?.bpm ?? q.bpm ?? 120)))} BPM`, hint: '4-D: 1 BPM (Shift: 0.1) · TAP: tap tempo' }, {
+      case 'tempo': return encoderMode(id, 'Tempo', { title: 'TEMPO', target: 'Project', value: `${fmt.bpm(burstValue('tempo', q => Number(q.bpm ?? 120)))} BPM`, hint: '4-D: 1 BPM (Shift: 0.1) · TAP: tap tempo' }, {
         main: {
           turn(delta) {
-            const current = burstValue('tempo', q => Number(q.timing?.tempos?.[0]?.bpm ?? q.bpm ?? 120));
-            burstEdit('tempo', 'tempo', q => Number(q.timing?.tempos?.[0]?.bpm ?? q.bpm ?? 120), (q, v) => {
-              q.bpm = v;
-              if (q.timing?.tempos?.[0]) q.timing.tempos[0].bpm = v;
-            }, clamp(Number((current + delta * (M.shift ? .1 : 1)).toFixed(1)), 20, 400), { commit: tempoCommit });
+            const current = burstValue('tempo', q => Number(q.bpm ?? 120));
+            burstEdit('tempo', 'tempo', q => Number(q.bpm ?? 120), (q, v) => { q.bpm = v; }, clamp(Number((current + delta * (M.shift ? .1 : 1)).toFixed(1)), 20, 400), { commit: tempoCommit });
           },
           push() {},
           tilt() {}

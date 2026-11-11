@@ -30,7 +30,7 @@ test('source coverage rejects short imports and unusable alternatives after leng
  const result=M.add(clip,{path:'/exact.wav',sourceDuration:4},.5,uid);result.durationBeats=12;
  const old=M.activate(result,result.takeSet.takes[0].id,.5);assert.equal(old.durationBeats,12);assert.throws(()=>M.activate(old,result.takeSet.activeID,.5),/too short/);
 });
-test('tempo-map durations govern coverage and split offsets across tempo changes',()=>{
+test('a duration function governs coverage and split offsets',()=>{
  const secondsAt = beat => beat<=6?beat*.5:3+(beat-6);
  const duration = (start,length) => secondsAt(start+length)-secondsAt(start);
  const clip=base();assert.throws(()=>M.add(clip,{path:'/short.wav',sourceDuration:6.99},duration,uid),/7.00/);

@@ -12,7 +12,7 @@
   const REVERB_DEFAULTS = { size: .7, damping: .4, mix: .25, predelay: 0 };
   const clamp = (value, lo, hi) => Math.min(hi, Math.max(lo, Number.isFinite(Number(value)) ? Number(value) : lo));
   const pct = value => Math.round(value * 100) + '%';
-  const bpmOf = project => Number(project?.timing?.tempos?.[0]?.bpm ?? project?.bpm) || 120;
+  const bpmOf = project => Number(project?.bpm) || 120;
   const division = label => DIVISIONS.find(([name]) => name === label) || null;
 
   function delayState(project) { return { ...DELAY_DEFAULTS, ...(project?.delay || {}) }; }
@@ -228,8 +228,7 @@
             tracks: project().tracks,
             delay: project().delay,
             reverb: project().reverb,
-            bpm: project().bpm,
-            timing: project().timing
+            bpm: project().bpm
           });
           setExact(trial, spec, input.value);
           local.burst = null;

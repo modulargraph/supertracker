@@ -15,7 +15,6 @@ test('synced delay stores a division, its quarter-note length and a compatible t
   S.setDivision(p, '1/8.');
   assert.deepEqual([p.delay.sync, p.delay.beats], ['1/8.', .75]); assert.equal(p.delay.time, .375);
   assert.equal(S.delaySeconds({ ...p, bpm: 150 }), .3); // follows tempo
-  assert.equal(S.delaySeconds({ ...p, bpm: 90, timing: { tempos: [{ beat: 0, bpm: 60 }] } }), .75); // initial tempo of a map
   S.setFreeTime(p, .2); assert.deepEqual([p.delay.sync, p.delay.beats, p.delay.time], [null, 0, .2]);
   assert.equal(S.nearestDivision(p, .25), '1/8');
   assert.throws(() => S.setDivision(p, '1/5'), /Unknown/);

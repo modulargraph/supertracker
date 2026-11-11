@@ -21,7 +21,7 @@ async function harness(options = {}) {
   project.viewState = { gateColumn: true };
   project.patterns.forEach((pat, index) => { pat.id = index ? 19 : 7; pat.length = 8; pat.steps = project.tracks.map(() => Array(8).fill(null)); pat.automation = []; });
   project.activePattern = 7; project.sequence = [7, 19];
-  if (options.mapped !== false) project.timing = { version: 1, tempos: [{ id: 'a', beat: 0, bpm: 120 }, { id: 'b', beat: 2, bpm: 60 }], meters: [{ id: 'm', beat: 0, numerator: 4, denominator: 4 }] };
+
   Object.assign(h.state, { recordPlacement:'live', playing: true, row: 0, track: 0, instrument: 0, status: { playing: true, pattern: 7, row: 0, seconds: 0 }, audio: { inputAcknowledgements: { version: 1, supported: true } } });
   await h.ST.setNoteRecording(true); h.state.undo = []; h.state.redo = []; h.calls.length = 0;
   const result = (message, value) => h.window.STHostTransport.deliver({ id: message.id, ok: true, result: value });
@@ -34,7 +34,7 @@ async function harness(options = {}) {
     else result(message, {});
   };
   function ack(payload, extra = {}, context = h.window.STInputCapture.recordingContext(), edgeID) {
-    return { version: 1, inputOwner: payload.inputOwner, requestID: edgeID, status: 'applied', applied: true, playing: true, recording: true, mapped: Object.hasOwn(h.state.project, 'timing'), on: payload.on !== false, pattern: 7, row: 0, sequence: 0, track: payload.track ?? 0, instrument: payload.instrument ?? 0, note: payload.note ?? 60, velocity: payload.velocity ?? 100, applyNote: payload.applyNote !== false, recordingClock: clock(0), recordingContext: copy(context), ...extra };
+    return { version: 1, inputOwner: payload.inputOwner, requestID: edgeID, status: 'applied', applied: true, playing: true, recording: true, on: payload.on !== false, pattern: 7, row: 0, sequence: 0, track: payload.track ?? 0, instrument: payload.instrument ?? 0, note: payload.note ?? 60, velocity: payload.velocity ?? 100, applyNote: payload.applyNote !== false, recordingClock: clock(0), recordingContext: copy(context), ...extra };
   }
   return { ...h, project, timers, heldCommands, tick, result,
     captures: (on = true) => h.calls.filter(m => m.command === (on ? 'note.on' : 'note.off') && m.payload.captureInput),
@@ -132,7 +132,7 @@ test('stale project, arrangement, geometry, edited cells, identity and arm cycle
 });
 
 test('invalid native onset context/status/identity inserts nothing; a valid onset with unusable release keeps no gate', async () => {
-  for (const patch of [{ status: 'unavailable', applied: false }, { status: 'discontinuity' }, { status: 'controlFlush' }, { recording: false }, { mapped: false }, { inputOwner: 'wrong' }, { requestID: '01' }, { pattern: 999 }, { row: 99 }, { track: 1 }, 'context-lpb']) {
+  for (const patch of [{ status: 'unavailable', applied: false }, { status: 'discontinuity' }, { status: 'controlFlush' }, { recording: false }, { inputOwner: 'wrong' }, { requestID: '01' }, { pattern: 999 }, { row: 99 }, { track: 1 }, 'context-lpb']) {
     const h = await harness(); h.down('z', 'KeyZ'); h.reply(h.captures()[0], patch === 'context-lpb' ? { recordingContext: { ...h.window.STInputCapture.recordingContext(), linesPerBeat: 8 } } : patch); await tick(); assert.equal(h.state.undo.length, 0); assert.equal(h.step(), null);
   }
   const h = await harness(); h.down('z', 'KeyZ'); h.reply(h.captures()[0], { recordingClock: clock(1) }); await tick(); h.up('z', 'KeyZ'); h.reply(h.captures(false)[0], { status: 'unavailable', applied: false, recordingClock: undefined }); await tick(); assert.equal(h.step().gate, 0); assert.equal(h.state.undo.length, 1); assert.match(h.node('toast-region').innerHTML, /duration was unavailable/);

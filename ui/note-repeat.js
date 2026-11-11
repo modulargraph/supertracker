@@ -19,7 +19,7 @@
 
   const modeName = id => (modes.find(([key]) => key === id) || modes[0])[1];
   const rateBeats = id => (rates.find(([key]) => key === id) || rates[3])[1];
-  function tempo() { const p = state().project; return Number(p?.timing?.tempos?.[0]?.bpm ?? p?.bpm) || 120; }
+  function tempo() { return Number(state().project?.bpm) || 120; }
   function interval() { return 60000 / tempo() * rateBeats(settings.rate); }
 
   function send(command, voice) {

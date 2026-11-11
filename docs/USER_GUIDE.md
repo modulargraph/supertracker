@@ -323,7 +323,7 @@ Song (`Cmd+6`) arranges references to patterns as a list of blocks. A block is o
 
 Letter and digit commands yield to the computer-keyboard piano while it is on. The toolbar above the list offers the same actions by pointer, and right-click (or Shift+F10) on a block opens them as a menu. Repeated references share the same pattern: clone the pattern when the musical content should become independent.
 
-Song settings provide lines per beat, swing, looping and a project meter/metronome (`Cmd+Shift+M` toggles the metronome). The app uses one project tempo and meter; tempo/meter maps are not available as a regular feature.
+Song settings provide lines per beat, swing, looping and a project meter/metronome (`Cmd+Shift+M` toggles the metronome). A project has one tempo and one meter for its whole length.
 
 The Audio Arrangement below the sequence plays audio clips alongside patterns in Song mode. Import Audio inserts a file at the selected sequence position, or set the numeric edit cursor and use Import At Cursor. Select clips with Up/Down in the timeline. Left/Right nudges start, Shift-Left/Right trims the end, Option-Left/Right slips the source, and Option-Up/Down changes track. `Cmd+D` duplicates after the clip; `S` splits at the edit cursor; Delete removes the clip reference. When a clip remains, Delete focuses the fallback clip and selects its track, so the next import uses that track. Deleting the last clip focuses the empty timeline and retains the current valid track. Numeric fields expose start/length in beats, source offset/fades in seconds and gain. Source files stay unchanged. Clips play at their original speed; changing project tempo changes beat placement and is not automatic audio stretching.
 

@@ -76,6 +76,6 @@ test('refused mutate and a routing change during metadata lookup cannot report a
 });
 test('tempo helper is used for take coverage and invalid maps are not silently interpreted as fixed tempo',async()=>{
  const h=harness();h.context.window.STProjectTiming={durationFromBeats:()=>9};await h.ui.importFile();assert(!h.clip().takeSet);assert.match(h.toasts.at(-1).message,/9.00/);
- h.context.window.STProjectTiming.durationFromBeats=()=>{throw Error('Timing map rejected');};await h.ui.importFile();assert(!h.clip().takeSet);assert.match(h.toasts.at(-1).message,/Timing map rejected/);
+ h.context.window.STProjectTiming.durationFromBeats=()=>{throw Error('Timing rejected');};await h.ui.importFile();assert(!h.clip().takeSet);assert.match(h.toasts.at(-1).message,/Timing rejected/);
 });
 (async()=>{for(const [name,fn] of tests){await fn();console.log('PASS '+name);}console.log(`Clip takes UI: ${tests.length} regression groups passed.`);})().catch(error=>{console.error(error);process.exitCode=1;});

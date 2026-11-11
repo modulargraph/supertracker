@@ -75,18 +75,14 @@ test('Stop returns the cursor to row 0 without stretching the selection up to it
   assert.equal(h.ST.selectedBounds(), null, 'rows 0–10 are not selected (Delete would clear them)');
 });
 
-test('the Tempo field also sets the first tempo of a project that still carries a tempo map', async () => {
-  // The field shows the map's first tempo: an edit that only wrote project.bpm snapped back and changed nothing audible.
-  const h = await makeHarness(), s = h.state;
-  s.project.timing = { version: 1, tempos: [{ id: 't0', beat: 0, bpm: 116 }], meters: [{ id: 'm0', beat: 0, numerator: 4, denominator: 4 }] };
-  h.ST.refresh();
+test('the Tempo field sets the project tempo as one Undo step and keeps it inside 20–400 BPM', async () => {
+  const h = await makeHarness(), s = h.state, before = s.project.bpm;
   const field = h.node('tempo'); field.value = '140'; field.onchange({ target: field });
-  assert.equal(s.project.bpm, 140); assert.equal(s.project.timing.tempos[0].bpm, 140); assert.equal(s.undo.length, 1);
+  assert.equal(s.project.bpm, 140); assert.equal(s.undo.length, 1);
   h.ST.perform('undo');
-  assert.equal(s.project.timing.tempos[0].bpm, 116);
-  delete s.project.timing; h.ST.refresh();
-  field.value = '90'; field.onchange({ target: field });
-  assert.equal(s.project.bpm, 90); assert.equal(s.project.timing, undefined);
+  assert.equal(s.project.bpm, before);
+  field.value = '900'; field.onchange({ target: field });
+  assert.equal(s.project.bpm, 400);
 });
 
 test('the Seq readout shows the selected song position while stopped and the playing one during playback', async () => {

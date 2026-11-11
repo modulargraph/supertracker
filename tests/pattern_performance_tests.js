@@ -70,7 +70,7 @@ const steps = track => ST.pattern().steps[track];
   // Repeats lock to the tempo grid (song position while playing), and the held pad's velocity can change.
   ST.setPerformance({ scale: 'chromatic', chord: 'single' }, false);
   repeat.set({ enabled: true, mode: 'repeat', rate: '1/16' }, false);
-  const bpm = Number(state.project.timing?.tempos?.[0]?.bpm ?? state.project.bpm) || 120, sixteenth = 15000 / bpm;
+  const bpm = Number(state.project.bpm) || 120, sixteenth = 15000 / bpm;
   Object.assign(state, { playing: true, lastStatusAt: Date.now() }); state.status = { ...(state.status || {}), beat: .1 };
   calls.length = 0; timers.length = 0;
   ST.noteOn(62, 'KeyX');

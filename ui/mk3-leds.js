@@ -49,7 +49,7 @@
     set('step', M.padMode === 'step' ? 1 : .2);
     set('scene', M.padMode === 'scene' ? 1 : .2); set('pattern', M.padMode === 'pattern' ? 1 : .2); set('fixedVel', M.fixedVel || M.padMode === 'velocity' ? 1 : .2);
     set('restart', S().patternLoopFor?.() || p.songLoop ? 1 : .3);
-    const beatMs = 60000 / (Number(p.timing?.tempos?.[0]?.bpm ?? p.bpm) || 120);
+    const beatMs = 60000 / (Number(p.bpm) || 120);
     set('tap', state.playing ? (Number(state.status?.seconds) * 1000 % beatMs < beatMs / 4 ? 1 : .25) : .25);
     set('follow', state.follow ? 1 : .2);
     set('play', state.playing ? 1 : .25);
