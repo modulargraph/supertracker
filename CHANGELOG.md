@@ -26,6 +26,9 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
 - **Freeze by recording** for tracks whose sound comes from outside the computer.
 - **Kits are saved with an audio preview.**
 - **Controllers, pressure and pitch bend** reach the plug-in or external instrument a track plays.
+- **The sustain pedal belongs to the instrument.** Plug-in and external MIDI instruments receive the pedal with its
+  value (also sostenuto and soft) and sustain by themselves; built-in instruments are held by the host. Notes
+  recorded under the pedal get the length they sounded.
 - **Plug-in parameters return to the value you set** after a locked row and at Play or Seek, for every plug-in
   format (this replaces base patch capture).
 - **AI clients can take screenshots of the window** (`screenshot` tool, `supertracker --ctl app.screenshot`).
@@ -56,7 +59,7 @@ making music until this has had its first run on a Mac ([checklists](docs/PLUGIN
 
 ### Known gaps
 
-The sustain pedal is not passed on to plug-in and external instruments; a line input from a second audio device is
+A line input from a second audio device is
 not resampled to the output's clock; nothing has been run on a Mac, with a real audio or MIDI device, or with a
 third-party plug-in. [docs/FEATURE_STATUS.md](docs/FEATURE_STATUS.md) and [docs/HOST.md](docs/HOST.md) have the details.
 

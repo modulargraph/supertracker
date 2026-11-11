@@ -33,7 +33,6 @@ Every command the interface sends is implemented ([HOST.md](HOST.md) has the tab
 
 | Feature | State |
 |---|---|
-| The sustain pedal for plug-in and external instruments | The host holds the notes itself and does not pass the pedal on, so pedal resonance and half-pedalling in piano plug-ins do not work. |
 | Control changes to CLAP plug-ins that accept only CLAP note events | Dropped: CLAP has no event for them. Pressure and pitch bend arrive as note expressions. |
 | Line inputs from a second audio device | The input is not resampled to the output's clock: two separate devices gap or skip every few minutes. One interface for input and output has one clock and is not affected. |
 | Windows | `--serve` should work; there is no window and no control socket. |
@@ -48,6 +47,7 @@ Each of these was tested on Linux with the silent test devices, in-memory MIDI p
 | Freeze by recording, for tracks whose sound comes from outside the computer (song and pattern prints) | A recorded print equals the offline print of the same track frame for frame in the tests. Real hardware returns and their latency are unverified. |
 | Kit previews: a kit is saved with `Preview.wav` (its group bus in the selected pattern, up to 10 s or 8 bars) | Bridge test on generated kits, including a built-in effect and a plug-in in a container. Nobody has listened to one. |
 | Controllers, channel and poly pressure and pitch bend to the instrument a track plays (external device, plug-in, engine), from MIDI input and the interface | In-memory MIDI ports; CLAP and VST3 test plug-ins, frame-exact. Audio Units: type-checked only. |
+| The sustain, sostenuto and soft pedals passed on to plug-in and external instruments (the host holds notes for built-in instruments and for plug-ins the pedal cannot reach); a note recorded under the pedal is as long as it sounded | Bridge tests with in-memory ports and the CLAP and VST3 test plug-ins, including a keyboard moved to another track, Stop, panic, a replaced or restored plug-in and several keyboards. No real pedal, synth or piano plug-in. |
 | Plug-in parameters return to the value you set after a locked row, and at Play and Seek, for every plug-in format | Tests with CLAP and VST3 test plug-ins. A project saved while the song plays stores what lanes and locks hold at that moment. |
 | Screenshots of the window for AI clients (`screenshot` tool, `--ctl app.screenshot`) | Linux: the real window under a virtual display. macOS: type-checked only. `--serve` has no window and says so. |
 | Export dither (TPDF by default for 16- and 24-bit, or none), chosen in the export dialog | `st-samples` tests; interface tests of the dialog. |
@@ -96,7 +96,7 @@ how far the Rust host has been checked.
 - Tempo and meter maps (a project has one tempo and one meter; nothing in the engine or the interface supports more).
 - Multi-output instruments.
 - Warp markers, realtime stretch, round robin, zone crossfades, a modulation matrix.
-- MPE, recording of controllers and pressure, passing the sustain pedal on to instruments, external clock sync.
+- MPE, recording of controllers, pressure and the pedal itself (recorded notes get the length they sounded), external clock sync.
 - Maschine import of group mix levels, auxiliary routing, modulation, patterns and macro pages.
 
 Capacities: any number of tracks and buses (1024 sanity bound each), 64 instruments, 256 patterns of up to 256
