@@ -481,8 +481,12 @@ impl ProjectSync {
                         driven.push((index, address));
                     }
                     let points = host_points.entry(*number).or_default();
+                    // An insert's parameter is normalized; nothing below zero may reach the
+                    // mixer from a lane, where it would read as "the base value".
+                    let normalized = matches!(destination, Destination::Insert(_));
                     for point in lane.points.as_deref().unwrap_or(&[]) {
-                        points.push(HostPoint { destination: index, address, stepped, row: point.row(), value: point.value() });
+                        let value = if normalized { point.value().clamp(0.0, 1.0) } else { point.value() };
+                        points.push(HostPoint { destination: index, address, stepped, row: point.row(), value });
                     }
                 }
             }

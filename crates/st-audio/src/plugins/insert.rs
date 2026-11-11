@@ -279,6 +279,8 @@ impl InsertProcessor for PluginInsert {
             self.notes.clear();
             self.returning.clear();
             self.hosted.returns_pending.store(0, Ordering::Release);
+            // Controllers played meanwhile are not kept for when the bypass ends.
+            while self.hosted.pop_midi().is_some() {}
             return;
         }
         if self.instrument.is_some() {
