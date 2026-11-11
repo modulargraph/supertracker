@@ -4,6 +4,8 @@
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
+#[allow(unused_imports)]
+use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::engine::Engine;
 use std::f64::consts::PI;
@@ -24,7 +26,9 @@ fn render(
     e.set_track_count(1);
     e.set_timing(if rapid { 999.0 } else { 120.0 }, if rapid { 32 } else { 4 }, 0.0, 1.0);
     e.set_pattern(0, 16);
-    e.set_host_mixing(true, 0xffff);
+    if mix_view() {
+        e.set_host_mixing(true, 0xffff);
+    }
     let mut instrument = default_instrument();
     instrument.type_ = ST_INSTRUMENT_SAMPLE;
     instrument.mode = if reverse_start || one_shot { ST_MODE_ONESHOT } else { ST_MODE_FORWARD };
@@ -211,42 +215,58 @@ fn lead_in_turnaround(reverse_mode: bool) {
 
 #[test]
 fn lead_in_turnaround_forward_mode() {
+    both_views(|| {
     lead_in_turnaround(false);
+    });
 }
 
 #[test]
 fn lead_in_turnaround_reverse_mode() {
+    both_views(|| {
     lead_in_turnaround(true);
+    });
 }
 
 #[test]
 fn continuity_loop_crossfade() {
+    both_views(|| {
     continuity(false, false, false, false);
+    });
 }
 
 #[test]
 fn continuity_rapid() {
+    both_views(|| {
     continuity(true, false, false, false);
+    });
 }
 
 #[test]
 fn continuity_release_tails() {
+    both_views(|| {
     continuity(false, true, false, false);
+    });
 }
 
 #[test]
 fn continuity_one_shot_fade() {
+    both_views(|| {
     continuity(false, false, true, false);
+    });
 }
 
 #[test]
 fn continuity_zero_crossing() {
+    both_views(|| {
     continuity(false, false, false, true);
+    });
 }
 
 #[test]
 fn reverse_start() {
+    both_views(|| {
     let onset = render(false, 1, 1, true, false, false, false);
     assert!(onset[0].abs() < 0.01f32);
     assert!(onset[70] > 0.15f32);
+    });
 }

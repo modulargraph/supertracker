@@ -3,6 +3,8 @@
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
+#[allow(unused_imports)]
+use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::engine::Engine;
 use tracker_engine::engine::*;
@@ -17,7 +19,9 @@ fn scene(test: i32, value: f32) -> Audio {
     e.begin_update();
     e.set_track_count(1);
     e.set_timing(240.0, 8, 0.0, 1.0);
-    e.set_host_mixing(true, 1);
+    if mix_view() {
+        e.set_host_mixing(true, 1);
+    }
     let mut p = default_instrument();
     p.type_ = ST_INSTRUMENT_SAMPLE;
     p.mode = if test == 1 || test == 2 || test == 3 { ST_MODE_SLICE } else { ST_MODE_FORWARD };
@@ -98,30 +102,42 @@ fn saturates(test: i32) {
 
 #[test]
 fn bit_depth_automation_saturates_finite_extremes() {
+    both_views(|| {
     saturates(0);
+    });
 }
 
 #[test]
 fn slice_count_automation_saturates_finite_extremes() {
+    both_views(|| {
     saturates(1);
+    });
 }
 
 #[test]
 fn preview_slice_fx_saturates_finite_extremes() {
+    both_views(|| {
     saturates(2);
+    });
 }
 
 #[test]
 fn sequenced_slice_fx_saturates_finite_extremes() {
+    both_views(|| {
     saturates(3);
+    });
 }
 
 #[test]
 fn ratchet_fx_saturates_finite_extremes() {
+    both_views(|| {
     saturates(4);
+    });
 }
 
 #[test]
 fn arpeggio_fx_saturates_finite_extremes() {
+    both_views(|| {
     saturates(5);
+    });
 }

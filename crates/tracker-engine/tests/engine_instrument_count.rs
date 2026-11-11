@@ -3,6 +3,8 @@
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
+#[allow(unused_imports)]
+use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::engine::Engine;
 use engine_support_b::tone::*;
@@ -18,6 +20,7 @@ fn energy(e: &mut Engine, frames: usize) -> f64 {
 /// 300 ordinary instruments: instrument 250 plays, a step can name it, a track can use it.
 #[test]
 fn three_hundred_instruments_steps_tracks_and_live_notes_reach_instrument_250() {
+    both_views(|| {
     let mut e = Engine::new();
     e.begin_update();
     assert!(e.set_track_count(2) && e.set_instrument_count(300));
@@ -52,11 +55,13 @@ fn three_hundred_instruments_steps_tracks_and_live_notes_reach_instrument_250() 
     e.note_on(1, 300, 69, 100);
     assert!(energy(&mut e, 4800) == 0.0);
     assert!(!e.set_sample_cycle(300, 0) && e.set_sample_cycle(299, 0));
+    });
 }
 
 /// Shrinking keeps the remaining instruments and their samples; the count is bounded.
 #[test]
 fn shrinking_keeps_remaining_instruments_and_rejects_removed_ones() {
+    both_views(|| {
     let mut e = Engine::new();
     e.begin_update();
     assert!(e.set_instrument_count(200));
@@ -77,4 +82,5 @@ fn shrinking_keeps_remaining_instruments_and_rejects_removed_ones() {
     energy(&mut e, 512);
     e.note_on(0, 150, 69, 100);
     assert!(energy(&mut e, 4800) == 0.0);
+    });
 }

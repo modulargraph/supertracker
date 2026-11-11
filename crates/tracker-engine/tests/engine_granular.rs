@@ -3,6 +3,8 @@
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
+#[allow(unused_imports)]
+use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::alloc::{realtime, render_allocations, reset_render_allocations};
 use engine_support_b::engine::Engine;
@@ -55,7 +57,9 @@ fn setup(e: &mut Engine, p: STInstrument, pcm: &[f32], rows: i32) {
     e.begin_update();
     e.set_track_count(1);
     e.set_timing(120.0, 4, 0.0, 1.0);
-    e.set_host_mixing(true, 1);
+    if mix_view() {
+        e.set_host_mixing(true, 1);
+    }
     let mut track = default_track();
     track.volume = 1.0;
     track.delay_send = 0.0;
@@ -105,6 +109,7 @@ fn positions(e: &Engine) -> Vec<STVoicePosition> {
 
 #[test]
 fn granular_parameters() {
+    both_views(|| {
     // grainDensity 0 (projects saved before it existed) reads as the historical 2; out-of-range
     // values are clamped.
     {
@@ -314,10 +319,12 @@ fn granular_parameters() {
         assert!(spans.len() > 10);
     }
     println!("PASS grain automation targets, LFO grain size and POS step effect");
+    });
 }
 
 #[test]
 fn live_positions() {
+    both_views(|| {
     // Forward loop: the playhead advances (+1) and wraps inside the loop.
     {
         let mut e = Engine::new();
@@ -449,6 +456,7 @@ fn live_positions() {
         assert!(v.len() == 2 && (v[0].flags & ST_VOICE_POSITION_RELEASING) != 0);
     }
     println!("PASS voice positions: forward, backward, ping-pong, slice, wavetable, granular, watch filter");
+    });
 }
 
 fn high_band(x: &[f32], from: usize, to: usize) -> f64 {
@@ -462,6 +470,7 @@ fn high_band(x: &[f32], from: usize, to: usize) -> f64 {
 
 #[test]
 fn live_parameters() {
+    both_views(|| {
     // A held note follows volume and cutoff edits within a couple of blocks, without clicks and
     // without a publish.
     let noise = noise_seeded(N, 1);
@@ -515,10 +524,12 @@ fn live_parameters() {
     let v = positions(&g);
     assert!(v[0].grain_count == 7 && (v[0].position - 0.9 * (N - 1) as f64).abs() < 2.0);
     println!("PASS live instrument parameters (held notes, next notes, cleared by publication, no allocation)");
+    });
 }
 
 #[test]
 fn no_allocations() {
+    both_views(|| {
     let mut e = Engine::new();
     let mut p = sampler(ST_MODE_GRANULAR);
     p.grain_density = 8;
@@ -544,4 +555,5 @@ fn no_allocations() {
     assert!(render_allocations() == 0);
     assert!(count == 16);
     println!("PASS granular rendering and snapshots allocate nothing");
+    });
 }

@@ -4,6 +4,8 @@
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
+#[allow(unused_imports)]
+use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::alloc::{realtime, render_allocations};
 use engine_support_b::engine::Engine;
@@ -33,7 +35,9 @@ fn setup(e: &mut Engine, rows: i32) {
     let mut track = default_track();
     track.volume = 1.0;
     e.set_track(0, track);
-    e.set_host_mixing(true, 1);
+    if mix_view() {
+        e.set_host_mixing(true, 1);
+    }
     e.set_pattern(0, rows);
     e.set_sequence(&[0], false, 0);
     let result = e.commit_update_checked();
@@ -220,42 +224,56 @@ fn external_retrigger() {
 
 #[test]
 fn pattern_print_head() {
+    both_views(|| {
     pattern_print(false);
     zero_render_allocations();
+    });
 }
 
 #[test]
 fn pattern_print_loop() {
+    both_views(|| {
     pattern_print(true);
     zero_render_allocations();
+    });
 }
 
 #[test]
 fn pattern_print_at_wrap_and_after_stop() {
+    both_views(|| {
     pattern_print_wrap_and_stop();
     zero_render_allocations();
+    });
 }
 
 #[test]
 fn silent_sampler_playback_region() {
+    both_views(|| {
     silent_sample_region();
     zero_render_allocations();
+    });
 }
 
 #[test]
 fn silent_pitched_slice() {
+    both_views(|| {
     silent_slice();
     zero_render_allocations();
+    });
 }
 
 #[test]
 fn tempo_change_keeps_position() {
+    both_views(|| {
     tempo_change();
     zero_render_allocations();
+    });
 }
 
 #[test]
 fn external_pitch_retrigger() {
+    both_views(|| {
     external_retrigger();
     zero_render_allocations();
+    });
 }

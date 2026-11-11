@@ -6,6 +6,8 @@
 #![allow(clippy::needless_range_loop)]
 
 mod engine_support_b;
+#[allow(unused_imports)]
+use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::engine::Engine;
 use std::f64::consts::PI;
@@ -86,6 +88,7 @@ fn rms(a: &[f32], from: usize, to: usize) -> f64 {
 
 #[test]
 fn oneshot() {
+    both_views(|| {
     let n: usize = 4800;
     let pcm = ramp(n);
     let out = render(&pcm, sampler(ST_MODE_ONESHOT), 8000, 60, &[]);
@@ -108,10 +111,12 @@ fn oneshot() {
     for value in &fast[n / 2 + 10..] {
         assert!(*value == 0.0);
     }
+    });
 }
 
 #[test]
 fn forward() {
+    both_views(|| {
     let n: usize = 4800;
     let pcm = ramp(n);
     let mut inst = sampler(ST_MODE_FORWARD);
@@ -134,10 +139,12 @@ fn forward() {
     for i in 20000..30000 {
         assert!((out[i] - out[i + width as usize]).abs() < 1e-5f32);
     }
+    });
 }
 
 #[test]
 fn reverse() {
+    both_views(|| {
     let n: usize = 4800;
     let pcm = ramp(n);
     let mut inst = sampler(ST_MODE_REVERSE);
@@ -169,10 +176,12 @@ fn reverse() {
         }
     }
     assert!(falling > rising * 3); // the rest is the seam crossfade on this ramp
+    });
 }
 
 #[test]
 fn pingpong() {
+    both_views(|| {
     let n: usize = 4800;
     let pcm = ramp(n);
     let mut inst = sampler(ST_MODE_PINGPONG);
@@ -198,10 +207,12 @@ fn pingpong() {
         }
     }
     assert!(falling > 10000 && rising > 10000);
+    });
 }
 
 #[test]
 fn seam() {
+    both_views(|| {
     // Loop points deliberately away from zero crossings of a 100-frame sine.
     let n: usize = 9600;
     let pcm = sine(n, 100.0, 0.5, 0.0);
@@ -228,10 +239,12 @@ fn seam() {
     step = max_step(&out, 100, out.len());
     println!("forward seam (post-loop crossfade): max step {step:.4}");
     assert!(step < natural * 1.6f32);
+    });
 }
 
 #[test]
 fn interpolation() {
+    both_views(|| {
     // A 32-frame sine played an octave down must match a 64-frame sine at root.
     let n: usize = 32 * 400;
     let low = render(&sine(n, 32.0, 0.5, 0.0), sampler(ST_MODE_ONESHOT), 12000, 48, &[]);
@@ -240,10 +253,12 @@ fn interpolation() {
     let error = rms(&diff, 1000, 11000) / rms(&reference, 1000, 11000);
     println!("interpolation: relative RMS error {error:.6} at half speed");
     assert!(error < 2e-4);
+    });
 }
 
 #[test]
 fn slices() {
+    both_views(|| {
     let n: usize = 4800;
     let pcm = ramp(n);
     let mut inst = sampler(ST_MODE_SLICE);
@@ -262,6 +277,7 @@ fn slices() {
     for value in &out[2410..] {
         assert!(*value == 0.0);
     }
+    });
 }
 
 fn rising_crossings(a: &[f32], from: usize, to: usize) -> usize {
@@ -270,6 +286,7 @@ fn rising_crossings(a: &[f32], from: usize, to: usize) -> usize {
 
 #[test]
 fn wavetable() {
+    both_views(|| {
     // Four 2048-frame single cycles with increasing amplitude.
     let mut pcm = vec![0.0f32; 2048 * 4];
     for frame in 0..4 {
@@ -308,10 +325,12 @@ fn wavetable() {
     }
     // Halfway between frames 1 and 2 blends them (no phase-misaligned window).
     assert!((level[2] - 0.5).abs() < 0.02);
+    });
 }
 
 #[test]
 fn granular() {
+    both_views(|| {
     let n: usize = 48000;
     let pcm = ramp(n);
     let mut inst = sampler(ST_MODE_GRANULAR);
@@ -344,4 +363,5 @@ fn granular() {
     );
     assert!((m1 - n as f64 * 0.25).abs() < n as f64 * 0.02 && (m2 - n as f64 * 0.75).abs() < n as f64 * 0.02);
     assert!(w2 < n as f64 * 0.06 && w3 > w2 * 2.5);
+    });
 }

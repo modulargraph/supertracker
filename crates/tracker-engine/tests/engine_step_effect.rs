@@ -5,6 +5,8 @@
 #![allow(clippy::needless_range_loop)]
 
 mod engine_support_b;
+#[allow(unused_imports)]
+use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::engine::Engine;
 use tracker_engine::engine::*;
@@ -144,6 +146,7 @@ fn sticky_ratchet_case(block: i32) {
 /// track, so kit pad tracks (ordinary tracks in a group) behave the same.
 #[test]
 fn ratchet_stop_rules() {
+    both_views(|| {
     // Ratchet then a plain note: the note plays once, the repeats stop.
     {
         let mut f = Fixture::new(ST_INSTRUMENT_MIDI);
@@ -223,6 +226,7 @@ fn ratchet_stop_rules() {
             on == vec![(0, 36), (3000, 36), (6000, 36), (6000, 38), (9000, 36), (12000, 36), (18000, 38), (21000, 38)]
         );
     }
+    });
 }
 
 /// Note lifetime without a gate (gate 0): the note sounds until the next note on its lane (a
@@ -230,6 +234,7 @@ fn ratchet_stop_rules() {
 /// length.
 #[test]
 fn gateless_lifetime() {
+    both_views(|| {
     // Next note releases: note-off for 60 at the frame the next note starts, before its note-on.
     {
         let mut f = Fixture::new(ST_INSTRUMENT_MIDI);
@@ -339,24 +344,29 @@ fn gateless_lifetime() {
         f.e.set_step(0, 0, 4, quiet, &[]);
         f.play();
         let l = f.pcm(32000);
-        assert!(l[20000].abs() > 0.05f32); // still sounding after three rows
+        assert!(l[20000].abs() > if mix_view() { 0.05f32 } else { 0.09f32 }); // still sounding after three rows
         assert!(l[24000 + 600].abs() > l[31000].abs() * 4.0); // released by the next (near-silent) note: fading, not cut
         assert!(l[31000].abs() < l[20000].abs() * 0.05f32);
         for x in &l {
             assert!(x.is_finite());
         }
     }
+    });
 }
 
 #[test]
 fn sticky_ratchet() {
+    both_views(|| {
     sticky_ratchet_case(1);
     sticky_ratchet_case(257);
-    sticky_ratchet_case(8192);
+    // The largest block a host renders is 4096 frames; the engine's own mix took any length.
+    sticky_ratchet_case(if mix_view() { 8192 } else { 4096 });
+    });
 }
 
 #[test]
 fn sample_commands() {
+    both_views(|| {
     let mut f = Fixture::new(ST_INSTRUMENT_SAMPLE);
     let sample: Vec<f32> = (0..48000).map(|i| 0.1f32 + 0.8f32 * i as f32 / 48000.0).collect();
     assert!(f.e.set_sample(0, &sample, None, 48000.0));
@@ -375,10 +385,12 @@ fn sample_commands() {
     for x in &l {
         assert!(x.is_finite());
     }
+    });
 }
 
 #[test]
 fn ratchet_off() {
+    both_views(|| {
     for mode in 0..3 {
         let mut f = Fixture::new(ST_INSTRUMENT_MIDI);
         f.step_fx(0, 60, ST_FX_RATCHET, 2.0);
@@ -394,10 +406,12 @@ fn ratchet_off() {
         f.play();
         assert!(f.onsets(18000, 257) == vec![0, 3000]);
     }
+    });
 }
 
 #[test]
 fn across_patterns_and_refresh() {
+    both_views(|| {
     let mut f = Fixture::new(ST_INSTRUMENT_MIDI);
     f.e.set_pattern(0, 1);
     f.e.set_pattern(1, 3);
@@ -412,12 +426,14 @@ fn across_patterns_and_refresh() {
     f.e.set_track(0, mix);
     f.e.commit_update();
     assert!(f.onsets(12000, 257) == vec![0, 3000, 6000, 9000]);
+    });
 }
 
 /// A note dropped by its probability roll must leave the sticky ratchet exactly as it was: the
 /// held note keeps its own rate.
 #[test]
 fn probability_drop_keeps_ratchet() {
+    both_views(|| {
     {
         let mut f = Fixture::new(ST_INSTRUMENT_MIDI);
         f.step_full(0, 60, 0, 0.0, 0, 0.0, 0.5);
@@ -433,6 +449,7 @@ fn probability_drop_keeps_ratchet() {
         f.play();
         assert!(f.notes(24000, 256) == vec![(0, 60), (3000, 60), (6000, 60), (9000, 60), (12000, 60), (15000, 60)]);
     }
+    });
 }
 
 /// The roll's draw (u+1)/2 is a float that can round up to exactly 1.0 (191 of the generator's
@@ -441,6 +458,7 @@ fn probability_drop_keeps_ratchet() {
 /// increment per started voice) so that row 9 draws 1.0.
 #[test]
 fn full_probability_never_drops() {
+    both_views(|| {
     let mut f = Fixture::new(ST_INSTRUMENT_MIDI);
     let chords = [2usize, 1, 1, 5, 8, 8, 7, 1, 5];
     let offsets = [0, 1, 2, 3, 4, 5, 6, 7];
@@ -460,6 +478,7 @@ fn full_probability_never_drops() {
         }
     }
     assert!(started == 1);
+    });
 }
 
 /// A live tempo change (no tempo map, Pattern mode) keeps the current row's pending ratchet
@@ -467,6 +486,7 @@ fn full_probability_never_drops() {
 /// tempo, like the row's own remaining length.
 #[test]
 fn tempo_change_rescales_pending_hits() {
+    both_views(|| {
     {
         let mut f = Fixture::new(ST_INSTRUMENT_MIDI);
         f.step_full(0, 60, ST_FX_RATCHET, 4.0, 0, 0.0, 0.5);
@@ -499,23 +519,27 @@ fn tempo_change_rescales_pending_hits() {
         }
         assert!(off == 2500);
     }
+    });
 }
 
 /// An effect-only cell whose effects were all removed (note -3, no FX) is empty: the sticky
 /// ratchet continues through it.
 #[test]
 fn empty_effect_cell_keeps_ratchet() {
+    both_views(|| {
     let mut f = Fixture::new(ST_INSTRUMENT_MIDI);
     f.step_fx(0, 60, ST_FX_RATCHET, 2.0);
     f.step(2, -3);
     f.play();
     assert!(f.onsets(30000, 256) == vec![0, 3000, 6000, 9000, 12000, 15000, 18000, 21000, 24000, 27000]);
+    });
 }
 
 /// Ratchet repeats replay the note's own playback effects: reverse, offset and effect-only
 /// Reverse alongside Ratchet.
 #[test]
 fn ratchet_keeps_playback_effects() {
+    both_views(|| {
     {
         let mut f = Fixture::new(ST_INSTRUMENT_SAMPLE);
         f.ramp();
@@ -550,7 +574,8 @@ fn ratchet_keeps_playback_effects() {
         assert!(l[600] > l[300]);
         for hit in 0..4 {
             let at = 6000 + hit * 1500;
-            assert!(l[at + 1000] < l[at + 300] && l[at + 1000] > 0.05f32);
+            assert!(l[at + 1000] < l[at + 300] && l[at + 1000] > if mix_view() { 0.05f32 } else { 0.09f32 });
         }
     }
+    });
 }

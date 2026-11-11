@@ -5,6 +5,8 @@
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
+#[allow(unused_imports)]
+use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::engine::Engine;
 use engine_support_b::tone::*;
@@ -45,6 +47,7 @@ fn setup(e: &mut Engine, voice: Option<&[[i32; 3]; 3]>) {
 
 #[test]
 fn invalid_track_voice_settings_are_rejected() {
+    both_views(|| {
     let mut e = Engine::new();
     assert!(
         !e.set_track_voice(-1, 1, 0, -1)
@@ -53,10 +56,12 @@ fn invalid_track_voice_settings_are_rejected() {
             && !e.set_track_voice(0, 1, 0, 3)
             && !e.set_track_voice(ST_TRACK_SANITY_LIMIT, 1, 0, -1)
     );
+    });
 }
 
 #[test]
 fn a_track_choke_group_stops_another_track_of_the_same_group_not_another_group() {
+    both_views(|| {
     // Tracks 0 and 1 share choke group 1 in group scope 1; track 2 has choke 1 in another group.
     let voice = [[1, 1, -1], [1, 1, -1], [1, 2, -1]];
     let mut e = Engine::new();
@@ -77,10 +82,12 @@ fn a_track_choke_group_stops_another_track_of_the_same_group_not_another_group()
     let two = energy(&mut reference, 4800);
     assert!((after - two).abs() < two * 0.05);
     println!("  energy: two voices {two:.4}, after choke {after:.4}");
+    });
 }
 
 #[test]
 fn mono_keeps_a_chord_whole_and_cuts_the_earlier_notes_on_the_next_note() {
+    both_views(|| {
     // Mono: a chord (two notes on the same frame) stays whole; a later note cuts both.
     let voice = [[0, 0, 1], [0, 0, -1], [0, 0, -1]];
     let mut e = Engine::new();
@@ -100,10 +107,12 @@ fn mono_keeps_a_chord_whole_and_cuts_the_earlier_notes_on_the_next_note() {
     let after = energy(&mut e, 4800);
     assert!((after - single).abs() < single * 0.1);
     println!("  energy: one {single:.4}, mono chord {chord:.4}, after the next note {after:.4}");
+    });
 }
 
 #[test]
 fn a_mono_track_keeps_one_voice_without_settings_tracks_are_independent() {
+    both_views(|| {
     // No choke group: all three keep sounding (the reference for three voices).
     let mut e = Engine::new();
     setup(&mut e, None);
@@ -128,4 +137,5 @@ fn a_mono_track_keeps_one_voice_without_settings_tracks_are_independent() {
     assert!(three > single * 2.0);
     assert!((mono_energy - single).abs() < single * 0.05);
     println!("  energy: one {single:.4}, mono after three notes {mono_energy:.4}, three tracks {three:.4}");
+    });
 }

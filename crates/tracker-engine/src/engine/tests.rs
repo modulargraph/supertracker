@@ -10,11 +10,16 @@ fn engine() -> Engine {
     Engine::new(RATE).expect("an engine at 48 kHz")
 }
 
+/// The two ways an engine renders: its own stereo mix in direct renders (`false`), and its
+/// buses, block by block, under host mixing (`true`: what a host consumes).
+const BOTH_PATHS: [bool; 2] = [false, true];
+
 /// One track, one 16-row pattern at 120 BPM / 4 lines per beat: a row lasts 6000 frames.
-fn begin_project(control: &mut ControlHalf, instrument: STInstrument) {
+fn begin_project(control: &mut ControlHalf, instrument: STInstrument, host: bool) {
     let (edit, shared, _) = control.parts();
     edit.begin_update(shared);
     edit.clear_project();
+    edit.set_host_mixing_tracks(host, &[], true);
     assert!(edit.set_track_count(1));
     edit.set_timing(120.0, 4, 0.0, 1.0);
     edit.set_pattern(0, 16);
@@ -45,10 +50,23 @@ fn play(control: &mut ControlHalf) {
     edit.play(shared, 0);
 }
 
-fn render(render: &mut RenderHalf, frames: usize, block: usize) -> (Vec<f32>, Vec<f32>) {
+/// Renders `frames` frames in blocks of `block`. With `host`, each block is a block render and
+/// the result is the sum of its buses (the tracks' buses, then the return bus); otherwise the
+/// engine's own mix.
+fn render(render: &mut RenderHalf, frames: usize, block: usize, host: bool) -> (Vec<f32>, Vec<f32>) {
     let (mut l, mut r) = (vec![0.0f32; frames], vec![0.0f32; frames]);
     for (left, right) in l.chunks_mut(block).zip(r.chunks_mut(block)) {
-        render.render(left, right);
+        if !host {
+            render.render(left, right);
+            continue;
+        }
+        assert_eq!(render.render_block(0, left.len() as u32) as usize, left.len());
+        let view = render.block();
+        let tracks = (0..view.track_count()).filter_map(|track| view.track(track));
+        for (bus_l, bus_r) in tracks.chain(std::iter::once(view.return_bus())) {
+            left.iter_mut().zip(bus_l).for_each(|(out, sample)| *out += *sample);
+            right.iter_mut().zip(bus_r).for_each(|(out, sample)| *out += *sample);
+        }
     }
     (l, r)
 }
@@ -100,96 +118,104 @@ fn rejects_invalid_engines_and_foreign_shared_state() {
     assert_eq!(render_state.render_block(foreign, 0, 64), 0);
     // Both engines still work with their own.
     control.commit().expect("the first engine commits its own draft");
-    other_render.advance(16);
-    render_half.advance(16);
+    assert_eq!((other_render.render_block(0, 16), render_half.render_block(0, 16)), (16, 16));
     assert_eq!((status.status().track_count, other_status.status().track_count), (4, 8));
 }
 
 #[test]
 fn sampler_output_is_audible_and_independent_of_block_size() {
-    let render_with = |block: usize| {
-        let mut engine = engine();
-        let (control, audio, _) = engine.halves();
-        begin_project(control, default_instrument());
-        load_sine(control, 0);
-        set_note(control, 0, 60);
-        set_note(control, 2, 67);
-        commit(control);
-        play(control);
-        render(audio, 20000, block)
-    };
-    let (l, r) = render_with(20000);
-    assert!(l.iter().any(|&x| x.abs() > 0.01) && r.iter().any(|&x| x.abs() > 0.01));
-    assert!(l.iter().all(|x| x.is_finite() && x.abs() <= 1.0));
-    for block in [1, 17, 256, 4097] {
-        let (bl, br) = render_with(block);
-        assert!(bl.iter().zip(&l).all(|(a, b)| a.to_bits() == b.to_bits()), "left differs at block size {block}");
-        assert!(br.iter().zip(&r).all(|(a, b)| a.to_bits() == b.to_bits()), "right differs at block size {block}");
+    for host in BOTH_PATHS {
+        let render_with = |block: usize| {
+            let mut engine = engine();
+            let (control, audio, _) = engine.halves();
+            begin_project(control, default_instrument(), host);
+            load_sine(control, 0);
+            set_note(control, 0, 60);
+            set_note(control, 2, 67);
+            commit(control);
+            play(control);
+            render(audio, 20000, block, host)
+        };
+        // A host's block is at most `MAX_BLOCK` frames; a direct render takes any length.
+        let (l, r) = render_with(if host { tables::MAX_BLOCK } else { 20000 });
+        assert!(l.iter().any(|&x| x.abs() > 0.01) && r.iter().any(|&x| x.abs() > 0.01));
+        assert!(l.iter().all(|x| x.is_finite() && x.abs() <= 1.0));
+        for block in [1, 17, 256, if host { 4095 } else { 4097 }] {
+            let (bl, br) = render_with(block);
+            assert!(bl.iter().zip(&l).all(|(a, b)| a.to_bits() == b.to_bits()), "left differs at block size {block}");
+            assert!(br.iter().zip(&r).all(|(a, b)| a.to_bits() == b.to_bits()), "right differs at block size {block}");
+        }
     }
 }
 
 #[test]
 fn external_notes_are_frame_exact() {
-    let mut engine = engine();
-    let (control, audio, status) = engine.halves();
-    let mut instrument = default_instrument();
-    instrument.type_ = ST_INSTRUMENT_AU;
-    begin_project(control, instrument);
-    set_note(control, 0, 60);
-    set_note(control, 2, 64);
-    commit(control);
-    play(control);
-    let mut onsets = Vec::new();
-    let mut offs = Vec::new();
-    for block in 0..4 {
-        render(audio, 5000, 5000);
-        for event in events(audio) {
-            let frame = block * 5000 + event.frame_offset;
-            match event.type_ {
-                ST_EVENT_NOTE_ON => onsets.push((frame, event.note, event.slot)),
-                ST_EVENT_NOTE_OFF => offs.push((frame, event.note)),
-                _ => {}
+    for host in BOTH_PATHS {
+        let mut engine = engine();
+        let (control, audio, status) = engine.halves();
+        let mut instrument = default_instrument();
+        instrument.type_ = ST_INSTRUMENT_AU;
+        begin_project(control, instrument, host);
+        set_note(control, 0, 60);
+        set_note(control, 2, 64);
+        commit(control);
+        play(control);
+        let mut onsets = Vec::new();
+        let mut offs = Vec::new();
+        // 20000 frames in blocks a host may ask for (at most `MAX_BLOCK` frames).
+        let size = if host { 4000 } else { 5000 };
+        for block in 0..20000 / size {
+            render(audio, size, size, host);
+            for event in events(audio) {
+                let frame = block as i32 * size as i32 + event.frame_offset;
+                match event.type_ {
+                    ST_EVENT_NOTE_ON => onsets.push((frame, event.note, event.slot)),
+                    ST_EVENT_NOTE_OFF => offs.push((frame, event.note)),
+                    _ => {}
+                }
             }
         }
+        // Rows last 6000 frames; the default gate is 0.8 rows.
+        assert_eq!(onsets, vec![(0, 60, 1), (12000, 64, 1)]);
+        assert_eq!(offs, vec![(4800, 60), (16800, 64)]);
+        let status = status.status();
+        assert_eq!((status.playing, status.row, status.track_count), (1, 3, 1));
     }
-    // Rows last 6000 frames; the default gate is 0.8 rows.
-    assert_eq!(onsets, vec![(0, 60, 1), (12000, 64, 1)]);
-    assert_eq!(offs, vec![(4800, 60), (16800, 64)]);
-    let status = status.status();
-    assert_eq!((status.playing, status.row, status.track_count), (1, 3, 1));
 }
 
 #[test]
 fn queued_transport_is_reported_until_rendered() {
-    let mut engine = engine();
-    let (control, audio, status) = engine.halves();
-    play(control);
-    let queued = status.status();
-    assert_eq!((queued.playing, queued.transport_pending, queued.requested_playing), (0, 1, 1));
-    assert!(queued.transport_playing(), "a queued Play already counts as playing");
-    render(audio, 16, 16);
-    let playing = status.status();
-    assert_eq!((playing.playing, playing.transport_pending), (1, 0));
-    assert!(playing.transport_playing());
-    let (edit, shared, _) = control.parts();
-    edit.stop(shared);
-    assert_eq!(status.status().transport_pending, 1);
-    assert!(!status.status().transport_playing());
-    render(audio, 16, 16);
-    assert_eq!(status.status().playing, 0);
-    let (edit, shared, _) = control.parts();
-    edit.play_count_in(shared, false, 1);
-    assert_eq!(status.status().count_in_shown(), 0, "nothing to show while the count-in is only queued");
-    render(audio, 16, 16);
-    let counting = status.status();
-    assert!(counting.count_in > 0 && counting.count_in_shown() == counting.count_in);
+    for host in BOTH_PATHS {
+        let mut engine = engine();
+        let (control, audio, status) = engine.halves();
+        play(control);
+        let queued = status.status();
+        assert_eq!((queued.playing, queued.transport_pending, queued.requested_playing), (0, 1, 1));
+        assert!(queued.transport_playing(), "a queued Play already counts as playing");
+        render(audio, 16, 16, host);
+        let playing = status.status();
+        assert_eq!((playing.playing, playing.transport_pending), (1, 0));
+        assert!(playing.transport_playing());
+        let (edit, shared, _) = control.parts();
+        edit.stop(shared);
+        assert_eq!(status.status().transport_pending, 1);
+        assert!(!status.status().transport_playing());
+        render(audio, 16, 16, host);
+        assert_eq!(status.status().playing, 0);
+        let (edit, shared, _) = control.parts();
+        edit.play_count_in(shared, false, 1);
+        assert_eq!(status.status().count_in_shown(), 0, "nothing to show while the count-in is only queued");
+        render(audio, 16, 16, host);
+        let counting = status.status();
+        assert!(counting.count_in > 0 && counting.count_in_shown() == counting.count_in);
+    }
 }
 
 #[test]
 fn a_commit_without_pattern_edits_keeps_the_pattern_epoch() {
     let mut engine = engine();
     let control = engine.control();
-    begin_project(control, default_instrument());
+    begin_project(control, default_instrument(), true);
     commit(control);
     let (edit, shared, _) = control.parts();
     assert_eq!(edit.duration(true), 2.0); // 16 rows at 8 rows per second
@@ -211,7 +237,7 @@ fn a_commit_without_pattern_edits_keeps_the_pattern_epoch() {
 fn pcm_is_validated_before_it_is_stored() {
     let mut engine = engine();
     let control = engine.control();
-    begin_project(control, default_instrument());
+    begin_project(control, default_instrument(), true);
     commit(control);
     let (edit, shared, _) = control.parts();
     let pcm = |left: &'static [f32], rate: f64| Some(edits::Pcm { left, right: None, rate });
@@ -234,38 +260,62 @@ fn pcm_is_validated_before_it_is_stored() {
 /// retired projects and samples are reclaimed by `collect` without disturbing the renderer.
 #[test]
 fn concurrent_publication_and_rendering() {
-    let mut engine = engine();
-    let control = engine.control();
-    begin_project(control, default_instrument());
-    load_sine(control, 0);
-    for row in 0..16 {
-        set_note(control, row, 48 + row);
-    }
-    commit(control);
-    play(control);
-    let (mut control, mut audio, _) = engine.split();
-    let renderer = std::thread::spawn(move || {
-        let mut peak = 0.0f32;
-        for _ in 0..400 {
-            let (l, _) = render(&mut audio, 256, 256);
-            assert!(l.iter().all(|x| x.is_finite()));
-            peak = l.iter().fold(peak, |m, x| m.max(x.abs()));
-            while audio.pop_event().is_some() {}
+    for host in BOTH_PATHS {
+        let mut engine = engine();
+        let control = engine.control();
+        begin_project(control, default_instrument(), host);
+        load_sine(control, 0);
+        for row in 0..16 {
+            set_note(control, row, 48 + row);
         }
-        peak
-    });
-    for round in 0..200 {
-        let (edit, shared, _) = control.parts();
-        edit.begin_update(shared);
-        edit.set_timing(100.0 + round as f64, 4, 0.0, 1.0);
-        set_note(&mut control, round % 16, 50 + round % 20);
-        commit(&mut control);
-        if round % 10 == 0 {
-            load_sine(&mut control, 0);
+        commit(control);
+        play(control);
+        let (mut control, mut audio, _) = engine.split();
+        let renderer = std::thread::spawn(move || {
+            let mut peak = 0.0f32;
+            for _ in 0..400 {
+                let (l, _) = render(&mut audio, 256, 256, host);
+                assert!(l.iter().all(|x| x.is_finite()));
+                peak = l.iter().fold(peak, |m, x| m.max(x.abs()));
+                while audio.pop_event().is_some() {}
+            }
+            peak
+        });
+        for round in 0..200 {
+            let (edit, shared, _) = control.parts();
+            edit.begin_update(shared);
+            edit.set_timing(100.0 + round as f64, 4, 0.0, 1.0);
+            set_note(&mut control, round % 16, 50 + round % 20);
+            commit(&mut control);
+            if round % 10 == 0 {
+                load_sine(&mut control, 0);
+            }
+            let (edit, shared, _) = control.parts();
+            edit.note_on(shared, 0, 0, 72, 100);
+            edit.collect(shared);
         }
-        let (edit, shared, _) = control.parts();
-        edit.note_on(shared, 0, 0, 72, 100);
-        edit.collect(shared);
+        assert!(renderer.join().unwrap() > 0.0);
     }
-    assert!(renderer.join().unwrap() > 0.0);
+}
+
+/// The comb and all-pass filters the mixer crate builds its reverb return from, sample for sample.
+#[test]
+fn comb_and_allpass_filters() {
+    let impulse = |n: usize| if n == 0 { 1.0f32 } else { 0.0 };
+    // A comb of four samples: the input comes back four samples later. What it feeds back is its
+    // output through a one-pole low-pass (the damping), times the feedback: the low-pass keeps
+    // decaying between the echoes, so each echo is followed by its smear.
+    let mut comb = state::Comb { data: vec![0.0; 4], position: 0, filter: 0.0 };
+    let echoes: Vec<f32> = (0..13).map(|n| comb.process(impulse(n), 0.5, 0.25)).collect();
+    assert_eq!(echoes, [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.375, 0.09375, 0.0234375, 0.005859375, 0.14208984375]);
+    comb.clear();
+    assert!((0..8).all(|_| comb.process(0.0, 0.5, 0.25) == 0.0), "a cleared comb is silent");
+    // An all-pass of two samples: the inverted input at once, then the stored input, halving.
+    let mut allpass = state::Allpass { data: vec![0.0; 2], position: 0 };
+    let ringing: Vec<f32> = (0..8).map(|n| allpass.process(impulse(n))).collect();
+    assert_eq!(ringing, [-1.0, 0.0, 1.0, 0.0, 0.5, 0.0, 0.25, 0.0]);
+    allpass.clear();
+    assert!((0..4).all(|_| allpass.process(0.0) == 0.0), "a cleared all-pass is silent");
+    // Without a line there is nothing to process.
+    assert_eq!((state::Comb::default().process(1.0, 0.5, 0.25), state::Allpass::default().process(1.0)), (0.0, 0.0));
 }

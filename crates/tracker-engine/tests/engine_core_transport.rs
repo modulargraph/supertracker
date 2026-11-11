@@ -11,6 +11,8 @@
 #![allow(clippy::needless_range_loop, clippy::manual_is_multiple_of, clippy::type_complexity)]
 
 mod engine_support_a;
+#[allow(unused_imports)]
+use engine_support_a::{both_views, mix_view, mix_view_only};
 
 use engine_support_a::core_helpers::*;
 use engine_support_a::tone::*;
@@ -21,6 +23,7 @@ use tracker_engine::engine::*;
 // Pattern loop range: rows 0..15 each carry note 60+row; one row is 6000 frames at 120 BPM, 4 LPB.
 #[test]
 fn test_pattern_loop_range() {
+    both_views(|| {
     // No range: unchanged pattern playback and wrap.
     {
         let mut e = Engine::new();
@@ -113,11 +116,13 @@ fn test_pattern_loop_range() {
         assert_notes(&note_ons(&mut e, 24000), &[(0, 61), (4500, 62), (12000, 61), (16500, 62)]);
     }
     assert_zero_render_allocations();
+    });
 }
 
 // Queued jumps: pattern 0 = 16 rows (notes 60+row), pattern 1 = 4 rows (notes 80+row); 6000 frames per row.
 #[test]
 fn test_queued_jumps() {
+    both_views(|| {
     // Pattern mode: queued mid-pattern, honoured exactly at the pattern end; the new pattern then loops.
     {
         let mut e = Engine::new();
@@ -303,10 +308,12 @@ fn test_queued_jumps() {
         assert!(b.energy_in(11000, 12000) > 0.001);
     }
     assert_zero_render_allocations();
+    });
 }
 
 #[test]
 fn test_count_in() {
+    both_views(|| {
     // 120 BPM 4/4: four clicks 24000 frames apart while stopped, then Play exactly one bar later.
     {
         let mut e = Engine::new();
@@ -373,6 +380,7 @@ fn test_count_in() {
         assert!(b.energy_in(95500, 96000) > 0.001);
     }
     assert_zero_render_allocations();
+    });
 }
 
 /// Play/Stop are applied by the render thread. Between queueing and the next render (or
@@ -381,6 +389,7 @@ fn test_count_in() {
 /// app's next Play press into another Stop.
 #[test]
 fn test_transhost_doc_follows_queued_commands() {
+    both_views(|| {
     let playing = |e: &Engine| -> bool {
         let s = e.status();
         s.transport_playing()
@@ -454,11 +463,14 @@ fn test_transhost_doc_follows_queued_commands() {
         assert!(!playing(&e) && s.queued_pattern == -1 && s.transport_pending == 0);
     }
     assert_zero_render_allocations();
+    });
 }
 
 #[test]
 fn test_seek_status_revision() {
-    let mut e = Engine::new();
+    both_views(|| {
+    // One engine: a status reader races the render below.
+    let mut e = Engine::alone();
     configure(&mut e, TONE);
     let mut block = Audio::new(64);
     render(&mut e, &mut block);
@@ -510,10 +522,12 @@ fn test_seek_status_revision() {
         });
     }
     assert_zero_render_allocations();
+    });
 }
 
 #[test]
 fn test_mod_wheel() {
+    both_views(|| {
     let energy = |wheel: f32, panic: bool| -> f64 {
         let mut e = Engine::new();
         configure(&mut e, TONE);
@@ -542,11 +556,13 @@ fn test_mod_wheel() {
     let (open, closed, reset) = (energy(0.0, false), energy(1.0, false), energy(1.0, true));
     assert!(open > 0.001 && closed < open * 0.3 && (reset - open).abs() < open * 0.01);
     assert_zero_render_allocations();
+    });
 }
 
 /// Note events mark sequencer ownership in slot (1) versus live/preview (0).
 #[test]
 fn test_sequenced_flag() {
+    both_views(|| {
     {
         let mut e = Engine::new();
         configure(&mut e, ST_INSTRUMENT_AU);
@@ -576,6 +592,7 @@ fn test_sequenced_flag() {
         }
     }
     assert_zero_render_allocations();
+    });
 }
 
 // Note columns: each extra column of a track is its own lane on the track's channel
@@ -613,6 +630,7 @@ fn off_frame(offs: &[(u64, i32)], note: i32) -> u64 {
 
 #[test]
 fn test_note_columns() {
+    both_views(|| {
     // Two columns sustain together; a new note in column 1 releases only column 1; OFF in column 0 and CUT in column 1
     // end only their own column; a gated column-2 note stops after its gate while column 0's next note sounds on.
     {
@@ -723,7 +741,7 @@ fn test_note_columns() {
         assert!(one > 0.001 && both > one * 3.0);
     }
     // Copy-on-write and resize: a reused pattern keeps its columns, a shortened pattern drops columns past its end,
-    // clear_step clears every column, and the scheduler ignores columns of removed tracks.
+    // a note out of range clears a column's cell, and the scheduler ignores columns of removed tracks.
     {
         let mut e = Engine::new();
         configure(&mut e, ST_INSTRUMENT_MIDI);
@@ -756,7 +774,7 @@ fn test_note_columns() {
         render_events(&mut e, 256);
         e.begin_update();
         e.set_pattern(0, 4);
-        e.clear_step(0, 0, 1);
+        e.set_step_column(0, 0, 1, 3, column_note(128, 0.0));
         e.set_track_count(1);
         e.commit_update();
         e.play(0);
@@ -764,4 +782,5 @@ fn test_note_columns() {
         assert!(on.len() == 1 && on[0].1 == 64);
     }
     assert_zero_render_allocations();
+    });
 }

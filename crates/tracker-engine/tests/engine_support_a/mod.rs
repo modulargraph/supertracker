@@ -17,6 +17,7 @@ use std::cell::Cell;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tracker_engine::engine::edits::Pcm;
 use tracker_engine::engine::host;
+use tracker_engine::engine::tables::MAX_BLOCK;
 use tracker_engine::engine::{STEvent, STInstrument, STStatus, STStep, STTrack};
 
 // ---------------------------------------------------------------------------------------------
@@ -121,24 +122,91 @@ impl Drop for SetOnDrop<'_> {
 // The engine
 // ---------------------------------------------------------------------------------------------
 
-/// C++ `struct Engine`: an engine at 48 kHz that is destroyed with the test.
+// ---------------------------------------------------------------------------------------------
+// The two views of a test
+// ---------------------------------------------------------------------------------------------
+
+thread_local! {
+    /// Which output the engines made on this thread hand to the test: the engine's own mix
+    /// (`Some(true)`) or the buses under host mixing (`Some(false)`).
+    static MIX_VIEW: Cell<Option<bool>> = const { Cell::new(None) };
+}
+
+/// Runs a test twice: once reading the engine's own stereo mix (the output the expectations
+/// were first recorded from) and once reading the buses under host mixing (what a host
+/// consumes). The same assertions hold for both unless the test asks [`mix_view`].
+pub fn both_views(test: impl Fn()) {
+    for mix in [true, false] {
+        MIX_VIEW.with(|view| view.set(Some(mix)));
+        test();
+    }
+    MIX_VIEW.with(|view| view.set(None));
+}
+
+/// Runs a test whose subject is the engine's own mix, reading that mix only.
+pub fn mix_view_only(test: impl FnOnce()) {
+    MIX_VIEW.with(|view| view.set(Some(true)));
+    test();
+    MIX_VIEW.with(|view| view.set(None));
+}
+
+/// Runs a test that reads the buses under host mixing only.
+pub fn host_view_only(test: impl FnOnce()) {
+    MIX_VIEW.with(|view| view.set(Some(false)));
+    test();
+    MIX_VIEW.with(|view| view.set(None));
+}
+
+/// Whether the running test reads the engine's own mix (see [`both_views`]).
+pub fn mix_view() -> bool {
+    MIX_VIEW.with(Cell::get).expect("a test runs inside both_views or mix_view_only")
+}
+
+// ---------------------------------------------------------------------------------------------
+// The engine
+// ---------------------------------------------------------------------------------------------
+
+/// An engine at 48 kHz as the tests drive it: a pair of engines that receive the same edits
+/// and commands.
+///
+/// `host` runs under host mixing, as the mixer crate runs it, and is rendered block by block;
+/// a render gives the sum of its buses. `mix` renders the engine's own stereo mix in one call.
+/// The test reads one of the two, by its view ([`both_views`]); every event, status and result
+/// the two engines give is compared. [`Engine::alone`] makes only the engine of the view.
 pub struct Engine {
-    engine: host::Engine,
-    /// See [`pull_block`].
+    host: Option<host::Engine>,
+    mix: Option<host::Engine>,
+    render: RenderState,
+}
+
+/// The longest render of one call.
+const UNREAD_FRAMES: usize = 1 << 21;
+
+/// What the render side of the test engine keeps between calls.
+struct RenderState {
+    /// The test reads the mix engine.
+    mix_view: bool,
+    /// See [`pull_block`]; one per engine.
     block: Option<(u64, usize)>,
+    mix_block: Option<(u64, usize)>,
+    /// The host's frame count: where the next block of a plain render starts.
+    clock: u64,
+    /// Where the engine the test does not read renders: allocated with the engine, so that a
+    /// render allocates nothing.
+    unread: (Vec<f32>, Vec<f32>),
 }
 
 /// The buses of an engine as the tests pull them: one bus of a block at a time.
 ///
 /// `block` is the range (start, frames) rendered last. A pull of that range reads the block
 /// again (the tests take one bus after another); any other pull renders the next block, which
-/// must follow the previous one and be at most `MAX_BLOCK` frames long. `None` after a direct
+/// must follow the previous one and be at most `MAX_BLOCK` frames long. `None` after a plain
 /// render: the next block may start at any time.
 fn pull_block(render: &mut host::RenderHalf, block: &mut Option<(u64, usize)>, time: u64, frames: usize) {
     if *block == Some((time, frames)) {
         return;
     }
-    assert!((1..=tracker_engine::engine::tables::MAX_BLOCK).contains(&frames), "a pull is one block of 1..=MAX_BLOCK frames");
+    assert!((1..=MAX_BLOCK).contains(&frames), "a pull is one block of 1..=MAX_BLOCK frames");
     if let Some((start, count)) = *block {
         assert_eq!(time, start + count as u64, "blocks follow one another");
     }
@@ -170,32 +238,95 @@ fn copy_bus(render: &mut host::RenderHalf, bus: i32, left: &mut [f32], right: &m
     }
 }
 
+/// Renders `left.len()` frames from `clock` on, block by block as a host does, and writes the
+/// sum of every bus: each track's bus in track order, then the return bus. Nothing else is
+/// applied. Events stay queued; their frame offsets count from the start of their own block.
+fn render_bus_sum(render: &mut host::RenderHalf, clock: &mut u64, left: &mut [f32], right: &mut [f32]) {
+    assert_eq!(left.len(), right.len());
+    let mut at = 0;
+    while at < left.len() {
+        let count = MAX_BLOCK.min(left.len() - at);
+        let (l, r) = (&mut left[at..at + count], &mut right[at..at + count]);
+        assert_eq!(render.render_block(*clock, count as u32) as usize, count);
+        let view = render.block();
+        l.fill(0.0);
+        r.fill(0.0);
+        let tracks = (0..view.track_count()).filter_map(|track| view.track(track));
+        for (bus_l, bus_r) in tracks.chain(std::iter::once(view.return_bus())) {
+            for (out, sample) in l.iter_mut().zip(bus_l) {
+                *out += *sample;
+            }
+            for (out, sample) in r.iter_mut().zip(bus_r) {
+                *out += *sample;
+            }
+        }
+        *clock += count as u64;
+        at += count;
+    }
+}
+
 impl Default for Engine {
     fn default() -> Self {
         Engine::new()
     }
 }
 
+/// One engine's control half.
+struct ControlOne<'a> {
+    half: &'a mut host::ControlHalf,
+    /// Host mixing is kept on through every project reset.
+    host_mixing: bool,
+}
+
 /// The control-thread half of an engine: project edits, commit, transport and note commands.
 pub struct ControlHalf<'a> {
-    half: &'a mut host::ControlHalf,
+    host: Option<ControlOne<'a>>,
+    mix: Option<ControlOne<'a>>,
 }
 
-/// The render-thread half of an engine: render, bus pulls, event consumption and the exclusive
-/// stopped-graph operations.
+/// The render-thread half of an engine: render, bus pulls and event consumption.
 pub struct RenderHalf<'a> {
-    half: &'a mut host::RenderHalf,
-    block: &'a mut Option<(u64, usize)>,
+    host: Option<&'a mut host::RenderHalf>,
+    mix: Option<&'a mut host::RenderHalf>,
+    state: &'a mut RenderState,
 }
 
-/// The part of an engine any thread may use: status, peaks and the refresh/reset mailboxes.
+/// The part of an engine any thread may use: status and the refresh mailbox.
 #[derive(Clone, Copy)]
 pub struct SharedHalf<'a> {
-    status: &'a host::StatusHandle,
+    host: Option<&'a host::StatusHandle>,
+    mix: Option<&'a host::StatusHandle>,
+}
+
+/// A new engine with host mixing on, as the mixer crate sets one up.
+fn host_mixing_engine(rate: f64) -> Option<host::Engine> {
+    let mut engine = host::Engine::new(rate)?;
+    let (control, shared, _) = engine.control().parts();
+    control.begin_update(shared);
+    control.set_host_mixing_tracks(true, &[], true);
+    control.commit(shared).expect("an empty project is accepted");
+    Some(engine)
+}
+
+/// What the two engines of a pair answered: the same thing. With one engine, its answer.
+#[track_caller]
+fn agreed<T: PartialEq + std::fmt::Debug>(host: Option<T>, mix: Option<T>, mix_view: bool) -> T {
+    match (host, mix) {
+        (Some(host), Some(mix)) => {
+            assert_eq!(mix, host, "the mix engine (left) and the engine under host mixing (right) differ");
+            if mix_view {
+                mix
+            } else {
+                host
+            }
+        }
+        (Some(one), None) | (None, Some(one)) => one,
+        (None, None) => unreachable!("a test engine has at least one engine"),
+    }
 }
 
 impl Engine {
-    /// C++ `Engine e;`: an engine at 48 kHz, asserted to exist.
+    /// An engine at 48 kHz, asserted to exist.
     pub fn new() -> Engine {
         Engine::at(48000.0)
     }
@@ -207,15 +338,40 @@ impl Engine {
         engine.unwrap()
     }
 
+    fn with(host: Option<host::Engine>, mix: Option<host::Engine>) -> Engine {
+        Engine { host, mix, render: RenderState { mix_view: mix_view(), block: None, mix_block: None, clock: 0, unread: (vec![0.0; UNREAD_FRAMES], vec![0.0; UNREAD_FRAMES]) } }
+    }
+
     /// An engine at `rate`: `None` where the engine refuses the rate.
     pub fn create(rate: f64) -> Option<Engine> {
-        host::Engine::new(rate).map(|engine| Engine { engine, block: None })
+        Some(Engine::with(Some(host_mixing_engine(rate)?), Some(host::Engine::new(rate)?)))
+    }
+
+    /// Only the engine the test's view reads, at 48 kHz: for tests whose two engines could not
+    /// stay in step (threads racing each other).
+    pub fn alone() -> Engine {
+        if mix_view() {
+            Engine::with(None, host::Engine::new(48000.0))
+        } else {
+            Engine::with(host_mixing_engine(48000.0), None)
+        }
     }
 
     /// The three thread-owned parts, for tests that drive the engine from several threads.
     pub fn split(&mut self) -> (ControlHalf<'_>, RenderHalf<'_>, SharedHalf<'_>) {
-        let (control, render, status) = self.engine.halves();
-        (ControlHalf { half: control }, RenderHalf { half: render, block: &mut self.block }, SharedHalf { status })
+        let (host_control, host_render, host_status) = match self.host.as_mut().map(host::Engine::halves) {
+            Some((control, render, status)) => (Some(ControlOne { half: control, host_mixing: true }), Some(render), Some(status)),
+            None => (None, None, None),
+        };
+        let (mix_control, mix_render, mix_status) = match self.mix.as_mut().map(host::Engine::halves) {
+            Some((control, render, status)) => (Some(ControlOne { half: control, host_mixing: false }), Some(render), Some(status)),
+            None => (None, None, None),
+        };
+        (
+            ControlHalf { host: host_control, mix: mix_control },
+            RenderHalf { host: host_render, mix: mix_render, state: &mut self.render },
+            SharedHalf { host: host_status, mix: mix_status },
+        )
     }
 
     fn control_half(&mut self) -> ControlHalf<'_> {
@@ -227,8 +383,30 @@ impl Engine {
     }
 
     fn shared_half(&self) -> SharedHalf<'_> {
-        SharedHalf { status: self.engine.status() }
+        SharedHalf { host: self.host.as_ref().map(host::Engine::status), mix: self.mix.as_ref().map(host::Engine::status) }
     }
+}
+
+/// Defines each control method once for one engine, runs it on both engines of a pair
+/// (comparing what they return) and forwards it from [`Engine`].
+macro_rules! control_methods {
+    ($( $(#[$meta:meta])* fn $name:ident(&mut $this:ident $(, $argument:ident : $kind:ty)* $(,)?) $(-> $result:ty)? $body:block )*) => {
+        impl ControlOne<'_> {
+            $( fn $name(&mut $this $(, $argument: $kind)*) $(-> $result)? $body )*
+        }
+        impl ControlHalf<'_> {
+            $( $(#[$meta])* pub fn $name(&mut self $(, $argument: $kind)*) $(-> $result)? {
+                let mix = self.mix.as_mut().map(|mix| mix.$name($($argument),*));
+                let host = self.host.as_mut().map(|host| host.$name($($argument),*));
+                agreed(host, mix, false)
+            } )*
+        }
+        impl Engine {
+            $( $(#[$meta])* pub fn $name(&mut self $(, $argument: $kind)*) $(-> $result)? {
+                self.control_half().$name($($argument),*)
+            } )*
+        }
+    };
 }
 
 /// Defines each method once on a half and forwards it from [`Engine`].
@@ -251,7 +429,7 @@ fn chord_list(chord: &[i32]) -> Option<&[i32]> {
     (!chord.is_empty()).then_some(chord)
 }
 
-half_methods! { ControlHalf, control_half;
+control_methods! {
     // ---- update transactions ----
 
     fn begin_update(&mut self) {
@@ -263,6 +441,9 @@ half_methods! { ControlHalf, control_half;
         #[allow(unused_variables)]
         let (control, shared, sample_rate) = self.half.parts();
         control.clear_project();
+        if self.host_mixing {
+            control.set_host_mixing_tracks(true, &[], true);
+        }
     }
     /// `commit_update`: a rejected draft stays unpublished, silently.
     fn commit_update(&mut self) {
@@ -520,36 +701,77 @@ half_methods! { ControlHalf, control_half;
 }
 
 half_methods! { RenderHalf, render_half;
-    /// A direct render into two buffers of equal length, counted as a render-thread call.
+    /// A render of `left.len()` frames, counted as a render-thread call. The mix engine renders
+    /// its own stereo mix in one call; the engine under host mixing renders block by block and
+    /// gives the sum of its buses (see `render_bus_sum`). The buffers receive the output of the
+    /// test's view.
     fn render_into(&mut self, left: &mut [f32], right: &mut [f32]) {
-        *self.block = None;
-        realtime(|| self.half.render(left, right));
+        assert_eq!(left.len(), right.len());
+        let state = &mut *self.state;
+        let unread = (&mut state.unread.0[..left.len()], &mut state.unread.1[..left.len()]);
+        if let Some(mix) = self.mix.as_deref_mut() {
+            let (l, r) = if state.mix_view { (&mut *left, &mut *right) } else { (&mut *unread.0, &mut *unread.1) };
+            realtime(|| mix.render(l, r));
+            state.mix_block = None;
+        }
+        if let Some(host) = self.host.as_deref_mut() {
+            let (l, r) = if state.mix_view { (&mut *unread.0, &mut *unread.1) } else { (&mut *left, &mut *right) };
+            realtime(|| render_bus_sum(host, &mut state.clock, l, r));
+            state.block = None;
+        }
     }
-    /// A render of no frames: apply queued commands without audio.
-    fn render_nothing(&mut self) {
-        *self.block = None;
-        realtime(|| self.half.advance(0));
-    }
-    /// One bus of the block at a graph time (see `pull_block`), counted as a render-thread call.
+    /// One bus of the block at a graph time (see `pull_block`), counted as a render-thread call:
+    /// both engines render the block, the buffers receive the bus of the test's view.
     fn render_bus_into(&mut self, bus: i32, sample_time: u64, left: &mut [f32], right: &mut [f32]) {
         assert_eq!(left.len(), right.len());
-        realtime(|| {
-            pull_block(self.half, self.block, sample_time, left.len());
-            copy_bus(self.half, bus, left, right);
-        });
+        let state = &mut *self.state;
+        let unread = (&mut state.unread.0[..left.len()], &mut state.unread.1[..left.len()]);
+        if let Some(mix) = self.mix.as_deref_mut() {
+            let (l, r) = if state.mix_view { (&mut *left, &mut *right) } else { (&mut *unread.0, &mut *unread.1) };
+            realtime(|| {
+                pull_block(mix, &mut state.mix_block, sample_time, l.len());
+                copy_bus(mix, bus, l, r);
+            });
+        }
+        if let Some(host) = self.host.as_deref_mut() {
+            let (l, r) = if state.mix_view { (&mut *unread.0, &mut *unread.1) } else { (&mut *left, &mut *right) };
+            realtime(|| {
+                pull_block(host, &mut state.block, sample_time, l.len());
+                copy_bus(host, bus, l, r);
+            });
+            state.clock = sample_time + left.len() as u64;
+        }
     }
-    /// The next event (the render thread is the serialized consumer).
+    /// The next event (the render thread is the serialized consumer). Both engines of a pair
+    /// must have the same event next. The frame offset of the mix engine's event counts from
+    /// the start of its one render call, which is a whole number of blocks before the start of
+    /// the block the event has under host mixing.
     fn pop_event(&mut self) -> Option<STEvent> {
-        self.half.pop_event()
+        let mix = self.mix.as_deref_mut().map(|mix| mix.pop_event());
+        let host = self.host.as_deref_mut().map(|host| host.pop_event());
+        if let (Some(mix), Some(host)) = (mix, host) {
+            let same = match (mix, host) {
+                (Some(a), Some(b)) => {
+                    let blocks = a.frame_offset - b.frame_offset;
+                    blocks >= 0 && blocks % MAX_BLOCK as i32 == 0 && STEvent { frame_offset: b.frame_offset, ..a } == b
+                }
+                (None, None) => true,
+                _ => false,
+            };
+            assert!(same, "the engines' events differ: {mix:?} from the mix engine, {host:?} under host mixing");
+        }
+        if self.state.mix_view { mix.or(host) } else { host.or(mix) }.flatten()
     }
 }
 
 impl SharedHalf<'_> {
     pub fn status(&self) -> STStatus {
-        self.status.status()
+        agreed(self.host.map(host::StatusHandle::status), self.mix.map(host::StatusHandle::status), false)
     }
     pub fn refresh_automation(&self) {
-        self.status.refresh_automation();
+        for status in self.mix.iter().chain(self.host.iter()) {
+            status.refresh_automation();
+        }
     }
 }
 

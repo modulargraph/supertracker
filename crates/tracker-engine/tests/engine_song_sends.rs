@@ -3,6 +3,8 @@
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
+#[allow(unused_imports)]
+use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::engine::Engine;
 use tracker_engine::engine::*;
@@ -65,6 +67,7 @@ fn configure_song(e: &mut Engine, sequence: &[i32], loop_song: bool) {
 
 #[test]
 fn rendered_order_matches_sequence() {
+    both_views(|| {
     let mut e = Engine::new();
     let seq = [2, 0, 0, 3, 1];
     configure_song(&mut e, &seq, false);
@@ -76,10 +79,12 @@ fn rendered_order_matches_sequence() {
         assert!(on[n].frame == n as u64 * 24000);
     }
     assert!(e.status().playing == 0);
+    });
 }
 
 #[test]
 fn section_loop() {
+    both_views(|| {
     let mut e = Engine::new();
     let seq = [0, 1, 2, 3];
     configure_song(&mut e, &seq, true);
@@ -99,10 +104,12 @@ fn section_loop() {
     assert!(status.playing != 0 && status.sequence >= 1 && status.sequence <= 2);
     // Playback clock reflects the jump back to the section start (frame 24000 at 0.5 s).
     assert!(status.seconds >= 0.5 - 1e-6 && status.seconds < 1.5);
+    });
 }
 
 #[test]
 fn section_loop_needs_loop_song_and_jumps_in_from_outside() {
+    both_views(|| {
     {
         let mut e = Engine::new();
         let seq = [0, 1, 2];
@@ -149,6 +156,7 @@ fn section_loop_needs_loop_song_and_jumps_in_from_outside() {
         on = note_ons(&mut e, 24000 * 2, 256);
         assert!(on.len() == 2 && on[0].e.note == 60 && on[1].e.note == 61);
     }
+    });
 }
 
 /// An impulse through the delay send.
@@ -194,6 +202,7 @@ fn first_above(a: &Audio, from: usize, level: f32) -> usize {
 
 #[test]
 fn synced_delay_and_tone() {
+    mix_view_only(|| {
     let free = delay_impulse(0.0, 0.1, 1.0, 120.0, 60000);
     let mut echo = first_above(&free, 200, 1e-4);
     assert!((4795..=4805).contains(&echo));
@@ -213,6 +222,7 @@ fn synced_delay_and_tone() {
         dark_peak = dark_peak.max((dark.l[n].abs() + dark.r[n].abs()) as f64);
     }
     assert!(dark_peak < open_peak * 0.25 && dark_peak > 0.0);
+    });
 }
 
 /// A synced delay whose length is one ULP above a whole frame count (0.75 beats at 140 BPM and
@@ -221,6 +231,7 @@ fn synced_delay_and_tone() {
 /// (or corrupted) that echo frame.
 #[test]
 fn synced_delay_read_wraps_at_line_end() {
+    mix_view_only(|| {
     let mut e = Engine::with_rate(44100.0);
     e.begin_update();
     e.set_track_count(1);
@@ -252,10 +263,12 @@ fn synced_delay_read_wraps_at_line_end() {
     assert!(a.l[0].abs() > 0.1f32 && a.l[1].abs() > 0.1f32);
     assert!((a.l[14175] - a.l[0]).abs() < 1e-6f32 && (a.r[14175] - a.r[0]).abs() < 1e-6f32);
     assert!((a.l[14176] - a.l[1]).abs() < 1e-6f32 && (a.r[14176] - a.r[1]).abs() < 1e-6f32);
+    });
 }
 
 #[test]
 fn reverb_predelay() {
+    mix_view_only(|| {
     let run = |predelay: f32| {
         let mut e = Engine::new();
         e.begin_update();
@@ -288,4 +301,5 @@ fn reverb_predelay() {
     let (none, later) = (run(0.0), run(0.1));
     let (a, b) = (first_above(&none, 200, 1e-4), first_above(&later, 200, 1e-4));
     assert!(b >= a + 4795 && b <= a + 4805);
+    });
 }

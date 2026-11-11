@@ -7,6 +7,8 @@
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
+#[allow(unused_imports)]
+use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::alloc::{realtime, render_allocations};
 use engine_support_b::engine::Engine;
@@ -41,7 +43,9 @@ fn fixture_with(e: &mut Engine, rows: i32, song_loop: bool, swing: f32) {
     track.delay_send = 0.0;
     track.reverb_send = 0.0;
     e.set_track(0, track);
-    e.set_host_mixing(true, 1);
+    if mix_view() {
+        e.set_host_mixing(true, 1);
+    }
     assert!(e.commit_update_checked().is_ok());
 }
 
@@ -95,6 +99,7 @@ fn zero_render_allocations() {
 
 #[test]
 fn exact_applied_onset_row_and_quarter_beat_distance_across_rows_and_patterns() {
+    both_views(|| {
     let mut e = Engine::new();
     fixture(&mut e);
     e.play(1);
@@ -102,7 +107,8 @@ fn exact_applied_onset_row_and_quarter_beat_distance_across_rows_and_patterns() 
     render(&mut e, 1);
     let first = ack(&mut e);
     assert!(first.status == ST_INPUT_ACK_APPLIED && first.pattern == 0 && first.row == 0 && first.sequence == 0);
-    assert!(first.request_id == 1 && first.graph_frame == i64::MIN && first.render_frame == 0);
+    // A block carries the host's frame count; the engine's direct render had none.
+    assert!(first.request_id == 1 && first.graph_frame == if mix_view() { i64::MIN } else { 0 } && first.render_frame == 0);
     assert!(first.flags == ST_INPUT_CLOCK_PLAYING);
     equal(first.distance_beats, 0.0);
     render(&mut e, 5999);
@@ -126,10 +132,12 @@ fn exact_applied_onset_row_and_quarter_beat_distance_across_rows_and_patterns() 
     equal(late.distance_beats, 1.75);
     empty(&mut e);
     zero_render_allocations();
+    });
 }
 
 #[test]
 fn swung_pattern_onset_arm_changes_and_three_complete_loops_retain_recording_run_identity() {
+    both_views(|| {
     let mut e = Engine::new();
     // Swing 0.5: row 0 lasts 9000 frames, row 1 lasts 3000.
     fixture_with(&mut e, 2, false, 0.5);
@@ -152,10 +160,12 @@ fn swung_pattern_onset_arm_changes_and_three_complete_loops_retain_recording_run
     equal(looped.distance_beats, 1.5);
     assert!(looped.row == 0 && looped.run_id == first.run_id);
     zero_render_allocations();
+    });
 }
 
 #[test]
 fn song_wraps_and_pattern_travel_count_every_cycle() {
+    both_views(|| {
     let mut e = Engine::new();
     fixture_with(&mut e, 2, true, 0.0);
     e.play(1);
@@ -179,11 +189,14 @@ fn song_wraps_and_pattern_travel_count_every_cycle() {
     let last = ack(&mut pattern);
     equal(last.distance_beats - first.distance_beats, 36001.0 / 24000.0);
     zero_render_allocations();
+    });
 }
 
 #[test]
 fn command_order_discontinuities_stopped_endpoints_and_zero_audio_flush_outcomes() {
-    let mut e = Engine::new();
+    both_views(|| {
+    // One engine: only the engine's direct render can render no frames (the flush at the end).
+    let mut e = Engine::alone();
     fixture(&mut e);
     e.play(1);
     assert!(edge(&mut e, 1));
@@ -209,14 +222,18 @@ fn command_order_discontinuities_stopped_endpoints_and_zero_audio_flush_outcomes
             && (after.flags & ST_INPUT_CLOCK_PLAYING) == 0
             && before.run_id != after.run_id
     );
-    assert!(edge(&mut e, 5));
-    render(&mut e, 0);
-    assert!(ack(&mut e).status == ST_INPUT_ACK_CONTROL_FLUSH);
+    if mix_view() {
+        assert!(edge(&mut e, 5));
+        render(&mut e, 0);
+        assert!(ack(&mut e).status == ST_INPUT_ACK_CONTROL_FLUSH);
+    }
     zero_render_allocations();
+    });
 }
 
 #[test]
 fn ordinary_publication_retains_the_run_and_timeline_edits_break_it() {
+    both_views(|| {
     let mut e = Engine::new();
     fixture(&mut e);
     e.play(1);
@@ -265,6 +282,7 @@ fn ordinary_publication_retains_the_run_and_timeline_edits_break_it() {
     render(&mut unsequenced, 1);
     assert!(ack(&mut unsequenced).run_id != prior.run_id);
     zero_render_allocations();
+    });
 }
 
 /// `memcmp` over two float buffers: equal bit patterns.
@@ -274,6 +292,7 @@ fn same_bits(a: &[f32], b: &[f32]) -> bool {
 
 #[test]
 fn opt_in_note_pcm_equals_ordinary_apis_capture_only_sustain_release_leaves_voice_sounding() {
+    both_views(|| {
     let (mut ordinary, mut tracked) = (Engine::new(), Engine::new());
     fixture(&mut ordinary);
     fixture(&mut tracked);
@@ -303,11 +322,13 @@ fn opt_in_note_pcm_equals_ordinary_apis_capture_only_sustain_release_leaves_voic
     assert!(ack(&mut tracked).apply_note == 1);
     compare(&mut ordinary, &mut tracked, &mut bl);
     zero_render_allocations();
+    });
 }
 
 /// A block render reports the host's frame of the edge next to the engine's own frame count.
 #[test]
 fn block_renders_acknowledge_with_the_graph_frame_of_the_block() {
+    both_views(|| {
     let mut e = Engine::new();
     fixture(&mut e);
     e.play(1);
@@ -324,10 +345,12 @@ fn block_renders_acknowledge_with_the_graph_frame_of_the_block() {
     let second = ack(&mut e);
     assert!(second.graph_frame == 5096 && second.render_frame == 4096 && second.run_id == first.run_id);
     zero_render_allocations();
+    });
 }
 
 #[test]
 fn a_note_on_in_the_second_half_of_a_row_is_placed_on_the_next_row() {
+    both_views(|| {
     let mut e = Engine::new();
     fixture(&mut e);
     e.play(0);
@@ -348,6 +371,7 @@ fn a_note_on_in_the_second_half_of_a_row_is_placed_on_the_next_row() {
     let last = ack(&mut e);
     assert!(last.row == 3 && last.early == 0);
     zero_render_allocations();
+    });
 }
 
 fn row_one_note(e: &mut Engine) {
@@ -361,6 +385,7 @@ fn row_one_note(e: &mut Engine) {
 
 #[test]
 fn the_placed_row_skips_its_own_trigger_of_the_early_note_once() {
+    both_views(|| {
     for early in [false, true] {
         let mut e = Engine::new();
         fixture(&mut e);
@@ -375,12 +400,14 @@ fn the_placed_row_skips_its_own_trigger_of_the_early_note_once() {
         assert!(if early { row1 == 0.0 } else { row1 > 0.01f32 });
     }
     zero_render_allocations();
+    });
 }
 
 /// Seek and Panic end the live voice the early note stood for, so the placed row triggers
 /// normally.
 #[test]
 fn seek_and_panic_forget_a_pending_early_note_its_row_triggers() {
+    both_views(|| {
     for transport in 0..2 {
         let mut e = Engine::new();
         fixture(&mut e);
@@ -399,11 +426,15 @@ fn seek_and_panic_forget_a_pending_early_note_its_row_triggers() {
         assert!(peak(&mut e, 3000) > 0.01f32);
     }
     zero_render_allocations();
+    });
 }
 
 #[test]
 fn strict_tokens_argument_bounds_and_reserved_ack_capacity_with_command_failure_rollback() {
-    let mut e = Engine::new();
+    both_views(|| {
+    // One engine each: nothing is published here, and an engine under host mixing has adopted
+    // one project more than its twin, so their run ids differ.
+    let mut e = Engine::alone();
     assert!(!edge(&mut e, 0));
     assert!(!e.input_note(1, 3, 0, 0, 60, 100, 1));
     assert!(!e.input_note(1, 1, channel_count(ST_MIN_RETURN_BUS), 0, 60, 100, 1));
@@ -435,7 +466,7 @@ fn strict_tokens_argument_bounds_and_reserved_ack_capacity_with_command_failure_
     assert!(ack(&mut e).request_id == u64::MAX);
     assert!(!edge(&mut e, 1));
     assert!(e.status().dropped_events == 0);
-    let mut full = Engine::new();
+    let mut full = Engine::alone();
     for _ in 0..2047 {
         full.pitch_bend(0, 0.0);
     }
@@ -445,6 +476,7 @@ fn strict_tokens_argument_bounds_and_reserved_ack_capacity_with_command_failure_
     render(&mut full, 1);
     assert!(ack(&mut full).request_id == 1);
     zero_render_allocations();
+    });
 }
 
 /// Ends the audio thread's loop when dropped, also when an assertion fails on this thread.
@@ -462,6 +494,7 @@ impl Drop for Finish<'_> {
 /// single consumer is the control half, which is where the host reads them).
 #[test]
 fn concurrent_single_producer_audio_consumer_20000_edge_delivery_without_lost_acks() {
+    both_views(|| {
     let halves = host::split(48000.0);
     assert!(halves.is_some());
     let (mut control, mut render, _status) = halves.unwrap();
@@ -504,4 +537,5 @@ fn concurrent_single_producer_audio_consumer_20000_edge_delivery_without_lost_ac
     realtime(|| render.advance(1));
     assert!(control.pop_input_ack().is_none());
     zero_render_allocations();
+    });
 }

@@ -11,6 +11,7 @@
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
+use engine_support_b::{both_views, mix_view};
 
 use engine_support_b::alloc::{realtime, render_allocations, reset_render_allocations};
 use engine_support_b::engine::Engine;
@@ -28,24 +29,27 @@ struct Scene {
     /// A sampler mode, or -1 for a saw test tone (sampler in Wavetable mode).
     mode: i32,
     modulated: bool,
-    /// PCM hash rendered by the Rust engine on x86-64 Linux when the tests were ported (equal to
-    /// the C++ engine's on the same machine).
+    /// PCM hash of the engine's own stereo mix, rendered by the Rust engine on x86-64 Linux when
+    /// the tests were ported (equal to the C++ engine's on the same machine).
     pcm: u64,
+    /// PCM hash of the buses under host mixing (every track's bus in turn, then the return bus),
+    /// recorded on x86-64 Linux from the engine whose own mix gives `pcm`.
+    buses: u64,
 }
 
 const SCENES: [Scene; 12] = [
-    Scene { name: "saw", voices: 16, mode: -1, modulated: false, pcm: 0x1cdb2c8ede91ea83 },
-    Scene { name: "saw", voices: 32, mode: -1, modulated: false, pcm: 0xd84555fc46baca7e },
-    Scene { name: "saw", voices: 64, mode: -1, modulated: false, pcm: 0x6db980998c618070 },
-    Scene { name: "saw", voices: 256, mode: -1, modulated: false, pcm: 0x15f0adbd5da0d8cd },
-    Scene { name: "sample-loop", voices: 16, mode: ST_MODE_FORWARD, modulated: false, pcm: 0x0e2c83f4c616f62d },
-    Scene { name: "sample-loop", voices: 32, mode: ST_MODE_FORWARD, modulated: false, pcm: 0x1de057bdea956c0c },
-    Scene { name: "sample-loop", voices: 64, mode: ST_MODE_FORWARD, modulated: false, pcm: 0xd6322555d87300b2 },
-    Scene { name: "sample-loop", voices: 256, mode: ST_MODE_FORWARD, modulated: false, pcm: 0x6aa961bb16a34705 },
-    Scene { name: "saw-modulated", voices: 64, mode: -1, modulated: true, pcm: 0x34c0cdd8e4835ace },
-    Scene { name: "saw-modulated", voices: 256, mode: -1, modulated: true, pcm: 0xaa102f7e8cd0220d },
-    Scene { name: "sample-mod", voices: 64, mode: ST_MODE_FORWARD, modulated: true, pcm: 0xff43c1ea93b72f86 },
-    Scene { name: "granular-mod", voices: 64, mode: ST_MODE_GRANULAR, modulated: true, pcm: 0x3b3903b16954879d },
+    Scene { name: "saw", voices: 16, mode: -1, modulated: false, pcm: 0x1cdb2c8ede91ea83, buses: 0x6eeb8d5ce52dc807 },
+    Scene { name: "saw", voices: 32, mode: -1, modulated: false, pcm: 0xd84555fc46baca7e, buses: 0x1c5107e33004bc89 },
+    Scene { name: "saw", voices: 64, mode: -1, modulated: false, pcm: 0x6db980998c618070, buses: 0x35c7314fd0de79b9 },
+    Scene { name: "saw", voices: 256, mode: -1, modulated: false, pcm: 0x15f0adbd5da0d8cd, buses: 0xb9c26f1fe5cf23a1 },
+    Scene { name: "sample-loop", voices: 16, mode: ST_MODE_FORWARD, modulated: false, pcm: 0x0e2c83f4c616f62d, buses: 0xc0f1325108d97c81 },
+    Scene { name: "sample-loop", voices: 32, mode: ST_MODE_FORWARD, modulated: false, pcm: 0x1de057bdea956c0c, buses: 0xd8d69af726a6dd89 },
+    Scene { name: "sample-loop", voices: 64, mode: ST_MODE_FORWARD, modulated: false, pcm: 0xd6322555d87300b2, buses: 0x0f9a83ec295dc651 },
+    Scene { name: "sample-loop", voices: 256, mode: ST_MODE_FORWARD, modulated: false, pcm: 0x6aa961bb16a34705, buses: 0x91bfffd90cac81ff },
+    Scene { name: "saw-modulated", voices: 64, mode: -1, modulated: true, pcm: 0x34c0cdd8e4835ace, buses: 0xb7531957f4cd4ecd },
+    Scene { name: "saw-modulated", voices: 256, mode: -1, modulated: true, pcm: 0xaa102f7e8cd0220d, buses: 0xf482785d66066c4f },
+    Scene { name: "sample-mod", voices: 64, mode: ST_MODE_FORWARD, modulated: true, pcm: 0xff43c1ea93b72f86, buses: 0xa175cf1ca23cefe1 },
+    Scene { name: "granular-mod", voices: 64, mode: ST_MODE_GRANULAR, modulated: true, pcm: 0x3b3903b16954879d, buses: 0x3ac1a2f9f9484235 },
 ];
 
 /// The hashes depend on the platform's `sin`/`cos` (the sample is generated here) and on the
@@ -61,7 +65,8 @@ struct Outcome {
 }
 
 fn scene(s: &Scene) -> Outcome {
-    let mut e = Engine::new();
+    // One engine: the scene is timed.
+    let mut e = Engine::alone();
     e.begin_update();
     e.set_track_count(16);
     e.set_timing(120.0, 4, 0.0, 0.7);
@@ -107,7 +112,37 @@ fn scene(s: &Scene) -> Outcome {
     for n in 0..s.voices {
         e.note_on(n % 16, 0, 36 + n % 36, 80);
     }
-    let (mut left, mut right) = (vec![0.0f32; FRAMES], vec![0.0f32; FRAMES]);
+    if mix_view() {
+        let (mut left, mut right) = (vec![0.0f32; FRAMES], vec![0.0f32; FRAMES]);
+        let wall = Instant::now();
+        let cpu = process_cpu_seconds();
+        reset_render_allocations();
+        realtime(|| {
+            let mut offset = 0;
+            while offset < FRAMES {
+                let count = BLOCK.min(FRAMES - offset);
+                e.render(&mut left[offset..offset + count], &mut right[offset..offset + count]);
+                offset += BLOCK;
+            }
+        });
+        let cpu_seconds = process_cpu_seconds() - cpu;
+        let wall_seconds = wall.elapsed().as_secs_f64();
+        let mut energy = 0.0f64;
+        let mut hash = FNV_OFFSET;
+        for n in 0..FRAMES {
+            for value in [left[n], right[n]] {
+                assert!(value.is_finite());
+                assert!(value.abs() <= 1.0);
+                energy += (value * value) as f64;
+                hash = hash_f32(hash, value);
+            }
+        }
+        assert!(energy > 0.0);
+        assert!(render_allocations() == 0);
+        return Outcome { cpu_seconds, wall_seconds, hash, rms: (energy / (FRAMES * 2) as f64).sqrt() };
+    }
+    // What a host reads of each block: the bus of each of the 16 tracks, then the return bus.
+    let mut buses: Vec<(Vec<f32>, Vec<f32>)> = (0..=16).map(|_| (vec![0.0f32; FRAMES], vec![0.0f32; FRAMES])).collect();
     let wall = Instant::now();
     let cpu = process_cpu_seconds();
     reset_render_allocations();
@@ -115,7 +150,10 @@ fn scene(s: &Scene) -> Outcome {
         let mut offset = 0;
         while offset < FRAMES {
             let count = BLOCK.min(FRAMES - offset);
-            e.render(&mut left[offset..offset + count], &mut right[offset..offset + count]);
+            for (bus, (left, right)) in buses.iter_mut().enumerate() {
+                let channel = if bus < 16 { bus as i32 } else { -1 };
+                e.render_channel(channel, offset as u64, &mut left[offset..offset + count], &mut right[offset..offset + count]);
+            }
             offset += BLOCK;
         }
     });
@@ -123,40 +161,46 @@ fn scene(s: &Scene) -> Outcome {
     let wall_seconds = wall.elapsed().as_secs_f64();
     let mut energy = 0.0f64;
     let mut hash = FNV_OFFSET;
-    for n in 0..FRAMES {
-        for value in [left[n], right[n]] {
-            assert!(value.is_finite());
-            assert!(value.abs() <= 1.0);
-            energy += (value * value) as f64;
-            hash = hash_f32(hash, value);
+    for (left, right) in &buses {
+        for n in 0..FRAMES {
+            for value in [left[n], right[n]] {
+                assert!(value.is_finite());
+                assert!(value.abs() <= 1.0);
+                energy += (value * value) as f64;
+                hash = hash_f32(hash, value);
+            }
         }
     }
     assert!(energy > 0.0);
     assert!(render_allocations() == 0);
-    Outcome { cpu_seconds, wall_seconds, hash, rms: (energy / (FRAMES * 2) as f64).sqrt() }
+    Outcome { cpu_seconds, wall_seconds, hash, rms: (energy / (FRAMES * 2 * buses.len()) as f64).sqrt() }
 }
 
 /// One scene of the regression set: the program's assertions plus the recorded PCM hash.
 fn regression(index: usize) {
+    both_views(|| {
     let s = &SCENES[index];
     let result = scene(s);
+    let recorded = if mix_view() { s.pcm } else { s.buses };
     println!("{:<14} {:3} voices | PCM {:016x} | RMS {:.7}", s.name, s.voices, result.hash, result.rms);
     if HASHES_APPLY {
         assert!(
-            result.hash == s.pcm,
+            result.hash == recorded,
             "{} {} voices: PCM {:016x}, recorded {:016x}",
             s.name,
             s.voices,
             result.hash,
-            s.pcm
+            recorded
         );
     }
+    });
 }
 
 /// The C++ program's `main`.
 #[test]
 #[ignore = "benchmark: prints CPU/wall time, PCM hash and RMS of every scene"]
 fn benchmark() {
+    both_views(|| {
     for s in &SCENES {
         let result = scene(s);
         println!(
@@ -172,6 +216,7 @@ fn benchmark() {
         );
     }
     println!("All benchmark renders finite, audible, bounded and allocation-free.");
+    });
 }
 
 macro_rules! regressions {

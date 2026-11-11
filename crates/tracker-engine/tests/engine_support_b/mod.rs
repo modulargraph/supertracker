@@ -20,6 +20,10 @@ pub mod fx;
 #[cfg(feature = "engine")]
 pub mod tone;
 
+#[cfg(feature = "engine")]
+#[allow(unused_imports)]
+pub use engine::{both_views, host_view_only, mix_view, mix_view_only};
+
 /// FNV-1a offset basis used by the C++ benchmarks' PCM hashes.
 pub const FNV_OFFSET: u64 = 1469598103934665603;
 /// FNV-1a prime.

@@ -39,7 +39,7 @@ impl Audio {
     }
 }
 
-/// C++ `render(e,a)`: one direct render call of the buffer's length, as a render-thread call.
+/// A render of the buffer's length, as a render-thread call (see `Engine::render_into`).
 pub fn render(e: &mut Engine, a: &mut Audio) {
     e.render_into(&mut a.l, &mut a.r);
 }

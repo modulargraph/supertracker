@@ -4,6 +4,8 @@
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
+#[allow(unused_imports)]
+use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::alloc::{realtime, render_allocations};
 use engine_support_b::engine::Engine;
@@ -41,7 +43,9 @@ fn instrument() -> STInstrument {
 fn setup(e: &mut Engine, p: STInstrument) {
     e.begin_update();
     e.set_track_count(1);
-    e.set_host_mixing(true, 1);
+    if mix_view() {
+        e.set_host_mixing(true, 1);
+    }
     e.set_instrument(0, p);
     load_test_tone(e, 0, TEST_SAW);
     e.commit_update();
@@ -51,6 +55,7 @@ fn setup(e: &mut Engine, p: STInstrument) {
 /// "PASS zero-depth phase and random continuity: both LFOs, all five shapes"
 #[test]
 fn zero_depth_continuity() {
+    both_views(|| {
     for slot in [0, 1] {
         for shape in [ST_LFO_SINE, ST_LFO_TRIANGLE, ST_LFO_SAW, ST_LFO_SQUARE, ST_LFO_RANDOM] {
             let (mut continuous, mut inaudible) = (Engine::new(), Engine::new());
@@ -84,11 +89,13 @@ fn zero_depth_continuity() {
         }
     }
     assert!(render_allocations() == 0);
+    });
 }
 
 /// "PASS automated region boundaries isolate excluded PCM in all applicable modes"
 #[test]
 fn region_automation_bounds() {
+    both_views(|| {
     // Both samples contain the same selected silence, but only one has loud excluded material.
     // Moving each selection edge with automation must never borrow that excluded material.
     for mode in
@@ -109,7 +116,9 @@ fn region_automation_bounds() {
         e.begin_update();
         e.set_track_count(1);
         e.set_timing(240.0, 16, 0.0, 1.0);
-        e.set_host_mixing(true, 1);
+        if mix_view() {
+            e.set_host_mixing(true, 1);
+        }
         e.set_instrument(0, p);
         assert!(e.set_sample(0, &pcm, None, 48000.0));
         e.add_automation_point(0, 0, ST_TARGET_START, 0, 0, 0, 0.0, 0.25);
@@ -124,6 +133,7 @@ fn region_automation_bounds() {
         assert!(audio.l == audio.r);
     }
     assert!(render_allocations() == 0);
+    });
 }
 
 /// A sustained looping note survives automation that moves its region: the loop follows the
@@ -131,6 +141,7 @@ fn region_automation_bounds() {
 /// wrap ended the voice (silence).
 #[test]
 fn region_automation_keeps_looping_voices() {
+    both_views(|| {
     for mode in [ST_MODE_FORWARD, ST_MODE_REVERSE, ST_MODE_PINGPONG] {
         for target in [ST_TARGET_START, ST_TARGET_END] {
             let mut e = Engine::new();
@@ -141,7 +152,9 @@ fn region_automation_keeps_looping_voices() {
             e.begin_update();
             e.set_track_count(1);
             e.set_timing(120.0, 4, 0.0, 1.0);
-            e.set_host_mixing(true, 1);
+            if mix_view() {
+                e.set_host_mixing(true, 1);
+            }
             e.set_instrument(0, p);
             assert!(e.set_sample(0, &pcm, None, 48000.0));
             // Stepped: the whole sample on row 0, a quarter trimmed from row 1 (frame 6000) on.
@@ -155,6 +168,7 @@ fn region_automation_keeps_looping_voices() {
         }
     }
     assert!(render_allocations() == 0);
+    });
 }
 
 /// A start automated past the (un-automated) end leaves a one-frame region at the start, never a
@@ -162,6 +176,7 @@ fn region_automation_keeps_looping_voices() {
 /// PCM outside the selection.
 #[test]
 fn region_automation_start_past_end() {
+    both_views(|| {
     let mut e = Engine::new();
     let mut p = instrument();
     p.type_ = ST_INSTRUMENT_SAMPLE;
@@ -176,7 +191,9 @@ fn region_automation_start_past_end() {
     e.begin_update();
     e.set_track_count(1);
     e.set_timing(120.0, 4, 0.0, 1.0);
-    e.set_host_mixing(true, 1);
+    if mix_view() {
+        e.set_host_mixing(true, 1);
+    }
     e.set_instrument(0, p);
     assert!(e.set_sample(0, &pcm, None, 48000.0));
     e.add_automation_point(0, 0, ST_TARGET_START, 0, 0, 1, 0.0, 0.25);
@@ -188,4 +205,5 @@ fn region_automation_start_past_end() {
     assert!(audio.l.iter().all(|&x| x == 0.0));
     assert!(audio.l == audio.r);
     assert!(render_allocations() == 0);
+    });
 }

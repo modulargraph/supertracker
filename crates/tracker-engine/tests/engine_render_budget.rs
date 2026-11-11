@@ -12,6 +12,8 @@
 #![cfg(feature = "engine")]
 
 mod engine_support_b;
+#[allow(unused_imports)]
+use engine_support_b::{both_views, host_view_only, mix_view, mix_view_only};
 
 use engine_support_b::alloc::{realtime, render_allocations, reset_render_allocations};
 use engine_support_b::engine::Engine;
@@ -57,7 +59,6 @@ fn template_kit(e: &mut Engine) {
     assert!(e.set_track_count(27));
     e.set_instrument_count(32);
     e.set_timing(120.0, 4, 0.0, 0.8);
-    e.set_host_mixing_tracks(true, &[], true);
     e.set_pattern(0, 64);
     for pad in 0..16 {
         let mut p = default_instrument();
@@ -138,7 +139,6 @@ fn many_tracks(e: &mut Engine) {
     assert!(e.set_track_count(64));
     e.set_instrument_count(64);
     e.set_timing(120.0, 4, 0.0, 0.8);
-    e.set_host_mixing_tracks(true, &[], true);
     e.set_pattern(0, 64);
     for t in 0..64 {
         let mut p = default_instrument();
@@ -170,7 +170,8 @@ struct Outcome {
 }
 
 fn run(build: fn(&mut Engine), playing: bool, tracks: i32, block: usize, seconds: f64) -> Outcome {
-    let mut e = Engine::with_rate(RATE);
+    // One engine (at 48 kHz, `RATE`): the run is timed.
+    let mut e = Engine::alone();
     build(&mut e);
     if playing {
         e.play(0);
@@ -281,17 +282,23 @@ fn scenario(c: &Case) {
 
 #[test]
 fn template_kit_playing() {
+    host_view_only(|| {
     scenario(&CASES[0]);
+    });
 }
 
 #[test]
 fn template_kit_stopped() {
+    host_view_only(|| {
     scenario(&CASES[1]);
+    });
 }
 
 #[test]
 fn sixty_four_tracks() {
+    host_view_only(|| {
     scenario(&CASES[2]);
+    });
 }
 
 /// C++ `--bench [seconds]`: prints the numbers and PCM hashes without enforcing budgets. The
@@ -300,6 +307,7 @@ fn sixty_four_tracks() {
 #[test]
 #[ignore = "benchmark (C++ --bench): prints CPU share and PCM hashes for 20-second renders"]
 fn bench() {
+    host_view_only(|| {
     let _turn = TIMED.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let seconds = std::env::var("ENGINE_RENDER_BUDGET_SECONDS").ok().and_then(|text| text.parse().ok()).unwrap_or(20.0);
     for c in &CASES {
@@ -314,4 +322,5 @@ fn bench() {
         }
     }
     println!("Engine render budget: all scenarios within budget with zero render allocations.");
+    });
 }

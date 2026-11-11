@@ -11,6 +11,8 @@
 #![allow(clippy::needless_range_loop)]
 
 mod engine_support_a;
+#[allow(unused_imports)]
+use engine_support_a::{both_views, mix_view, mix_view_only};
 
 use engine_support_a::core_helpers::*;
 use engine_support_a::{assert_zero_render_allocations, Engine};
@@ -18,6 +20,7 @@ use tracker_engine::engine::*;
 
 #[test]
 fn test_timeline_audio_clips() {
+    both_views(|| {
     {
         let mut e = Engine::new();
         configure(&mut e, TONE);
@@ -50,7 +53,12 @@ fn test_timeline_audio_clips() {
         e.play(1);
         let mut a = Audio::new(512);
         render(&mut e, &mut a);
-        assert!(((a.l[0] - 0.28f32).abs() as f64) < 1e-6);
+        if mix_view() {
+            assert!(((a.l[0] - 0.28f32).abs() as f64) < 1e-6);
+        } else {
+            // The clip's own PCM (0.5 from frame 24000 on) at its gain of 1: no fader, no master.
+            assert!(a.l[0] == 0.5 && a.r[0] == 0.5);
+        }
         assert!(e.status().row == 4);
         e.stop();
         render(&mut e, &mut a);
@@ -99,10 +107,12 @@ fn test_timeline_audio_clips() {
         assert!(a.energy() == 0.0);
     }
     assert_zero_render_allocations();
+    });
 }
 
 #[test]
 fn test_live_clip_arrangement_extension_and_long_gates() {
+    both_views(|| {
     {
         let mut e = Engine::new();
         configure(&mut e, ST_INSTRUMENT_MIDI);
@@ -153,10 +163,12 @@ fn test_live_clip_arrangement_extension_and_long_gates() {
         assert!(count == 1);
     }
     assert_zero_render_allocations();
+    });
 }
 
 #[test]
 fn test_independent_filter_envelope() {
+    both_views(|| {
     let mut p = modulation_instrument();
     p.cutoff = 100.0;
     p.filter_attack = 0.0;
@@ -194,10 +206,12 @@ fn test_independent_filter_envelope() {
     let open = modulation_audio(p, 6000, 512);
     assert!(open.energy_in(4000, 5000) > closed.energy_in(4000, 5000) * 10.0);
     assert_zero_render_allocations();
+    });
 }
 
 #[test]
 fn test_lfo_routing_matrix() {
+    both_views(|| {
     let mut p = modulation_instrument();
     p.lfo_shape = ST_LFO_SQUARE;
     p.lfo_depth = 1.0;
@@ -222,14 +236,14 @@ fn test_lfo_routing_matrix() {
         left += (pan.l[n] * pan.l[n]) as f64;
         right += (pan.r[n] * pan.r[n]) as f64;
     }
-    assert!(left == 0.0 && right > 1.0);
+    assert!(left == 0.0 && right > if mix_view() { 1.0 } else { 3.0 });
     left = 0.0;
     right = 0.0;
     for n in 28000..46000 {
         left += (pan.l[n] * pan.l[n]) as f64;
         right += (pan.r[n] * pan.r[n]) as f64;
     }
-    assert!(right == 0.0 && left > 1.0);
+    assert!(right == 0.0 && left > if mix_view() { 1.0 } else { 3.0 });
     p.lfo_target = ST_MOD_CUTOFF;
     p.cutoff = 200.0;
     let cutoff = modulation_audio(p, 48000, 512);
@@ -242,10 +256,12 @@ fn test_lfo_routing_matrix() {
     let position = modulation_audio(p, 48000, 512);
     assert!(position.energy_in(1000, 20000) == 0.0 && position.energy_in(28000, 46000) > 0.001);
     assert_zero_render_allocations();
+    });
 }
 
 #[test]
 fn test_independent_lfos_and_automation() {
+    both_views(|| {
     let mut p = modulation_instrument();
     p.lfo_target = ST_MOD_PITCH;
     p.lfo_rate = 5.0;
@@ -288,10 +304,12 @@ fn test_independent_lfos_and_automation() {
     render(&mut e, &mut silent);
     assert!(silent.energy() == 0.0);
     assert_zero_render_allocations();
+    });
 }
 
 #[test]
 fn test_modulation_lifecycle_and_compatibility() {
+    both_views(|| {
     let mut p = modulation_instrument();
     let baseline = modulation_audio(p, 8192, 512);
     p.filter_attack = 10.0;
@@ -368,10 +386,12 @@ fn test_modulation_lifecycle_and_compatibility() {
     let safe = modulation_audio(p, 1024, 512);
     assert!(safe.energy() > 0.0001);
     assert_zero_render_allocations();
+    });
 }
 
 #[test]
 fn test_tempo_synced_lfo_periods() {
+    both_views(|| {
     let defaults = default_instrument();
     assert!(defaults.lfo_sync == 0 && defaults.lfo2_sync == 0 && defaults.lfo_beats == 1.0 && defaults.lfo2_beats == 1.0);
     struct Division {
@@ -463,10 +483,12 @@ fn test_tempo_synced_lfo_periods() {
         assert!(a.energy() > 0.001);
     }
     assert_zero_render_allocations();
+    });
 }
 
 #[test]
 fn test_tempo_synced_lfo_live_edits() {
+    both_views(|| {
     for slot in [0, 1] {
         for change in 0..3 {
             let mut e = Engine::new();
@@ -576,10 +598,12 @@ fn test_tempo_synced_lfo_live_edits() {
         assert_pan_switch(&legato, 3000);
     }
     assert_zero_render_allocations();
+    });
 }
 
 #[test]
 fn test_tempo_synced_lfo_automation() {
+    both_views(|| {
     for slot in [0, 1] {
         let mut e = Engine::new();
         let p = synced_pan_instrument(slot);
@@ -625,4 +649,5 @@ fn test_tempo_synced_lfo_automation() {
         assert!(high.l == clamped.l && high.r == clamped.r);
     }
     assert_zero_render_allocations();
+    });
 }
